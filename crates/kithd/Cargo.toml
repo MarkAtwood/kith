@@ -1,0 +1,54 @@
+[package]
+name = "kithd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "kithd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kithd"
+path = "src/main.rs"
+
+[dependencies]
+kith-core.workspace = true
+kith-store.workspace = true
+kith-jmap.workspace = true
+kith-chat.workspace = true
+kith-peer.workspace = true
+kith-tslocal.workspace = true
+kith-events.workspace = true
+kith-attach.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tokio-rustls.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http-body-util.workspace = true
+hyper-rustls = { version = "0.27", features = ["http1", "webpki-roots"] }
+bytes = "1"
+ulid.workspace = true
+rust-embed.workspace = true
+mime_guess.workspace = true
+
+[features]
+test-utils = ["kith-peer/test-utils"]
+
+[dev-dependencies]
+rusqlite.workspace = true
+serial_test = "3"
+tower.workspace = true

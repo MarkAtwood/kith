@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kith</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="error-banner" class="error-banner"></div>
+    <div id="sidebar" class="sidebar">
+      <div id="contact-section">
+        <h3>Contacts</h3>
+        <ul id="contact-list" class="contact-list"></ul>
+      </div>
+      <div id="chat-section">
+        <h3>Chats</h3>
+        <ul id="chat-list" class="chat-list"></ul>
+      </div>
+    </div>
+    <div class="main">
+      <div id="message-thread" class="message-thread"></div>
+      <div class="compose">
+        <div id="attachment-preview" class="attachment-preview"></div>
+        <textarea id="compose-body" placeholder="Type a message..." rows="1"></textarea>
+        <button id="send-btn">Send</button>
+        <button id="attach-btn" type="button" title="Attach file" aria-label="Attach file">📎</button>
+      </div>
+      <input type="file" id="file-input" style="display:none" aria-hidden="true">
+    </div>
+  </div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

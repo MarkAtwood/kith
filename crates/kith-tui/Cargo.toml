@@ -1,0 +1,30 @@
+[package]
+name = "kith-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "kith_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "kith-tui"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+futures.workspace = true
+unicode-width = "0.2"
+reqwest.workspace = true
+kith-core = { path = "../kith-core" }
+serde_json.workspace = true
+serde.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+wiremock = "0.6"

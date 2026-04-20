@@ -1,0 +1,63 @@
+[workspace]
+members = [
+    "crates/kithd",
+    "crates/kithctl",
+    "crates/kith-tui",
+    "crates/kith-core",
+    "crates/kith-store",
+    "crates/kith-jmap",
+    "crates/kith-chat",
+    "crates/kith-peer",
+    "crates/kith-tslocal",
+    "crates/kith-events",
+    "crates/kith-attach",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+# External crates -- versions centralized here
+axum = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+http-body-util = "0.1.3"
+# kith-tslocal uses hyper::client::conn::http1 (HTTP/1.1 over Unix socket to tailscaled).
+hyper = { version = "1.9.0", features = ["client", "http1"] }
+hyper-util = { version = "0.1.20", features = ["tokio", "server", "server-auto", "service"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+sha2 = "0.10"
+thiserror = "1"
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }
+rustls = "0.23"
+tokio-rustls = "0.26"
+ulid = "1"
+rust-embed = { version = "8", features = ["axum"] }
+mime_guess = "2"
+ratatui = "0.30"
+crossterm = { version = "0.28", features = ["event-stream"] }
+futures = "0.3"
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-manual-roots"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Internal crates -- path-based, workspace = true
+kith-core = { path = "crates/kith-core" }
+kith-store = { path = "crates/kith-store" }
+kith-jmap = { path = "crates/kith-jmap" }
+kith-chat = { path = "crates/kith-chat" }
+kith-peer = { path = "crates/kith-peer" }
+kith-tslocal = { path = "crates/kith-tslocal" }
+kith-events = { path = "crates/kith-events" }
+kith-attach = { path = "crates/kith-attach" }

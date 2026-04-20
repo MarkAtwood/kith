@@ -1,0 +1,12 @@
+[package]
+name = "kith-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kith-core.workspace = true
+rand.workspace = true
+rusqlite.workspace = true
+tokio.workspace = true
+ulid.workspace = true

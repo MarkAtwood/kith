@@ -1,0 +1,177 @@
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+use rustls::ServerConfig;
+use std::io::Write;
+use std::path::Path;
+use std::sync::Arc;
+use tokio_rustls::TlsAcceptor;
+
+#[derive(Debug, thiserror::Error)]
+pub enum TlsError {
+    #[error("TLS I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("certificate generation failed: {0}")]
+    Rcgen(#[from] rcgen::Error),
+    #[error("rustls error: {0}")]
+    Rustls(#[from] rustls::Error),
+}
+
+/// Load TLS cert and key from disk, or generate a self-signed cert if absent.
+///
+/// If both `cert_path` and `key_path` exist: read them as raw DER bytes and
+/// return them in rustls format.
+///
+/// If either is missing: generate a new ECDSA self-signed certificate using
+/// rcgen, write the cert DER to `cert_path` and the PKCS#8 key DER to
+/// `key_path` (key file created with mode 0o600 before any secret bytes are
+/// written).
+///
+/// Returns the certificate chain and private key ready for use with rustls.
+pub fn load_or_generate_cert(
+    cert_path: &Path,
+    key_path: &Path,
+) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), TlsError> {
+    if cert_path.exists() && key_path.exists() {
+        let cert_der = std::fs::read(cert_path)?;
+        let key_der = std::fs::read(key_path)?;
+        tracing::info!("TLS: loaded existing certificate from {:?}", cert_path);
+        let cert = CertificateDer::from(cert_der);
+        let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(key_der));
+        Ok((vec![cert], key))
+    } else {
+        let rcgen::CertifiedKey { cert, signing_key } =
+            rcgen::generate_simple_self_signed(vec!["kith.local".to_string()])?;
+
+        let cert_der: Vec<u8> = cert.der().to_vec();
+        let key_der: Vec<u8> = signing_key.serialize_der();
+
+        std::fs::write(cert_path, &cert_der)?;
+
+        // Create the key file with mode 0o600 atomically before writing secret bytes.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut key_file = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(key_path)?;
+            key_file.write_all(&key_der)?;
+        }
+        #[cfg(not(unix))]
+        std::fs::write(key_path, &key_der)?;
+
+        tracing::info!(
+            "TLS: generated new self-signed certificate at {:?}",
+            cert_path
+        );
+        let cert = CertificateDer::from(cert_der);
+        let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(key_der));
+        Ok((vec![cert], key))
+    }
+}
+
+/// Read the raw DER bytes from a certificate file on disk.
+///
+/// Used by `spawn_test_listener` to return the cert bytes to callers so
+/// that test clients can configure a custom trust root.
+pub fn cert_der_bytes(cert_path: &Path) -> Result<Vec<u8>, TlsError> {
+    std::fs::read(cert_path).map_err(TlsError::Io)
+}
+
+/// Create a `TlsAcceptor` for use with tokio TCP listeners.
+///
+/// Calls `load_or_generate_cert` to obtain the certificate and key, then
+/// builds a `rustls::ServerConfig` with no client authentication required.
+pub fn make_tls_acceptor(cert_path: &Path, key_path: &Path) -> Result<TlsAcceptor, TlsError> {
+    let (certs, key) = load_or_generate_cert(cert_path, key_path)?;
+    let config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)?;
+    Ok(TlsAcceptor::from(Arc::new(config)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
+
+    fn tmp_paths(label: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir();
+        let pid = std::process::id();
+        let cert = dir.join(format!("kith-test-cert-{label}-{pid}.der"));
+        let key = dir.join(format!("kith-test-key-{label}-{pid}.der"));
+        let _ = std::fs::remove_file(&cert);
+        let _ = std::fs::remove_file(&key);
+        (cert, key)
+    }
+
+    // Oracle: load_or_generate_cert must produce a non-empty cert chain and
+    // persist both files when neither exists.
+    #[test]
+    fn test_generate_cert_when_absent() {
+        let (cert_path, key_path) = tmp_paths("gen");
+
+        let result = load_or_generate_cert(&cert_path, &key_path);
+        assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+        let (certs, _key) = result.unwrap();
+        assert!(!certs.is_empty(), "cert chain must be non-empty");
+        assert!(cert_path.exists(), "cert file must be written");
+        assert!(key_path.exists(), "key file must be written");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(&key_path).unwrap();
+            assert_eq!(
+                meta.permissions().mode() & 0o777,
+                0o600,
+                "key file must be owner-read-write only"
+            );
+        }
+
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    // Oracle: a second call with the same paths must return the same cert bytes
+    // (files are loaded, not regenerated).
+    #[test]
+    fn test_load_existing_cert() {
+        let (cert_path, key_path) = tmp_paths("load");
+
+        load_or_generate_cert(&cert_path, &key_path).expect("first generation");
+        let cert_bytes_first = std::fs::read(&cert_path).unwrap();
+
+        load_or_generate_cert(&cert_path, &key_path).expect("second load");
+        let cert_bytes_second = std::fs::read(&cert_path).unwrap();
+
+        assert_eq!(
+            cert_bytes_first, cert_bytes_second,
+            "cert must not change on second call (load path)"
+        );
+
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    // Oracle: make_tls_acceptor must succeed and produce a usable TlsAcceptor.
+    #[test]
+    fn test_make_tls_acceptor() {
+        install_crypto_provider();
+        let (cert_path, key_path) = tmp_paths("acceptor");
+
+        let result = make_tls_acceptor(&cert_path, &key_path);
+        assert!(
+            result.is_ok(),
+            "make_tls_acceptor failed: {:?}",
+            result.err()
+        );
+
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+    }
+}

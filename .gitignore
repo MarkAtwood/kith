@@ -1,0 +1,32 @@
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+!.beads/embeddeddolt/KITH/.dolt/
+*.db
+.beads-credential-key
+
+# Rust build artifacts
+/target/
+
+# SQLite runtime files (mailbox data, not source)
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# TLS certificates and keys (generated locally for dev)
+*.pem
+*.key
+*.crt
+*.cer
+
+# Environment and local secrets
+.env
+.env.local
+.env.*.local
+
+# Editor artifacts
+.DS_Store
+*.swp
+*~

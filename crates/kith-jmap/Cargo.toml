@@ -1,0 +1,12 @@
+[package]
+name = "kith-jmap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kith-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true

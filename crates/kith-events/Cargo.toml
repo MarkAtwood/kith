@@ -1,0 +1,16 @@
+[package]
+name = "kith-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kith-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+kith-store.workspace = true

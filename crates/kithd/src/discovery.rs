@@ -1,0 +1,415 @@
+//! Peer auto-discovery: probe tailnet IPs for running kithd instances.
+
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full, Limited};
+use hyper::Request;
+use hyper_rustls::HttpsConnectorBuilder;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
+use kith_store::Store;
+use kith_tslocal::LocalApiClient;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{DigitallySignedStruct, Error as TlsError, SignatureScheme};
+use serde::Deserialize;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+/// Maximum response body accepted from a probe target (64 KiB).
+const MAX_PROBE_RESPONSE_BYTES: usize = 64 * 1024;
+
+/// Timeout for the entire probe round trip.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+/// Identity returned by probing a remote kithd's `/.well-known/jmap` endpoint.
+#[derive(Debug, Clone)]
+pub struct PeerSession {
+    pub owner_user_id: String,
+    pub owner_login: String,
+    pub owner_display_name: Option<String>,
+    /// Hostname (and optional `:port`) extracted from the session's `apiUrl`.
+    /// Used as `mailboxHost` in the contacts table.
+    pub mailbox_host: String,
+}
+
+// ---------------------------------------------------------------------------
+// Wire format
+// ---------------------------------------------------------------------------
+
+/// Minimal subset of the JMAP session needed for discovery.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionProbe {
+    owner_user_id: Option<String>,
+    owner_login: Option<String>,
+    owner_display_name: Option<String>,
+    api_url: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// TLS verifier: accept any certificate from a tailnet IP
+// ---------------------------------------------------------------------------
+
+/// A TLS certificate verifier that accepts any certificate from a tailnet IP.
+///
+/// # Safety rationale
+///
+/// Tailscale provides cryptographic identity guarantees at the network layer:
+/// only the machine with the correct WireGuard private key can send traffic
+/// from a given tailnet IP.  The TLS certificate is used only for
+/// confidentiality (encryption), not for authentication.  Therefore
+/// accepting any cert from a tailnet IP is safe for discovery probing.
+#[derive(Debug)]
+pub(crate) struct TailnetCertVerifier {
+    /// Supported signature schemes from the active `CryptoProvider`.
+    supported: rustls::crypto::WebPkiSupportedAlgorithms,
+}
+
+impl TailnetCertVerifier {
+    pub(crate) fn new() -> Self {
+        let provider = rustls::crypto::CryptoProvider::get_default()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
+        Self {
+            supported: provider.signature_verification_algorithms,
+        }
+    }
+}
+
+impl ServerCertVerifier for TailnetCertVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, TlsError> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, TlsError> {
+        rustls::crypto::verify_tls12_signature(message, cert, dss, &self.supported)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, TlsError> {
+        rustls::crypto::verify_tls13_signature(message, cert, dss, &self.supported)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.supported.supported_schemes()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Probe function
+// ---------------------------------------------------------------------------
+
+/// Probe a single tailnet IP:port for a running kithd instance.
+///
+/// Makes a `GET https://<ip>:<port>/.well-known/jmap` and parses the
+/// JMAP session object.  Returns `Some(PeerSession)` if the target responds
+/// with a valid kith session, `None` on any error (timeout, connection
+/// refused, non-kith response, parse failure, etc.).
+///
+/// A 5-second hard timeout covers the entire round trip.
+pub async fn probe_peer(ip: &str, port: u16) -> Option<PeerSession> {
+    let url = format!("https://{}:{}/.well-known/jmap", ip, port);
+
+    let verifier = Arc::new(TailnetCertVerifier::new());
+    let tls_config = rustls::ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(verifier)
+        .with_no_client_auth();
+    let connector = HttpsConnectorBuilder::new()
+        .with_tls_config(tls_config)
+        .https_only()
+        .enable_http1()
+        .build();
+    let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
+
+    let result = tokio::time::timeout(PROBE_TIMEOUT, async {
+        let req = Request::builder()
+            .method(hyper::Method::GET)
+            .uri(&url)
+            .header("Accept", "application/json")
+            .body(Full::new(Bytes::new()))
+            .ok()?;
+
+        let resp = client.request(req).await.ok()?;
+
+        if !resp.status().is_success() {
+            return None;
+        }
+
+        let raw = Limited::new(resp.into_body(), MAX_PROBE_RESPONSE_BYTES)
+            .collect()
+            .await
+            .ok()?
+            .to_bytes();
+
+        let probe: SessionProbe = serde_json::from_slice(&raw).ok()?;
+
+        let owner_user_id = probe.owner_user_id?;
+        let owner_login = probe.owner_login?;
+        let api_url = probe.api_url?;
+        let mailbox_host = extract_mailbox_host(&api_url)?;
+
+        Some(PeerSession {
+            owner_user_id,
+            owner_login,
+            owner_display_name: probe.owner_display_name,
+            mailbox_host,
+        })
+    })
+    .await;
+
+    result.ok().flatten()
+}
+
+// ---------------------------------------------------------------------------
+// Helper: extract host[:port] from an API URL
+// ---------------------------------------------------------------------------
+
+/// Extract `host` or `host:port` from a URL string.
+///
+/// Port 443 is treated as the default for `https://` and is omitted from
+/// the result, matching the convention used by `mailboxHost` in the contacts
+/// table.
+///
+/// Returns `None` if the URL cannot be parsed or has no host.
+pub fn extract_mailbox_host(api_url: &str) -> Option<String> {
+    // Strip the scheme prefix ("https://" or "http://").
+    let rest = if let Some(s) = api_url.strip_prefix("https://") {
+        s
+    } else if let Some(s) = api_url.strip_prefix("http://") {
+        s
+    } else {
+        return None;
+    };
+
+    // The authority is everything before the first '/'.
+    let authority = rest.split('/').next()?;
+    if authority.is_empty() {
+        return None;
+    }
+
+    // Split authority into host and optional port.
+    // IPv6 addresses are enclosed in brackets: [::1]:8443
+    if authority.starts_with('[') {
+        // IPv6: find the closing ']'
+        let close = authority.find(']')?;
+        let host = &authority[..=close];
+        let after_bracket = &authority[close + 1..];
+        if after_bracket.is_empty() {
+            return Some(host.to_string());
+        }
+        // Must be ":port"
+        let port_str = after_bracket.strip_prefix(':')?;
+        let port: u16 = port_str.parse().ok()?;
+        if port == 443 {
+            return Some(host.to_string());
+        }
+        return Some(format!("{}:{}", host, port));
+    }
+
+    // Non-IPv6: host is everything before the last ':'
+    // But we only split on ':' if what follows parses as a port number.
+    if let Some(colon) = authority.rfind(':') {
+        let maybe_port = &authority[colon + 1..];
+        if let Ok(port) = maybe_port.parse::<u16>() {
+            let host = &authority[..colon];
+            if host.is_empty() {
+                return None;
+            }
+            if port == 443 {
+                return Some(host.to_string());
+            }
+            return Some(format!("{}:{}", host, port));
+        }
+    }
+
+    // No port (or port not parseable as u16): return authority as-is.
+    Some(authority.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Background discovery task
+// ---------------------------------------------------------------------------
+
+/// Spawn a background tokio task that periodically probes all tailnet peers
+/// for running kithd instances and upserts them as contacts.
+///
+/// The task is fire-and-forget: errors are logged and ignored; the task
+/// never terminates unless the process exits.
+pub fn spawn_discovery_task(
+    tslocal: Arc<LocalApiClient>,
+    store: Arc<Mutex<Store>>,
+    port: u16,
+    owner_user_id: String,
+    interval_secs: u64,
+) {
+    tokio::spawn(async move {
+        loop {
+            run_discovery_round(&tslocal, &store, port, &owner_user_id).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+        }
+    });
+}
+
+async fn run_discovery_round(
+    tslocal: &LocalApiClient,
+    store: &Arc<Mutex<Store>>,
+    port: u16,
+    owner_user_id: &str,
+) {
+    let status = match tslocal.status().await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("discovery: LocalAPI status failed: {e}");
+            return;
+        }
+    };
+
+    let peers = status.peer_nodes_excluding(owner_user_id);
+    if peers.is_empty() {
+        tracing::debug!("discovery: no tailnet peers found");
+        return;
+    }
+
+    let mut found = 0usize;
+    for peer in peers {
+        let mut session = None;
+        for ip in &peer.tailscale_ips {
+            if let Some(s) = probe_peer(ip, port).await {
+                session = Some(s);
+                break;
+            }
+        }
+
+        let Some(ps) = session else {
+            tracing::debug!("discovery: no kithd found for peer {}", peer.dns_name);
+            continue;
+        };
+
+        let now_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let result = {
+            let guard = store.lock();
+            match guard {
+                Ok(g) => g.contacts().upsert_discovered_contact(
+                    &ps.owner_user_id,
+                    &ps.owner_login,
+                    &ps.mailbox_host,
+                    ps.owner_display_name.as_deref(),
+                    now_unix,
+                ),
+                Err(_) => {
+                    tracing::error!("discovery: store lock poisoned");
+                    return;
+                }
+            }
+        };
+
+        match result {
+            Ok(()) => {
+                found += 1;
+                tracing::debug!("discovery: upserted contact {}", ps.owner_login);
+            }
+            Err(e) => {
+                tracing::warn!("discovery: upsert failed for {}: {e}", ps.owner_login);
+            }
+        }
+    }
+
+    tracing::info!("discovery: round complete, {found} kithd peer(s) found");
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- extract_mailbox_host unit tests ---
+    // Oracle: expected values are derived from the URL parsing rules in
+    // RFC 3986 and the kith convention that port 443 is omitted.
+
+    #[test]
+    fn extract_mailbox_host_standard_port() {
+        assert_eq!(
+            extract_mailbox_host("https://alice.ts.net/jmap/api"),
+            Some("alice.ts.net".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_mailbox_host_custom_port() {
+        assert_eq!(
+            extract_mailbox_host("https://alice.ts.net:8443/jmap/api"),
+            Some("alice.ts.net:8443".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_mailbox_host_443_omitted() {
+        assert_eq!(
+            extract_mailbox_host("https://alice.ts.net:443/jmap/api"),
+            Some("alice.ts.net".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_mailbox_host_no_path() {
+        assert_eq!(
+            extract_mailbox_host("https://alice.ts.net"),
+            Some("alice.ts.net".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_mailbox_host_bad_scheme() {
+        assert_eq!(extract_mailbox_host("ftp://alice.ts.net/foo"), None);
+    }
+
+    #[test]
+    fn extract_mailbox_host_empty_host() {
+        assert_eq!(extract_mailbox_host("https:///jmap/api"), None);
+    }
+
+    fn install_crypto_provider() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
+
+    // --- probe_peer integration test ---
+
+    #[tokio::test]
+    async fn probe_peer_returns_none_on_refused() {
+        install_crypto_provider();
+        // Nothing is expected to be listening on port 19999 during tests.
+        let result = probe_peer("127.0.0.1", 19999).await;
+        assert!(
+            result.is_none(),
+            "probe_peer must return None when connection is refused"
+        );
+    }
+}

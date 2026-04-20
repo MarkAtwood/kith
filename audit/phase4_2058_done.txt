@@ -1,0 +1,19 @@
+EPIC: KITH-2058 — Web client attachment UI
+PHASE: 4 (Close)
+DATE: 2026-04-20
+
+STATUS: CLOSED
+
+DELIVERABLES:
+  web/index.html    — attach button, file input, attachment-preview div
+  web/style.css     — attachment-preview, message-attachments, attachment-link rules
+  web/app.js        — formatBytes, uploadBlob, buildAttachmentElement,
+                      renderAttachmentPreview, sendMessage attachment support,
+                      createMessageBubble attachment rendering,
+                      session.uploadUrl/downloadUrl population
+
+Also fixed (pre-work):
+  crates/kith-peer/src/lib.rs  — install_crypto_provider() in tests
+  crates/kithd/src/tls.rs      — install_crypto_provider() in tests
+
+All quality gates passed. Epic complete.

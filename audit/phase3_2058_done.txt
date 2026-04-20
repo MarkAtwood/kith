@@ -1,0 +1,30 @@
+EPIC: KITH-2058 — Web client attachment UI
+PHASE: 3 (Review)
+DATE: 2026-04-20
+
+REVIEW ROUNDS: 1
+
+Round 1 (KITH-d5g1):
+  Reviewers: SEC0, SEC1 (parallel)
+  Total findings: 9 sub-issues filed
+  P0 found: 1 (KITH-d5g1.1 — pendingAttachments lost on send failure)
+  P1 found: 3 (KITH-d5g1.5 race, KITH-d5g1.6 session.uploadUrl, KITH-d5g1.4 dup)
+  P2 found: 2 (KITH-d5g1.7 not-a-bug, KITH-d5g1.8 deferred multi-file)
+  P3 found: 2 (advisory)
+  P4 found: 1 (advisory)
+
+  Fixes applied:
+    KITH-d5g1.1: pendingAttachments restored in sendMessage catch block
+    KITH-d5g1.5: uploadsInProgress counter prevents Send during upload
+    KITH-d5g1.6: session.uploadUrl/downloadUrl populated in bootstrap()
+    KITH-d5g1.4: closed as duplicate of KITH-d5g1.1
+    KITH-d5g1.7: closed as not-a-bug (error includes HTTP status already)
+    KITH-d5g1.8: deferred to multi-file phase (MVP has no multiple attr)
+    KITH-d5g1.2/3/9: P3/P4 advisory, no code change
+
+Post-fix quality gates:
+  cargo test --workspace: PASS (all tests green)
+  cargo clippy --all-features -- -D warnings: PASS
+  cargo fmt --all: no changes
+
+Exit condition: P0=P1=P2=0

@@ -1,0 +1,28 @@
+[package]
+name = "kith-peer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+test-utils = []
+
+[dependencies]
+kith-core.workspace = true
+kith-jmap.workspace = true
+kith-store.workspace = true
+bytes = "1"
+http-body-util.workspace = true
+hyper = { workspace = true }
+hyper-rustls = { version = "0.27", features = ["http1", "webpki-roots"] }
+hyper-util = { workspace = true, features = ["client-legacy", "http1"] }
+serde = { workspace = true }
+rustls.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true }
+ulid.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+sha2.workspace = true

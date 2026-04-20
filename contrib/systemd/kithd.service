@@ -1,0 +1,86 @@
+[Unit]
+Description=Kith mailbox daemon
+Documentation=https://github.com/markAtwood/kith
+After=network-online.target tailscaled.service
+Requires=tailscaled.service
+
+[Service]
+# ---- Process type ----
+# kithd does not call sd_notify; use simple so systemd considers the service
+# ready as soon as the process starts.
+Type=simple
+
+# ---- Identity ----
+User=kithd
+Group=kithd
+# Files created by kithd (kith.db, kith.key, kith.crt) are owner-only (0o600/0o700).
+UMask=0077
+
+# ---- Configuration (via environment) ----
+# Authoritative env var reference: crates/kithd/src/config.rs (Config::from_env)
+# Only key variables are listed here; see config.rs for all KITHD_* variables and defaults.
+Environment="KITHD_DATA_DIR=/var/lib/kithd"
+# All kithd data: SQLite DB (kith.db), TLS cert (kith.crt), TLS key (kith.key).
+
+Environment="KITHD_TAILSCALED_SOCKET=/var/run/tailscale/tailscaled.sock"
+# Tailscale LocalAPI socket; must be accessible by the kithd user.
+
+Environment="KITHD_PORT=443"
+# HTTPS listener port; kithd binds only to Tailscale virtual interfaces.
+
+# kithd auto-detects the owner identity from Tailscale on first start if this is empty.
+# Set explicitly when running on a shared host or to pin a specific Tailscale user ID:
+#   tailscale status --json | jq -r .Self.UserID
+Environment="KITHD_OWNER_ID="
+
+Environment="RUST_LOG=kithd=info,kith_peer=info"
+# Logging level. kithd writes JSON to stderr (captured by journald) when not a TTY.
+
+# ---- Executable ----
+ExecStart=/usr/local/bin/kithd
+
+# ---- Restart policy ----
+Restart=on-failure
+# Wait 5 s before restarting to avoid rapid loops on persistent startup failures.
+RestartSec=5
+
+# ---- Graceful shutdown ----
+# kithd handles SIGTERM with a graceful drain (up to 10 s); allow 15 s before
+# systemd sends SIGKILL, giving the in-flight connection drain room to finish.
+TimeoutStopSec=15
+
+# ---- Security hardening ----
+# Prevent privilege escalation via setuid/setgid binaries.
+NoNewPrivileges=yes
+
+# /usr, /boot, /lib are read-only; kithd cannot modify system libraries.
+ProtectSystem=strict
+
+# Exception to ProtectSystem: kithd must write its SQLite DB and TLS material here.
+ReadWritePaths=/var/lib/kithd
+
+# /home, /root, /run/user are inaccessible; kithd has no business reading user homes.
+ProtectHome=yes
+
+# kithd does not use /tmp, but a private namespace prevents cross-process temp access.
+PrivateTmp=yes
+
+# AF_UNIX: Tailscale LocalAPI socket; AF_INET/INET6: HTTPS listener on Tailscale IPs.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# No capabilities needed; kithd binds to Tailscale virtual interfaces (user-space port).
+CapabilityBoundingSet=
+# Complements CapabilityBoundingSet=: no ambient capabilities either.
+AmbientCapabilities=
+
+# Raise file descriptor limit for the event loop + SQLite connections.
+LimitNOFILE=65536
+
+# ---- Logging ----
+StandardOutput=journal
+StandardError=journal
+# Filter logs: journalctl -u kithd -f
+SyslogIdentifier=kithd
+
+[Install]
+WantedBy=multi-user.target
