@@ -6,13 +6,13 @@
 
 **FOR IMMEDIATE RELEASE**
 
-**Portland, OR — April 18, 2026**
+**Seattle, WA — April 18, 2026**
 
 ### Kith Puts Chat Back in Your Hands: Tailnet-Native Messaging With No Central Server
 
 *Each user runs their own mailbox. Tailscale is the network. There is nothing in the middle.*
 
-**Portland, OR** — Kith, an open-source messaging system built for people who already run their own infrastructure, is available today. Kith gives every participant a mailbox daemon they run on hardware they control, wires mailboxes together over a Tailscale overlay network, and uses Tailscale's cryptographic identity as the only authentication layer. There is no Kith account, no Kith server, and no Kith company holding your messages.
+**Seattle, WA** — Kith, an open-source messaging system built for people who already run their own infrastructure, is available today. Kith gives every participant a mailbox daemon they run on hardware they control, wires mailboxes together over a Tailscale overlay network, and uses Tailscale's cryptographic identity as the only authentication layer. There is no Kith account, no Kith server, and no Kith company holding your messages.
 
 The core insight behind Kith is that a significant class of users — systems administrators, homelab operators, small engineering teams, privacy-conscious individuals — already have the infrastructure and already use Tailscale. For these users, a self-hosted chat system does not need to invent an identity system, a transport layer, or a trust model. Tailscale provides all three. Kith threads those primitives into a mailbox protocol and gets out of the way.
 
@@ -176,14 +176,6 @@ Second, and more importantly, Kith is designed to sit alongside `tailscaled` on 
 
 ---
 
-**Why AGPL and not MIT/Apache?**
-
-The AGPL copyleft requirement ensures that if someone modifies Kith and runs it as a service — including the "network use" case that plain GPL does not cover — they must publish their modifications. This matters for Kith specifically because the obvious commercial opportunity is to run `kithd` as a managed hosted service. We are not opposed to commercial use, but we do not want the result of Kith's development to be a proprietary fork offering a hosted service that contributes nothing back. AGPL closes that gap.
-
-MIT or Apache would allow a hosted service to take Kith, improve it substantially, and keep those improvements proprietary. The AGPL does not prevent that business model; it requires that business to share its improvements. For an infrastructure project built on the principle that users should control their own data, it is consistent to also insist that the software serving them remain open.
-
----
-
 **Why no multi-tenant mode? (And why is this principled, not just "it's hard")**
 
 Multi-tenancy is not missing because it was too hard to implement. It is absent because multi-tenancy changes the threat model in ways that undermine Kith's core value proposition.
@@ -211,3 +203,7 @@ An in-app invite requires: generating an invite token, storing pending invites, 
 Tailscale node sharing already solves this problem. It has a UI, a notification flow, an acceptance model, and a revocation mechanism. When Alice shares her node to Carol's identity, Carol gets a notification, accepts, and the node appears on Carol's tailnet. When Alice revokes the share, access ends immediately, enforced by the network layer. Kith does not need to replicate this.
 
 Using Tailscale's UI as the external-access workflow means the trust relationship is expressed at the network level, not in application state. This is both simpler and more robust: access control happens before a TCP connection is even established, rather than inside the application after the connection. The constraint that "external chat requires a Tailscale admin action" is not a missing feature — it is Kith correctly identifying which layer of the stack should own access control.
+
+---
+
+> **What is a PRFAQ?** A PRFAQ (Press Release / FAQ) is an Amazon-originated product planning technique. It starts with a fictional press release written as if the product has already launched successfully, forcing clarity on customer benefit and desired outcome. The FAQ section then anticipates hard internal and external questions. Writing the press release first ensures the team aligns on what success looks like before committing to implementation.
