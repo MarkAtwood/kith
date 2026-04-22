@@ -11,8 +11,6 @@ use std::future::Future;
 use std::pin::Pin;
 
 const MAX_CALLS_IN_REQUEST: usize = 16;
-const KITH_CHAT_CAPABILITY: &str = "urn:kith:chat:1";
-const JMAP_CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 
 /// Parse and validate a raw JMAP request value.
 ///
@@ -26,17 +24,10 @@ pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> 
         return Err(JmapError::unknown_capability("using must not be empty"));
     }
 
-    for uri in &req.using {
-        if uri != JMAP_CORE_CAPABILITY && uri != KITH_CHAT_CAPABILITY {
-            return Err(JmapError::unknown_capability(format!(
-                "Unsupported capability: {uri}"
-            )));
-        }
-    }
-
-    if !req.using.iter().any(|u| u == KITH_CHAT_CAPABILITY) {
-        return Err(JmapError::unknown_capability("urn:kith:chat:1 is required"));
-    }
+    // Unknown capability URIs are silently ignored for interoperability with stock
+    // JMAP clients that include capabilities Kith does not implement (e.g. jmap:mail).
+    // urn:kith:chat:1 is implicit — clients that only declare urn:ietf:params:jmap:core
+    // are accepted and dispatched against the full kith method set.
 
     if req.method_calls.len() > MAX_CALLS_IN_REQUEST {
         return Err(JmapError::request_too_large("maxCallsInRequest is 16"));
@@ -486,30 +477,29 @@ mod tests {
         assert_eq!(err.error_type, "unknownCapability");
     }
 
-    // Test 3: Unknown capability URI → unknownCapability (RFC 8620 §7.1)
+    // Test 3: Unknown capability URI → silently ignored, request accepted
+    // Pragmatic interoperability: stock clients sending e.g. urn:ietf:params:jmap:mail
+    // are not rejected; Kith dispatches only the methods it knows about.
     #[test]
-    fn test_parse_request_unknown_capability() {
+    fn test_parse_request_unknown_capability_ignored() {
         let body = json!({
             "using": ["urn:kith:chat:1", "urn:example:unknown:1"],
             "methodCalls": []
         });
         let result = parse_request(body);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.error_type, "unknownCapability");
+        assert!(result.is_ok());
     }
 
-    // Test 4: Missing urn:kith:chat:1 → unknownCapability
+    // Test 4: Only urn:ietf:params:jmap:core (no urn:kith:chat:1) → accepted
+    // urn:kith:chat:1 is implicit; stock clients that only declare core are accepted.
     #[test]
-    fn test_parse_request_missing_kith_capability() {
+    fn test_parse_request_core_only_accepted() {
         let body = json!({
             "using": ["urn:ietf:params:jmap:core"],
             "methodCalls": []
         });
         let result = parse_request(body);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(err.error_type, "unknownCapability");
+        assert!(result.is_ok());
     }
 
     // Test 5: More than 16 method calls → requestTooLarge (RFC 8620 §7.1)
