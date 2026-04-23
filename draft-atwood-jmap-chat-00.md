@@ -198,6 +198,12 @@ Servers MAY include in the Session object:
   SHOULD store this value as the `directAddress` on the
   corresponding Contact record.
 
+`ownerEndpoints` (Endpoint[], optional):
+: The owner's advertised out-of-band capability endpoints (see
+  {{endpoint}}).  Peers that probe `/.well-known/jmap` SHOULD
+  merge these into the `endpoints` field of the corresponding
+  Contact record.
+
 # Data Types
 
 ## Contact
@@ -250,6 +256,14 @@ this deployment.
   multi-device sync; those remain the responsibility of the
   mailbox.  Servers populate this field from the `ownerDirectAddress`
   advertised in the contact's `/.well-known/jmap` Session object.
+
+`endpoints` (Endpoint[], optional):
+: Out-of-band capability endpoints advertised by this contact (see
+  {{endpoint}}).  Servers populate this field from the contact's
+  `ownerEndpoints` at `/.well-known/jmap`.  Clients MAY use these
+  to initiate video calls, send payments, or fetch files outside
+  the JMAP message channel.  Clients MUST NOT act on these values
+  automatically without explicit user intent.
 
 `blocked` (Boolean):
 : When `true`, messages from this contact are silently dropped by
@@ -393,9 +407,26 @@ any messages are sent.
 
 A Reaction is an emoji response to a Message.
 
+`id` (String, immutable, server-set):
+: A ULID assigned by the receiving server when the reaction is
+  stored.  For reactions composed by the owner, equals
+  `senderReactionId`.
+
+`senderReactionId` (String, immutable):
+: The sender-assigned ULID for this reaction, carried in
+  `Peer/deliver` `reactionUpdate`.  Used to identify a reaction
+  for removal across the mailbox boundary.
+
 `emoji` (String):
-: The reaction emoji.  Implementations SHOULD limit this to a
-  single grapheme cluster.
+: A non-empty string identifying the reaction.  Typically a
+  Unicode emoji sequence or a deployment-defined token.  What
+  values are accepted is an implementation choice.
+
+`customEmojiId` (String, optional):
+: The id of a SpaceEmoji, for reactions using Space-scoped custom
+  emoji.  When present, `emoji` SHOULD contain a fallback
+  representation (e.g., the emoji name) for clients that do not
+  support custom emoji.
 
 `senderId` (String):
 : `"self"` for the owner's reaction, or a Contact.id.
@@ -481,6 +512,11 @@ same chat, the server MAY silently discard the duplicate.
 
 `mentions` (Mention[]):
 : Structured @mention annotations.  Empty by default.
+
+`actions` (MessageAction[]):
+: Out-of-band action invitations associated with this message.
+  Empty by default.  See {{endpoint}}.  Servers MUST store and
+  forward these without inspection.
 
 `reactions` (Reaction[]):
 : Emoji reactions.  Empty by default.
@@ -570,6 +606,79 @@ same chat, the server MAY silently discard the duplicate.
 
 `sha256` (String):
 : Lowercase hex SHA-256 of blob content.  Servers SHOULD verify.
+
+## Endpoint {#endpoint}
+
+An Endpoint advertises an out-of-band capability reachable at a URI.
+Endpoints appear on Contact and Session objects as persistent
+capability advertisements.  The `type` field is an extensible URI
+namespace; clients MUST silently ignore Endpoint records whose `type`
+they do not recognize.
+
+`type` (String):
+: A URI identifying the capability type.  Well-known values defined
+  by this document:
+
+  - `"urn:jmap:chat:cap:vtc"` — video/voice teleconference.  `uri`
+    is a signaling or room URL (e.g., a WebRTC signaling endpoint,
+    a Jitsi room URL, a SIP URI).
+  - `"urn:jmap:chat:cap:payment"` — payment receiving endpoint.
+    `uri` is a payment URI (e.g., `lightning:...`, `zcash:...`,
+    `monero:...`, `bitcoin:...`).
+  - `"urn:jmap:chat:cap:blob"` — out-of-band file transfer
+    endpoint.  `uri` is a base URL for fetching or uploading
+    blobs outside the JMAP blob mechanism.
+
+  Other type URIs MAY be defined by deployments or future
+  documents.  The `urn:jmap:chat:cap:` prefix is reserved for
+  types defined in JMAP Chat specifications.
+
+`uri` (String):
+: The endpoint URI.  Format is type-specific.  Peer-supplied;
+  MUST be treated as untrusted.
+
+`label` (String, optional):
+: Human-readable label for this endpoint (e.g., `"Zulip payments"`,
+  `"Personal Jitsi"`).
+
+`metadata` (Object, optional):
+: Type-specific key-value pairs.  Clients MUST ignore unknown
+  keys.  Examples by type:
+
+  - `vtc`: `{"protocol": "webrtc", "roomName": "...", "password": "..."}`
+  - `payment`: `{"network": "lightning", "currency": "BTC"}`
+  - `blob`: `{"maxBytes": 10485760}`
+
+## MessageAction
+
+A MessageAction is a per-message out-of-band action invitation
+carried in a Message and in `Peer/deliver`.  It signals that this
+message is associated with an OOB interaction — a video call
+invitation, a payment request, a file available outside the blob
+channel, etc.  Servers MUST store and forward MessageAction records
+without inspection or transformation.  Clients MUST NOT act on a
+MessageAction automatically; all OOB actions require explicit user
+initiation.
+
+`type` (String):
+: Same URI namespace as Endpoint `type`.  Clients MUST ignore
+  actions whose `type` they do not recognize.
+
+`uri` (String):
+: The action URI.  Peer-supplied; MUST be treated as untrusted.
+
+`label` (String, optional):
+: Human-readable label for the action (e.g., `"Join call"`,
+  `"Pay $5"`, `"Download file"`).
+
+`expiresAt` (UTCDate, optional):
+: Time after which the action is no longer valid.  Clients SHOULD
+  visually indicate expired actions.  Servers MUST NOT enforce
+  expiry on stored actions; enforcement is the OOB system's
+  responsibility.
+
+`metadata` (Object, optional):
+: Type-specific key-value pairs.  Clients MUST ignore unknown keys.
 
 ## SpaceRole
 
@@ -846,9 +955,10 @@ Standard JMAP `/set`.
 `create` accepts: `chatId` (String, required), `body` (String,
 required), `bodyType` (String, required), `sentAt` (UTCDate,
 required), `attachments` (Attachment[], optional), `mentions`
-(Mention[], optional), `replyTo` (String, optional),
-`threadRootId` (String, optional), `senderExpiresAt` (UTCDate,
-optional), `burnOnRead` (Boolean, optional).
+(Mention[], optional), `actions` (MessageAction[], optional),
+`replyTo` (String, optional), `threadRootId` (String, optional),
+`senderExpiresAt` (UTCDate, optional), `burnOnRead` (Boolean,
+optional).
 
 The server sets `id`, `senderMsgId`, `senderId`, `receivedAt`,
 `deliveryState`, and delivery timestamp fields, then enqueues
@@ -873,14 +983,16 @@ The server MUST:
 `update` with `addReaction` or `removeReaction`:
 
 `addReaction` (Object):
-: `{"emoji": <String>}`.  Server appends a Reaction with
-  `senderId: "self"` and current time.  Servers SHOULD enforce a
-  per-message per-sender reaction limit.  Server MUST propagate
-  via `Peer/deliver` `reactionUpdate` payload.
+: `{"emoji": <String>, "customEmojiId": <String, optional>}`.
+  Server assigns a ULID as both `id` and `senderReactionId`,
+  appends a Reaction with `senderId: "self"` and current time,
+  and returns the new reaction `id` in the `Message/set` response.
+  Server MUST propagate via `Peer/deliver` `reactionUpdate` payload.
 
 `removeReaction` (Object):
-: `{"emoji": <String>}`.  Removes the owner's matching reaction.
-  Server MUST propagate via `Peer/deliver` `reactionUpdate` payload.
+: `{"id": <String>}`.  Removes the owner's reaction with this
+  local `id`.  Server MUST propagate via `Peer/deliver`
+  `reactionUpdate` payload using the reaction's `senderReactionId`.
 
 #### Deleting a Message
 
@@ -1127,6 +1239,8 @@ Request arguments:
     `fetchUrl` (String): the URL from which the receiver fetches the
     blob.
   - `mentions` (Mention[], optional).
+  - `actions` (MessageAction[], optional) — Out-of-band action
+    invitations.  Servers MUST store and forward without inspection.
   - `replyTo` (String, optional) — Sender's own `senderMsgId` of
     the referenced message.  Receiver resolves to local `id` via the
     `senderMsgId` index.
@@ -1155,7 +1269,13 @@ Request arguments:
 : A reaction change on an existing message.  Fields:
 
   - `senderMsgId` (String) — Identifies the target message.
-  - `emoji` (String) — The reaction emoji.
+  - `senderReactionId` (String) — Sender-assigned ULID for this
+    reaction.  For `"add"`, the receiver stores this as the
+    reaction's `senderReactionId`.  For `"remove"`, identifies
+    which reaction to delete via the `senderReactionId` index.
+  - `emoji` (String) — The reaction value.  Non-empty.
+  - `customEmojiId` (String, optional) — Space-scoped custom
+    emoji id, if applicable.
   - `action` (String) — `"add"` or `"remove"`.
   - `sentAt` (UTCDate).
 
@@ -1433,8 +1553,9 @@ All peer-supplied fields are attacker-controlled:
 - `sentAt`, `editedAt`: store as-is; never use for ordering.
 - `chatId`: recompute (direct) or verify membership (group);
   reject mismatches.
-- `emoji`: enforce reasonable grapheme cluster length; enforce a
-  per-message per-sender reaction limit.
+- `emoji`: validate as a non-empty string; enforce a maximum byte
+  length to prevent denial of service (limit is implementation-
+  defined).
 - `mentions`: reject any entry where `offset + length` exceeds
   body byte length.
 
@@ -1500,6 +1621,29 @@ used to ensure message persistence and multi-device visibility.
 
 Messages from a blocked contact are silently dropped regardless of
 whether they arrive in a direct chat or a group chat context.
+
+## Out-of-Band Endpoints and Actions
+
+`Contact.endpoints`, `Session.ownerEndpoints`, and
+`Message.actions` carry peer-supplied URIs and MUST be treated as
+untrusted at every level:
+
+- Clients MUST NOT fetch or connect to any OOB URI automatically.
+  All OOB interactions require explicit user initiation.
+- Payment URIs (`urn:jmap:chat:cap:payment`) MUST be validated by
+  the client wallet before any funds are transferred.  Servers
+  MUST NOT inspect or act on payment URI values.
+- VTC URIs (`urn:jmap:chat:cap:vtc`) MUST NOT be opened without
+  user consent; auto-joining a call is a privacy violation.
+- Blob/file URIs (`urn:jmap:chat:cap:blob`) used for OOB fetch are
+  subject to the same SSRF constraints as attachment `fetchUrl`
+  values (see {{blob-fetch-and-ssrf}}); servers that fetch from
+  peer-supplied blob endpoints MUST restrict connections to the
+  known peer address space.
+- `metadata` values are peer-supplied and MUST be ignored if
+  they do not conform to the expected shape for the known `type`.
+- Unknown `type` URIs MUST be silently ignored by both clients
+  and servers.
 
 ## Space Permission Resolution {#space-permissions}
 
