@@ -458,6 +458,24 @@ same chat, the server MAY silently discard the duplicate.
 : Time this mailbox stored the message.  Authoritative for ordering
   and expiry calculations.
 
+`senderExpiresAt` (UTCDate, optional, immutable):
+: Sender-set hard-deletion deadline.  When present, servers MUST
+  permanently delete this message — removing the row entirely, not
+  leaving a tombstone — at or before this time.  A hard-deleted
+  message appears in the `destroyed` list of subsequent
+  `Message/changes` responses, not `updated`.  Receiving servers
+  MUST honor this field regardless of local `messageExpirySeconds`
+  policy; whichever deadline arrives first takes effect.  Servers
+  MUST NOT use this field for message ordering.
+
+`burnOnRead` (Boolean, optional, immutable):
+: When `true`, the receiving server MUST permanently delete (hard-
+  delete, as above) this message immediately after setting `readAt`.
+  Applies only to the receiving mailbox; the sender's own copy is
+  not affected.  In E2EE relay deployments the relay cannot observe
+  read events; the bridge or client layer MUST enforce this rule
+  after receiving the read acknowledgement from the owner.
+
 `deliveryState` (String, server-set):
 : `"pending"`, `"delivered"`, `"failed"`, or `"received"`.  For
   group chats, reflects aggregate state across all recipients; see
@@ -631,7 +649,8 @@ Standard JMAP `/set`.
 required), `bodyType` (String, required), `sentAt` (UTCDate,
 required), `attachments` (Attachment[], optional), `mentions`
 (Mention[], optional), `replyTo` (String, optional),
-`threadRootId` (String, optional).
+`threadRootId` (String, optional), `senderExpiresAt` (UTCDate,
+optional), `burnOnRead` (Boolean, optional).
 
 The server sets `id`, `senderMsgId`, `senderId`, `receivedAt`,
 `deliveryState`, and delivery timestamp fields, then enqueues
@@ -788,6 +807,11 @@ Request arguments:
     `senderMsgId` index.
   - `threadRootId` (String, optional) — Sender's own `senderMsgId`
     of the thread root.  Receiver resolves similarly.
+  - `senderExpiresAt` (UTCDate, optional) — Hard-deletion deadline.
+    Receivers MUST honor this value.  Servers MUST reject a value
+    that is already in the past at delivery time with
+    `invalidArguments`.
+  - `burnOnRead` (Boolean, optional) — Hard-delete on first read.
 
 `edit` (Object, optional):
 : An edit to an existing message.  Fields:
@@ -832,6 +856,11 @@ Before storing a new message, the server MUST in order:
 8. Fetch each attachment blob from `fetchUrl`; verify byte count
    against `size` and content against `sha256`.
 9. Validate each mention `offset + length` against body length.
+10. If `senderExpiresAt` is present, confirm it is strictly in the
+    future; reject with `invalidArguments` if not.  Schedule
+    hard deletion at that time.  If `burnOnRead` is `true`,
+    register a trigger to hard-delete the message when `readAt`
+    is set.
 
 Failure at any step MUST result in rejection with no data stored.
 
@@ -1146,6 +1175,28 @@ used to ensure message persistence and multi-device visibility.
 
 Messages from a blocked contact are silently dropped regardless of
 whether they arrive in a direct chat or a group chat context.
+
+## Sender-Controlled Expiry and Burn-on-Read
+
+`senderExpiresAt` and `burnOnRead` are peer-supplied values and MUST
+be treated accordingly:
+
+- Servers MUST reject `senderExpiresAt` values that are in the past
+  at delivery time; accepting stale expiry would result in immediate
+  silent deletion, which is indistinguishable from message loss.
+- Servers MUST NOT use `senderExpiresAt` for message ordering or
+  any purpose other than scheduling deletion.
+- Hard deletion MUST remove the message row entirely.  Retaining a
+  tombstone (body cleared, row present) does not satisfy this
+  requirement.
+- After hard deletion, any stored attachment blobs referenced by
+  the message SHOULD also be purged.
+- `burnOnRead` applies only on the receiving mailbox.  The sender's
+  own copy is subject to the sender's local policies, not to
+  `burnOnRead`.
+- In E2EE relay deployments, the relay cannot observe the owner's
+  read events.  The bridge or client layer MUST enforce `burnOnRead`
+  after the owner signals that the message has been read.
 
 ## End-to-End Encrypted Deployments {#e2ee}
 
