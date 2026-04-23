@@ -20,7 +20,6 @@ normative:
   RFC2119:
   RFC8174:
   RFC8620:
-  RFC6901:
 
 informative:
   RFC8621:
@@ -43,15 +42,19 @@ This document defines JMAP for Chat, a JMAP capability ({{RFC8620}})
 for direct and group text messaging between users who each operate
 their own mailbox server.  It defines the `urn:jmap:chat:1`
 capability; three data types (Contact, Chat, Message); JMAP methods
-for each type; and four server-to-server methods (Peer/deliver,
-Peer/receipt, Peer/typing, Peer/retract) for direct
-mailbox-to-mailbox communication.
+for each type; and five server-to-server methods (Peer/deliver,
+Peer/receipt, Peer/typing, Peer/retract, Peer/groupUpdate) for
+direct mailbox-to-mailbox communication.
 
 The protocol covers the feature set common to contemporary messaging
 systems: group chat with membership roles, message reactions, editing,
 deletion, threading, @mentions, typing indicators, read receipts per
 participant, presence, pinned messages, and per-chat notification
 settings.
+
+Note: `urn:jmap:chat:1` is a provisional capability URI used in this
+document.  If this specification is adopted by the IETF JMAP working
+group, the URI will be updated to `urn:ietf:params:jmap:chat`.
 
 --- middle
 
@@ -75,10 +78,10 @@ protocol requires only that the authentication layer provide a stable,
 opaque user identity string for each connection.  How that identity
 is established — overlay network membership, mutual TLS, bearer
 tokens, or any other mechanism — is outside the scope of this
-document and left to the deployment.
+document.
 
 The reference implementation of this capability is Kith {{KITH}}.
-Implementation-specific details are noted in {{impl-notes}}.
+Implementation-specific details are in {{impl-notes}}.
 
 # Conventions and Definitions
 
@@ -101,11 +104,13 @@ Owner:
 Peer:
 : Another mailbox server communicating with this mailbox.
 
-userId:
-: An opaque, stable string provided by the authentication layer that
-  uniquely identifies a user within the deployment.  The protocol
-  treats this as an uninterpreted byte string; no structure is
-  assumed.
+id / userId:
+: A Contact's `id` is the stable, opaque identity string provided by
+  the authentication layer for that user.  These two terms are
+  intentionally equivalent in this protocol: Contact.id IS the
+  userId.  There is no separate identity namespace.  Servers MUST
+  set Contact.id to the userId string obtained from the
+  authentication layer.
 
 # The urn:jmap:chat:1 Capability {#capability}
 
@@ -129,15 +134,14 @@ the following fields:
 : Maximum number of attachments per message.
 
 `maxGroupMembers` (UnsignedInt):
-: Maximum number of members in a group chat.
+: Maximum number of members in a group chat, including the owner.
 
 `supportedBodyTypes` (String[]):
 : MIME types accepted in `bodyType`.  MUST include `"text/plain"`.
 
 `supportsThreads` (Boolean):
 : Whether this server supports the optional thread model defined in
-  {{threads}}.  Clients MUST NOT send `threadRootId` to servers
-  where this is `false`.
+  {{threads}}.
 
 ## Account-Level Capability Object
 
@@ -152,34 +156,44 @@ object with the following field:
 Servers MAY include in the Session object:
 
 `ownerUserId` (String):
-: The stable user identity of the mailbox owner.
+: The id of the mailbox owner (equals owner's Contact.id on any
+  peer server that has recorded this mailbox as a contact).
 
 `ownerLogin` (String):
 : A human-readable login name for the mailbox owner.
+
+`ownerDirectAddress` (String, optional):
+: A deployment-specific address at which the owner's client may
+  be reachable directly.  Peers that probe `/.well-known/jmap`
+  SHOULD store this value as the `directAddress` on the
+  corresponding Contact record.
 
 # Data Types
 
 ## Contact
 
-A Contact represents a remote user known to this mailbox.
+A Contact represents a remote user known to this mailbox.  A
+Contact's `id` is exactly the userId provided by the authentication
+layer: it is the single, global identity key for that user within
+this deployment.
 
 `id` (String, immutable, server-set):
-: Stable, opaque identifier.  Servers SHOULD derive this from the
-  contact's verified userId.
-
-`userId` (String, immutable, server-set):
-: The contact's userId as provided by the authentication layer.
+: The userId provided by the authentication layer.  This is the
+  stable, opaque identifier for this user everywhere in the
+  protocol.  Servers MUST set this to the verified identity string
+  and MUST NOT assign a different value.
 
 `login` (String, server-set):
-: Human-readable login name.  MUST NOT be empty.
+: Human-readable login name.  MUST NOT be empty.  Typically
+  email-shaped, but format is deployment-specific.
 
 `displayName` (String, optional):
 : Human-readable display name.  MAY be absent or empty.  Clients
-  SHOULD fall back to `login`, then `userId`.
+  SHOULD fall back to `login`, then `id`.
 
 `serverUrl` (String):
 : Base HTTPS URL of this contact's mailbox.  Used for outbound
-  delivery.
+  delivery and for probing `/.well-known/jmap`.
 
 `firstSeenAt` (UTCDate, server-set):
 : Time this contact was first recorded.
@@ -189,76 +203,100 @@ A Contact represents a remote user known to this mailbox.
 
 `presence` (String, server-set):
 : Last known presence state: `"online"`, `"away"`, `"offline"`, or
-  `"unknown"`.  This value is informational; servers update it on a
-  best-effort basis.
+  `"unknown"`.  Updated on a best-effort basis.
 
 `lastActiveAt` (UTCDate, optional, server-set):
 : Time the contact was last observed to be active.
 
+`directAddress` (String, optional):
+: A deployment-specific address at which this contact's client may
+  be reachable directly, without routing through their mailbox.
+  The format and semantics are deployment-defined (examples:
+  a Tailscale node name, a WebRTC signaling URI, an IP:port).
+  This field is a hint only: senders MAY attempt delivery to this
+  address when both parties are online and the deployment supports
+  it, but MUST fall back to the standard mailbox path on any
+  failure.  This field has no effect on message storage or
+  multi-device sync; those remain the responsibility of the
+  mailbox.  Servers populate this field from the `ownerDirectAddress`
+  advertised in the contact's `/.well-known/jmap` Session object.
+
 `blocked` (Boolean):
-: When `true`, this mailbox will not accept inbound messages from
-  this contact.  Default: `false`.
+: When `true`, messages from this contact are silently dropped by
+  this mailbox, including messages arriving in group chats.
+  Default: `false`.
 
 ## ChatMember
 
-A ChatMember describes one participant in a group Chat.
+A ChatMember describes one participant in a group Chat.  The `id`
+field is the participant's Contact.id (which equals their userId).
 
-`userId` (String):
-: The participant's userId.
+`id` (String):
+: The participant's Contact.id / userId.
 
 `role` (String):
 : Either `"admin"` or `"member"`.  Admins may add and remove
-  members and update chat metadata.
+  members and update group chat metadata.  The creator is
+  automatically assigned the `"admin"` role.
 
 `joinedAt` (UTCDate):
 : Time this participant joined the chat.
 
 `invitedBy` (String, optional):
-: The userId of the member who added this participant.
+: The Contact.id of the member who added this participant.
 
 ## Chat
 
-A Chat is a conversation between two or more participants.
+A Chat is a conversation between two or more participants.  Direct
+chats (kind `"direct"`) and group chats (kind `"group"`) have
+different identity schemes, described below.
 
-### Chat ID Computation {#chat-id}
+### Chat ID Assignment {#chat-id}
 
-Chat IDs are deterministic.  Given the set of userId strings for
-all participants (including the owner):
+All Chat IDs — both direct and group — are ULIDs {{ULID}} assigned
+by the creating server at the moment the chat is created.  IDs are
+opaque; they do not encode participants.  Chat IDs are stable for
+the lifetime of the chat.
 
-1. Sort the strings lexicographically by UTF-8 byte value.
-2. Concatenate them separated by a single null byte (0x00).
-3. Compute the SHA-256 hash of the result.
-4. Encode as lowercase hexadecimal (64 characters).
+For a direct chat, the creating server is the one whose owner sends
+the first message.  Before assigning a new chatId, the server MUST
+check whether a direct chat with the relevant contactId already
+exists locally (e.g., established via a prior `Peer/deliver` from
+that contact).  If one exists, the server MUST use the existing
+chatId rather than creating a new one.
 
-Both sides MUST compute and verify this value.  A `Peer/deliver`
-whose `chatId` does not match the locally computed value MUST be
-rejected.
+When a `Peer/deliver` arrives for a direct chat with a chatId the
+receiving server has not seen before, the receiving server creates a
+new Chat record with that chatId and `contactId` set to the sender.
+
+For group chats, the creating server distributes the chatId to all
+initial members via `Peer/groupUpdate` ({{peer-groupupdate}}) before
+any messages are sent.
 
 ### Chat Object Fields
 
 `id` (String, immutable, server-set):
-: Deterministic chat ID per {{chat-id}}.
+: A ULID assigned by the creating server per {{chat-id}}.
 
 `kind` (String, immutable):
-: `"direct"` (exactly two participants) or `"group"`.
+: `"direct"` or `"group"`.
 
-`name` (String, optional):
-: Display name of the chat.  Required for `kind: "group"`.  Not
-  used for direct chats (display name is derived from the contact).
+`contactId` (String, immutable):
+: **Direct chats only.**  The Contact.id of the other participant.
+
+`name` (String):
+: **Group chats only.**  Display name of the group.  Required at
+  creation.  Mutable by admins.
 
 `description` (String, optional):
-: Short description of the group chat.
+: **Group chats only.**  Short description.  Mutable by admins.
 
 `avatarBlobId` (String, optional):
-: blobId of the chat avatar image.
+: **Group chats only.**  blobId of the group avatar image.
+  Mutable by admins.
 
-`participants` (String[]):
-: For a direct chat: the single Contact `id` of the other party.
-  For a group chat: all Contact `id` values of non-owner members.
-
-`members` (ChatMember[], optional):
-: Full membership list with roles.  Present for group chats.
-  Absent for direct chats.
+`members` (ChatMember[]):
+: **Group chats only.**  Full membership list including the owner.
 
 `createdAt` (UTCDate, immutable, server-set):
 : Time this chat was first recorded on this mailbox.
@@ -270,34 +308,35 @@ rejected.
 : Messages received since the owner last read this chat.
 
 `pinnedMessageIds` (String[]):
-: Ordered list of pinned message IDs, most-recently-pinned first.
-  Empty by default.
+: Ordered list of pinned Message ids, most-recently-pinned first.
+  For group chats, only admins may modify this list.  For direct
+  chats, the owner may modify it freely.  Empty by default.
 
 `muted` (Boolean):
 : When `true`, push notifications for this chat are suppressed.
-  Default: `false`.  Owner-side preference; not shared with peers.
+  Owner-side preference; not shared with peers.  Default: `false`.
 
 `muteUntil` (UTCDate, optional):
-: If present, muting is lifted after this time.  Servers SHOULD
-  clear `muted` and `muteUntil` automatically once the time passes.
+: Muting expires at this time.  Servers SHOULD clear `muted` and
+  `muteUntil` automatically when the time passes.
 
 `messageExpirySeconds` (UnsignedInt, optional):
-: If present and non-zero, messages older than this many seconds are
-  automatically deleted by the server.  Applies to all participants
-  independently; each mailbox enforces its own timer.  Setting this
-  on a direct chat SHOULD be communicated to the peer via
-  `Peer/deliver` metadata so the peer can apply the same policy.
+: A local expiry policy.  When set and non-zero, messages in this
+  chat older than this many seconds are deleted by this mailbox.
+  Each mailbox enforces its own policy independently.  This is a
+  local setting, not a bilateral negotiated commitment: the peer
+  is under no obligation to apply the same value.
 
 ## Reaction
 
-A Reaction is an emoji response to a Message by one participant.
+A Reaction is an emoji response to a Message.
 
 `emoji` (String):
-: One or more Unicode code points representing the reaction.
-  Implementations SHOULD limit this to a single grapheme cluster.
+: The reaction emoji.  Implementations SHOULD limit this to a
+  single grapheme cluster.
 
 `senderId` (String):
-: `"self"` for the owner's reaction, or a Contact `id`.
+: `"self"` for the owner's reaction, or a Contact.id.
 
 `sentAt` (UTCDate):
 : Time the reaction was added.
@@ -306,18 +345,19 @@ A Reaction is an emoji response to a Message by one participant.
 
 A Mention identifies a user referenced within a message body.
 
-`userId` (String):
-: The userId of the mentioned participant.
+`id` (String):
+: The Contact.id (userId) of the mentioned participant.
 
 `offset` (UnsignedInt):
-: Byte offset of the mention text within `body`.
+: Byte offset into `body` where the mention text begins.
 
 `length` (UnsignedInt):
-: Byte length of the mention text within `body`.
+: Byte length of the mention text.  Servers MUST reject a mention
+  where `offset + length` exceeds the byte length of `body`.
 
 ## MessageRevision
 
-A MessageRevision records one historical version of a Message.
+A MessageRevision records one historical version of a Message body.
 
 `body` (String):
 : The prior body text.
@@ -326,7 +366,7 @@ A MessageRevision records one historical version of a Message.
 : The prior MIME type.
 
 `editedAt` (UTCDate):
-: The time at which the message was edited away from this version.
+: The time this version was superseded by an edit.
 
 ## Message
 
@@ -334,92 +374,100 @@ A Message is a single transmission within a Chat.
 
 ### Message IDs
 
-Message IDs are ULIDs {{ULID}}.  ULIDs embed a millisecond-precision
-timestamp and sort lexicographically by time, enabling ordered
-retrieval without a separate sort field.  Receiving servers that see
-a duplicate ULID for the same Chat MAY silently discard it.
+Message IDs are ULIDs {{ULID}}, assigned by the receiving mailbox at
+storage time.  ULIDs are lexicographically ordered by time, enabling
+ordered retrieval without a separate sort field.
+
+Separately, the **sender-assigned ULID** (`senderMsgId`) is set by
+the originating mailbox and carried in `Peer/deliver`.  The receiving
+mailbox stores both its own `id` (the receiver-assigned ULID) and
+the `senderMsgId`.  Servers MUST index stored messages by
+`senderMsgId` within each chat to support idempotent delivery and
+`Peer/retract` lookup.  If a `senderMsgId` is seen again for the
+same chat, the server MAY silently discard the duplicate.
 
 ### Message Object Fields
 
 `id` (String, immutable, server-set):
-: ULID assigned by the receiving mailbox.
+: Receiver-assigned ULID.  Used in all client-facing references.
+
+`senderMsgId` (String, immutable, server-set):
+: The sender-assigned ULID carried in `Peer/deliver`.  Equals `id`
+  for messages composed by the owner.
 
 `chatId` (String, immutable):
 : ID of the containing Chat.
 
 `senderId` (String, immutable, server-set):
-: `"self"` for owner-composed messages; a Contact `id` for inbound
-  messages.
+: `"self"` for owner-composed messages; the sender's Contact.id for
+  inbound messages, as verified by the authentication layer.
 
 `body` (String):
-: Message text.  MUST be valid UTF-8.  Empty string when the
-  message has been deleted.
+: Message text.  MUST be valid UTF-8.  Cleared to empty string when
+  the message is deleted.
 
 `bodyType` (String):
 : MIME type of `body`.  MUST be in `supportedBodyTypes`.
 
 `attachments` (Attachment[]):
-: Zero or more file attachments.
+: File attachments.  Cleared to empty array when deleted.
 
 `mentions` (Mention[]):
 : Structured @mention annotations.  Empty by default.
 
 `reactions` (Reaction[]):
-: Emoji reactions to this message.  Empty by default.
+: Emoji reactions.  Empty by default.
 
 `replyTo` (String, optional):
-: The `id` of the Message this is a direct reply to.  Servers MUST
-  validate this ID exists in the same Chat.
+: The receiver-assigned `id` of the Message this replies to.
+  Servers MUST validate this ID exists in the same Chat.
 
 `threadRootId` (String, optional):
-: The `id` of the root Message of the thread this message belongs
-  to.  Only meaningful when `supportsThreads` is `true`.  If
-  `replyTo` is set and `threadRootId` is absent, the thread root is
-  `replyTo`.  See {{threads}}.
+: The receiver-assigned `id` of the thread root message.  Only
+  meaningful when `supportsThreads` is `true`.  See {{threads}}.
 
 `replyCount` (UnsignedInt, server-set):
-: Number of messages in this chat that have `replyTo` equal to this
+: Count of messages in this chat with `replyTo` equal to this
   message's `id`.  Present only when `supportsThreads` is `true`.
 
 `sentAt` (UTCDate):
-: Sender's claimed composition time.  Peer-supplied; MUST be treated
-  as untrusted.  Use `receivedAt` for ordering.
+: Sender's claimed composition time.  Peer-supplied; MUST be
+  treated as untrusted.  MUST NOT be used for ordering.
 
 `receivedAt` (UTCDate, immutable, server-set):
-: Time this mailbox stored the message.  Authoritative for ordering.
+: Time this mailbox stored the message.  Authoritative for ordering
+  and expiry calculations.
 
 `deliveryState` (String, server-set):
-: For direct chats: `"pending"`, `"delivered"`, `"failed"`, or
-  `"received"`.  For group chats, this reflects the aggregate
-  state; see `deliveryReceipts`.
+: `"pending"`, `"delivered"`, `"failed"`, or `"received"`.  For
+  group chats, reflects aggregate state across all recipients; see
+  `deliveryReceipts` for per-recipient detail.
 
 `deliveryReceipts` (Object, optional, server-set):
-: For group chats, a map of `{userId → {deliveredAt, readAt}}` for
-  each non-owner participant.  Present only for messages where
-  `senderId` is `"self"`.
+: For group chats, a JSON object mapping each non-owner participant's
+  Contact.id to `{"deliveredAt": <UTCDate-or-null>, "readAt":
+  <UTCDate-or-null>}`.  Present only when `senderId` is `"self"`.
 
 `deliveredAt` (UTCDate, optional, server-set):
-: Time the outbound delivery was first acknowledged.
+: Time the first outbound delivery was acknowledged.
 
 `readAt` (UTCDate, optional, server-set):
 : Time the owner acknowledged reading this message.
 
 `editedAt` (UTCDate, optional, server-set):
-: Time of the most recent edit.  Absent if the message has not been
-  edited.
+: Time of the most recent edit.
 
 `editHistory` (MessageRevision[], optional, server-set):
-: Ordered list of prior versions, oldest first.  Populated on edit.
-  Servers MAY limit the number of retained revisions.
+: Prior versions, oldest first.  Servers MAY limit the number of
+  retained revisions.
 
 `deletedAt` (UTCDate, optional, server-set):
-: Time the message was deleted.  When set, `body` is cleared to an
-  empty string and `attachments` is cleared.  The message record is
-  retained as a tombstone.
+: Time the message was deleted.  When set, `body` is empty and
+  `attachments` is empty.  The record is retained as a tombstone.
 
 `deletedForAll` (Boolean, optional, server-set):
-: When `true`, the delete was propagated to all participants via
-  `Peer/retract`.  When `false` or absent, the delete is local only.
+: `true` when deletion was propagated to all participants via
+  `Peer/retract`.
 
 ## Attachment {#attachment}
 
@@ -442,8 +490,9 @@ a duplicate ULID for the same Chat MAY silently discard it.
 
 ## Contact Methods
 
-Contacts are created automatically when a peer delivers a message.
-Clients cannot create or destroy contacts directly.
+Contacts are created automatically when a peer delivers a message or
+a group update names a new participant.  Owner clients may not create
+or destroy contacts.
 
 ### Contact/get
 
@@ -484,9 +533,10 @@ Standard JMAP `/set`.
 `create` with `kind: "direct"` accepts:
 
 `contactId` (String, required):
-: Contact `id` of the other participant.  The server computes the
-  Chat ID per {{chat-id}}.  If a Chat with this ID already exists,
-  the server MUST return the existing Chat in `updated`.
+: Contact.id of the other participant.  If a direct Chat with this
+  contactId already exists, the server MUST return it in `updated`
+  rather than creating a duplicate.  Otherwise the server assigns a
+  new ULID as the chatId per {{chat-id}}.
 
 #### Creating a Group Chat
 
@@ -495,43 +545,43 @@ Standard JMAP `/set`.
 `name` (String, required):
 : Display name of the group.
 
-`memberUserIds` (String[], required):
-: userIds of initial non-owner members.  The server resolves these
-  to Contact records, creating them if necessary.  MUST NOT exceed
-  `maxGroupMembers - 1` (excluding the owner).
+`memberIds` (String[], required):
+: Contact.ids of initial non-owner members.  The server resolves
+  these to Contact records, creating minimal records if necessary.
+  Total membership including the owner MUST NOT exceed
+  `maxGroupMembers`.
 
-`description` (String, optional):
-: Initial group description.
+`description` (String, optional), `avatarBlobId` (String, optional),
+`messageExpirySeconds` (UnsignedInt, optional).
 
-`avatarBlobId` (String, optional):
-: blobId of the initial group avatar.
-
-`messageExpirySeconds` (UnsignedInt, optional):
-: Initial message expiry timer.
+The server assigns the group chat ID (a ULID), sets the owner as
+an admin member, and MUST send `Peer/groupUpdate` to each initial
+member before any messages are sent.
 
 #### Updating a Chat
 
-`update` supports the following fields:
+`update` supports: `muted`, `muteUntil`, `pinnedMessageIds`,
+`messageExpirySeconds` (all chat kinds).
 
-- For all chat kinds: `muted`, `muteUntil`, `pinnedMessageIds`,
-  `messageExpirySeconds`.
-- For group chats only (requires `"admin"` role): `name`,
-  `description`, `avatarBlobId`.
+For group chats, admin role additionally allows: `name`,
+`description`, `avatarBlobId`.
 
-#### Managing Group Members
-
-Member changes are expressed through two special update keys:
+Member list changes use the following update patch keys:
 
 `addMembers` (Object[]):
-: Each entry contains `userId` (String) and optional `role` (String,
-  default `"member"`).
+: Each entry: `id` (String, Contact.id) and optional `role`
+  (String, default `"member"`).  Requires admin role.  Total
+  membership after addition MUST NOT exceed `maxGroupMembers`.
+  The server MUST send `Peer/groupUpdate` to all current members.
 
 `removeMembers` (String[]):
-: List of userIds to remove from the group.
+: Contact.ids to remove.  Requires admin role.  The server MUST
+  send `Peer/groupUpdate` to all remaining members and to the
+  removed members.
 
-`updateMemberRole` (Object[]):
-: Each entry contains `userId` (String) and `role` (String).
-  Requires admin role.
+`updateMemberRoles` (Object[]):
+: Each entry: `id` (String) and `role` (String).  Requires admin
+  role.  The server MUST send `Peer/groupUpdate` to all members.
 
 ### Chat/changes
 
@@ -542,7 +592,7 @@ Standard JMAP `/changes`.
 Standard JMAP `/query`.
 
 Filter properties: `kind` (String), `muted` (Boolean).
-Default sort: `lastMessageAt` descending; chats with no messages
+Default sort: `lastMessageAt` descending; chats without messages
 sort last.
 
 ## Message Methods
@@ -563,63 +613,52 @@ required), `attachments` (Attachment[], optional), `mentions`
 (Mention[], optional), `replyTo` (String, optional),
 `threadRootId` (String, optional).
 
-The server assigns `id`, `senderId`, `receivedAt`,
+The server sets `id`, `senderMsgId`, `senderId`, `receivedAt`,
 `deliveryState`, and delivery timestamp fields, then enqueues
 the message for outbound delivery.
 
 #### Editing a Message
 
-`update` on a message where `senderId` is `"self"` and
-`deletedAt` is absent.  Permitted fields: `body`, `bodyType`,
-`mentions`.
+`update` with changed `body`, `bodyType`, and/or `mentions`, on a
+message where `senderId` is `"self"` and `deletedAt` is absent.
 
-When an edit is applied, the server MUST:
+The server MUST:
 
-1. Append a MessageRevision to `editHistory` capturing the prior
-   `body`, `bodyType`, and current time as `editedAt`.
-2. Replace `body` and `bodyType` with the new values.
+1. Push a MessageRevision onto `editHistory` with the current
+   `body`, `bodyType`, and timestamp as `editedAt`.
+2. Replace `body` and `bodyType` with the submitted values.
 3. Set `editedAt` to the current server time.
-4. Propagate the edit to peers via `Peer/deliver` update
-   semantics (see {{peer-deliver}}).
+4. Send `Peer/deliver` carrying an `edit` payload to all
+   recipients (see {{peer-deliver}}).
 
 #### Adding and Removing Reactions
 
-Reaction changes are expressed through two special update keys:
+`update` with `addReaction` or `removeReaction`:
 
 `addReaction` (Object):
-: Contains `emoji` (String).  The server appends a Reaction with
+: `{"emoji": <String>}`.  Server appends a Reaction with
   `senderId: "self"` and current time.  Servers SHOULD enforce a
-  limit on distinct emoji per message per sender.
+  per-message per-sender reaction limit.  Server MUST propagate
+  via `Peer/deliver` `reactionUpdate` payload.
 
 `removeReaction` (Object):
-: Contains `emoji` (String).  Removes the owner's reaction with
-  that emoji, if present.
-
-#### Pinning and Unpinning
-
-Pinning is expressed via Chat/set `update` on `pinnedMessageIds`,
-not via Message/set.
+: `{"emoji": <String>}`.  Removes the owner's matching reaction.
+  Server MUST propagate via `Peer/deliver` `reactionUpdate` payload.
 
 #### Deleting a Message
 
-`update` with `deletedAt: <current-time>` initiates deletion.
+`update` with `deletedAt: <timestamp>`.
 
 - If `deletedForAll: true` is also set, the server MUST send
-  `Peer/retract` to all participants and set `deletedForAll: true`
-  on the stored record.
-- If `deletedForAll` is absent or `false`, the deletion is local
-  only: `body` and `attachments` are cleared on this mailbox, and
-  no peer notification is sent.
-
-Clients MAY delete only messages where `senderId` is `"self"` or
-where local-only deletion is intended.  Servers MUST reject
-`deletedForAll: true` for messages where `senderId` is not
-`"self"`.
+  `Peer/retract` to all participants before marking the local
+  record.  Servers MUST reject `deletedForAll: true` for messages
+  where `senderId` is not `"self"`.
+- Otherwise, deletion is local only: `body` and `attachments` are
+  cleared on this mailbox with no peer notification.
 
 #### Marking as Read
 
-`update` with `readAt: <timestamp>` marks the message as read by
-the owner.
+`update` with `readAt: <UTCDate>`.
 
 ### Message/changes
 
@@ -635,17 +674,19 @@ Additional filter properties:
 
 `text` (String, optional):
 : Full-text search over `body`.  Servers that do not support
-  full-text search MUST return an `unsupportedFilter` error.
+  full-text search MUST return `unsupportedFilter`.
 
 `threadRootId` (String, optional):
-: Return only messages in the specified thread.  Only meaningful
-  when `supportsThreads` is `true`.
+: Return only messages in this thread.  Valid only when
+  `supportsThreads` is `true`; otherwise servers MUST return
+  `unsupportedFilter`.
 
 `hasAttachment` (Boolean, optional):
 : Filter to messages with or without attachments.
 
 `hasMention` (Boolean, optional):
-: Filter to messages that mention the owner's userId.
+: Filter to messages that mention the owner (owner's Contact.id
+  appears in `mentions`).
 
 Default sort: `receivedAt` ascending.
 
@@ -655,20 +696,27 @@ Standard JMAP `/queryChanges` ({{RFC8620}} Section 5.6).
 
 # Optional: Thread Model {#threads}
 
-Servers that advertise `supportsThreads: true` support structured
-conversation threads within a Chat.
+Servers advertising `supportsThreads: true` support structured
+conversation threads.
 
-A thread is a set of Messages sharing a common `threadRootId`.
-The root message has `threadRootId` absent; all replies carry the
-root's `id` as `threadRootId`.
+A thread is the set of Messages sharing a common `threadRootId`.
+The root message has `threadRootId` absent.
 
-`Message/query` with a `threadRootId` filter returns all messages
-in a thread.  `replyCount` on each message gives the number of
-direct replies.
+Thread root assignment rules:
 
-Servers that do not support threads MUST advertise
-`supportsThreads: false` and MUST return an `unsupportedFilter`
-error if a client sends a `threadRootId` filter.
+- A message with no `replyTo`: it is a potential thread root.
+  `threadRootId` MUST be absent.
+- A message replying to a thread root (the referenced message has
+  no `threadRootId`): set `threadRootId` to `replyTo`.
+- A message replying to a non-root message: set `threadRootId` to
+  the referenced message's `threadRootId`.
+
+Clients MUST follow these rules.  Servers SHOULD validate them and
+MAY correct `threadRootId` if the client supplies an incorrect value.
+
+`Message/query` with a `threadRootId` filter returns all messages in
+that thread.  `replyCount` on each message gives the count of direct
+replies.
 
 # Server-to-Server Methods {#peer-methods}
 
@@ -677,7 +725,9 @@ without the `"peer"` role MUST receive `forbiddenMethod`.
 
 ## Peer/deliver {#peer-deliver}
 
-Delivers a message, edit, or reaction from a remote mailbox.
+Delivers a new message, an edit, or a reaction update from a remote
+mailbox.  Exactly one of `message`, `edit`, or `reactionUpdate` MUST
+be present.
 
 Method name: `Peer/deliver`
 
@@ -687,110 +737,188 @@ Request arguments:
 : Account ID on the receiving server.
 
 `chatId` (String):
-: Deterministic Chat ID per {{chat-id}}.  The receiver MUST
-  recompute and verify this value.
+: The Chat ID.  For direct chats, if the receiving server already
+  has a chat with this contactId, it MUST verify that `chatId`
+  matches the stored chatId.  For group chats, the receiver MUST
+  verify this value matches the chatId of a known group of which
+  the sender is a current member.
 
 `senderUserId` (String):
-: The sender's userId.  MUST match the identity provided by the
-  authentication layer.
+: The sender's id (Contact.id / userId).  MUST match the identity
+  provided by the authentication layer.  The receiver MUST compare
+  these and MUST reject the request if they differ.
 
-`participantUserIds` (String[]):
-: The full list of userIds for all chat participants, including
-  the sender.  Required for group chats; used by the receiver to
-  verify `chatId`.
+`chatKind` (String):
+: `"direct"` or `"group"`.  Informs which chatId verification
+  procedure applies.
 
-`message` (Object):
-: The message to deliver.  Contains all fields of a Message plus:
+`message` (Object, optional):
+: A new message to deliver.  All peer-supplied fields:
 
-  - `id` (String) — Sender-assigned ULID (idempotency key).
-  - `fetchUrl` (String, per attachment) — URL from which the
-    receiver fetches each attachment blob.
+  - `senderMsgId` (String) — Sender-assigned ULID.  Idempotency key.
+  - `body` (String) — Validated against `maxBodyBytes`.
+  - `bodyType` (String) — Validated against `supportedBodyTypes`.
+  - `sentAt` (UTCDate) — Stored as-is; not used for ordering.
+  - `attachments` (Object[]) — Each carries Attachment fields plus
+    `fetchUrl` (String): the URL from which the receiver fetches the
+    blob.
+  - `mentions` (Mention[], optional).
+  - `replyTo` (String, optional) — Sender's own `senderMsgId` of
+    the referenced message.  Receiver resolves to local `id` via the
+    `senderMsgId` index.
+  - `threadRootId` (String, optional) — Sender's own `senderMsgId`
+    of the thread root.  Receiver resolves similarly.
 
 `edit` (Object, optional):
-: If present, this delivery carries an edit to an existing message.
-  Contains `messageId` (String), `body` (String), `bodyType`
-  (String), `editedAt` (UTCDate).  The `message` field MUST be
-  absent when `edit` is present.
+: An edit to an existing message.  Fields:
+
+  - `senderMsgId` (String) — Identifies the message to edit via
+    the `senderMsgId` index.
+  - `body` (String) — New body; validated against `maxBodyBytes`.
+  - `bodyType` (String) — Validated against `supportedBodyTypes`.
+  - `editedAt` (UTCDate) — Claimed edit time; stored as-is.
+  - `mentions` (Mention[], optional).
+
+  The receiver MUST verify the sender is the original sender of the
+  identified message before applying the edit.
 
 `reactionUpdate` (Object, optional):
-: If present, adds or removes a reaction on an existing message.
-  Contains `messageId` (String), `emoji` (String), `action`
-  (`"add"` or `"remove"`), `sentAt` (UTCDate).  The `message`
-  field MUST be absent when `reactionUpdate` is present.
+: A reaction change on an existing message.  Fields:
 
-`messageExpirySeconds` (UnsignedInt, optional):
-: The sender's current `messageExpirySeconds` for this chat, if
-  set.  The receiver MAY apply this policy locally.
+  - `senderMsgId` (String) — Identifies the target message.
+  - `emoji` (String) — The reaction emoji.
+  - `action` (String) — `"add"` or `"remove"`.
+  - `sentAt` (UTCDate).
 
-### Delivery Validation
+### New Message Validation
 
-Before storing anything, the server MUST in order:
+Before storing a new message, the server MUST in order:
 
-1. Verify the caller's identity via the authentication layer.
+1. Verify caller identity via authentication layer.
 2. Confirm `senderUserId` matches the verified identity.
-3. Recompute the Chat ID from `participantUserIds` and compare
-   to `chatId`.
-4. Confirm the sender is not blocked.
-5. Validate `body` length against `maxBodyBytes`.
+3. For direct chats: if a chat with this sender already exists,
+   confirm `chatId` matches its stored id; otherwise create a new
+   Chat record with this chatId and contactId.  For group chats:
+   confirm `chatId` matches a known group and the sender is a
+   current member.
+4. Confirm the sender is not blocked by the owner.
+5. Validate `body` UTF-8 encoding and byte length.
 6. Validate `bodyType` against `supportedBodyTypes`.
-7. Validate each attachment's `filename`, `contentType`, `size`.
-8. Fetch each attachment from `fetchUrl`; verify byte count and
-   SHA-256.
+7. Validate each attachment `filename`, `contentType`, `size`.
+8. Fetch each attachment blob from `fetchUrl`; verify byte count
+   against `size` and content against `sha256`.
+9. Validate each mention `offset + length` against body length.
 
 Failure at any step MUST result in rejection with no data stored.
 
+### Edit and Reaction Validation
+
+For `edit` payloads: apply steps 1–4 above, then validate `body`
+and `bodyType` as in steps 5–6, then verify the identified message
+exists and `senderUserId` matches its recorded sender.
+
+For `reactionUpdate` payloads: apply steps 1–4, validate `emoji`
+as a non-empty string, verify the identified message exists.
+
 Response arguments:
 
-`accountId` (String), `messageId` (String, the receiver's ULID),
-`receivedAt` (UTCDate).
+`accountId` (String), `receivedMsgId` (String — the receiver's
+assigned ULID for a new message, or the local `id` of the edited
+or reacted-to message), `receivedAt` (UTCDate).
 
 ## Peer/receipt
 
-Notifies the sending mailbox of successful storage.
+Notifies the sending mailbox that a message was stored and/or read.
 
 Method name: `Peer/receipt`
 
-Request: `accountId`, `messageId` (sender-assigned ULID),
-`receivedAt` (UTCDate), `readerUserId` (String, the userId of the
-acknowledging user — allows group receipt aggregation).
+Request: `accountId` (String), `senderMsgId` (String — the
+sender-assigned ULID), `deliveredAt` (UTCDate, optional — time of
+storage), `readAt` (UTCDate, optional — time the recipient read the
+message), `readerUserId` (String — the Contact.id of the
+acknowledging user, for group receipt aggregation).
 
 Response: `accountId`.
 
 ## Peer/typing
 
-Notifies a remote mailbox that the owner is typing (or has stopped).
+Notifies a remote mailbox that the owner is or is not typing.
 
 Method name: `Peer/typing`
 
-Request arguments:
-
-`accountId` (String), `chatId` (String), `senderUserId` (String,
-MUST match the authenticated identity), `typing` (Boolean).
+Request: `accountId` (String), `chatId` (String), `senderUserId`
+(String, MUST match authenticated identity), `typing` (Boolean).
 
 Response: `accountId`.
 
-The receiving server MUST NOT store this event.  It MUST forward
-a `typing` push event (see {{push}}) to the owner's connected
-clients.
+The receiving server MUST NOT store this event.  It MUST forward a
+`typing` push event ({{push}}) to the owner's connected clients.
+Servers MUST rate-limit inbound `Peer/typing` calls per peer.
 
 ## Peer/retract
 
-Requests that a remote mailbox delete a specific message.
+Requests that a remote mailbox tombstone a specific message.
 
 Method name: `Peer/retract`
 
-Request arguments:
+Request: `accountId` (String), `chatId` (String), `senderUserId`
+(String, MUST match authenticated identity), `senderMsgId` (String
+— the sender-assigned ULID of the message to retract).
 
-`accountId` (String), `chatId` (String), `senderUserId` (String,
-MUST match authenticated identity), `messageId` (String, the
-sender-assigned ULID of the message to retract).
-
-The receiving server MUST only honour this request if the
-`senderUserId` matches the sender recorded on the stored message.
-On success, the server MUST tombstone the message (`deletedAt`,
-`body` cleared) and set `deletedForAll: true`.
+The receiving server MUST look up the message by `senderMsgId`
+within `chatId`.  It MUST verify that the stored message's
+`senderId` matches `senderUserId` before applying the tombstone.
+On success, `body` and `attachments` are cleared, `deletedAt` is
+set to the current time, and `deletedForAll` is set to `true`.
 
 Response: `accountId`, `retractedAt` (UTCDate).
+
+## Peer/groupUpdate {#peer-groupupdate}
+
+Notifies participant mailboxes of a new group chat or a membership /
+metadata change to an existing one.
+
+Method name: `Peer/groupUpdate`
+
+Request arguments:
+
+`accountId` (String), `chatId` (String — the group chat ULID),
+`senderUserId` (String, MUST match authenticated identity and MUST
+be an admin of the group on the sending server).
+
+`action` (String):
+: One of:
+  - `"create"` — Initial group creation notification.  Carries the
+    full initial state.
+  - `"addMembers"` — Members were added.
+  - `"removeMembers"` — Members were removed.
+  - `"updateRoles"` — Member roles changed.
+  - `"updateMetadata"` — `name`, `description`, or `avatarBlobId`
+    changed.
+
+`members` (ChatMember[], required for `"create"`):
+: Full membership list at the time of this update.
+
+`addedMembers` (ChatMember[], for `"addMembers"`):
+: Newly added members.
+
+`removedMemberIds` (String[], for `"removeMembers"`):
+: Contact.ids of removed members.
+
+`updatedRoles` (Object[], for `"updateRoles"`):
+: Each entry: `id` (String), `role` (String).
+
+`name` (String, optional), `description` (String, optional),
+`avatarBlobId` (String, optional):
+: Updated metadata fields (any combination, for `"updateMetadata"`
+  or `"create"`).
+
+The receiving server MUST verify `senderUserId` is authenticated
+and is an admin of this group (or, for `"create"`, is the initial
+creator).  On success, the receiving server updates its local Chat
+record accordingly.
+
+Response: `accountId`.
 
 # Push Notifications {#push}
 
@@ -798,8 +926,6 @@ Servers MUST support the EventSource mechanism defined in
 {{RFC8620}} Section 7.3.
 
 ## State-Change Events
-
-When data-type state advances, the server emits:
 
 ~~~
 event: state
@@ -811,19 +937,14 @@ Clients SHOULD call the corresponding `/changes` method.  On
 
 ## Typing Events
 
-When a `Peer/typing` is received, the server emits to the owner's
-connected clients:
-
 ~~~
 event: typing
-data: {"chatId":"<id>","senderId":"<contactId>","typing":<bool>}
+data: {"chatId":"<id>","senderId":"<contact-id>","typing":<bool>}
 ~~~
 
-This event MUST NOT be stored and carries no state token.
+Not stored; carries no state token.
 
 ## Presence Events
-
-When a contact's presence changes, the server emits:
 
 ~~~
 event: presence
@@ -832,22 +953,22 @@ data: {"contactId":"<id>","presence":"<state>","lastActiveAt":"<ts>"}
 
 # Blob Storage
 
-Upload and download use the standard JMAP blob endpoints from
-{{RFC8620}} Section 6, via the `uploadUrl` and `downloadUrl`
-templates in the Session object.
+Standard JMAP blob upload and download per {{RFC8620}} Section 6,
+using the `uploadUrl` and `downloadUrl` Session templates.
 
 ## Upload
 
-`POST <uploadUrl>` with the blob as request body.
+`POST <uploadUrl>` with the blob as the request body.
 
-Response (HTTP 200):
+Response (HTTP 200) — this document extends the standard RFC 8620
+upload response with the `sha256` field:
 
 ~~~json
 {
   "blobId":  "<id>",
   "type":    "<mime-type>",
   "size":    <bytes>,
-  "sha256":  "<hex>"
+  "sha256":  "<lowercase-hex>"
 }
 ~~~
 
@@ -860,25 +981,30 @@ Response (HTTP 200):
 Outbound messages MUST be queued in a persistent outbox before the
 first delivery attempt.  Servers MUST retry with exponential backoff.
 
-For group chats, the sender's mailbox delivers independently to each
+For group chats, the sender delivers independently to each
 participant's mailbox and tracks per-recipient state in
-`deliveryReceipts`.  The aggregate `deliveryState` is `"delivered"`
-only when all participants have acknowledged.
+`deliveryReceipts`.  The aggregate `deliveryState` advances to
+`"delivered"` when all participants have acknowledged.
 
-ULID message IDs provide natural idempotency.  Duplicate ULIDs for
-the same Chat MAY be silently discarded by the receiver.
+A message whose `senderMsgId` is already known for the given chat
+MAY be silently discarded by the receiver.
+
+Servers MUST maintain a durable index of `senderMsgId` values per
+chat to support idempotent delivery, `Peer/retract` lookup, and
+resolution of `replyTo` / `threadRootId` references in inbound
+`Peer/deliver` messages.
 
 # Authentication
 
 Authentication is outside the scope of this document.  The protocol
-requires only that the deployment provide a stable, opaque `userId`
-per connection.
+requires a stable, opaque id per connection.
 
 Access control:
 
-- **Owner** (identity matches mailbox owner's userId): all methods.
-- **Peer** (identity matches a known contact's userId):
-  `Peer/deliver`, `Peer/receipt`, `Peer/typing`, `Peer/retract` only.
+- **Owner** (identity equals owner's id): all methods.
+- **Peer** (identity equals a known contact's id): `Peer/deliver`,
+  `Peer/receipt`, `Peer/typing`, `Peer/retract`,
+  `Peer/groupUpdate` only.
 - **Other**: HTTP 401.
 
 # IANA Considerations
@@ -903,13 +1029,17 @@ Reference:
 Security and Privacy Considerations:
 : See {{security}} of this document.
 
+Note: this URI is provisional.  If this specification is adopted by
+the IETF JMAP working group, it will be updated to
+`urn:ietf:params:jmap:chat`.
+
 # Security Considerations {#security}
 
 ## Identity Verification Ordering
 
-`senderUserId` in `Peer/deliver`, `Peer/typing`, and `Peer/retract`
-is caller-supplied and MUST be treated as untrusted.  The server MUST
-compare it against the verified identity from the authentication layer
+`senderUserId` in all Peer/* methods is caller-supplied and MUST be
+treated as untrusted.  The server MUST obtain the verified identity
+from its own authentication layer independently and MUST compare
 before any storage or action.  Verification MUST precede all effects.
 
 ## Input Validation
@@ -922,54 +1052,76 @@ All peer-supplied fields are attacker-controlled:
 - `contentType`: reject syntactically invalid MIME values.
 - `size`: verify against actual blob byte count after fetch.
 - `sha256`: verify against actual blob content after fetch.
-- `sentAt`: store as-is; never use for ordering.
-- `chatId`: recompute locally from `participantUserIds`; reject
-  mismatches.
-- `emoji` in reactions: validate as a reasonable grapheme cluster;
-  enforce a per-message-per-sender reaction limit.
-- `mentions`: validate that `offset + length` does not exceed the
-  byte length of `body`.
+- `sentAt`, `editedAt`: store as-is; never use for ordering.
+- `chatId`: recompute (direct) or verify membership (group);
+  reject mismatches.
+- `emoji`: enforce reasonable grapheme cluster length; enforce a
+  per-message per-sender reaction limit.
+- `mentions`: reject any entry where `offset + length` exceeds
+  body byte length.
 
 ## Blob Fetch and SSRF
 
-When fetching blobs from peer-supplied `fetchUrl` values, servers
-MUST restrict outbound connections to the known peer address space.
-Arbitrary URL fetch is an SSRF vector.
+When fetching attachment blobs from peer-supplied `fetchUrl` values,
+servers MUST restrict outbound connections to the known peer address
+space.  Unrestricted fetches are an SSRF vector.
 
 ## Denial of Service
 
 Enforce `maxBodyBytes` and `maxAttachmentBytes` at parse time, before
 any fetch or storage.  Enforce `maxAttachmentsPerMessage` and
-`maxGroupMembers` at creation time.
+`maxGroupMembers` at creation and update time.  Rate-limit
+`Peer/typing` per peer.
 
 ## Timestamp Trust
 
-`sentAt` is peer-supplied.  `receivedAt` is server-set.  Use only
-`receivedAt` for ordering, deduplication, and expiry calculations.
+`sentAt` and peer-supplied `editedAt` are untrusted.  `receivedAt`
+is server-set and is the authoritative timestamp for ordering and
+expiry.
 
 ## Chat ID Integrity
 
-The deterministic Chat ID ({{chat-id}}) prevents message injection
-into wrong conversations.  Verify before storage.
+Chat IDs are server-assigned ULIDs.  Security against
+cross-conversation injection relies on sender authentication and
+chat/membership verification, not on ID derivation.
+
+For direct chats, the receiving server MUST confirm that the
+incoming chatId matches the chatId already associated with the
+sending contact (if one exists).  This prevents a sender from
+injecting messages into a chat ID that belongs to a different
+conversation.
+
+For group chats, servers MUST confirm the sender is a current member
+of the identified group before accepting any `Peer/deliver` or
+`Peer/groupUpdate`.
 
 ## Retract Authorization
 
-`Peer/retract` MUST verify that `senderUserId` matches the `senderId`
-recorded on the stored message.  Peers MUST NOT be permitted to
-retract messages they did not send.
+`Peer/retract` MUST verify via the `senderMsgId` index that
+`senderUserId` matches the original sender before applying any
+tombstone.
 
-## Typing Indicator Amplification
+## Group Admin Verification
 
-`Peer/typing` MUST NOT be stored or forwarded beyond the owner's
-connected clients.  Implementations MUST rate-limit inbound
-`Peer/typing` calls per peer to prevent event-amplification attacks.
+`Peer/groupUpdate` MUST verify that `senderUserId` holds an admin
+role in the named group on the receiving server's local record before
+applying membership or metadata changes.
 
-## Message Expiry
+## Direct Address Hints
 
-Message expiry timers are enforced independently per mailbox.  A
-peer setting `messageExpirySeconds` in a `Peer/deliver` payload is
-providing a request, not a command.  The receiving mailbox MAY
-ignore or override this value.
+`directAddress` and `ownerDirectAddress` are peer-supplied values
+and MUST be treated as untrusted.  Implementations that use them
+MUST apply the same authentication requirements to the direct path
+as to the mailbox path, and MUST NOT use them as fetch targets in
+contexts analogous to the blob-fetch SSRF risk described above.
+Senders MUST NOT treat delivery to a `directAddress` as a
+substitute for mailbox delivery; the mailbox path MUST still be
+used to ensure message persistence and multi-device visibility.
+
+## Blocked Contacts in Groups
+
+Messages from a blocked contact are silently dropped regardless of
+whether they arrive in a direct chat or a group chat context.
 
 --- back
 
@@ -980,29 +1132,29 @@ This appendix is informative.
 ## Transport and Identity
 
 Kith {{KITH}} binds its HTTPS listener exclusively to a Tailscale
-{{TAILSCALE}} overlay network interface.  It calls the Tailscale
-LocalAPI `/localapi/v0/whois` for each connection to obtain the
-verified `UserProfile.ID` and `UserProfile.LoginName`, which map
-to `userId` and `login` respectively.
+{{TAILSCALE}} overlay network interface.  For each connection, it
+calls the Tailscale LocalAPI `/localapi/v0/whois` to obtain the
+verified `UserProfile.ID`, which is used directly as the Contact.id
+/ userId.  `UserProfile.LoginName` is stored as `login`.
 
 ## Capability URI
 
-Kith advertises `urn:kith:chat:1`.  The data model and methods
-are identical to this specification.  The distinct URI allows Kith
+Kith advertises `urn:kith:chat:1`.  The data model and methods are
+identical to this specification.  The distinct URI allows Kith
 deployments to be identified in Session objects.
 
-## Supported Feature Set (Phase 1)
+## Supported Feature Set
 
-The initial Kith release supports direct chats, delivery and read
-receipts, attachments, and EventSource push.  Group chat, reactions,
-editing, deletion, typing indicators, and presence are planned for
-Phase 2.
+The initial Kith release (Phase 1) implements direct chats, delivery
+and read receipts, attachments, and EventSource push.  Group chat,
+reactions, editing, deletion, typing indicators, presence, and
+Peer/groupUpdate are planned for Phase 2.
 
 ## Contact Discovery
 
 Contacts are created automatically on first `Peer/deliver` from an
-unknown peer.  `serverUrl` is populated by probing the peer's
-`/.well-known/jmap` endpoint at delivery time.
+unknown peer.  `serverUrl` is populated by probing `/.well-known/jmap`
+on the peer at delivery time.
 
 ## Deployment Topology
 
@@ -1011,5 +1163,4 @@ mode.
 
 # Acknowledgements
 
-The author thanks the JMAP working group for {{RFC8620}}, which
-provided the protocol foundation this capability is built upon.
+The author thanks the JMAP working group for {{RFC8620}}.
