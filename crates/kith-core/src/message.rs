@@ -40,6 +40,10 @@ pub struct Attachment {
 pub struct Message {
     /// ULID — time-sortable unique identifier.
     pub id: String,
+    /// ULID assigned by the sender (carried in Peer/deliver for idempotency).
+    /// For owner-composed messages this equals `id`.
+    #[serde(rename = "senderMsgId")]
+    pub sender_msg_id: String,
     /// Deterministic chat identifier.
     #[serde(rename = "chatId")]
     pub chat_id: String,
@@ -92,6 +96,7 @@ mod tests {
     fn sample_message() -> Message {
         Message {
             id: "01JVWXYZ0000000000000000AB".into(),
+            sender_msg_id: "01JVWXYZ0000000000000000AB".into(),
             chat_id: "deadbeef".repeat(8),
             sender_id: "c-001".into(),
             body: "Hello, world!".into(),
@@ -173,6 +178,7 @@ mod tests {
         let json_str = serde_json::to_string(&m).unwrap();
         assert!(json_str.contains("\"chatId\""));
         assert!(json_str.contains("\"senderId\""));
+        assert!(json_str.contains("\"senderMsgId\""));
         assert!(json_str.contains("\"bodyType\""));
         assert!(json_str.contains("\"sentAt\""));
         assert!(json_str.contains("\"receivedAt\""));

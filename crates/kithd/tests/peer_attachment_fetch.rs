@@ -490,8 +490,8 @@ mod inner {
                 .expect("receiver store lock must not be poisoned");
             let msg = guard
                 .messages()
-                .get(&msg_id)
-                .expect("receiver messages().get must not fail")
+                .find_by_sender_msg_id(chat_id, &msg_id)
+                .expect("receiver messages().find_by_sender_msg_id must not fail")
                 .expect("receiver must have the delivered message");
             assert_eq!(
                 msg.attachments.len(),

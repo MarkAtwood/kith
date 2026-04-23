@@ -356,6 +356,7 @@ fn process_create(
             now_unix,
             &DeliveryState::Pending,
             reply_to.as_deref(),
+            &msg_id,
             &core_attachments,
         )
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
@@ -986,6 +987,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-in-chat1",
                 )
                 .unwrap();
             msg_in_chat1 = "msg-in-chat1";
@@ -1038,6 +1040,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-g1",
                 )
                 .unwrap();
         }
@@ -1109,6 +1112,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-ra",
                 )
                 .unwrap();
         }
@@ -1157,6 +1161,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-np",
                 )
                 .unwrap();
         }
@@ -1232,6 +1237,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-ch",
                 )
                 .unwrap();
         }
@@ -1273,6 +1279,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-q1",
                 )
                 .unwrap();
         }
@@ -1364,6 +1371,7 @@ mod tests {
                     1000,
                     &DeliveryState::Received,
                     None,
+                    "msg-rr-in",
                 )
                 .unwrap();
             guard.messages().get_state().unwrap()
@@ -1429,6 +1437,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-rr-out",
                 )
                 .unwrap();
         }
@@ -1495,6 +1504,7 @@ mod tests {
                     1000,
                     &DeliveryState::Pending,
                     None,
+                    "msg-qc2",
                 )
                 .unwrap();
         }

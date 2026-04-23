@@ -52,6 +52,7 @@ fn parse_delivery_state(s: &str) -> Result<DeliveryState, KithError> {
 ///   8  delivered_at     INTEGER NULL (Unix seconds)
 ///   9  read_at          INTEGER NULL (Unix seconds)
 ///   10 reply_to         TEXT NULL
+///   11 sender_msg_id    TEXT NULL
 fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let id: String = row.get(0)?;
     let chat_id: String = row.get(1)?;
@@ -64,6 +65,7 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let delivered_at_unix: Option<i64> = row.get(8)?;
     let read_at_unix: Option<i64> = row.get(9)?;
     let reply_to: Option<String> = row.get(10)?;
+    let sender_msg_id: Option<String> = row.get(11)?;
 
     let delivery_state = parse_delivery_state(&delivery_state_raw).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(e))
@@ -72,9 +74,11 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let sent_at = sent_at_peer.unwrap_or_else(|| received_at.clone());
     let delivered_at = delivered_at_unix.map(crate::util::unix_secs_to_rfc3339);
     let read_at = read_at_unix.map(crate::util::unix_secs_to_rfc3339);
+    let sender_msg_id = sender_msg_id.unwrap_or_else(|| id.clone());
 
     Ok(Message {
         id,
+        sender_msg_id,
         chat_id,
         sender_id: sender_user_id,
         body,
@@ -127,6 +131,7 @@ impl<'a> MessageStore<'a> {
         created_at_unix: i64,
         delivery_state: &DeliveryState,
         reply_to: Option<&str>,
+        sender_msg_id: &str,
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = crate::advance_state_counter_in_tx(&tx, "message")?;
@@ -134,8 +139,8 @@ impl<'a> MessageStore<'a> {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, delivery_state, reply_to) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 id,
                 chat_id,
@@ -147,6 +152,7 @@ impl<'a> MessageStore<'a> {
                 version,
                 state_str,
                 reply_to,
+                sender_msg_id,
             ],
         )
         .map_err(db_err)?;
@@ -162,7 +168,7 @@ impl<'a> MessageStore<'a> {
             .prepare(
                 "SELECT id, chat_id, sender_user_id, body, body_type, \
                         sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to \
+                        delivered_at, read_at, reply_to, sender_msg_id \
                  FROM messages WHERE id = ?1",
             )
             .map_err(db_err)?;
@@ -189,7 +195,7 @@ impl<'a> MessageStore<'a> {
             .prepare(
                 "SELECT id, chat_id, sender_user_id, body, body_type, \
                         sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to \
+                        delivered_at, read_at, reply_to, sender_msg_id \
                  FROM messages \
                  WHERE chat_id = ?1 \
                  ORDER BY created_at DESC \
@@ -245,6 +251,40 @@ impl<'a> MessageStore<'a> {
         }
 
         Ok(messages)
+    }
+
+    /// Find a message by the sender-assigned ID within a specific chat.
+    ///
+    /// Used by Peer/deliver to detect duplicate deliveries (idempotency check).
+    /// Returns `None` if no matching message is found.
+    pub fn find_by_sender_msg_id(
+        &self,
+        chat_id: &str,
+        sender_msg_id: &str,
+    ) -> Result<Option<Message>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, chat_id, sender_user_id, body, body_type, \
+                        sent_at_peer, created_at, delivery_state, \
+                        delivered_at, read_at, reply_to, sender_msg_id \
+                 FROM messages WHERE chat_id = ?1 AND sender_msg_id = ?2",
+            )
+            .map_err(db_err)?;
+
+        let mut rows = stmt
+            .query_map(params![chat_id, sender_msg_id], row_to_message)
+            .map_err(db_err)?;
+
+        match rows.next() {
+            None => Ok(None),
+            Some(row) => {
+                let mut msg = row.map_err(db_err)?;
+                msg.attachments =
+                    attachment::AttachmentStore::new(self.conn).list_by_message(&msg.id)?;
+                Ok(Some(msg))
+            }
+        }
     }
 
     /// Update the delivery state of a message, advancing the state counter.
@@ -459,6 +499,7 @@ mod tests {
             1745971200, // 2026-04-18T00:00:00Z in unix secs
             &DeliveryState::Received,
             None,
+            "msg-001",
         )
         .expect("insert");
 
@@ -493,6 +534,7 @@ mod tests {
             100,
             &DeliveryState::Received,
             None,
+            "msg-100",
         )
         .expect("insert t=100");
         ms.insert(
@@ -505,6 +547,7 @@ mod tests {
             200,
             &DeliveryState::Received,
             None,
+            "msg-200",
         )
         .expect("insert t=200");
         ms.insert(
@@ -517,6 +560,7 @@ mod tests {
             300,
             &DeliveryState::Received,
             None,
+            "msg-300",
         )
         .expect("insert t=300");
 
@@ -545,6 +589,7 @@ mod tests {
             1000,
             &DeliveryState::Pending,
             None,
+            "msg-ds",
         )
         .expect("insert");
 
@@ -588,6 +633,7 @@ mod tests {
             1000,
             &DeliveryState::Received,
             None,
+            "msg-cs",
         )
         .expect("insert");
 
@@ -628,6 +674,7 @@ mod tests {
             1000,
             &DeliveryState::Received,
             None,
+            "msg-ra",
         )
         .expect("insert");
 
@@ -666,6 +713,7 @@ mod tests {
             1000,
             &DeliveryState::Pending,
             None,
+            "msg-us1",
         )
         .expect("insert");
 
@@ -705,6 +753,7 @@ mod tests {
             1000,
             &DeliveryState::Received,
             None,
+            "msg-us2",
         )
         .expect("insert");
 
@@ -772,6 +821,7 @@ mod tests {
             1000,
             &DeliveryState::Pending,
             None,
+            "msg-term",
         )
         .expect("insert");
 
@@ -857,6 +907,7 @@ mod tests {
                 1000,
                 &DeliveryState::Received,
                 None,
+                "msg-att1",
                 &attachments,
             )
             .expect("insert_message_with_attachments");
@@ -896,6 +947,7 @@ mod tests {
                 100,
                 &DeliveryState::Received,
                 None,
+                "msg-att2a",
                 &[att],
             )
             .expect("insert msg with attachment");
@@ -912,6 +964,7 @@ mod tests {
                 200,
                 &DeliveryState::Received,
                 None,
+                "msg-att2b",
                 &[],
             )
             .expect("insert msg without attachment");
@@ -960,6 +1013,7 @@ mod tests {
             1000,
             &DeliveryState::Received,
             None,
+            "msg-att3",
         )
         .expect("insert");
 

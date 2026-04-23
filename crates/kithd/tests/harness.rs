@@ -536,8 +536,8 @@ async fn full_message_delivery() {
             .expect("bob store lock must not be poisoned");
         let bob_msg = guard
             .messages()
-            .get(&msg_id)
-            .expect("bob messages().get must not fail")
+            .find_by_sender_msg_id(chat_id, &msg_id)
+            .expect("bob messages().find_by_sender_msg_id must not fail")
             .expect("bob must have the delivered message");
 
         // Oracle: body is a hardcoded constant, not derived from alice's store.
@@ -665,6 +665,7 @@ async fn offline_delivery_and_retry() {
                 now,
                 &DeliveryState::Pending,
                 None,
+                &msg_id,
             )
             .expect("alice: insert message must succeed");
 
@@ -757,8 +758,8 @@ async fn offline_delivery_and_retry() {
         .lock()
         .expect("bob store lock must not be poisoned")
         .messages()
-        .get(&msg_id)
-        .expect("get on bob's store must not fail")
+        .find_by_sender_msg_id(&chat_id, &msg_id)
+        .expect("find_by_sender_msg_id on bob's store must not fail")
         .expect("bob must have received the message after successful tick");
 
     assert_eq!(
@@ -998,8 +999,8 @@ async fn full_message_delivery_with_attachment() {
 
         let bob_msg = guard
             .messages()
-            .get(&msg_id)
-            .expect("bob messages().get must not fail")
+            .find_by_sender_msg_id(chat_id, &msg_id)
+            .expect("bob messages().find_by_sender_msg_id must not fail")
             .expect("bob must have the delivered message");
 
         // Oracle: delivery_state=Received is mandated by Peer/deliver spec step 10.

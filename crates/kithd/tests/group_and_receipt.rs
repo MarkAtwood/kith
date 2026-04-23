@@ -219,15 +219,17 @@ mod inner {
         outbox_tick(&pair.alice_store, &peer_client, ALICE_OWNER_ID, now_unix).await;
 
         // Oracle: bob must have the delivered message.
-        {
+        // Capture bob_receiver_id (the receiver-assigned ULID) for use in the
+        // Message/set update and outbox receipt lookup below.
+        let bob_receiver_id = {
             let guard = pair
                 .bob_store
                 .lock()
                 .expect("bob store lock must not be poisoned");
             let bob_msg = guard
                 .messages()
-                .get(&msg_id)
-                .expect("bob messages().get must not fail")
+                .find_by_sender_msg_id(chat_id, &msg_id)
+                .expect("bob messages().find_by_sender_msg_id must not fail")
                 .expect("bob must have the delivered message");
             assert_eq!(
                 bob_msg.body, EXPECTED_BODY,
@@ -242,7 +244,8 @@ mod inner {
                 bob_msg.sender_id, ALICE_OWNER_ID,
                 "oracle: sender_id on bob's side must be alice's user ID"
             );
-        }
+            bob_msg.id.clone()
+        };
 
         // Step 6: bob marks the message as read via Message/set update.
         // bob_router has MockConnectInfo(BOB_MOCK_ADDR) and MockWhoIs returning
@@ -254,7 +257,7 @@ mod inner {
             "methodCalls": [["Message/set", {
                 "accountId": "a-self",
                 "update": {
-                    msg_id.as_str(): { "readAt": read_timestamp }
+                    bob_receiver_id.as_str(): { "readAt": read_timestamp }
                 }
             }, "0"]]
         });
@@ -288,18 +291,18 @@ mod inner {
         let update_json: serde_json::Value =
             serde_json::from_slice(&update_bytes).expect("update response must be valid JSON");
 
-        // Oracle: updated map must contain the message ID; notUpdated must not.
+        // Oracle: updated map must contain bob's receiver-assigned ID; notUpdated must not.
         assert!(
             update_json["methodResponses"][0][1]["updated"]
                 .as_object()
-                .map_or(false, |m| m.contains_key(&msg_id)),
+                .map_or(false, |m| m.contains_key(&bob_receiver_id)),
             "Message/set update must succeed; response: {update_json}"
         );
         assert!(
             update_json["methodResponses"][0][1]["notUpdated"]
-                .get(&msg_id)
+                .get(&bob_receiver_id)
                 .is_none(),
-            "notUpdated must not contain msg_id; response: {update_json}"
+            "notUpdated must not contain bob_receiver_id; response: {update_json}"
         );
 
         // Step 7: bob's outbox must have a receipt row targeting alice.
@@ -313,7 +316,7 @@ mod inner {
                 .expect("bob store lock must not be poisoned");
             let entries = guard
                 .outbox()
-                .get_by_message(&msg_id)
+                .get_by_message(&bob_receiver_id)
                 .expect("get_by_message must not fail on bob's store");
             assert!(
                 !entries.is_empty(),
@@ -754,8 +757,8 @@ mod inner {
                 .expect("bob store lock must not be poisoned");
             let bob_msg = guard
                 .messages()
-                .get(&msg_id)
-                .expect("bob messages().get must not fail")
+                .find_by_sender_msg_id(group_chat_id, &msg_id)
+                .expect("bob messages().find_by_sender_msg_id must not fail")
                 .expect("bob must have the delivered group message");
             assert_eq!(
                 bob_msg.body, GROUP_DELIVERY_BODY,

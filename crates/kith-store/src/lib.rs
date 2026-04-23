@@ -336,6 +336,7 @@ impl Store {
         created_at_unix: i64,
         delivery_state: &DeliveryState,
         reply_to: Option<&str>,
+        sender_msg_id: &str,
         attachments: &[Attachment],
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
@@ -349,8 +350,8 @@ impl Store {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, delivery_state, reply_to) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 id,
                 chat_id,
@@ -361,7 +362,8 @@ impl Store {
                 created_at_unix,
                 version,
                 state_str,
-                reply_to
+                reply_to,
+                sender_msg_id
             ],
         )
         .map_err(db_err)?;
@@ -760,6 +762,7 @@ mod tests {
                 1_000_000,
                 &kith_core::DeliveryState::Received,
                 None,
+                "msg-001",
             )
             .expect("insert");
 

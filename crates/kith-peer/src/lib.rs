@@ -222,10 +222,26 @@ impl JmapHandler for DeliverHandler {
                 }
             }
 
+            // Step 9: Idempotency check — if we've already received this sender_msg_id
+            // for this chat, return the stored receivedAt without re-inserting.
+            if let Ok(Some(ref existing)) = guard
+                .messages()
+                .find_by_sender_msg_id(&msg.chat_id, &msg.id)
+            {
+                return Ok(json!({
+                    "accepted": true,
+                    "id": existing.id,
+                    "receivedAt": existing.received_at,
+                }));
+            }
+
+            // Assign a fresh receiver-side ULID; the sender's id becomes sender_msg_id.
+            let new_id = Ulid::new().to_string();
+
             // Step 9: Insert the message and its attachments in a single transaction.
             guard
                 .insert_message_with_attachments(
-                    &msg.id,
+                    &new_id,
                     &msg.chat_id,
                     &identity.user_id,
                     &msg.body,
@@ -234,6 +250,7 @@ impl JmapHandler for DeliverHandler {
                     now_unix,
                     &DeliveryState::Received,
                     msg.reply_to.as_deref(),
+                    &msg.id,
                     &attachments,
                 )
                 .map_err(|e| {
@@ -259,6 +276,7 @@ impl JmapHandler for DeliverHandler {
             Ok(json!({
                 "accountId": "a-self",
                 "accepted": true,
+                "id": new_id,
                 "receivedAt": received_at,
             }))
         })
@@ -1090,6 +1108,7 @@ mod tests {
                 1000,
                 delivery_state,
                 None,
+                id,
             )
             .expect("insert message");
     }
@@ -1157,16 +1176,21 @@ mod tests {
             "receivedAt must be a string"
         );
 
-        // Oracle: the message must be in the store with delivery_state = Received.
+        // Oracle: the message is in the store under the receiver-assigned id (val["id"]).
+        let received_id = val["id"].as_str().expect("id must be a string in response");
         let guard = store.lock().unwrap();
         let msg = guard
             .messages()
-            .get(&msg_id)
+            .get(received_id)
             .unwrap()
             .expect("message must exist in store");
         assert_eq!(msg.delivery_state, DeliveryState::Received);
         assert_eq!(msg.sender_id, "uid-bob");
         assert_eq!(msg.body, "Hello!");
+        assert_eq!(
+            msg.sender_msg_id, msg_id,
+            "sender_msg_id must equal the sender's ULID"
+        );
     }
 
     // Oracle: after a valid delivery, the contact must be upserted.
@@ -1448,6 +1472,7 @@ mod tests {
                     1000,
                     &DeliveryState::Received,
                     None,
+                    "other-chat-msg",
                 )
                 .unwrap();
         }
@@ -2334,10 +2359,12 @@ mod tests {
             .expect("valid attachment delivery must succeed");
         assert_eq!(result["accepted"], true);
         // Oracle: attachment fields must match the literal values in the request.
+        // Look up by receiver-assigned id from response, not sender's msg_id.
+        let received_id = result["id"].as_str().expect("id must be in response");
         let guard = store.lock().unwrap();
         let stored = guard
             .attachments()
-            .list_by_message(&msg_id)
+            .list_by_message(received_id)
             .expect("list_by_message must succeed");
         assert_eq!(stored.len(), 1, "exactly one attachment must be stored");
         let a = &stored[0];
@@ -2580,6 +2607,7 @@ mod tests {
                 now,
                 &DeliveryState::Pending,
                 None,
+                msg_id,
             )
             .unwrap();
         // Upsert contact then enqueue.
@@ -2865,6 +2893,7 @@ mod tests {
                     now,
                     &DeliveryState::Pending,
                     None,
+                    msg_id,
                 )
                 .expect("insert message");
             guard
