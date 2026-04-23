@@ -34,15 +34,15 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>, owner_id: &str) -> Disp
     );
     d.register(
         "ChatContact/changes",
-        Box::new(kith_chat::contact::ChatContactChangesHandler::new(Arc::clone(
-            &store,
-        ))),
+        Box::new(kith_chat::contact::ChatContactChangesHandler::new(
+            Arc::clone(&store),
+        )),
     );
     d.register(
         "ChatContact/query",
-        Box::new(kith_chat::contact::ChatContactQueryHandler::new(Arc::clone(
-            &store,
-        ))),
+        Box::new(kith_chat::contact::ChatContactQueryHandler::new(
+            Arc::clone(&store),
+        )),
     );
     d.register(
         "Chat/get",
@@ -129,7 +129,7 @@ async fn test_full_contact_workflow() {
             "accountId": "a-self",
             "create": {
                 "c0": {
-                    "tailscaleUserId": "uid-alice",
+                    "id": "uid-alice",
                     "login": "alice@example.com",
                     "mailboxHost": "alice-kith.tail.ts.net"
                 }
@@ -146,7 +146,7 @@ async fn test_full_contact_workflow() {
         args["created"].get("c0").is_some(),
         "created.c0 must be present; got: {args}"
     );
-    // Oracle: id equals tailscaleUserId (per kith-store Contact model).
+    // Oracle: I-D §ChatContact — id IS the userId from the auth layer.
     assert_eq!(args["created"]["c0"]["id"], "uid-alice");
     let new_state_after_set = args["newState"].as_str().unwrap().to_string();
 
@@ -165,8 +165,8 @@ async fn test_full_contact_workflow() {
     assert_eq!(call_id, "c1");
     let list = args["list"].as_array().expect("list must be array");
     assert_eq!(list.len(), 1, "exactly one contact in list");
-    // Oracle: field names from kith-core Contact serde — tailscaleUserId.
-    assert_eq!(list[0]["tailscaleUserId"], "uid-alice");
+    // Oracle: I-D §ChatContact — id IS the userId from the auth layer.
+    assert_eq!(list[0]["id"], "uid-alice");
     assert_eq!(list[0]["login"], "alice@example.com");
     // Oracle: state returned by get must match newState returned by set.
     assert_eq!(args["state"], new_state_after_set);
@@ -220,7 +220,7 @@ async fn test_full_chat_workflow() {
             "accountId": "a-self",
             "create": {
                 "c0": {
-                    "tailscaleUserId": "uid-bob",
+                    "id": "uid-bob",
                     "login": "bob@example.com",
                     "mailboxHost": "bob-kith.tail.ts.net"
                 }
@@ -319,7 +319,7 @@ async fn test_full_message_workflow() {
             "accountId": "a-self",
             "create": {
                 "c0": {
-                    "tailscaleUserId": "uid-carol",
+                    "id": "uid-carol",
                     "login": "carol@example.com",
                     "mailboxHost": "carol-kith.tail.ts.net"
                 }
@@ -578,13 +578,13 @@ async fn test_message_body_size_boundary_exact() {
                 1000,
             )
             .unwrap();
-        let chat_id = kith_core::chat::compute_chat_id(&[owner_id, "uid-peer-sz"]);
+        let chat_id = "test-chat-sz1".to_string();
         guard
             .chats()
-            .get_or_create(&chat_id, "direct", &["uid-peer-sz"], 1000)
+            .create(&chat_id, "direct", Some("uid-peer-sz"), 1000)
             .unwrap();
     }
-    let chat_id = kith_core::chat::compute_chat_id(&[owner_id, "uid-peer-sz"]);
+    let chat_id = "test-chat-sz1".to_string();
 
     // body = exactly 65536 ASCII bytes — must succeed.
     let exact_body = "x".repeat(65536);
@@ -638,13 +638,13 @@ async fn test_message_body_size_boundary_exceeded() {
                 1000,
             )
             .unwrap();
-        let chat_id = kith_core::chat::compute_chat_id(&[owner_id, "uid-peer-sz2"]);
+        let chat_id = "test-chat-sz2".to_string();
         guard
             .chats()
-            .get_or_create(&chat_id, "direct", &["uid-peer-sz2"], 1000)
+            .create(&chat_id, "direct", Some("uid-peer-sz2"), 1000)
             .unwrap();
     }
-    let chat_id = kith_core::chat::compute_chat_id(&[owner_id, "uid-peer-sz2"]);
+    let chat_id = "test-chat-sz2".to_string();
 
     // body = 65537 bytes — must be rejected.
     let oversized_body = "x".repeat(65537);

@@ -67,18 +67,24 @@ fn contacts_list_with_data() {
 
     let alice = contacts
         .iter()
-        .find(|c| c.tailscale_user_id == "uid-alice")
-        .expect("alice must be findable by tailscale_user_id");
+        .find(|c| c.id == "uid-alice")
+        .expect("alice must be findable by id");
     assert_eq!(alice.display_name, Some("Alice Liddell".to_string()));
-    assert_eq!(alice.mailbox_host, "alice-kith.tail.ts.net");
+    assert_eq!(
+        store.contacts().get_mailbox_host("uid-alice").unwrap(),
+        Some("alice-kith.tail.ts.net".to_string())
+    );
     assert!(!alice.blocked);
 
     let bob = contacts
         .iter()
-        .find(|c| c.tailscale_user_id == "uid-bob")
-        .expect("bob must be findable by tailscale_user_id");
+        .find(|c| c.id == "uid-bob")
+        .expect("bob must be findable by id");
     assert_eq!(bob.display_name, None);
-    assert_eq!(bob.mailbox_host, "bob-kith.tail.ts.net");
+    assert_eq!(
+        store.contacts().get_mailbox_host("uid-bob").unwrap(),
+        Some("bob-kith.tail.ts.net".to_string())
+    );
     assert!(!bob.blocked);
 }
 

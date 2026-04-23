@@ -184,7 +184,10 @@ pub fn build_session(
     );
 
     let mut primary_accounts = HashMap::new();
-    primary_accounts.insert("urn:ietf:params:jmap:chat".to_string(), "a-self".to_string());
+    primary_accounts.insert(
+        "urn:ietf:params:jmap:chat".to_string(),
+        "a-self".to_string(),
+    );
 
     Session {
         capabilities: Capabilities {
@@ -917,7 +920,10 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_mixed_batch() {
         let mut d = Dispatcher::new();
-        d.register("ChatContact/get", Box::new(EchoHandler(serde_json::json!({}))));
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(serde_json::json!({}))),
+        );
         let req = JmapRequest {
             using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![
@@ -1293,7 +1299,10 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_result_reference_resolution_failure() {
         let mut d = Dispatcher::new();
-        d.register("ChatContact/get", Box::new(EchoHandler(json!({"list": []}))));
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(json!({"list": []}))),
+        );
         d.register("Chat/get", Box::new(EchoHandler(json!({}))));
 
         let req = JmapRequest {

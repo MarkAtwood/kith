@@ -301,7 +301,10 @@ mod tests {
 
         let client = reqwest::Client::new();
         let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
+            using: vec![
+                "urn:ietf:params:jmap:core".into(),
+                "urn:ietf:params:jmap:chat".into(),
+            ],
             method_calls: vec![(
                 "Chat/get".into(),
                 serde_json::json!({"accountId": "a-self"}),

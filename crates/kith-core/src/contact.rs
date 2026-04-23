@@ -1,37 +1,38 @@
 use serde::{Deserialize, Serialize};
 
 /// A contact known to this mailbox.
-/// Auto-created on first inbound delivery or manually by owner.
+///
+/// `id` is the stable, opaque userId provided by the authentication layer —
+/// the same value used as `senderUserId` in `Peer/deliver`. It is the single
+/// identity key for this contact within this deployment. Never parse it or
+/// assume a format; compare with `==` only.
+///
+/// `mailboxHost` is intentionally absent: it is a delivery-routing detail
+/// stored in the DB layer (see `ContactStore::get_mailbox_host`) but not
+/// exposed in the JMAP ChatContact type per the I-D.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChatContact {
-    /// Server-assigned opaque identifier.
+    /// The userId provided by the authentication layer.
+    /// This IS the identity — there is no separate identity namespace.
     pub id: String,
-    /// Opaque stable key from Tailscale identity provider.
-    /// Never parse or assume format. Compare with == only.
-    #[serde(rename = "tailscaleUserId")]
-    pub tailscale_user_id: String,
-    /// Email-shaped login (e.g. "alice@example.com"). May be empty on Headscale.
+    /// Human-readable login identifier. Falls back to `id` when `displayName` is absent.
     pub login: String,
-    /// MagicDNS hostname of the contact's mailbox (e.g. "alice-kith.tail-xxxxx.ts.net").
-    #[serde(rename = "mailboxHost")]
-    pub mailbox_host: String,
-    /// User-editable display name. Falls back to login or tailscale_user_id if absent.
+    /// User-editable display name. Falls back to `login`, then `id` if absent or empty.
     #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    /// When this contact was first seen (RFC 3339 UTC).
+    /// When this contact was first recorded (RFC 3339 UTC).
     #[serde(rename = "firstSeenAt")]
     pub first_seen_at: String,
-    /// When this contact was last seen (RFC 3339 UTC).
+    /// Time of most recent interaction with this contact's mailbox (RFC 3339 UTC).
     #[serde(rename = "lastSeenAt")]
     pub last_seen_at: String,
-    /// Whether this contact is blocked. Blocked contacts cannot deliver messages.
+    /// When `true`, messages from this contact are silently dropped.
     pub blocked: bool,
 }
 
 impl ChatContact {
     /// Returns the best available display string for this contact.
-    /// Falls back: display_name → login → tailscale_user_id.
-    /// Never returns an empty string.
+    /// Falls back: display_name → login → id. Never returns an empty string.
     pub fn display_name_or_fallback(&self) -> &str {
         if let Some(name) = &self.display_name {
             if !name.is_empty() {
@@ -41,7 +42,7 @@ impl ChatContact {
         if !self.login.is_empty() {
             return self.login.as_str();
         }
-        &self.tailscale_user_id
+        &self.id
     }
 }
 
@@ -51,10 +52,8 @@ mod tests {
 
     fn sample_contact() -> ChatContact {
         ChatContact {
-            id: "c-001".into(),
-            tailscale_user_id: "uid-456".into(),
+            id: "uid-456".into(),
             login: "bob@example.com".into(),
-            mailbox_host: "bob-kith.tail-yyyyy.ts.net".into(),
             display_name: Some("Bob Smith".into()),
             first_seen_at: "2026-01-01T00:00:00Z".into(),
             last_seen_at: "2026-04-18T20:14:00Z".into(),
@@ -74,14 +73,7 @@ mod tests {
     fn contact_json_field_names_are_camel_case() {
         let c = sample_contact();
         let json_str = serde_json::to_string(&c).unwrap();
-        assert!(
-            json_str.contains("\"tailscaleUserId\""),
-            "must use camelCase tailscaleUserId"
-        );
-        assert!(
-            json_str.contains("\"mailboxHost\""),
-            "must use camelCase mailboxHost"
-        );
+        // Oracle: I-D §ChatContact — field names are camelCase per JMAP convention.
         assert!(
             json_str.contains("\"firstSeenAt\""),
             "must use camelCase firstSeenAt"
@@ -94,7 +86,19 @@ mod tests {
             json_str.contains("\"displayName\""),
             "must use camelCase displayName"
         );
-        assert!(!json_str.contains("\"tailscale_user_id\""));
+        // tailscaleUserId and mailboxHost must NOT appear — they were removed in I-D alignment.
+        assert!(
+            !json_str.contains("tailscaleUserId"),
+            "tailscaleUserId must not be serialized"
+        );
+        assert!(
+            !json_str.contains("mailboxHost"),
+            "mailboxHost must not be serialized"
+        );
+        assert!(
+            !json_str.contains("tailscale_user_id"),
+            "snake_case must not appear"
+        );
     }
 
     #[test]
@@ -122,7 +126,8 @@ mod tests {
     }
 
     #[test]
-    fn display_name_or_fallback_uses_user_id() {
+    fn display_name_or_fallback_uses_id() {
+        // Oracle: when both displayName and login are absent/empty, fall back to id.
         let mut c = sample_contact();
         c.display_name = None;
         c.login = String::new();

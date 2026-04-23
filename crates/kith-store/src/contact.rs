@@ -104,9 +104,12 @@ impl<'a> ContactStore<'a> {
     }
 
     /// Fetch a single contact by peer_user_id.  Returns None if not found.
-    pub fn get_by_peer_user_id(&self, peer_user_id: &str) -> Result<Option<ChatContact>, KithError> {
+    pub fn get_by_peer_user_id(
+        &self,
+        peer_user_id: &str,
+    ) -> Result<Option<ChatContact>, KithError> {
         let result = self.conn.query_row(
-            "SELECT peer_user_id, peer_login, peer_mailbox_host, display_name, \
+            "SELECT peer_user_id, peer_login, display_name, \
                     first_seen_at, last_seen_at, blocked \
              FROM contacts WHERE peer_user_id = ?1",
             params![peer_user_id],
@@ -119,12 +122,26 @@ impl<'a> ContactStore<'a> {
         }
     }
 
+    /// Return the delivery host for a contact (DB-only; not in ChatContact JMAP type).
+    pub fn get_mailbox_host(&self, peer_user_id: &str) -> Result<Option<String>, KithError> {
+        let result = self.conn.query_row(
+            "SELECT peer_mailbox_host FROM contacts WHERE peer_user_id = ?1",
+            params![peer_user_id],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(host) => Ok(Some(host)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(db_err(e)),
+        }
+    }
+
     /// Return all contacts ordered by peer_login.
     pub fn list(&self) -> Result<Vec<ChatContact>, KithError> {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT peer_user_id, peer_login, peer_mailbox_host, display_name, \
+                "SELECT peer_user_id, peer_login, display_name, \
                         first_seen_at, last_seen_at, blocked \
                  FROM contacts ORDER BY peer_login",
             )
@@ -236,19 +253,18 @@ impl<'a> ContactStore<'a> {
 }
 
 /// Map a rusqlite Row to a ChatContact.  Column order must match the SELECT above.
+/// Note: peer_mailbox_host is not selected here — it is a DB-only routing field.
+/// Use ContactStore::get_mailbox_host when delivery routing is needed.
 fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let peer_user_id: String = row.get(0)?;
     let peer_login: String = row.get(1)?;
-    let peer_mailbox_host: String = row.get(2)?;
-    let display_name: Option<String> = row.get(3)?;
-    let first_seen_at: i64 = row.get(4)?;
-    let last_seen_at: i64 = row.get(5)?;
-    let blocked: i64 = row.get(6)?;
+    let display_name: Option<String> = row.get(2)?;
+    let first_seen_at: i64 = row.get(3)?;
+    let last_seen_at: i64 = row.get(4)?;
+    let blocked: i64 = row.get(5)?;
     Ok(ChatContact {
-        id: peer_user_id.clone(),
-        tailscale_user_id: peer_user_id,
+        id: peer_user_id,
         login: peer_login,
-        mailbox_host: peer_mailbox_host,
         display_name,
         first_seen_at: crate::util::unix_secs_to_rfc3339(first_seen_at),
         last_seen_at: crate::util::unix_secs_to_rfc3339(last_seen_at),
@@ -304,9 +320,12 @@ mod tests {
             .get_by_peer_user_id("uid-1")
             .unwrap()
             .expect("contact must exist");
-        assert_eq!(c.tailscale_user_id, "uid-1");
+        assert_eq!(c.id, "uid-1");
         assert_eq!(c.login, "alice@example.com");
-        assert_eq!(c.mailbox_host, "alice-kith.tail.ts.net");
+        assert_eq!(
+            cs.get_mailbox_host("uid-1").unwrap(),
+            Some("alice-kith.tail.ts.net".to_string())
+        );
         assert_eq!(c.display_name, Some("Alice".into()));
         assert_eq!(c.first_seen_at, crate::util::unix_secs_to_rfc3339(1000));
         assert_eq!(c.last_seen_at, crate::util::unix_secs_to_rfc3339(1000));
@@ -542,7 +561,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(c.login, "bob@test");
-        assert_eq!(c.mailbox_host, "bob.ts.net");
+        assert_eq!(
+            store.contacts().get_mailbox_host("uid-bob").unwrap(),
+            Some("bob.ts.net".to_string())
+        );
         assert_eq!(c.display_name, Some("Bob".to_string()));
         assert_eq!(c.first_seen_at, crate::util::unix_secs_to_rfc3339(1000));
         assert!(!c.blocked);
@@ -576,7 +598,10 @@ mod tests {
         .unwrap();
         let c = cs.get_by_peer_user_id("uid-bob").unwrap().unwrap();
         assert_eq!(c.display_name, Some("Bob Custom".to_string())); // preserved
-        assert_eq!(c.mailbox_host, "bob-new.ts.net"); // updated
+        assert_eq!(
+            cs.get_mailbox_host("uid-bob").unwrap(),
+            Some("bob-new.ts.net".to_string())
+        ); // updated
     }
 
     #[test]

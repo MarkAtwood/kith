@@ -16,7 +16,6 @@ mod inner {
     use axum::body::Body;
     use axum::extract::connect_info::MockConnectInfo;
     use axum::http::Request;
-    use kith_core::compute_chat_id;
     use kith_core::AuthError;
     use kith_events::make_channel;
     use kith_store::Store;
@@ -103,23 +102,6 @@ mod inner {
     }
 
     // -----------------------------------------------------------------------
-    // Offline oracle: confirm EXPECTED_GROUP_CHAT_ID constant is correct.
-    //
-    // Oracle: independent of compute_chat_id — printf ... | sha256sum.
-    // The constant was derived offline and is verified here against the
-    // sort-and-hash implementation so there is a single point of truth.
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn group_chat_id_constant_matches_compute_chat_id() {
-        let computed = compute_chat_id(&[ALICE_OWNER_ID, BOB_OWNER_ID, CAROL_OWNER_ID]);
-        assert_eq!(
-            computed, EXPECTED_GROUP_CHAT_ID,
-            "EXPECTED_GROUP_CHAT_ID must match compute_chat_id for alice+bob+carol"
-        );
-    }
-
-    // -----------------------------------------------------------------------
     // Task B: read_receipt_round_trip
     //
     // Scenario:
@@ -167,7 +149,7 @@ mod inner {
             .lock()
             .expect("alice store lock must not be poisoned")
             .chats()
-            .get_or_create(chat_id, "direct", &[BOB_OWNER_ID], 1_000_000)
+            .create(chat_id, "direct", Some(BOB_OWNER_ID), 1_000_000)
             .expect("alice: create 1:1 chat must succeed");
 
         // Step 4: alice sends a message via her in-process router.
@@ -510,21 +492,20 @@ mod inner {
         };
         let alice_router = build_app(alice_state).layer(MockConnectInfo(ALICE_MOCK_ADDR));
 
-        // Step 3: create the group chat in alice's store.
-        // Participant list for get_or_create excludes the owner (alice); only
-        // peer IDs are listed.
+        // Step 3: create the group chat in alice's store and register members.
         let group_chat_id = EXPECTED_GROUP_CHAT_ID;
-        alice_store
-            .lock()
-            .expect("alice store lock must not be poisoned")
-            .chats()
-            .get_or_create(
-                group_chat_id,
-                "group",
-                &[BOB_OWNER_ID, CAROL_OWNER_ID],
-                1_000_000,
-            )
-            .expect("alice: create group chat must succeed");
+        {
+            let guard = alice_store
+                .lock()
+                .expect("alice store lock must not be poisoned");
+            let cs = guard.chats();
+            cs.create(group_chat_id, "group", None, 1_000_000)
+                .expect("alice: create group chat must succeed");
+            cs.add_member(group_chat_id, BOB_OWNER_ID)
+                .expect("alice: add bob to group chat must succeed");
+            cs.add_member(group_chat_id, CAROL_OWNER_ID)
+                .expect("alice: add carol to group chat must succeed");
+        }
 
         // Step 4: alice sends a message to the group chat.
         const GROUP_MSG_BODY: &str = "hello group";
@@ -665,19 +646,21 @@ mod inner {
             .upsert(CAROL_OWNER_ID, CAROL_LOGIN, carol_host, None, 1_000_000)
             .expect("alice: upsert carol as contact must succeed");
 
-        // Step 4: create the group chat in alice's store.
+        // Step 4: create the group chat in alice's store and register members.
         let group_chat_id = EXPECTED_GROUP_CHAT_ID;
-        pair.alice_store
-            .lock()
-            .expect("alice store lock must not be poisoned")
-            .chats()
-            .get_or_create(
-                group_chat_id,
-                "group",
-                &[BOB_OWNER_ID, CAROL_OWNER_ID],
-                1_000_000,
-            )
-            .expect("alice: create group chat must succeed");
+        {
+            let guard = pair
+                .alice_store
+                .lock()
+                .expect("alice store lock must not be poisoned");
+            let cs = guard.chats();
+            cs.create(group_chat_id, "group", None, 1_000_000)
+                .expect("alice: create group chat must succeed");
+            cs.add_member(group_chat_id, BOB_OWNER_ID)
+                .expect("alice: add bob to group chat must succeed");
+            cs.add_member(group_chat_id, CAROL_OWNER_ID)
+                .expect("alice: add carol to group chat must succeed");
+        }
 
         // Step 5: alice sends a message to the group chat.
         let request_body = serde_json::json!({

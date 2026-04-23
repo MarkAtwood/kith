@@ -18,7 +18,7 @@ use axum::body::Body;
 use axum::extract::connect_info::MockConnectInfo;
 use axum::http::{Request, StatusCode};
 use axum::Router;
-use kith_core::{compute_chat_id, AuthError};
+use kith_core::AuthError;
 use kith_events::make_channel;
 use kith_store::Store;
 use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
@@ -249,7 +249,9 @@ async fn e2e_session_endpoint_returns_kith_capability() {
     // Kith capability must be present (RFC 8620 §2 requires all server
     // capabilities to be listed; "urn:ietf:params:jmap:chat" is the kith-specific one).
     assert!(
-        json["capabilities"].get("urn:ietf:params:jmap:chat").is_some(),
+        json["capabilities"]
+            .get("urn:ietf:params:jmap:chat")
+            .is_some(),
         "capabilities must include 'urn:ietf:params:jmap:chat'; body: {body}"
     );
 
@@ -585,7 +587,7 @@ async fn peer_deliver_sender_mismatch_rejected() {
     // the WhoIs identity (PEER_ID).  The chatId is derived from the correct
     // participants so any failure is solely due to the sender mismatch, not a
     // chatId issue.  (DeliverHandler validates sender first, then chatId.)
-    let chat_id = compute_chat_id(&[PEER_ID, OWNER_ID]);
+    let chat_id = "test-chat-sender-mismatch".to_string();
     // unwrap: Ulid::new() cannot fail; to_string() cannot fail.
     let msg_id = Ulid::new().to_string();
     let request_body = serde_json::json!({

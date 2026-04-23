@@ -121,23 +121,22 @@ fn cmd_contacts_list(config: &Config) -> Result<(), Box<dyn std::error::Error>> 
         return Ok(());
     }
     println!(
-        "{:<30} {:<25} {:<40} {:<8} LAST SEEN",
-        "LOGIN", "DISPLAY NAME", "MAILBOX HOST", "BLOCKED"
+        "{:<30} {:<25} {:<8} LAST SEEN",
+        "LOGIN", "DISPLAY NAME", "BLOCKED"
     );
-    println!("{}", "-".repeat(130));
+    println!("{}", "-".repeat(80));
     for contact in &contacts {
         let login_display = if contact.login.is_empty() {
-            contact.tailscale_user_id.as_str()
+            contact.id.as_str()
         } else {
             contact.login.as_str()
         };
         let display_name = contact.display_name.as_deref().unwrap_or("-");
         let blocked_str = if contact.blocked { "BLOCKED" } else { "ok" };
         println!(
-            "{:<30} {:<25} {:<40} {:<8} {}",
+            "{:<30} {:<25} {:<8} {}",
             fit_col(login_display, 30),
             fit_col(display_name, 25),
-            fit_col(&contact.mailbox_host, 40),
             blocked_str,
             contact.last_seen_at
         );

@@ -40,7 +40,10 @@ mod tests {
     #[test]
     fn jmap_request_round_trip() {
         let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
+            using: vec![
+                "urn:ietf:params:jmap:core".into(),
+                "urn:ietf:params:jmap:chat".into(),
+            ],
             method_calls: vec![
                 (
                     "ChatContact/get".into(),

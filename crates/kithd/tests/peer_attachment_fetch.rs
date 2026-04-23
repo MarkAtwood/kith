@@ -26,7 +26,6 @@ mod inner {
     use axum::extract::connect_info::MockConnectInfo;
     use axum::http::Request;
     use kith_attach::BlobStore;
-    use kith_core::compute_chat_id;
     use kith_core::AuthError;
     use kith_events::make_channel;
     use kith_store::Store;
@@ -124,18 +123,6 @@ mod inner {
     // -----------------------------------------------------------------------
     // Chat ID oracle cross-check
     // -----------------------------------------------------------------------
-
-    /// Confirms the EXPECTED_CHAT_ID constant matches compute_chat_id.
-    /// This is the single place where compute_chat_id is exercised against
-    /// the offline-computed constant; delivery steps use the constant directly.
-    #[test]
-    fn chat_id_matches_expected_constant() {
-        let computed = compute_chat_id(&[SENDER_OWNER_ID, RECEIVER_OWNER_ID]);
-        assert_eq!(
-            computed, EXPECTED_CHAT_ID,
-            "EXPECTED_CHAT_ID must match compute_chat_id for sender+receiver"
-        );
-    }
 
     /// Confirms the EXPECTED_SHA256 constant matches an independent sha2 computation.
     #[test]
@@ -333,7 +320,7 @@ mod inner {
             .lock()
             .expect("receiver store lock must not be poisoned")
             .chats()
-            .get_or_create(chat_id, "direct", &[SENDER_OWNER_ID], 1_000_000)
+            .create(chat_id, "direct", Some(SENDER_OWNER_ID), 1_000_000)
             .expect("receiver: create chat must succeed");
 
         let msg_id = ulid::Ulid::new().to_string();

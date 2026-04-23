@@ -430,7 +430,11 @@ impl Store {
             }
         }
 
-        Ok([("ChatContact", contact), ("Chat", chat), ("Message", message)])
+        Ok([
+            ("ChatContact", contact),
+            ("Chat", chat),
+            ("Message", message),
+        ])
     }
 }
 
@@ -777,9 +781,9 @@ mod tests {
 
         store
             .chats()
-            .get_or_create("chat-aaa", "direct", &["uid-bob"], 1_000_000)
+            .create("chat-aaa", "direct", Some("uid-bob"), 1_000_000)
             .expect("create");
-        // Drain the initial state change from get_or_create.
+        // Drain the initial state change from create.
         let _ = rx.try_recv();
 
         store

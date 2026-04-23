@@ -1,8 +1,9 @@
-use kith_core::{chat::compute_chat_id, JmapError};
+use kith_core::JmapError;
 use kith_jmap::{HandlerFuture, JmapHandler};
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
+use ulid::Ulid;
 
 // ---------------------------------------------------------------------------
 // Chat/get
@@ -139,7 +140,7 @@ impl JmapHandler for ChatSetHandler {
         args: serde_json::Value,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
-        let owner_id = self.owner_id.clone();
+        let _owner_id = self.owner_id.clone();
 
         Box::pin(async move {
             // Step 1: Extract accountId, create, update, destroy.
@@ -227,8 +228,8 @@ impl JmapHandler for ChatSetHandler {
                         .lock()
                         .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-                    // Step 4c: Look up contact.
-                    let contact = match guard
+                    // Step 4c: Look up contact (needed for blocked check).
+                    let _contact = match guard
                         .contacts()
                         .get_by_peer_user_id(&contact_id)
                         .map_err(|e| JmapError::server_fail(e.to_string()))?
@@ -259,24 +260,29 @@ impl JmapHandler for ChatSetHandler {
                         continue;
                     }
 
-                    // Step 4e: Get contact's peer_user_id.
-                    let contact_peer_user_id = contact.tailscale_user_id.clone();
-
-                    // Step 4f: Compute chat_id server-side.
-                    // CRITICAL: never trust a client-supplied id field.
-                    let chat_id =
-                        compute_chat_id(&[owner_id.as_str(), contact_peer_user_id.as_str()]);
-
-                    // Step 4g: get_or_create is idempotent.
-                    let chat = guard
+                    // Step 4e: Dedup — return existing direct chat if one exists.
+                    let existing = guard
                         .chats()
-                        .get_or_create(
-                            &chat_id,
-                            "direct",
-                            &[contact_peer_user_id.as_str()],
-                            now_unix,
-                        )
+                        .find_direct_by_contact_id(&contact_id)
                         .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                    // Step 4f: Create or reuse.
+                    let chat = if let Some(existing_chat) = existing {
+                        // Already exists — report as updated rather than created.
+                        drop(guard);
+                        created.insert(
+                            client_id.clone(),
+                            serde_json::to_value(&existing_chat)
+                                .map_err(|e| JmapError::server_fail(e.to_string()))?,
+                        );
+                        continue;
+                    } else {
+                        let chat_id = Ulid::new().to_string();
+                        guard
+                            .chats()
+                            .create(&chat_id, "direct", Some(&contact_id), now_unix)
+                            .map_err(|e| JmapError::server_fail(e.to_string()))?
+                    };
 
                     // Step 4h: Drop lock.
                     drop(guard);
@@ -519,7 +525,6 @@ impl JmapHandler for ChatQueryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kith_core::chat::compute_chat_id;
     use kith_store::Store;
     use serde_json::json;
 
@@ -590,9 +595,7 @@ mod tests {
     }
 
     // Oracle: Chat/set create with a known, unblocked contact must return the created chat.
-    // The returned id must equal compute_chat_id([owner_id, contact_peer_user_id]).
-    // We test that the handler uses compute_chat_id correctly (not testing compute_chat_id itself,
-    // which has its own tests in kith-core).
+    // The returned id must be a non-empty ULID string (server-assigned, not derived from participants).
     #[tokio::test]
     async fn test_chat_set_create_valid() {
         let store = make_store();
@@ -626,21 +629,17 @@ mod tests {
             "c0 must be in created, got: {created:?}"
         );
 
-        // Oracle: the returned chat id must equal compute_chat_id([owner_id, contact_peer_user_id]).
-        let expected_id = compute_chat_id(&[owner_id, contact_peer_user_id]);
+        // Oracle: the returned chat id must be a non-empty string (server-assigned ULID).
         let actual_id = created["c0"]["id"]
             .as_str()
             .expect("created chat must have an id field");
-        assert_eq!(
-            actual_id, expected_id,
-            "chat id must be compute_chat_id([owner_id, contact_peer_user_id])"
-        );
+        assert!(!actual_id.is_empty(), "created chat id must not be empty");
 
         // Verify the chat was actually written to the store.
         let guard = store.lock().unwrap();
         let chat = guard
             .chats()
-            .get(&expected_id)
+            .get(actual_id)
             .unwrap()
             .expect("chat must exist in store after create");
         assert_eq!(chat.kind, "direct");
@@ -780,7 +779,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-new-1", "direct", &["uid:alice"], now_unix)
+                .create("chat-new-1", "direct", Some("uid:alice"), now_unix)
                 .unwrap();
         }
 
@@ -830,24 +829,23 @@ mod tests {
     #[tokio::test]
     async fn test_chat_query_all() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let now_unix: i64 = 1_000_000;
 
         upsert_contact(&store, "uid-bob");
         upsert_contact(&store, "uid-carol");
 
-        let chat_id_1 = compute_chat_id(&[owner_id, "uid-bob"]);
-        let chat_id_2 = compute_chat_id(&[owner_id, "uid-carol"]);
+        let chat_id_1 = "chat-bob-test";
+        let chat_id_2 = "chat-carol-test";
 
         {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create(&chat_id_1, "direct", &["uid-bob"], now_unix)
+                .create(&chat_id_1, "direct", Some("uid-bob"), now_unix)
                 .unwrap();
             guard
                 .chats()
-                .get_or_create(&chat_id_2, "direct", &["uid-carol"], now_unix + 1)
+                .create(&chat_id_2, "direct", Some("uid-carol"), now_unix + 1)
                 .unwrap();
         }
 
@@ -881,30 +879,29 @@ mod tests {
     #[tokio::test]
     async fn test_chat_query_pagination() {
         let store = make_store();
-        let owner_id = "uid-owner";
 
         upsert_contact(&store, "uid-p1");
         upsert_contact(&store, "uid-p2");
         upsert_contact(&store, "uid-p3");
 
-        let chat_id_1 = compute_chat_id(&[owner_id, "uid-p1"]);
-        let chat_id_2 = compute_chat_id(&[owner_id, "uid-p2"]);
-        let chat_id_3 = compute_chat_id(&[owner_id, "uid-p3"]);
+        let chat_id_1 = "chat-p1-test";
+        let chat_id_2 = "chat-p2-test";
+        let chat_id_3 = "chat-p3-test";
 
         {
             let guard = store.lock().unwrap();
             // Insert in ascending time order so createdAt DESC puts chat3 first.
             guard
                 .chats()
-                .get_or_create(&chat_id_1, "direct", &["uid-p1"], 1_000_001)
+                .create(&chat_id_1, "direct", Some("uid-p1"), 1_000_001)
                 .unwrap();
             guard
                 .chats()
-                .get_or_create(&chat_id_2, "direct", &["uid-p2"], 1_000_002)
+                .create(&chat_id_2, "direct", Some("uid-p2"), 1_000_002)
                 .unwrap();
             guard
                 .chats()
-                .get_or_create(&chat_id_3, "direct", &["uid-p3"], 1_000_003)
+                .create(&chat_id_3, "direct", Some("uid-p3"), 1_000_003)
                 .unwrap();
         }
 

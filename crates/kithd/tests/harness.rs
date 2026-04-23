@@ -359,27 +359,6 @@ async fn harness_smoke_test() {
 }
 
 // ---------------------------------------------------------------------------
-// Validate EXPECTED_CHAT_ID against compute_chat_id (single cross-check point)
-// ---------------------------------------------------------------------------
-
-/// Confirms that `compute_chat_id` produces the independently-computed value
-/// stored in `EXPECTED_CHAT_ID`.  This is the one place where the function is
-/// exercised against an external oracle; delivery tests use the constant
-/// directly so that a systematic error in `compute_chat_id` would be caught
-/// here rather than silently passing through both sides.
-#[cfg(feature = "test-utils")]
-#[test]
-fn chat_id_matches_expected_constant() {
-    use kith_core::compute_chat_id;
-    let computed = compute_chat_id(&[inner::ALICE_OWNER_ID, inner::BOB_OWNER_ID]);
-    assert_eq!(
-        computed,
-        inner::EXPECTED_CHAT_ID,
-        "compute_chat_id must match the offline-computed oracle value"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Full delivery test: alice → outbox_tick → bob
 // ---------------------------------------------------------------------------
 
@@ -432,7 +411,7 @@ async fn full_message_delivery() {
         .lock()
         .expect("alice store lock must not be poisoned")
         .chats()
-        .get_or_create(&chat_id, "direct", &[inner::BOB_OWNER_ID], 1_000_000)
+        .create(&chat_id, "direct", Some(inner::BOB_OWNER_ID), 1_000_000)
         .expect("alice: create chat must succeed");
 
     // Step 5: send Message/set create to alice's in-process router.
@@ -671,7 +650,7 @@ async fn offline_delivery_and_retry() {
 
         guard
             .chats()
-            .get_or_create(&chat_id, "direct", &[inner::BOB_OWNER_ID], now)
+            .create(&chat_id, "direct", Some(inner::BOB_OWNER_ID), now)
             .expect("alice: create chat must succeed");
 
         guard
@@ -909,7 +888,7 @@ async fn full_message_delivery_with_attachment() {
         .lock()
         .expect("alice store lock must not be poisoned")
         .chats()
-        .get_or_create(&chat_id, "direct", &[inner::BOB_OWNER_ID], 1_000_000)
+        .create(&chat_id, "direct", Some(inner::BOB_OWNER_ID), 1_000_000)
         .expect("alice: create chat must succeed");
 
     // Step 5: create a message with the uploaded attachment via Message/set.

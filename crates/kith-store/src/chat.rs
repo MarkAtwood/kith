@@ -26,47 +26,29 @@ impl<'a> ChatStore<'a> {
         }
     }
 
-    /// Get or create a chat by its deterministic ID.
+    /// Create a chat with a caller-supplied ID (server-assigned ULID for owner
+    /// chats, peer-supplied chatId for inbound Peer/deliver).
     ///
-    /// The `chat_id` must already be computed by the caller via
-    /// `kith_core::compute_chat_id`. `participant_user_ids` contains the
-    /// peer_user_id values excluding self.
-    ///
-    /// The chat INSERT and all member INSERTs are wrapped in a single transaction
-    /// so a crash mid-way cannot leave a chat with missing members. The state
-    /// counter is advanced only if at least one row was actually inserted
-    /// (i.e. the chat is new or new members were added) to avoid spurious
-    /// Chat/changes deltas on repeated calls for an existing chat.
-    pub fn get_or_create(
+    /// Idempotent: INSERT OR IGNORE means a second call with the same `chat_id`
+    /// is a no-op and returns the existing row.  State is advanced only when a
+    /// new row is actually inserted.
+    pub fn create(
         &self,
         chat_id: &str,
         kind: &str,
-        participant_user_ids: &[&str],
+        contact_id: Option<&str>,
         now_unix: i64,
     ) -> Result<Chat, KithError> {
-        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
-
-        let chat_rows = tx
+        let affected = self
+            .conn
             .execute(
-                "INSERT OR IGNORE INTO chats (id, kind, created_at) VALUES (?1, ?2, ?3)",
-                params![chat_id, kind, now_unix],
+                "INSERT OR IGNORE INTO chats (id, kind, contact_id, created_at) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![chat_id, kind, contact_id, now_unix],
             )
             .map_err(db_err)?;
-        let mut any_new = chat_rows > 0;
 
-        for peer_id in participant_user_ids {
-            let member_rows = tx
-                .execute(
-                    "INSERT OR IGNORE INTO chat_members (chat_id, peer_user_id) VALUES (?1, ?2)",
-                    params![chat_id, peer_id],
-                )
-                .map_err(db_err)?;
-            any_new |= member_rows > 0;
-        }
-
-        tx.commit().map_err(db_err)?;
-
-        if any_new {
+        if affected > 0 {
             let new_state = self.advance_state()?;
             self.emit(new_state);
         }
@@ -75,17 +57,84 @@ impl<'a> ChatStore<'a> {
             .ok_or_else(|| KithError::Store(format!("chat '{}' not found after insert", chat_id)))
     }
 
+    /// Add a peer participant to a group chat.
+    ///
+    /// Idempotent: INSERT OR IGNORE is a no-op if the row already exists.
+    pub fn add_member(&self, chat_id: &str, peer_user_id: &str) -> Result<(), KithError> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO chat_members (chat_id, peer_user_id) VALUES (?1, ?2)",
+                params![chat_id, peer_user_id],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Return all peer participant IDs for a chat.
+    ///
+    /// For group chats, returns members stored in `chat_members`.
+    pub fn get_members(&self, chat_id: &str) -> Result<Vec<String>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT peer_user_id FROM chat_members WHERE chat_id = ?1")
+            .map_err(db_err)?;
+        let members = stmt
+            .query_map(params![chat_id], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        Ok(members)
+    }
+
+    /// Find an existing direct chat by the peer contact's userId.
+    ///
+    /// Used by Chat/set create to deduplicate: if a direct chat with this
+    /// contact already exists, return it rather than creating a new one.
+    pub fn find_direct_by_contact_id(&self, contact_id: &str) -> Result<Option<Chat>, KithError> {
+        let row = self.conn.query_row(
+            "SELECT id, kind, contact_id, created_at, last_message_at \
+             FROM chats WHERE kind = 'direct' AND contact_id = ?1",
+            params![contact_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                ))
+            },
+        );
+        match row {
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(db_err(e)),
+            Ok(_) => {}
+        }
+        let (id, kind, contact_id_val, created_at_secs, last_message_at_secs) = row.unwrap();
+        let unread = self.unread_count(&id)?;
+        Ok(Some(Chat {
+            id,
+            kind,
+            contact_id: contact_id_val,
+            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
+            last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
+            unread_count: unread,
+        }))
+    }
+
     /// Fetch a single chat by ID, returning None if it does not exist.
     pub fn get(&self, chat_id: &str) -> Result<Option<Chat>, KithError> {
         let row = self.conn.query_row(
-            "SELECT id, kind, created_at, last_message_at FROM chats WHERE id = ?1",
+            "SELECT id, kind, contact_id, created_at, last_message_at \
+             FROM chats WHERE id = ?1",
             params![chat_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
                 ))
             },
         );
@@ -96,14 +145,13 @@ impl<'a> ChatStore<'a> {
             Ok(_) => {}
         }
 
-        let (id, kind, created_at_secs, last_message_at_secs) = row.unwrap();
-        let participants = self.load_participants(chat_id)?;
-        let unread = self.unread_count(chat_id)?;
+        let (id, kind, contact_id, created_at_secs, last_message_at_secs) = row.unwrap();
+        let unread = self.unread_count(&id)?;
 
         Ok(Some(Chat {
             id,
             kind,
-            participants,
+            contact_id,
             created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
             last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
             unread_count: unread,
@@ -115,19 +163,21 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, kind, created_at, last_message_at \
+                "SELECT id, kind, contact_id, created_at, last_message_at \
                  FROM chats \
                  ORDER BY last_message_at DESC NULLS LAST, created_at DESC",
             )
             .map_err(db_err)?;
 
-        let rows: Vec<(String, String, i64, Option<i64>)> = stmt
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(String, String, Option<String>, i64, Option<i64>)> = stmt
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
                 ))
             })
             .map_err(db_err)?
@@ -135,13 +185,12 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
 
         let mut chats = Vec::with_capacity(rows.len());
-        for (id, kind, created_at_secs, last_message_at_secs) in rows {
-            let participants = self.load_participants(&id)?;
+        for (id, kind, contact_id, created_at_secs, last_message_at_secs) in rows {
             let unread = self.unread_count(&id)?;
             chats.push(Chat {
                 id,
                 kind,
-                participants,
+                contact_id,
                 created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
                 last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
                 unread_count: unread,
@@ -260,22 +309,6 @@ impl<'a> ChatStore<'a> {
             new_state: current_state,
         })
     }
-
-    /// Load the peer_user_ids of all members for the given chat.
-    fn load_participants(&self, chat_id: &str) -> Result<Vec<String>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare(
-                "SELECT peer_user_id FROM chat_members WHERE chat_id = ?1 ORDER BY peer_user_id",
-            )
-            .map_err(db_err)?;
-        let ids: Vec<String> = stmt
-            .query_map(params![chat_id], |row| row.get(0))
-            .map_err(db_err)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(db_err)?;
-        Ok(ids)
-    }
 }
 
 #[cfg(test)]
@@ -285,18 +318,17 @@ mod tests {
     use kith_core::KithError;
 
     #[test]
-    fn get_or_create_is_idempotent() {
-        // Oracle: calling get_or_create twice with the same ID must return the
-        // same created_at value and not error. This verifies INSERT OR IGNORE
-        // semantics for both chats and chat_members.
+    fn create_is_idempotent() {
+        // Oracle: calling create twice with the same ID must return the
+        // same created_at value and not error. INSERT OR IGNORE semantics.
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
         let chat1 = cs
-            .get_or_create("chat-aaa", "direct", &["uid:bob"], 1_000_000)
+            .create("chat-aaa", "direct", Some("uid:bob"), 1_000_000)
             .unwrap();
         let chat2 = cs
-            .get_or_create("chat-aaa", "direct", &["uid:bob"], 2_000_000)
+            .create("chat-aaa", "direct", Some("uid:bob"), 2_000_000)
             .unwrap();
 
         assert_eq!(chat1.id, chat2.id);
@@ -305,21 +337,32 @@ mod tests {
             "created_at must not change on second call"
         );
         assert_eq!(chat1.kind, "direct");
+        assert_eq!(chat1.contact_id, Some("uid:bob".to_string()));
     }
 
     #[test]
-    fn participants_match_inserted_values() {
-        // Oracle: chat_members rows we insert must come back in the participants Vec.
+    fn find_direct_by_contact_id_returns_existing() {
+        // Oracle: a direct chat created with contact_id must be findable by that id.
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
-        let chat = cs
-            .get_or_create("chat-bbb", "group", &["uid:carol", "uid:dave"], 1_000_000)
+        cs.create("chat-bbb", "direct", Some("uid:carol"), 1_000_000)
             .unwrap();
 
-        let mut got = chat.participants.clone();
-        got.sort();
-        assert_eq!(got, vec!["uid:carol", "uid:dave"]);
+        let found = cs
+            .find_direct_by_contact_id("uid:carol")
+            .unwrap()
+            .expect("must find existing direct chat");
+        assert_eq!(found.id, "chat-bbb");
+        assert_eq!(found.contact_id, Some("uid:carol".to_string()));
+    }
+
+    #[test]
+    fn find_direct_by_contact_id_returns_none_when_absent() {
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+        let result = cs.find_direct_by_contact_id("uid:nobody").unwrap();
+        assert!(result.is_none());
     }
 
     #[test]
@@ -330,11 +373,11 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
-        cs.get_or_create("chat-x1", "direct", &["uid:alice"], 1_000_000)
+        cs.create("chat-x1", "direct", Some("uid:alice"), 1_000_000)
             .unwrap();
-        cs.get_or_create("chat-x2", "direct", &["uid:bob"], 1_000_001)
+        cs.create("chat-x2", "direct", Some("uid:bob"), 1_000_001)
             .unwrap();
-        cs.get_or_create("chat-x3", "direct", &["uid:carol"], 1_000_002)
+        cs.create("chat-x3", "direct", Some("uid:carol"), 1_000_002)
             .unwrap();
 
         // Give chat-x1 a more recent message, chat-x2 an older one; chat-x3 has none.
@@ -355,7 +398,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
-        cs.get_or_create("chat-ccc", "direct", &["uid:eve"], 1_000_000)
+        cs.create("chat-ccc", "direct", Some("uid:eve"), 1_000_000)
             .unwrap();
         let parse_n = |s: String| s.strip_prefix("s-").unwrap().parse::<u64>().unwrap();
         let state_before = parse_n(cs.get_state().unwrap());
@@ -384,7 +427,7 @@ mod tests {
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
-        cs.get_or_create("chat-ddd", "direct", &["uid:frank"], 1_000_000)
+        cs.create("chat-ddd", "direct", Some("uid:frank"), 1_000_000)
             .unwrap();
 
         // Insert messages directly — we don't have a MessageStore yet.
@@ -411,19 +454,19 @@ mod tests {
     }
 
     #[test]
-    fn get_or_create_does_not_advance_state_on_cache_hit() {
-        // Oracle: when the chat and all members already exist, the INSERT OR IGNORE rows
-        // are no-ops (0 affected), so the state counter must NOT advance.  Spurious
-        // advances produce phantom Chat/changes deltas for clients.
+    fn create_does_not_advance_state_on_cache_hit() {
+        // Oracle: when the chat already exists, INSERT OR IGNORE is a no-op (0 rows
+        // affected), so the state counter must NOT advance. Spurious advances produce
+        // phantom Chat/changes deltas for clients.
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
 
-        cs.get_or_create("chat-zzz", "direct", &["uid:alice"], 1_000_000)
+        cs.create("chat-zzz", "direct", Some("uid:alice"), 1_000_000)
             .unwrap();
         let state_after_create = cs.get_state().unwrap();
 
         // Second call with identical args — pure cache hit.
-        cs.get_or_create("chat-zzz", "direct", &["uid:alice"], 1_000_000)
+        cs.create("chat-zzz", "direct", Some("uid:alice"), 1_000_000)
             .unwrap();
         let state_after_hit = cs.get_state().unwrap();
 
@@ -480,7 +523,7 @@ mod tests {
         // Oracle: a chat created after s-0 must appear in get_changes_since("s-0").added.
         let store = Store::open_in_memory().unwrap();
         let cs = ChatStore::new(&store.conn, None);
-        cs.get_or_create("chat-gc1", "direct", &["uid:alice"], 1_000_000)
+        cs.create("chat-gc1", "direct", Some("uid:alice"), 1_000_000)
             .unwrap();
         let result = cs.get_changes_since("s-0").unwrap();
         assert!(

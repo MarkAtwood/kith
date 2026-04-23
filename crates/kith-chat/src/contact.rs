@@ -249,18 +249,18 @@ fn process_create(
     )?;
 
     // Extract required fields.
-    let tailscale_user_id = obj
-        .get("tailscaleUserId")
+    let user_id = obj
+        .get("id")
         .and_then(|v| v.as_str())
-        .ok_or_else(
-            || json!({"type": "invalidArguments", "description": "tailscaleUserId is required"}),
-        )?;
+        .ok_or_else(|| json!({"type": "invalidArguments", "description": "id is required"}))?;
 
     let login = obj
         .get("login")
         .and_then(|v| v.as_str())
         .ok_or_else(|| json!({"type": "invalidArguments", "description": "login is required"}))?;
 
+    // mailboxHost is a DB-only delivery-routing field; not in the JMAP ChatContact type.
+    // Accept it as an input-only create field so the owner can provision contacts in Phase 1.
     let mailbox_host = obj.get("mailboxHost").and_then(|v| v.as_str()).ok_or_else(
         || json!({"type": "invalidArguments", "description": "mailboxHost is required"}),
     )?;
@@ -288,25 +288,19 @@ fn process_create(
 
     guard
         .contacts()
-        .upsert(
-            tailscale_user_id,
-            login,
-            mailbox_host,
-            display_name,
-            now_unix,
-        )
+        .upsert(user_id, login, mailbox_host, display_name, now_unix)
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 
     if blocked {
         guard
             .contacts()
-            .set_blocked(tailscale_user_id, true)
+            .set_blocked(user_id, true)
             .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
     }
 
     let contact = guard
         .contacts()
-        .get_by_peer_user_id(tailscale_user_id)
+        .get_by_peer_user_id(user_id)
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?
         .ok_or_else(
             || json!({"type": "serverFail", "description": "contact not found after upsert"}),
@@ -361,16 +355,6 @@ fn process_update(
         existing.display_name.clone()
     };
 
-    let new_mailbox_host: String = if let Some(v) = patch_obj.get("mailboxHost") {
-        v.as_str()
-            .ok_or_else(|| {
-                json!({"type": "invalidArguments", "description": "mailboxHost must be a string"})
-            })?
-            .to_string()
-    } else {
-        existing.mailbox_host.clone()
-    };
-
     let new_blocked: Option<bool> = if let Some(v) = patch_obj.get("blocked") {
         Some(v.as_bool().ok_or_else(
             || json!({"type": "invalidArguments", "description": "blocked must be a bool"}),
@@ -384,10 +368,12 @@ fn process_update(
         return Err(json!({"type": "invalidArguments", "description": "displayName too long"}));
     }
 
-    // Validate mailboxHost.
-    if new_mailbox_host.is_empty() || new_mailbox_host.contains('\0') {
-        return Err(json!({"type": "invalidArguments", "description": "mailboxHost is invalid"}));
-    }
+    // Get the stored mailbox host (DB-only routing field; not patchable via JMAP).
+    let current_mailbox_host = guard
+        .contacts()
+        .get_mailbox_host(server_id)
+        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?
+        .ok_or_else(|| json!({"type": "notFound", "description": "contact not found"}))?;
 
     // Re-upsert with updated values (preserves first_seen_at, updates last_seen_at).
     guard
@@ -395,7 +381,7 @@ fn process_update(
         .upsert(
             server_id,
             &existing.login,
-            &new_mailbox_host,
+            &current_mailbox_host,
             new_display_name.as_deref(),
             now_unix,
         )
@@ -712,7 +698,7 @@ mod tests {
     }
 
     // Oracle: RFC 8620 §5.1 — Contact/get ids=null after upsert returns the contact
-    // with correct tailscaleUserId field (camelCase per kith-core serde attrs).
+    // with correct id field (I-D §ChatContact — id IS the userId from the auth layer).
     #[tokio::test]
     async fn test_contact_get_after_upsert() {
         let store = make_store();
@@ -739,8 +725,8 @@ mod tests {
 
         let list = result["list"].as_array().expect("list must be array");
         assert_eq!(list.len(), 1);
-        // Oracle: field name is "tailscaleUserId" (camelCase) per kith-core Contact serde attrs.
-        assert_eq!(list[0]["tailscaleUserId"], "uid-alice");
+        // Oracle: I-D §ChatContact — id IS the userId from the auth layer.
+        assert_eq!(list[0]["id"], "uid-alice");
         assert_eq!(list[0]["login"], "alice@example.com");
     }
 
@@ -775,7 +761,7 @@ mod tests {
             "accountId": "a-self",
             "create": {
                 "c0": {
-                    "tailscaleUserId": "uid-bob",
+                    "id": "uid-bob",
                     "login": "bob@example.com",
                     "mailboxHost": "bob-kith.tail.ts.net"
                 }
@@ -798,7 +784,7 @@ mod tests {
             created["c0"]["id"].as_str().is_some(),
             "created.c0 must have an id field"
         );
-        // Oracle: id equals tailscaleUserId (per store's row_to_contact).
+        // Oracle: id IS the userId from the auth layer (I-D §ChatContact).
         assert_eq!(created["c0"]["id"], "uid-bob");
     }
 
@@ -814,7 +800,7 @@ mod tests {
             "accountId": "a-self",
             "create": {
                 "c0": {
-                    "tailscaleUserId": "uid-carol",
+                    "id": "uid-carol",
                     "login": "carol@example.com",
                     "mailboxHost": "carol-kith.tail.ts.net",
                     "displayName": long_name

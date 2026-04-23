@@ -248,7 +248,7 @@ fn process_create(
     _client_id: &str,
     value: &Value,
     now_unix: i64,
-    owner_id: &str,
+    _owner_id: &str,
 ) -> Result<Value, Value> {
     let obj = value.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "create entry must be an object"}),
@@ -366,16 +366,20 @@ fn process_create(
         .update_last_message_at(&chat_id, now_unix)
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 
-    // Enqueue for each peer participant.
-    for participant_id in &chat.participants {
-        if participant_id == owner_id {
-            continue;
+    // Enqueue for peer participants.
+    if let Some(peer_id) = &chat.contact_id {
+        // Direct chat: single peer via contact_id.
+        if let Ok(Some(host)) = guard.contacts().get_mailbox_host(peer_id) {
+            let _ = guard.outbox().enqueue(&msg_id, peer_id, &host, now_unix);
         }
-        if let Ok(Some(contact)) = guard.contacts().get_by_peer_user_id(participant_id) {
-            let _ =
-                guard
-                    .outbox()
-                    .enqueue(&msg_id, participant_id, &contact.mailbox_host, now_unix);
+    } else if chat.kind == "group" {
+        // Group chat: fan out to all members in chat_members table.
+        if let Ok(members) = guard.chats().get_members(&chat_id) {
+            for peer_id in &members {
+                if let Ok(Some(host)) = guard.contacts().get_mailbox_host(peer_id) {
+                    let _ = guard.outbox().enqueue(&msg_id, peer_id, &host, now_unix);
+                }
+            }
         }
     }
 
@@ -441,12 +445,12 @@ fn process_update(
     // Failures are silently ignored — receipt enqueue must not fail the readAt update.
     if let Ok(Some(msg)) = guard.messages().get(server_id) {
         if msg.sender_id != "self" {
-            if let Ok(Some(contact)) = guard.contacts().get_by_peer_user_id(&msg.sender_id) {
-                if !contact.blocked {
+            if let Ok(true) = guard.contacts().is_permitted(&msg.sender_id) {
+                if let Ok(Some(host)) = guard.contacts().get_mailbox_host(&msg.sender_id) {
                     let _ = guard.outbox().enqueue_receipt(
                         server_id,
                         &msg.sender_id,
-                        &contact.mailbox_host,
+                        &host,
                         read_at_unix,
                         now_unix,
                     );
@@ -834,7 +838,7 @@ mod tests {
         let guard = store.lock().unwrap();
         guard
             .chats()
-            .get_or_create(chat_id, "direct", &[peer_user_id], 1000)
+            .create(chat_id, "direct", Some(peer_user_id), 1000)
             .unwrap();
         guard
             .contacts()
@@ -1020,7 +1024,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-g1", "direct", &[], 1000)
+                .create("chat-g1", "direct", None, 1000)
                 .unwrap();
             guard
                 .messages()
@@ -1091,7 +1095,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-ra", "direct", &[], 1000)
+                .create("chat-ra", "direct", None, 1000)
                 .unwrap();
             guard
                 .messages()
@@ -1139,7 +1143,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-np", "direct", &[], 1000)
+                .create("chat-np", "direct", None, 1000)
                 .unwrap();
             guard
                 .messages()
@@ -1214,7 +1218,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-ch", "direct", &[], 1000)
+                .create("chat-ch", "direct", None, 1000)
                 .unwrap();
             guard
                 .messages()
@@ -1255,7 +1259,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-q1", "direct", &[], 1000)
+                .create("chat-q1", "direct", None, 1000)
                 .unwrap();
             guard
                 .messages()
@@ -1312,7 +1316,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-qc1", "direct", &[], 1000)
+                .create("chat-qc1", "direct", None, 1000)
                 .unwrap();
         }
         let state = {
@@ -1467,7 +1471,7 @@ mod tests {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create("chat-qc2", "direct", &[], 1000)
+                .create("chat-qc2", "direct", None, 1000)
                 .unwrap();
         }
 

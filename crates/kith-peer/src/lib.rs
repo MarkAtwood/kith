@@ -4,7 +4,7 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use kith_core::{compute_chat_id, DeliveryState, Identity, JmapError};
+use kith_core::{DeliveryState, Identity, JmapError};
 use kith_jmap::{HandlerFuture, JmapHandler};
 #[cfg(any(test, feature = "test-utils"))]
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -68,8 +68,6 @@ pub struct DeliverMessageArgs {
     pub sent_at: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentArg>,
-    #[serde(default)]
-    pub participants: Vec<String>,
 }
 
 /// Handler for the `Peer/deliver` JMAP method.
@@ -89,14 +87,13 @@ pub struct DeliverMessageArgs {
 /// 1. Extract `_caller_identity` from args.
 /// 2. Parse remaining args into `PeerDeliverArgs`.
 /// 3. `check_sender`: verify `senderUserId` equals the WhoIs identity.
-/// 4. Recompute `chatId` from participants; reject if peer-supplied value differs.
-/// 5. Enforce `maxBodyBytes`.
-/// 6. Validate `bodyType` is supported.
-/// 7. Validate message `id` is a well-formed ULID.
-/// 8. (If `replyTo` present) verify the referenced message exists in this chat.
-/// 9. `chats().get_or_create`.
-/// 10. `messages().insert` with `delivery_state = Received`.
-/// 11. `contacts().upsert`.
+/// 4. Enforce `maxBodyBytes`.
+/// 5. Validate `bodyType` is supported.
+/// 6. Validate message `id` is a well-formed ULID.
+/// 7. (If `replyTo` present) verify the referenced message exists in this chat.
+/// 8. `chats().get` or `create`; verify sender matches `contact_id` if chat exists.
+/// 9. `messages().insert` with `delivery_state = Received`.
+/// 10. `contacts().upsert`.
 pub struct DeliverHandler {
     store: Arc<Mutex<kith_store::Store>>,
     owner_id: String,
@@ -116,7 +113,7 @@ impl JmapHandler for DeliverHandler {
         mut args: serde_json::Value,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
-        let owner_id = self.owner_id.clone();
+        let _owner_id = self.owner_id.clone();
 
         Box::pin(async move {
             // Step 1: Extract caller identity injected by the axum layer.
@@ -140,36 +137,10 @@ impl JmapHandler for DeliverHandler {
             // Step 3: check_sender — MUST occur before any DB write.
             // Maps SenderMismatch → invalidArguments per CLAUDE.md defensive rules.
             if identity.user_id != msg.sender_user_id {
-                return Err(JmapError::invalid_arguments(
-                    "senderUserId mismatch",
-                ));
+                return Err(JmapError::invalid_arguments("senderUserId mismatch"));
             }
 
-            // Step 4: Recompute chatId; never trust the peer-supplied value.
-            // Build the full participant list from the wire message and the local owner.
-            let mut all_participants: Vec<&str> = if msg.participants.is_empty() {
-                // 1:1 chat — just sender and owner.
-                vec![identity.user_id.as_str(), owner_id.as_str()]
-            } else {
-                // Group chat — use peer-supplied list, ensure owner is included.
-                let mut ps: Vec<&str> = msg.participants.iter().map(|s| s.as_str()).collect();
-                if !ps.contains(&owner_id.as_str()) {
-                    ps.push(owner_id.as_str());
-                }
-                ps
-            };
-            // Sort and dedup for order-independence: SHA-256 chatId is a function
-            // of the sorted participant set. Both sender and receiver must sort
-            // identically so that [alice, bob, carol] and [carol, alice, bob]
-            // produce the same chatId without coordination.
-            all_participants.sort_unstable();
-            all_participants.dedup();
-            let expected_chat_id = compute_chat_id(&all_participants);
-            if msg.chat_id != expected_chat_id {
-                return Err(JmapError::invalid_arguments("chatId does not match"));
-            }
-
-            // Step 5: Enforce maxBodyBytes.
+            // Step 4: Enforce maxBodyBytes.
             if msg.body.len() > MAX_BODY_BYTES {
                 return Err(JmapError::invalid_arguments("body exceeds maxBodyBytes"));
             }
@@ -203,10 +174,10 @@ impl JmapHandler for DeliverHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-            // Step 8: Validate replyTo — referenced message must exist and be in this chat.
+            // Step 7: Validate replyTo — referenced message must exist and be in this chat.
             if let Some(ref reply_id) = msg.reply_to {
                 match guard.messages().get(reply_id) {
-                    Ok(Some(ref referenced)) if referenced.chat_id == expected_chat_id => {}
+                    Ok(Some(ref referenced)) if referenced.chat_id == msg.chat_id => {}
                     Ok(Some(_)) => {
                         return Err(JmapError::invalid_arguments(
                             "replyTo references a message in a different chat",
@@ -223,28 +194,39 @@ impl JmapHandler for DeliverHandler {
                 }
             }
 
-            // Step 9: Ensure the chat row exists (get_or_create is idempotent).
-            // participant_user_ids excludes the local owner (self) per store convention.
-            let chat_kind = if all_participants.len() > 2 {
-                "group"
-            } else {
-                "direct"
-            };
-            let peer_participants: Vec<&str> = all_participants
-                .iter()
-                .copied()
-                .filter(|&id| id != owner_id.as_str())
-                .collect();
-            guard
+            // Step 8: Get or create the chat row using the peer-supplied chatId.
+            // If the chat is unknown, create it with the sender as contact_id.
+            // If the chat is known, verify the sender matches contact_id.
+            match guard
                 .chats()
-                .get_or_create(&expected_chat_id, chat_kind, &peer_participants, now_unix)
-                .map_err(|e| JmapError::server_fail(format!("store error creating chat: {e}")))?;
+                .get(&msg.chat_id)
+                .map_err(|e| JmapError::server_fail(format!("store error looking up chat: {e}")))?
+            {
+                None => {
+                    guard
+                        .chats()
+                        .create(
+                            &msg.chat_id,
+                            "direct",
+                            Some(identity.user_id.as_str()),
+                            now_unix,
+                        )
+                        .map_err(|e| {
+                            JmapError::server_fail(format!("store error creating chat: {e}"))
+                        })?;
+                }
+                Some(existing) => {
+                    if existing.contact_id.as_deref() != Some(identity.user_id.as_str()) {
+                        return Err(JmapError::invalid_arguments("chatId sender mismatch"));
+                    }
+                }
+            }
 
-            // Step 10: Insert the message and its attachments in a single transaction.
+            // Step 9: Insert the message and its attachments in a single transaction.
             guard
                 .insert_message_with_attachments(
                     &msg.id,
-                    &expected_chat_id,
+                    &msg.chat_id,
                     &identity.user_id,
                     &msg.body,
                     &msg.body_type,
@@ -258,7 +240,7 @@ impl JmapHandler for DeliverHandler {
                     JmapError::server_fail(format!("store error inserting message: {e}"))
                 })?;
 
-            // Step 11: Upsert the contact record for this peer.
+            // Step 10: Upsert the contact record for this peer.
             guard
                 .contacts()
                 .upsert(
@@ -638,7 +620,6 @@ pub fn build_peer_deliver_request(
     sent_at: &str,
     reply_to: Option<&str>,
     attachments: &[kith_core::Attachment],
-    participants: &[String],
 ) -> Value {
     let mut message = json!({
         "id": message_id,
@@ -654,7 +635,6 @@ pub fn build_peer_deliver_request(
             "size": a.size,
             "sha256": a.sha256,
         })).collect::<Vec<Value>>(),
-        "participants": participants.iter().map(|p| Value::String(p.clone())).collect::<Vec<Value>>(),
     });
 
     if let Some(reply_id) = reply_to {
@@ -896,8 +876,10 @@ pub async fn outbox_tick<C: DeliverClient>(
             guard.contacts().get_by_peer_user_id(&entry.peer_user_id)
         }; // guard dropped here
 
-        let contact = match contact_result {
-            Ok(Some(c)) if !c.blocked => c,
+        match contact_result {
+            Ok(Some(c)) if !c.blocked => {
+                let _ = c;
+            }
             Ok(_) => {
                 // Not found or blocked — record failure and move on.
                 if let Ok(guard) = store.lock() {
@@ -915,10 +897,10 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
         };
 
-        if !is_valid_mailbox_host(&contact.mailbox_host) {
+        if !is_valid_mailbox_host(&entry.peer_mailbox_host) {
             eprintln!(
                 "outbox: rejecting invalid mailbox_host for {}: {:?}",
-                entry.peer_user_id, contact.mailbox_host
+                entry.peer_user_id, entry.peer_mailbox_host
             );
             if let Ok(guard) = store.lock() {
                 let _ = guard
@@ -927,7 +909,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
             continue;
         }
-        let url = format!("https://{}/jmap/api", contact.mailbox_host);
+        let url = format!("https://{}/jmap/api", entry.peer_mailbox_host);
 
         // Receipt entries do not need message body or chat data — handle them here
         // and skip the message-specific code below.
@@ -973,26 +955,17 @@ pub async fn outbox_tick<C: DeliverClient>(
             continue;
         }
 
-        // Load message payload and chat participants; hold lock only for these calls.
-        let (message_result, chat_result) = {
+        // Load message payload; hold lock only for this call.
+        // Lock discipline: MutexGuard<Store> is !Send, so the compiler enforces
+        // that it cannot be held across an .await point. The block below ensures
+        // the guard is dropped before any async I/O begins.
+        let message_result = {
             let guard = match store.lock() {
                 Ok(g) => g,
                 Err(_) => continue,
             };
-            let msg = guard.messages().get(&entry.message_id);
-            // Load chat for participants; best-effort — failures do not abort delivery.
-            let chat = guard.chats().get(
-                msg.as_ref()
-                    .ok()
-                    .and_then(|m| m.as_ref())
-                    .map(|m| m.chat_id.as_str())
-                    .unwrap_or(""),
-            );
-            (msg, chat)
+            guard.messages().get(&entry.message_id)
         }; // guard dropped here
-           // Lock discipline: MutexGuard<Store> is !Send, so the compiler enforces
-           // that it cannot be held across an .await point. The block above ensures
-           // the guard is dropped before any async I/O begins.
 
         let message = match message_result {
             Ok(Some(m)) => m,
@@ -1011,44 +984,6 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
         };
 
-        // Build the participant list for the wire format.
-        // chat.participants stores only peer IDs (excluding self/owner).
-        // For 1:1 chats (exactly one peer participant), send an empty list:
-        // the receiver's DeliverHandler handles empty participants as a 1:1
-        // case and derives the chatId from [sender, owner] directly.
-        // For group chats (2+ peer participants), include the owner so the
-        // receiver can compute the correct chatId.
-        let participants: Vec<String> = match chat_result {
-            Ok(Some(chat)) => {
-                if chat.participants.len() <= 1 {
-                    // 1:1 direct chat: receiver derives participants from sender + owner.
-                    Vec::new()
-                } else {
-                    // Group chat: include all peer participants plus the sender (owner_id).
-                    let mut ps = chat.participants;
-                    if !ps.iter().any(|id| id == owner_id) {
-                        ps.push(owner_id.to_string());
-                    }
-                    ps
-                }
-            }
-            // Safe fallback: if the chat row is missing, treat as 1:1.
-            // The message.chat_id FK ensures the chat existed at insert time.
-            // Sending empty participants causes the receiver to re-derive chatId
-            // from [sender, owner_id], which is correct for a 1:1 chat.
-            Ok(None) => {
-                eprintln!(
-                    "outbox: chat not found for {}, treating as 1:1",
-                    message.chat_id
-                );
-                Vec::new()
-            }
-            Err(err) => {
-                eprintln!("outbox: chat load error for {}: {err}", message.chat_id);
-                Vec::new()
-            }
-        };
-
         // Build JMAP request; owner_id replaces the "self" sentinel in sender_id.
         let jmap_request = build_peer_deliver_request(
             &message.id,
@@ -1059,7 +994,6 @@ pub async fn outbox_tick<C: DeliverClient>(
             &message.sent_at,
             message.reply_to.as_deref(),
             message.attachments.as_slice(),
-            &participants,
         );
 
         // Attempt delivery — no lock held across this await.
@@ -1109,7 +1043,7 @@ pub async fn outbox_worker<C: DeliverClient>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kith_core::{compute_chat_id, DeliveryState, Identity};
+    use kith_core::{DeliveryState, Identity};
     use kith_store::Store;
     use serde_json::json;
     use ulid::Ulid;
@@ -1131,7 +1065,7 @@ mod tests {
         let guard = store.lock().unwrap();
         guard
             .chats()
-            .get_or_create(chat_id, "direct", &[], 1000)
+            .create(chat_id, "direct", None, 1000)
             .expect("insert chat");
     }
 
@@ -1163,11 +1097,11 @@ mod tests {
     /// Build the args JSON for a DeliverHandler call, injecting the identity.
     fn deliver_args(
         identity: &Identity,
-        owner_id: &str,
+        _owner_id: &str,
         msg_id: &str,
         body: &str,
     ) -> serde_json::Value {
-        let chat_id = compute_chat_id(&[identity.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-01";
         let identity_json = serde_json::to_value(identity).unwrap();
         json!({
             "_caller_identity": identity_json,
@@ -1267,7 +1201,7 @@ mod tests {
         let peer = make_identity("uid-bob");
 
         // Build args but override the senderUserId to a different value.
-        let chat_id = compute_chat_id(&["uid-bob", owner_id]);
+        let chat_id = "test-direct-chat-02";
         let msg_id = Ulid::new().to_string();
         let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
@@ -1298,21 +1232,33 @@ mod tests {
         );
     }
 
-    // Oracle: tampered chatId must return invalidArguments.
+    // Oracle: a chat pre-created with contact_id=uid-alice must reject a deliver from uid-bob.
+    // The new server-assigned model stores the sender's user_id as contact_id; a different
+    // sender claiming the same chatId is rejected with invalidArguments.
     #[tokio::test]
-    async fn deliver_wrong_chat_id_returns_invalid_arguments() {
+    async fn deliver_chatid_sender_mismatch_returns_invalid_arguments() {
         let store = make_store();
         let owner_id = "uid-owner";
-        let peer = make_identity("uid-bob");
+        let bob = make_identity("uid-bob");
 
+        // Pre-create a chat whose contact_id is uid-alice (not uid-bob).
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-alice-owned", "direct", Some("uid-alice"), 1000)
+                .expect("pre-create chat");
+        }
+
+        // uid-bob tries to deliver into a chat that belongs to uid-alice.
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&peer).unwrap();
+        let identity_json = serde_json::to_value(&bob).unwrap();
         let args = json!({
             "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
-                "chatId": "00000000000000000000000000000000000000000000000000000000000000ff",
+                "chatId": "chat-alice-owned",
                 "senderUserId": "uid-bob",
                 "body": "Hi",
                 "bodyType": "text/plain",
@@ -1324,14 +1270,14 @@ mod tests {
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
             .await
-            .expect_err("wrong chatId must fail");
+            .expect_err("sender mismatch on existing chat must fail");
 
         assert_eq!(err.error_type, "invalidArguments");
-        // Oracle: chatId check precedes DB writes — no message must be stored.
-        let guard = store.lock().unwrap(); // safe: single-threaded test
+        // Oracle: mismatch check precedes message insert — no message must be stored.
+        let guard = store.lock().unwrap();
         assert!(
             guard.messages().get(&msg_id).unwrap().is_none(),
-            "no message must be stored on wrong chatId"
+            "no message must be stored on chatId sender mismatch"
         );
     }
 
@@ -1371,7 +1317,6 @@ mod tests {
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
         let msg_id = Ulid::new().to_string();
         let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
@@ -1379,7 +1324,7 @@ mod tests {
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
-                "chatId": chat_id,
+                "chatId": "test-direct-chat-03",
                 "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/html",   // not supported
@@ -1409,14 +1354,13 @@ mod tests {
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
         let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
             "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": "not-a-ulid",
-                "chatId": chat_id,
+                "chatId": "test-direct-chat-04",
                 "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/plain",
@@ -1446,7 +1390,6 @@ mod tests {
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
         let msg_id = Ulid::new().to_string();
         let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
@@ -1454,7 +1397,7 @@ mod tests {
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
-                "chatId": chat_id,
+                "chatId": "test-direct-chat-05",
                 "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/plain",
@@ -1486,19 +1429,18 @@ mod tests {
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        // Insert a message in a different chat (alice↔owner, not bob↔owner).
-        let other_chat_id = compute_chat_id(&["uid-alice", owner_id]);
+        // Insert a message in a different chat (alice→owner, not bob→owner).
         {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create(&other_chat_id, "direct", &["uid-alice"], 1000)
+                .create("chat-alice-06", "direct", Some("uid-alice"), 1000)
                 .unwrap();
             guard
                 .messages()
                 .insert(
                     "other-chat-msg",
-                    &other_chat_id,
+                    "chat-alice-06",
                     "uid-alice",
                     "hi",
                     "text/plain",
@@ -1510,7 +1452,6 @@ mod tests {
                 .unwrap();
         }
 
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
         let msg_id = Ulid::new().to_string();
         let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
@@ -1518,7 +1459,7 @@ mod tests {
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
-                "chatId": chat_id,
+                "chatId": "test-direct-chat-06",
                 "senderUserId": peer.user_id,
                 "body": "reply to wrong chat",
                 "bodyType": "text/plain",
@@ -1816,7 +1757,6 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[],
-            &[],
         );
         let result = client.deliver("http://127.0.0.1:1/jmap", req).await;
         assert!(
@@ -1843,7 +1783,6 @@ mod tests {
             "text/plain",
             "2026-04-18T20:14:00Z",
             None,
-            &[],
             &[],
         );
 
@@ -1909,7 +1848,6 @@ mod tests {
             "2026-04-18T20:14:00Z",
             Some("01JVWXYZ0000000000000000AA"),
             &[],
-            &[],
         );
         let msg = &req["methodCalls"][0][1]["message"];
         assert_eq!(
@@ -1940,7 +1878,6 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[attachment],
-            &[],
         );
         let msg = &req["methodCalls"][0][1]["message"];
         let attachments = msg["attachments"].as_array().unwrap();
@@ -1964,7 +1901,6 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[],
-            &[],
         );
         let attachments = req["methodCalls"][0][1]["message"]["attachments"]
             .as_array()
@@ -1977,16 +1913,14 @@ mod tests {
     // Used by the attachment validation and group-chat tests below.
     // ---------------------------------------------------------------------------
 
-    /// Build args JSON for a DeliverHandler call with explicit attachments and participants.
+    /// Build args JSON for a DeliverHandler call with explicit attachments.
     ///
-    /// `chat_id` is provided by the caller (already computed) so tests can inject
-    /// both correct and deliberately wrong values.
+    /// `chat_id` is provided by the caller so tests can inject specific values.
     fn deliver_args_full(
         identity: &Identity,
         chat_id: &str,
         msg_id: &str,
         attachments: serde_json::Value,
-        participants: serde_json::Value,
     ) -> serde_json::Value {
         let identity_json = serde_json::to_value(identity).unwrap();
         json!({
@@ -2000,7 +1934,6 @@ mod tests {
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
                 "attachments": attachments,
-                "participants": participants,
             }
         })
     }
@@ -2029,7 +1962,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "../etc/passwd",
@@ -2038,7 +1971,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2058,7 +1991,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "",
@@ -2067,7 +2000,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2087,7 +2020,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2096,7 +2029,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2116,7 +2049,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2125,7 +2058,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2145,7 +2078,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2154,7 +2087,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2175,7 +2108,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2184,7 +2117,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2205,7 +2138,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2214,7 +2147,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2234,7 +2167,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2243,7 +2176,7 @@ mod tests {
             "size": 104_857_601u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2263,7 +2196,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2272,7 +2205,7 @@ mod tests {
             "size": 0u64,
             "sha256": "f".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2293,7 +2226,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2302,7 +2235,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "A".repeat(64),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2322,7 +2255,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let bad_att = json!({
             "blobId": "a".repeat(64),
@@ -2331,7 +2264,7 @@ mod tests {
             "size": 1024u64,
             "sha256": "a".repeat(32),
         });
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2351,7 +2284,7 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         // Build 21 valid attachments; each needs a unique blobId (primary key in DB).
         let atts: Vec<serde_json::Value> = (0..21u8)
@@ -2365,13 +2298,7 @@ mod tests {
                 })
             })
             .collect();
-        let args = deliver_args_full(
-            &peer,
-            &chat_id,
-            &msg_id,
-            serde_json::Value::Array(atts),
-            json!([]),
-        );
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, serde_json::Value::Array(atts));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2396,10 +2323,10 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let att = valid_attachment_json();
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2427,9 +2354,9 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2445,126 +2372,71 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------
-    // Group chat chatId tests
-    //
-    // The expected chatId is computed using sha2::Sha256 directly — NOT via
-    // compute_chat_id().  sha2 is the independent oracle.
-    //
-    // Python 3 cross-check (compute once offline):
-    //   import hashlib
-    //   ids = sorted(["uid:alice", "uid:bob", "uid:carol"])
-    //   data = "\x00".join(ids).encode()
-    //   print(hashlib.sha256(data).hexdigest())
-    //   # => 073bb3a793fd0b8ed4ba73d41e7a3b53e29eccd059862f77fc94d6e20e8b7e72
+    // Server-assigned chatId tests
+    // In the new model chatIds are server-assigned ULIDs/strings; the receiver
+    // stores the sender as contact_id and accepts any unknown chatId from that sender.
     // ---------------------------------------------------------------------------
 
-    /// Compute sha256 of null-byte-joined sorted IDs using sha2 directly.
-    /// This is the independent oracle for group chatId tests.
-    fn sha256_chat_id(ids: &[&str]) -> String {
-        use sha2::{Digest, Sha256};
-        let mut sorted = ids.to_vec();
-        sorted.sort();
-        let mut hasher = Sha256::new();
-        for (i, id) in sorted.iter().enumerate() {
-            if i > 0 {
-                hasher.update(b"\x00");
-            }
-            hasher.update(id.as_bytes());
-        }
-        format!("{:x}", hasher.finalize())
-    }
-
-    // Oracle: sha2-computed chatId for 3 participants must be accepted by the handler.
-    // Sender: uid:alice, owner: uid:carol. Participants field includes all 3.
+    // Oracle: a new chatId from a valid sender must be accepted and the chat created.
     #[tokio::test]
-    async fn deliver_group_chat_correct_chat_id_accepted() {
+    async fn deliver_new_chat_id_accepted_and_chat_created() {
         let store = make_store();
         let owner_id = "uid:carol";
         let peer = make_identity("uid:alice");
-        // Independent oracle: sha2 directly.
-        let expected_chat_id = sha256_chat_id(&["uid:alice", "uid:bob", "uid:carol"]);
+        let chat_id = "01JX000000000000000000ALICE";
         let msg_id = Ulid::new().to_string();
-        // Participants field includes all 3; handler will sort+dedup and add owner if missing.
-        let args = deliver_args_full(
-            &peer,
-            &expected_chat_id,
-            &msg_id,
-            json!([]),
-            json!(["uid:alice", "uid:bob", "uid:carol"]),
-        );
+        let args = deliver_args_full(&peer, chat_id, &msg_id, json!([]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
             .await
-            .expect("group chat delivery with correct chatId must succeed");
+            .expect("delivery with new chatId must succeed");
         assert_eq!(result["accepted"], true);
-    }
-
-    // Oracle: wrong chatId for a 3-participant group chat must be rejected.
-    #[tokio::test]
-    async fn deliver_group_chat_wrong_chat_id_rejected() {
-        let store = make_store();
-        let owner_id = "uid:carol";
-        let peer = make_identity("uid:alice");
-        let msg_id = Ulid::new().to_string();
-        let wrong_chat_id = "0".repeat(64);
-        let args = deliver_args_full(
-            &peer,
-            &wrong_chat_id,
-            &msg_id,
-            json!([]),
-            json!(["uid:alice", "uid:bob", "uid:carol"]),
-        );
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
-        let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
-            .await
-            .expect_err("wrong chatId for group chat must be rejected");
-        assert_eq!(err.error_type, "invalidArguments");
-        let guard = store.lock().unwrap();
-        assert!(
-            guard.messages().get(&msg_id).unwrap().is_none(),
-            "no message must be stored on wrong group chatId"
-        );
-    }
-
-    // Oracle: after a 3-participant delivery, the chat row in the store must have
-    // exactly the peer participants (all except owner).  Owner uid:carol is excluded
-    // from chat_members per store convention.
-    #[tokio::test]
-    async fn deliver_group_chat_chat_created_with_all_participants() {
-        let store = make_store();
-        let owner_id = "uid:carol";
-        let peer = make_identity("uid:alice");
-        let expected_chat_id = sha256_chat_id(&["uid:alice", "uid:bob", "uid:carol"]);
-        let msg_id = Ulid::new().to_string();
-        let args = deliver_args_full(
-            &peer,
-            &expected_chat_id,
-            &msg_id,
-            json!([]),
-            json!(["uid:alice", "uid:bob", "uid:carol"]),
-        );
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
-        handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
-            .await
-            .expect("group chat delivery must succeed");
-        // Oracle: chat_members excludes the local owner (uid:carol).
-        // The participants stored in the chat row must be uid:alice and uid:bob.
+        // Oracle: chat must exist with contact_id = uid:alice.
         let guard = store.lock().unwrap();
         let chat = guard
             .chats()
-            .get(&expected_chat_id)
+            .get(chat_id)
             .expect("chats().get must not error")
             .expect("chat must exist after delivery");
-        let mut participants = chat.participants.clone();
-        participants.sort();
         assert_eq!(
-            participants,
-            vec!["uid:alice".to_string(), "uid:bob".to_string()],
-            "chat_members must contain alice and bob (owner excluded)"
+            chat.contact_id.as_deref(),
+            Some("uid:alice"),
+            "contact_id must be the sender's user_id"
         );
+    }
+
+    // Oracle: a second deliver from the same sender into the same chatId is accepted.
+    #[tokio::test]
+    async fn deliver_same_chat_id_same_sender_accepted() {
+        let store = make_store();
+        let owner_id = "uid:carol";
+        let peer = make_identity("uid:alice");
+        let chat_id = "01JX000000000000000000ALICE2";
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+
+        // First delivery creates the chat.
+        let msg1 = Ulid::new().to_string();
+        handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_full(&peer, chat_id, &msg1, json!([])),
+            )
+            .await
+            .expect("first delivery must succeed");
+
+        // Second delivery into same chatId from same sender must also succeed.
+        let msg2 = Ulid::new().to_string();
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_full(&peer, chat_id, &msg2, json!([])),
+            )
+            .await
+            .expect("second delivery from same sender must succeed");
+        assert_eq!(result["accepted"], true);
     }
 
     // ---------------------------------------------------------------------------
@@ -2578,14 +2450,14 @@ mod tests {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
-        let chat_id = compute_chat_id(&[peer.user_id.as_str(), owner_id]);
+        let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let state_before = {
             let guard = store.lock().unwrap();
             guard.messages().get_state().expect("get_state before")
         };
         let att = valid_attachment_json();
-        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]), json!([]));
+        let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         handler
             .call("Peer/deliver".to_string(), "c0".to_string(), args)
@@ -2603,10 +2475,10 @@ mod tests {
         );
     }
 
-    // Oracle: participants slice is serialized into the "participants" array on the
-    // wire message.  Values are independently-constructed string literals.
+    // Oracle: build_peer_deliver_request produces a JMAP envelope with the correct
+    // chatId and senderUserId fields; values are independently-constructed string literals.
     #[test]
-    fn build_peer_deliver_request_with_participants() {
+    fn build_peer_deliver_request_wire_shape() {
         let req = build_peer_deliver_request(
             "01JVWXYZ0000000000000000AB",
             &"b3d4e5f6".repeat(8),
@@ -2616,21 +2488,19 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[],
-            &[
-                "uid:alice@example.com".to_string(),
-                "uid:bob@example.com".to_string(),
-            ],
         );
-        let participants = req["methodCalls"][0][1]["message"]["participants"]
-            .as_array()
-            .unwrap();
-        assert_eq!(participants.len(), 2);
-        assert!(participants.contains(&Value::String("uid:alice@example.com".to_string())));
-        assert!(participants.contains(&Value::String("uid:bob@example.com".to_string())));
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert_eq!(msg["chatId"], "b3d4e5f6".repeat(8));
+        assert_eq!(msg["senderUserId"], "uid:alice@example.com");
+        assert_eq!(msg["body"], "hello");
+        assert!(
+            msg.get("participants").is_none(),
+            "participants field must not appear in wire format"
+        );
     }
 
-    // Oracle: serde default — a JSON payload without "attachments" or "participants"
-    // must deserialize into empty vecs, not an error.
+    // Oracle: serde default — a JSON payload without "attachments" must deserialize
+    // into an empty vec, not an error.
     #[test]
     fn deliver_message_args_deserializes_without_attachments() {
         let json = r#"{
@@ -2646,7 +2516,6 @@ mod tests {
         }"#;
         let args: PeerDeliverArgs = serde_json::from_str(json).unwrap();
         assert!(args.message.attachments.is_empty());
-        assert!(args.message.participants.is_empty());
     }
 
     // ---------------------------------------------------------------------------
@@ -2697,7 +2566,7 @@ mod tests {
         // Create a chat and message first.
         guard
             .chats()
-            .get_or_create("chat-out", "direct", &["uid-bob"], now)
+            .create("chat-out", "direct", Some("uid-bob"), now)
             .unwrap();
         guard
             .messages()
@@ -2968,29 +2837,29 @@ mod tests {
         assert_eq!(attachments[0]["sha256"], "b".repeat(64));
     }
 
-    // Oracle: the participants stored in the chat row are exactly what appears on the wire.
-    // Expected participant IDs are the literal strings used at insert time.
+    // Oracle: outbox_tick serializes the stored chatId and senderUserId onto the wire.
+    // Values are the literal strings inserted into the store at setup time.
     #[tokio::test]
-    async fn outbox_tick_sends_participants_in_wire_format() {
+    async fn outbox_tick_sends_chat_id_and_sender_in_wire_format() {
         let store = make_store();
         let now: i64 = 2000;
         let msg_id = "msg-ob-part";
-        let chat_id = compute_chat_id(&["uid-owner", "uid-bob"]);
+        let chat_id = "chat-ob-wire-01";
 
-        // Insert a 2-person chat, message, contact, and outbox entry.
+        // Insert a chat, message, contact, and outbox entry.
         {
             let guard = store.lock().unwrap();
             guard
                 .chats()
-                .get_or_create(&chat_id, "direct", &["uid-bob"], now)
+                .create(chat_id, "direct", Some("uid-bob"), now)
                 .expect("create chat");
             guard
                 .messages()
                 .insert(
                     msg_id,
-                    &chat_id,
+                    chat_id,
                     "self",
-                    "hello participants",
+                    "hello wire format",
                     "text/plain",
                     None,
                     now,
@@ -3018,20 +2887,16 @@ mod tests {
         outbox_tick(&store, &client, "uid-owner", now).await;
 
         let req = client.take().expect("deliver_msg must have been called");
-        let msg = &req["methodCalls"][0][1]["message"];
-        let participants = msg["participants"]
-            .as_array()
-            .expect("participants must be an array");
-        // Oracle: for a 1:1 chat (one peer participant), outbox_tick sends an
-        // empty participants array.  The receiver's DeliverHandler handles the
-        // empty case by deriving participants from [senderUserId, owner_id],
-        // which produces the correct deterministic chatId.  Sending a non-empty
-        // list containing only the peer (not the sender) would cause the receiver
-        // to compute a wrong chatId and reject the message with invalidArguments.
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        // Oracle: chatId on the wire must match the stored chat_id literal.
         assert_eq!(
-            participants.len(),
-            0,
-            "1:1 chat must send empty participants so receiver can derive chatId from sender+owner"
+            wire_msg["chatId"], chat_id,
+            "chatId must match the stored value"
+        );
+        // Oracle: senderUserId on the wire must be the owner (outbox sends as owner).
+        assert_eq!(
+            wire_msg["senderUserId"], "uid-owner",
+            "senderUserId must be the owner"
         );
     }
 

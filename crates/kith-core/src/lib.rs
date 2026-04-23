@@ -9,7 +9,7 @@ pub mod resultref;
 
 // Re-export primary types at crate level for ergonomic downstream imports.
 pub use auth::{Identity, Role};
-pub use chat::{compute_chat_id, Chat};
+pub use chat::Chat;
 pub use contact::ChatContact;
 pub use error::{AuthError, JmapError, KithError};
 pub use events::StateChange;
