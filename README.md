@@ -234,7 +234,7 @@ These are permanent non-goals, not deferred features:
 
 JMAP (RFC 8620 core) with custom capability `urn:kith:chat:1`. JSON over HTTPS, listener bound to tailnet interface only. The same endpoint serves both owner clients and peer mailboxes; they differ only in which methods are authorized.
 
-See `kith-architecture.md` for the full protocol specification, data types, and schema.
+See `kith-architecture.md` for the full protocol specification, data types, and schema. The capability is also published as a standalone IETF Internet-Draft: https://raw.githubusercontent.com/MarkAtwood/ideas/refs/heads/main/draft-atwood-jmap-chat-00.md
 
 ---
 
