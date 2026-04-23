@@ -140,13 +140,13 @@ Signal requires a phone number, relies on Signal's central servers for identity 
 
 XMPP (Extensible Messaging and Presence Protocol) is a viable base layer and is genuinely underrated. The reason we did not use it is the extension ecosystem. XMPP's core is simple; the features users expect (multi-device sync, read receipts, message correction, file transfer) live in a sprawling and inconsistently implemented XEP landscape. Interoperability between XMPP servers in practice is worse than the spec suggests, because XEP support varies. We would have been building on a protocol whose extension model is the primary source of complexity, not the core.
 
-JMAP (RFC 8620) is a modern HTTP/JSON protocol with a clean batching and push model, and it maps naturally to the mailbox metaphor. Writing a custom JMAP capability (`urn:kith:chat:1`) gives us the protocol primitives we need — request batching, push via EventSource, ResultReferences — without inheriting XMPP's extension fragmentation.
+JMAP (RFC 8620) is a modern HTTP/JSON protocol with a clean batching and push model, and it maps naturally to the mailbox metaphor. Writing a custom JMAP capability (`urn:ietf:params:jmap:chat`) gives us the protocol primitives we need — request batching, push via EventSource, ResultReferences — without inheriting XMPP's extension fragmentation.
 
 ---
 
 **Why JMAP and not a simpler custom protocol?**
 
-The temptation to write a simple custom protocol is real, and we thought about it. The problem with custom protocols is that they tend to be simple at the start and accrete complexity as features are added, without ever developing the principled structure that makes complexity manageable. JMAP gives us: a proven request/response and push model, ResultReferences for batched dependent calls, a defined error taxonomy, and an existing client library ecosystem. The custom part — `urn:kith:chat:1` — is only the part that needs to be custom. The transport, batching, and push semantics are already specified and tested by the JMAP email world.
+The temptation to write a simple custom protocol is real, and we thought about it. The problem with custom protocols is that they tend to be simple at the start and accrete complexity as features are added, without ever developing the principled structure that makes complexity manageable. JMAP gives us: a proven request/response and push model, ResultReferences for batched dependent calls, a defined error taxonomy, and an existing client library ecosystem. The custom part — `urn:ietf:params:jmap:chat` — is only the part that needs to be custom. The transport, batching, and push semantics are already specified and tested by the JMAP email world.
 
 The tradeoff is that JMAP is more complex to implement than a naive REST API. We believe that complexity is front-loaded into the initial implementation and pays down over the life of the project, whereas a naive REST API's complexity is back-loaded into every feature addition.
 

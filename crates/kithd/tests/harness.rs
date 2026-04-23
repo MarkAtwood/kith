@@ -438,7 +438,7 @@ async fn full_message_delivery() {
     // Step 5: send Message/set create to alice's in-process router.
     // alice_router already has MockConnectInfo(ALICE_MOCK_ADDR) → Owner classification.
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Message/set", {
             "accountId": "a-self",
             "create": {
@@ -914,7 +914,7 @@ async fn full_message_delivery_with_attachment() {
 
     // Step 5: create a message with the uploaded attachment via Message/set.
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Message/set", {
             "accountId": "a-self",
             "create": {

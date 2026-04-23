@@ -14,7 +14,7 @@ pub type Invocation = (String, serde_json::Value, String);
 /// JMAP request envelope (RFC 8620 §3.3).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JmapRequest {
-    /// Capability URIs this request uses, e.g. ["urn:ietf:params:jmap:core", "urn:kith:chat:1"].
+    /// Capability URIs this request uses, e.g. ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"].
     pub using: Vec<String>,
     /// Ordered list of method invocations.
     #[serde(rename = "methodCalls")]
@@ -40,10 +40,10 @@ mod tests {
     #[test]
     fn jmap_request_round_trip() {
         let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+            using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
             method_calls: vec![
                 (
-                    "Contact/get".into(),
+                    "ChatContact/get".into(),
                     json!({"accountId": "a-self"}),
                     "0".into(),
                 ),
@@ -83,7 +83,7 @@ mod tests {
     fn jmap_response_round_trip() {
         let resp = JmapResponse {
             method_responses: vec![(
-                "Contact/get".into(),
+                "ChatContact/get".into(),
                 json!({"list": [], "state": "s-1"}),
                 "0".into(),
             )],
@@ -98,9 +98,9 @@ mod tests {
 
     #[test]
     fn invocation_is_three_element_array() {
-        let inv: Invocation = ("Contact/get".into(), json!({}), "req-0".into());
+        let inv: Invocation = ("ChatContact/get".into(), json!({}), "req-0".into());
         let json_str = serde_json::to_string(&inv).unwrap();
-        // Must serialize as ["Contact/get", {}, "req-0"]
-        assert_eq!(json_str, r#"["Contact/get",{},"req-0"]"#);
+        // Must serialize as ["ChatContact/get", {}, "req-0"]
+        assert_eq!(json_str, r#"["ChatContact/get",{},"req-0"]"#);
     }
 }

@@ -53,7 +53,7 @@ export async function callJmap(methodCalls) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      using: ['urn:ietf:params:jmap:core', 'urn:kith:chat:1'],
+      using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:chat'],
       methodCalls,
     }),
   });
@@ -166,8 +166,8 @@ export async function bootstrap() {
     session.downloadUrl = data.downloadUrl;
     session.username = data.username;
     // accountId is always 'a-self'; confirm from primaryAccounts if present
-    if (data.primaryAccounts && data.primaryAccounts['urn:kith:chat:1']) {
-      session.accountId = data.primaryAccounts['urn:kith:chat:1'];
+    if (data.primaryAccounts && data.primaryAccounts['urn:ietf:params:jmap:chat']) {
+      session.accountId = data.primaryAccounts['urn:ietf:params:jmap:chat'];
     }
   } catch (err) {
     showError('Cannot connect to Kith. Is Tailscale running on this device? (' + err.message + ')');

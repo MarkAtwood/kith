@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use kith_core::Contact;
+use kith_core::ChatContact;
 use kith_store::Store;
 use kith_tslocal::LocalApiClient;
 
@@ -115,7 +115,7 @@ fn cmd_contacts_list(config: &Config) -> Result<(), Box<dyn std::error::Error>> 
         );
     }
     let store = Store::open(&db_path)?;
-    let contacts: Vec<Contact> = store.contacts().list()?;
+    let contacts: Vec<ChatContact> = store.contacts().list()?;
     if contacts.is_empty() {
         println!("No contacts.");
         return Ok(());

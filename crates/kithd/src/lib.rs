@@ -30,7 +30,8 @@ use extractors::{AppState, Caller};
 use kith_attach::BlobStore;
 use kith_chat::chat::{ChatChangesHandler, ChatGetHandler, ChatQueryHandler, ChatSetHandler};
 use kith_chat::contact::{
-    ContactChangesHandler, ContactGetHandler, ContactQueryHandler, ContactSetHandler,
+    ChatContactChangesHandler, ChatContactGetHandler, ChatContactQueryChangesHandler,
+    ChatContactQueryHandler, ChatContactSetHandler,
 };
 use kith_chat::message::{
     MessageChangesHandler, MessageGetHandler, MessageQueryChangesHandler, MessageQueryHandler,
@@ -296,20 +297,24 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, owner_id: &str) -> Dispatcher 
 
     // Contact methods (owner-only)
     d.register(
-        "Contact/get",
-        Box::new(ContactGetHandler::new(Arc::clone(&store))),
+        "ChatContact/get",
+        Box::new(ChatContactGetHandler::new(Arc::clone(&store))),
     );
     d.register(
-        "Contact/set",
-        Box::new(ContactSetHandler::new(Arc::clone(&store))),
+        "ChatContact/set",
+        Box::new(ChatContactSetHandler::new(Arc::clone(&store))),
     );
     d.register(
-        "Contact/changes",
-        Box::new(ContactChangesHandler::new(Arc::clone(&store))),
+        "ChatContact/changes",
+        Box::new(ChatContactChangesHandler::new(Arc::clone(&store))),
     );
     d.register(
-        "Contact/query",
-        Box::new(ContactQueryHandler::new(Arc::clone(&store))),
+        "ChatContact/query",
+        Box::new(ChatContactQueryHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "ChatContact/queryChanges",
+        Box::new(ChatContactQueryChangesHandler::new(Arc::clone(&store))),
     );
 
     // Chat methods (owner-only)
@@ -568,10 +573,11 @@ mod tests {
 
         // (method_name, role_required_by_spec)
         let owner_methods = [
-            "Contact/get",
-            "Contact/set",
-            "Contact/changes",
-            "Contact/query",
+            "ChatContact/get",
+            "ChatContact/set",
+            "ChatContact/changes",
+            "ChatContact/query",
+            "ChatContact/queryChanges",
             "Chat/get",
             "Chat/set",
             "Chat/changes",
@@ -586,7 +592,7 @@ mod tests {
 
         for method in owner_methods {
             let req = JmapRequest {
-                using: vec!["urn:kith:chat:1".to_string()],
+                using: vec!["urn:ietf:params:jmap:chat".to_string()],
                 method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
             };
             let resp = dispatcher
@@ -603,7 +609,7 @@ mod tests {
 
         for method in peer_methods {
             let req = JmapRequest {
-                using: vec!["urn:kith:chat:1".to_string()],
+                using: vec!["urn:ietf:params:jmap:chat".to_string()],
                 method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
             };
             let resp = dispatcher

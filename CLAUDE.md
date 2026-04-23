@@ -134,11 +134,11 @@ On every request: extract peer socket address → call `WhoIs` on LocalAPI → c
 | Identity is in `contacts` table | **Peer** — `Peer/deliver` and `Peer/receipt` only |
 | Anyone else | 401 |
 
-`Peer/deliver` requires that `senderTailscaleUserId` in the request body equals the caller's verified `WhoIs` identity. The Tailscale transport proves the claim; no signing or tokens needed.
+`Peer/deliver` requires that `senderUserId` in the request body equals the caller's verified `WhoIs` identity. The Tailscale transport proves the claim; no signing or tokens needed.
 
 ## Wire Protocol
 
-JMAP (RFC 8620 core) with custom capability `urn:kith:chat:1`. JSON over HTTPS, listener bound to tailnet interface only.
+JMAP (RFC 8620 core) with custom capability `urn:ietf:params:jmap:chat`. JSON over HTTPS, listener bound to tailnet interface only.
 
 **Owner methods:** `Contact/{get,set,changes,query}`, `Chat/{get,set,changes,query}`, `Message/{get,set,changes,query,queryChanges}`
 
@@ -179,7 +179,7 @@ Outbox retry uses exponential backoff; outbox rows are indexed by `next_attempt_
 
 Integration tests that hit a real SQLite file are preferred over unit tests that mock the store — we got the store layer wrong in isolation before and the integration test caught it.
 
-**Auth tests must not self-certify.** A test that checks authorization by calling the endpoint as the owner, using the same `WhoIs` stub that returns "owner", and asserting "owner got in" proves nothing. Tests must cover the rejection path (wrong identity, non-permitted peer, mismatched `senderTailscaleUserId`) using an independent fixture, not a circular dependency on the code under test.
+**Auth tests must not self-certify.** A test that checks authorization by calling the endpoint as the owner, using the same `WhoIs` stub that returns "owner", and asserting "owner got in" proves nothing. Tests must cover the rejection path (wrong identity, non-permitted peer, mismatched `senderUserId`) using an independent fixture, not a circular dependency on the code under test.
 
 ## Defensive Input Handling
 
@@ -190,7 +190,7 @@ Integration tests that hit a real SQLite file are preferred over unit tests that
 | Tailscale TCP peer address | The address is real (Tailscale guarantees it) | Nothing else |
 | `WhoIs` result for that address | `UserProfile.ID` and `LoginName` are the verified identity | Nothing about message content |
 | JMAP request body (owner) | The caller's identity (from WhoIs) | Every field value in the request |
-| JMAP request body (peer) | The caller's identity (from WhoIs) | All field values, especially `senderTailscaleUserId` |
+| JMAP request body (peer) | The caller's identity (from WhoIs) | All field values, especially `senderUserId` |
 | Peer `body` text | Nothing | May be oversized, malformed UTF-8, or injection attempts |
 | Peer attachment metadata | Nothing | `filename`, `content_type`, `size` are all attacker-controlled |
 | Peer `sentAt` timestamp | Nothing — use `receivedAt` (local clock) for ordering | Sender clock is unverified |
@@ -204,7 +204,7 @@ Integration tests that hit a real SQLite file are preferred over unit tests that
 - Validate `blobId` format before using it in file system paths
 - Clamp or reject `size` claims in attachment metadata — verify against actual bytes received
 - Reject JMAP calls that reference IDs in the wrong account or wrong chat
-- `senderTailscaleUserId` in `Peer/deliver` must be compared against WhoIs result **before** any database write
+- `senderUserId` in `Peer/deliver` must be compared against WhoIs result **before** any database write
 
 **Rust-specific:** use `str::from_utf8` (or serde's built-in UTF-8 validation) explicitly for any bytes arriving from the network before treating them as strings. Do not assume `body` is valid UTF-8 just because the field type says `String`.
 

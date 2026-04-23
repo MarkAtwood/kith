@@ -21,26 +21,26 @@ fn make_store() -> Arc<Mutex<kith_store::Store>> {
 fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>, owner_id: &str) -> Dispatcher {
     let mut d = Dispatcher::new();
     d.register(
-        "Contact/get",
-        Box::new(kith_chat::contact::ContactGetHandler::new(Arc::clone(
+        "ChatContact/get",
+        Box::new(kith_chat::contact::ChatContactGetHandler::new(Arc::clone(
             &store,
         ))),
     );
     d.register(
-        "Contact/set",
-        Box::new(kith_chat::contact::ContactSetHandler::new(Arc::clone(
+        "ChatContact/set",
+        Box::new(kith_chat::contact::ChatContactSetHandler::new(Arc::clone(
             &store,
         ))),
     );
     d.register(
-        "Contact/changes",
-        Box::new(kith_chat::contact::ContactChangesHandler::new(Arc::clone(
+        "ChatContact/changes",
+        Box::new(kith_chat::contact::ChatContactChangesHandler::new(Arc::clone(
             &store,
         ))),
     );
     d.register(
-        "Contact/query",
-        Box::new(kith_chat::contact::ContactQueryHandler::new(Arc::clone(
+        "ChatContact/query",
+        Box::new(kith_chat::contact::ChatContactQueryHandler::new(Arc::clone(
             &store,
         ))),
     );
@@ -101,7 +101,7 @@ fn kith_request(method_calls: Vec<(&str, serde_json::Value, &str)>) -> JmapReque
     JmapRequest {
         using: vec![
             "urn:ietf:params:jmap:core".to_string(),
-            "urn:kith:chat:1".to_string(),
+            "urn:ietf:params:jmap:chat".to_string(),
         ],
         method_calls: method_calls
             .into_iter()
@@ -114,7 +114,7 @@ fn kith_request(method_calls: Vec<(&str, serde_json::Value, &str)>) -> JmapReque
 // GROUP A — Cross-method workflow tests
 // ---------------------------------------------------------------------------
 
-// Oracle: Contact/set create → Contact/get → Contact/query → Contact/changes
+// Oracle: ChatContact/set create → Contact/get → Contact/query → Contact/changes
 // all operate on the same underlying store; state tokens must be consistent.
 // RFC 8620 §5.1 (get), §5.3 (set), §5.6 (changes), §5.7 (query).
 #[tokio::test]
@@ -122,9 +122,9 @@ async fn test_full_contact_workflow() {
     let store = make_store();
     let d = make_dispatcher(Arc::clone(&store), "uid-owner");
 
-    // Step 1: Contact/set create.
+    // Step 1: ChatContact/set create.
     let req = kith_request(vec![(
-        "Contact/set",
+        "ChatContact/set",
         json!({
             "accountId": "a-self",
             "create": {
@@ -139,7 +139,7 @@ async fn test_full_contact_workflow() {
     )]);
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     let (name, args, call_id) = &resp.method_responses[0];
-    assert_eq!(name, "Contact/set");
+    assert_eq!(name, "ChatContact/set");
     assert_eq!(call_id, "c0");
     // Oracle: RFC 8620 §5.3 — created map has the client-id key.
     assert!(
@@ -150,9 +150,9 @@ async fn test_full_contact_workflow() {
     assert_eq!(args["created"]["c0"]["id"], "uid-alice");
     let new_state_after_set = args["newState"].as_str().unwrap().to_string();
 
-    // Step 2: Contact/get by id — verify the contact is readable.
+    // Step 2: ChatContact/get by id — verify the contact is readable.
     let req = kith_request(vec![(
-        "Contact/get",
+        "ChatContact/get",
         json!({
             "accountId": "a-self",
             "ids": ["uid-alice"]
@@ -161,7 +161,7 @@ async fn test_full_contact_workflow() {
     )]);
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     let (name, args, call_id) = &resp.method_responses[0];
-    assert_eq!(name, "Contact/get");
+    assert_eq!(name, "ChatContact/get");
     assert_eq!(call_id, "c1");
     let list = args["list"].as_array().expect("list must be array");
     assert_eq!(list.len(), 1, "exactly one contact in list");
@@ -171,30 +171,30 @@ async fn test_full_contact_workflow() {
     // Oracle: state returned by get must match newState returned by set.
     assert_eq!(args["state"], new_state_after_set);
 
-    // Step 3: Contact/query — the new contact appears in the id list.
+    // Step 3: ChatContact/query — the new contact appears in the id list.
     let req = kith_request(vec![(
-        "Contact/query",
+        "ChatContact/query",
         json!({"accountId": "a-self"}),
         "c2",
     )]);
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     let (name, args, _) = &resp.method_responses[0];
-    assert_eq!(name, "Contact/query");
+    assert_eq!(name, "ChatContact/query");
     let ids = args["ids"].as_array().expect("ids must be array");
     assert!(
         ids.iter().any(|v| v.as_str() == Some("uid-alice")),
         "uid-alice must appear in Contact/query ids; got: {ids:?}"
     );
 
-    // Step 4: Contact/changes from s-0 — the new contact is in created.
+    // Step 4: ChatContact/changes from s-0 — the new contact is in created.
     let req = kith_request(vec![(
-        "Contact/changes",
+        "ChatContact/changes",
         json!({"accountId": "a-self", "sinceState": "s-0"}),
         "c3",
     )]);
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     let (name, args, _) = &resp.method_responses[0];
-    assert_eq!(name, "Contact/changes");
+    assert_eq!(name, "ChatContact/changes");
     let created = args["created"].as_array().expect("created must be array");
     assert!(
         created.iter().any(|v| v.as_str() == Some("uid-alice")),
@@ -204,7 +204,7 @@ async fn test_full_contact_workflow() {
     assert_eq!(args["newState"], new_state_after_set);
 }
 
-// Oracle: Contact/set create (for Chat/set dependency) → Chat/set create →
+// Oracle: ChatContact/set create (for Chat/set dependency) → Chat/set create →
 // Chat/get → Chat/query → Chat/changes.
 // RFC 8620 §5.3, §5.1, §5.7, §5.6.
 #[tokio::test]
@@ -215,7 +215,7 @@ async fn test_full_chat_workflow() {
 
     // Step 1: Create the contact that the chat will reference.
     let req = kith_request(vec![(
-        "Contact/set",
+        "ChatContact/set",
         json!({
             "accountId": "a-self",
             "create": {
@@ -231,7 +231,7 @@ async fn test_full_chat_workflow() {
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     assert!(
         resp.method_responses[0].1["created"].get("c0").is_some(),
-        "Contact/set must succeed"
+        "ChatContact/set must succeed"
     );
 
     // Step 2: Chat/set create.
@@ -314,7 +314,7 @@ async fn test_full_message_workflow() {
 
     // Step 1: Create a contact.
     let req = kith_request(vec![(
-        "Contact/set",
+        "ChatContact/set",
         json!({
             "accountId": "a-self",
             "create": {
@@ -483,10 +483,10 @@ async fn test_peer_cannot_call_owner_methods() {
 
     // Oracle: all methods listed in METHOD_ROLES as Role::Owner must be rejected.
     let owner_methods = [
-        "Contact/get",
-        "Contact/set",
-        "Contact/changes",
-        "Contact/query",
+        "ChatContact/get",
+        "ChatContact/set",
+        "ChatContact/changes",
+        "ChatContact/query",
         "Chat/get",
         "Chat/set",
         "Chat/changes",
@@ -765,9 +765,9 @@ async fn test_message_changes_future_state() {
     );
 }
 
-// Oracle: Contact/changes with malformed sinceState must return an error.
+// Oracle: ChatContact/changes with malformed sinceState must return an error.
 // "not-s-n" does not match the "s-<integer>" pattern → ContactStore returns
-// KithError::Validation → ContactChangesHandler maps to JmapError::state_mismatch().
+// KithError::Validation → ChatContactChangesHandler maps to JmapError::state_mismatch().
 // Per RFC 8620 §5.6: invalid sinceState → stateMismatch error.
 #[tokio::test]
 async fn test_contact_changes_malformed_state() {
@@ -775,7 +775,7 @@ async fn test_contact_changes_malformed_state() {
     let d = make_dispatcher(Arc::clone(&store), "uid-owner");
 
     let req = kith_request(vec![(
-        "Contact/changes",
+        "ChatContact/changes",
         json!({
             "accountId": "a-self",
             "sinceState": "not-s-n"
@@ -784,11 +784,11 @@ async fn test_contact_changes_malformed_state() {
     )]);
     let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
     let (method_name, args, _) = &resp.method_responses[0];
-    assert_eq!(method_name, "Contact/changes");
-    // Oracle: ContactChangesHandler maps KithError::Validation → stateMismatch.
+    assert_eq!(method_name, "ChatContact/changes");
+    // Oracle: ChatContactChangesHandler maps KithError::Validation → stateMismatch.
     assert_eq!(
         args["type"], "stateMismatch",
-        "Contact/changes with malformed sinceState must return stateMismatch; got: {args}"
+        "ChatContact/changes with malformed sinceState must return stateMismatch; got: {args}"
     );
 }
 

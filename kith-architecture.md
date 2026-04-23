@@ -9,7 +9,7 @@ The name describes the social boundary of the system: messages travel among peop
 Components and conventions:
 - `kithd` — the mailbox daemon, one per user
 - `kithctl` — local CLI for operators
-- `urn:kith:chat:1` — JMAP capability URI
+- `urn:ietf:params:jmap:chat` — JMAP capability URI
 - Example hostnames throughout this document: `alice-kith.tail-xxxxx.ts.net`, `bob-kith.tail-yyyyy.ts.net` (users pick their own)
 
 ## Premise
@@ -109,7 +109,7 @@ JMAP's core envelope, sync semantics (`/changes`), push (EventSource/WebSocket),
 ### Capability URI
 
 ```
-urn:kith:chat:1
+urn:ietf:params:jmap:chat
 ```
 
 Clients declare support via the `using` array. The core capability `urn:ietf:params:jmap:core` is always implicit.
@@ -131,7 +131,7 @@ Clients declare support via the `using` array. The core capability `urn:ietf:par
       "maxObjectsInSet": 500,
       "collationAlgorithms": ["i;unicode-casemap"]
     },
-    "urn:kith:chat:1": {
+    "urn:ietf:params:jmap:chat": {
       "maxBodyBytes": 65536,
       "maxAttachmentBytes": 104857600,
       "supportedBodyTypes": ["text/plain", "text/markdown"]
@@ -143,14 +143,14 @@ Clients declare support via the `using` array. The core capability `urn:ietf:par
       "isPersonal": true,
       "isReadOnly": false,
       "accountCapabilities": {
-        "urn:kith:chat:1": {
+        "urn:ietf:params:jmap:chat": {
           "role": "owner"
         }
       }
     }
   },
   "primaryAccounts": {
-    "urn:kith:chat:1": "a-self"
+    "urn:ietf:params:jmap:chat": "a-self"
   },
   "username": "alice@example.com",
   "apiUrl": "https://alice-kith.tail-xxxxx.ts.net/jmap/api",
@@ -262,7 +262,7 @@ Peer/receipt
   "message": {
     "id": "01HXYZ7K8MQ3V...",
     "chatId": "b3d4...",
-    "senderTailscaleUserId": "uid:bob@example.com",
+    "senderUserId": "uid:bob@example.com",
     "body": "hey",
     "bodyType": "text/plain",
     "attachments": [],
@@ -282,7 +282,7 @@ Response:
 }, "0"]
 ```
 
-Authorization: the calling peer's `whois` identity must equal `senderTailscaleUserId`. You cannot deliver a message claiming to be from someone else; the transport and the claim must match. This is the whole anti-spoof mechanism.
+Authorization: the calling peer's `whois` identity must equal `senderUserId`. You cannot deliver a message claiming to be from someone else; the transport and the claim must match. This is the whole anti-spoof mechanism.
 
 `Peer/receipt` reports delivery/read state back to the sender:
 
@@ -342,7 +342,7 @@ pub async fn authorize(
 }
 ```
 
-Owner can call any method. Peer can call `Peer/deliver` and `Peer/receipt` only, and `senderTailscaleUserId` in `Peer/deliver` must equal the caller's identity.
+Owner can call any method. Peer can call `Peer/deliver` and `Peer/receipt` only, and `senderUserId` in `Peer/deliver` must equal the caller's identity.
 
 No tokens. No sessions. The Tailscale connection carries identity, JMAP carries semantics. That is the whole protocol.
 
@@ -663,9 +663,9 @@ This is small. Ballpark 3000–4000 lines of Rust plus a minimal web client. (Ru
 
 > Build a mailbox daemon in Rust (`axum` + `tokio` + `rusqlite` + `serde`). Each user runs one daemon on a Tailscale node they own. The daemon requires `tailscaled` running on the host and talks to it via the LocalAPI Unix socket (default `/var/run/tailscale/tailscaled.sock`), specifically the `/localapi/v0/whois` endpoint for per-request peer identity and `/localapi/v0/status` for the local node's tailnet IPs. `kithd` binds its HTTPS listener only to the tailnet IPs returned by `status`; it must not listen on any public interface.
 >
-> The daemon exposes a JMAP API (RFC 8620 core) with a custom `urn:kith:chat:1` capability defining `Contact`, `Chat`, `Message`, and `Attachment` data types and methods. Standard JMAP conventions: `/get`, `/set`, `/changes`, `/query` shape; ResultReferences for batching (implement per RFC 8620 §3.7); EventSource for push. Two peer methods `Peer/deliver` and `Peer/receipt` handle kithd-to-kithd message exchange with the same envelope and same authorization mechanism.
+> The daemon exposes a JMAP API (RFC 8620 core) with a custom `urn:ietf:params:jmap:chat` capability defining `Contact`, `Chat`, `Message`, and `Attachment` data types and methods. Standard JMAP conventions: `/get`, `/set`, `/changes`, `/query` shape; ResultReferences for batching (implement per RFC 8620 §3.7); EventSource for push. Two peer methods `Peer/deliver` and `Peer/receipt` handle kithd-to-kithd message exchange with the same envelope and same authorization mechanism.
 >
-> Authentication on every request: extract the peer socket address, call `WhoIs` on the LocalAPI, classify the caller as `Owner` (identity matches mailbox owner from config) or `Peer` (identity is in the contacts table), restrict method access accordingly, reject otherwise. The `senderTailscaleUserId` field in `Peer/deliver` must equal the caller's verified identity (anti-spoof, structural, no signing needed).
+> Authentication on every request: extract the peer socket address, call `WhoIs` on the LocalAPI, classify the caller as `Owner` (identity matches mailbox owner from config) or `Peer` (identity is in the contacts table), restrict method access accordingly, reject otherwise. The `senderUserId` field in `Peer/deliver` must equal the caller's verified identity (anti-spoof, structural, no signing needed).
 >
 > Storage is SQLite via `rusqlite` with the `bundled` feature. Outgoing messages to peer mailboxes that are unreachable are queued in an outbox table and retried with exponential backoff via `Peer/deliver` calls to the recipient's JMAP API URL (discovered from the contact's mailbox host). Chat ids are deterministic: `chatId = hex(sha256(sorted_participant_tailscale_user_ids.join("\x00")))`, so both sides derive the same id without negotiation.
 >

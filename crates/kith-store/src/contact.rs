@@ -1,6 +1,6 @@
 use crate::db_err;
 use crate::message::ChangesResult;
-use kith_core::{Contact, KithError, StateChange};
+use kith_core::{ChatContact, KithError, StateChange};
 use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
@@ -20,7 +20,7 @@ impl<'a> ContactStore<'a> {
     fn emit(&self, new_state: String) {
         if let Some(tx) = self.events_tx {
             let _ = tx.send(StateChange {
-                type_name: "Contact".to_string(),
+                type_name: "ChatContact".to_string(),
                 new_state,
             });
         }
@@ -104,7 +104,7 @@ impl<'a> ContactStore<'a> {
     }
 
     /// Fetch a single contact by peer_user_id.  Returns None if not found.
-    pub fn get_by_peer_user_id(&self, peer_user_id: &str) -> Result<Option<Contact>, KithError> {
+    pub fn get_by_peer_user_id(&self, peer_user_id: &str) -> Result<Option<ChatContact>, KithError> {
         let result = self.conn.query_row(
             "SELECT peer_user_id, peer_login, peer_mailbox_host, display_name, \
                     first_seen_at, last_seen_at, blocked \
@@ -120,7 +120,7 @@ impl<'a> ContactStore<'a> {
     }
 
     /// Return all contacts ordered by peer_login.
-    pub fn list(&self) -> Result<Vec<Contact>, KithError> {
+    pub fn list(&self) -> Result<Vec<ChatContact>, KithError> {
         let mut stmt = self
             .conn
             .prepare(
@@ -235,8 +235,8 @@ impl<'a> ContactStore<'a> {
     }
 }
 
-/// Map a rusqlite Row to a Contact.  Column order must match the SELECT above.
-fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<Contact> {
+/// Map a rusqlite Row to a ChatContact.  Column order must match the SELECT above.
+fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let peer_user_id: String = row.get(0)?;
     let peer_login: String = row.get(1)?;
     let peer_mailbox_host: String = row.get(2)?;
@@ -244,7 +244,7 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<Contact> {
     let first_seen_at: i64 = row.get(4)?;
     let last_seen_at: i64 = row.get(5)?;
     let blocked: i64 = row.get(6)?;
-    Ok(Contact {
+    Ok(ChatContact {
         id: peer_user_id.clone(),
         tailscale_user_id: peer_user_id,
         login: peer_login,

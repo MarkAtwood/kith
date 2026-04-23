@@ -174,7 +174,7 @@ mod inner {
         // alice_router already has MockConnectInfo(ALICE_MOCK_ADDR) and alice's
         // identity → Owner classification.
         let request_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Message/set", {
                 "accountId": "a-self",
                 "create": {
@@ -268,7 +268,7 @@ mod inner {
         // "readAt" is a hardcoded RFC 3339 string — independent of any code path.
         let read_timestamp = "2026-01-01T12:00:00Z";
         let update_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Message/set", {
                 "accountId": "a-self",
                 "update": {
@@ -378,7 +378,7 @@ mod inner {
         // Build the Peer/receipt request.
         // 'at' is a hardcoded RFC 3339 timestamp — independent oracle.
         let receipt_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Peer/receipt", {
                 "accountId": "a-self",
                 "messageId": msg_id,
@@ -529,7 +529,7 @@ mod inner {
         // Step 4: alice sends a message to the group chat.
         const GROUP_MSG_BODY: &str = "hello group";
         let request_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Message/set", {
                 "accountId": "a-self",
                 "create": {
@@ -681,7 +681,7 @@ mod inner {
 
         // Step 5: alice sends a message to the group chat.
         let request_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Message/set", {
                 "accountId": "a-self",
                 "create": {

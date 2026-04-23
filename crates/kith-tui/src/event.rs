@@ -143,7 +143,7 @@ pub(crate) async fn load_startup_data(
     state: &mut AppState,
 ) {
     let req = JmapRequest {
-        using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+        using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
         method_calls: vec![
             (
                 "Chat/get".into(),
@@ -151,7 +151,7 @@ pub(crate) async fn load_startup_data(
                 "c0".into(),
             ),
             (
-                "Contact/get".into(),
+                "ChatContact/get".into(),
                 json!({"accountId": "a-self"}),
                 "c1".into(),
             ),
@@ -306,7 +306,7 @@ pub(crate) async fn load_messages_for_chat(
 ) {
     // Step A — Message/query
     let query_req = JmapRequest {
-        using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+        using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
         method_calls: vec![(
             "Message/query".into(),
             json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 50}),
@@ -348,7 +348,7 @@ pub(crate) async fn load_messages_for_chat(
 
     // Step B — Message/get
     let get_req = JmapRequest {
-        using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+        using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
         method_calls: vec![(
             "Message/get".into(),
             json!({"accountId": "a-self", "ids": ids}),
@@ -433,7 +433,7 @@ pub(crate) async fn send_message(
     let sent_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     let req = JmapRequest {
-        using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+        using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
         method_calls: vec![(
             "Message/set".into(),
             json!({"accountId": "a-self", "create": {"k-1": {"chatId": chat_id, "body": body, "bodyType": "text/plain", "sentAt": sent_at}}}),
@@ -497,7 +497,7 @@ pub(crate) async fn send_read_receipts(
     }
 
     let req = JmapRequest {
-        using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+        using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
         method_calls: vec![(
             "Message/set".into(),
             json!({"accountId": "a-self", "update": update}),
@@ -558,7 +558,7 @@ pub(crate) async fn handle_state_change(
 
             // Step 1: Message/changes
             let changes_req = JmapRequest {
-                using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+                using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
                 method_calls: vec![(
                     "Message/changes".into(),
                     json!({"accountId": "a-self", "sinceState": since_state}),
@@ -646,7 +646,7 @@ pub(crate) async fn handle_state_change(
 
             // Step 2: Message/get for new/updated IDs
             let get_req = JmapRequest {
-                using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+                using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
                 method_calls: vec![(
                     "Message/get".into(),
                     json!({"accountId": "a-self", "ids": all_ids}),
@@ -988,7 +988,7 @@ mod tests {
                         "notFound": [],
                         "state": "s-3"
                     }, "c0"],
-                    ["Contact/get", {
+                    ["ChatContact/get", {
                         "accountId": "a-self",
                         "list": [{
                             "id": "c-1",
@@ -1274,7 +1274,7 @@ mod tests {
                         "notFound": [],
                         "state": "s-2"
                     }, "c0"],
-                    ["Contact/get", {
+                    ["ChatContact/get", {
                         "accountId": "a-self",
                         "list": [{
                             "id": "c-bob",
@@ -1470,7 +1470,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "methodResponses": [
                     ["Chat/get", {"accountId": "a-self", "list": [], "notFound": [], "state": "s-0"}, "c0"],
-                    ["Contact/get", {"accountId": "a-self", "list": [], "state": "s-0"}, "c1"]
+                    ["ChatContact/get", {"accountId": "a-self", "list": [], "state": "s-0"}, "c1"]
                 ],
                 "sessionState": "s-0"
             })))

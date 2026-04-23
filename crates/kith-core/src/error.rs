@@ -13,8 +13,8 @@ pub enum AuthError {
     /// Caller's identity does not match any authorized role for this mailbox.
     #[error("caller is not authorized")]
     Unauthorized,
-    /// `senderTailscaleUserId` in `Peer/deliver` body does not match the WhoIs-verified caller.
-    #[error("senderTailscaleUserId does not match caller identity")]
+    /// `senderUserId` in `Peer/deliver` body does not match the WhoIs-verified caller.
+    #[error("senderUserId does not match caller identity")]
     SenderMismatch,
 }
 

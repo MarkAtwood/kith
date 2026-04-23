@@ -146,12 +146,32 @@ ALTER TABLE outbox_v3 RENAME TO outbox;
 CREATE INDEX outbox_next ON outbox(next_attempt_at);
 ";
 
+// V4: add contact_id to chats (for direct-chat dedup via unique index),
+//     add sender_msg_id to messages (for idempotent Peer/deliver).
+const SCHEMA_V4: &str = "
+ALTER TABLE chats ADD COLUMN contact_id TEXT;
+UPDATE chats SET contact_id = (
+    SELECT peer_user_id FROM chat_members WHERE chat_id = chats.id LIMIT 1
+) WHERE kind = 'direct';
+CREATE UNIQUE INDEX IF NOT EXISTS chats_direct_contact
+    ON chats(contact_id) WHERE kind = 'direct';
+ALTER TABLE messages ADD COLUMN sender_msg_id TEXT;
+UPDATE messages SET sender_msg_id = id;
+CREATE INDEX IF NOT EXISTS messages_sender_msg_id
+    ON messages(chat_id, sender_msg_id);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
 // Adding migrations out of order will silently skip them if
 // user_version already exceeds their target.
-const MIGRATIONS: &[(u32, &str)] = &[(1, SCHEMA_V1), (2, SCHEMA_V2), (3, SCHEMA_V3)];
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, SCHEMA_V1),
+    (2, SCHEMA_V2),
+    (3, SCHEMA_V3),
+    (4, SCHEMA_V4),
+];
 
 impl Store {
     /// Open (or create) the database at `path`.
@@ -376,7 +396,7 @@ impl Store {
 
     /// Fetch all three JMAP state counters in a single SQL query.
     ///
-    /// Returns `[("Contact", "s-N"), ("Chat", "s-N"), ("Message", "s-N")]`.
+    /// Returns `[("ChatContact", "s-N"), ("Chat", "s-N"), ("Message", "s-N")]`.
     /// Any type whose row is missing from `state_counters` defaults to `"s-0"`.
     pub fn get_all_states(&self) -> Result<[(&'static str, String); 3], kith_core::KithError> {
         let mut stmt = self
@@ -410,7 +430,7 @@ impl Store {
             }
         }
 
-        Ok([("Contact", contact), ("Chat", chat), ("Message", message)])
+        Ok([("ChatContact", contact), ("Chat", chat), ("Message", message)])
     }
 }
 
@@ -492,8 +512,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has three entries (versions 1, 2, and 3), so user_version must be 3 after open.
-        assert_eq!(version, 3);
+        // MIGRATIONS has four entries (versions 1-4), so user_version must be 4 after open.
+        assert_eq!(version, 4);
     }
 
     #[test]
@@ -529,7 +549,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 3, "migration 3 must be applied");
+        assert_eq!(v1, 4, "migration 4 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -611,7 +631,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 3, "migration v3 must set user_version to 3");
+        assert_eq!(v, 4, "migration v4 must set user_version to 4");
     }
 
     #[test]
@@ -945,7 +965,7 @@ mod tests {
 
     #[test]
     fn test_contact_upsert_emits_state_change() {
-        // Oracle: RFC 8620 type name for contacts is "Contact".
+        // Oracle: RFC 8620 type name for contacts is "ChatContact".
         let (tx, mut rx) = tokio::sync::broadcast::channel(100);
         let mut store = Store::open_in_memory().expect("open");
         store.set_events_tx(tx);
@@ -964,7 +984,7 @@ mod tests {
         let change = rx
             .try_recv()
             .expect("StateChange must be emitted on upsert");
-        assert_eq!(change.type_name, "Contact");
+        assert_eq!(change.type_name, "ChatContact");
         let expected = store.contacts().get_state().expect("get_state");
         assert_eq!(change.new_state, expected);
     }

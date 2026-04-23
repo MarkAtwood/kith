@@ -402,7 +402,7 @@ async fn fetch_and_notify(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // --- Message/changes ---
     let changes_request = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
             ["Message/changes", {"accountId": "me", "sinceState": since_state, "maxChanges": 50}, "c0"]
         ]
@@ -432,7 +432,7 @@ async fn fetch_and_notify(
 
     // --- Message/get ---
     let get_request = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
             ["Message/get", {
                 "accountId": "me",

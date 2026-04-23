@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// A contact known to this mailbox.
 /// Auto-created on first inbound delivery or manually by owner.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Contact {
+pub struct ChatContact {
     /// Server-assigned opaque identifier.
     pub id: String,
     /// Opaque stable key from Tailscale identity provider.
@@ -28,7 +28,7 @@ pub struct Contact {
     pub blocked: bool,
 }
 
-impl Contact {
+impl ChatContact {
     /// Returns the best available display string for this contact.
     /// Falls back: display_name → login → tailscale_user_id.
     /// Never returns an empty string.
@@ -49,8 +49,8 @@ impl Contact {
 mod tests {
     use super::*;
 
-    fn sample_contact() -> Contact {
-        Contact {
+    fn sample_contact() -> ChatContact {
+        ChatContact {
             id: "c-001".into(),
             tailscale_user_id: "uid-456".into(),
             login: "bob@example.com".into(),
@@ -66,7 +66,7 @@ mod tests {
     fn contact_round_trip() {
         let c = sample_contact();
         let json_str = serde_json::to_string(&c).unwrap();
-        let c2: Contact = serde_json::from_str(&json_str).unwrap();
+        let c2: ChatContact = serde_json::from_str(&json_str).unwrap();
         assert_eq!(c, c2);
     }
 

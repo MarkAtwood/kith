@@ -47,7 +47,7 @@ impl ClientSession {
     /// Returns the account ID for the kith:chat capability (`"a-self"` for owner).
     pub fn account_id(&self) -> Option<&str> {
         self.primary_accounts
-            .get("urn:kith:chat:1")
+            .get("urn:ietf:params:jmap:chat")
             .map(String::as_str)
     }
 }
@@ -231,7 +231,7 @@ mod tests {
     async fn fetch_session_happy_path() {
         let mock_server = MockServer::start().await;
         let body = serde_json::json!({
-            "primaryAccounts": {"urn:kith:chat:1": "a-self"},
+            "primaryAccounts": {"urn:ietf:params:jmap:chat": "a-self"},
             "apiUrl": format!("{}/jmap/api", mock_server.uri()),
             "eventSourceUrl": format!("{}/jmap/events", mock_server.uri()),
             "state": "s-1"
@@ -301,7 +301,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:core".into(), "urn:kith:chat:1".into()],
+            using: vec!["urn:ietf:params:jmap:core".into(), "urn:ietf:params:jmap:chat".into()],
             method_calls: vec![(
                 "Chat/get".into(),
                 serde_json::json!({"accountId": "a-self"}),

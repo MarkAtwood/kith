@@ -216,7 +216,7 @@ async fn body_string(resp: axum::response::Response) -> String {
 // Test 1: GET /.well-known/jmap → 200 with JMAP Session object
 //
 // Oracle: RFC 8620 §2 — the Session object MUST contain a "capabilities"
-// field.  The kith capability MUST be listed as "urn:kith:chat:1".
+// field.  The kith capability MUST be listed as "urn:ietf:params:jmap:chat".
 // The response MUST have HTTP 200.
 // ---------------------------------------------------------------------------
 #[tokio::test]
@@ -247,10 +247,10 @@ async fn e2e_session_endpoint_returns_kith_capability() {
     );
 
     // Kith capability must be present (RFC 8620 §2 requires all server
-    // capabilities to be listed; "urn:kith:chat:1" is the kith-specific one).
+    // capabilities to be listed; "urn:ietf:params:jmap:chat" is the kith-specific one).
     assert!(
-        json["capabilities"].get("urn:kith:chat:1").is_some(),
-        "capabilities must include 'urn:kith:chat:1'; body: {body}"
+        json["capabilities"].get("urn:ietf:params:jmap:chat").is_some(),
+        "capabilities must include 'urn:ietf:params:jmap:chat'; body: {body}"
     );
 
     // RFC 8620 §2: apiUrl, accounts, primaryAccounts, username are all required.
@@ -273,7 +273,7 @@ async fn e2e_session_endpoint_returns_kith_capability() {
 //
 // Oracle: RFC 8620 §3.4 — the JMAP response envelope MUST contain
 // "methodResponses" with at least one entry.  The first entry's method name
-// (index 0 in the invocation tuple) MUST equal "Contact/get".
+// (index 0 in the invocation tuple) MUST equal "ChatContact/get".
 // HTTP status MUST be 200 for any method-level result (RFC 8620 §3).
 // ---------------------------------------------------------------------------
 #[tokio::test]
@@ -283,9 +283,9 @@ async fn e2e_contact_get_returns_method_response() {
     // Manually constructed request from the RFC 8620 §3.3 format spec.
     // Not derived from any implementation output.
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
-            ["Contact/get", {"accountId": "a-self", "ids": null}, "c0"]
+            ["ChatContact/get", {"accountId": "a-self", "ids": null}, "c0"]
         ]
     });
 
@@ -317,11 +317,11 @@ async fn e2e_contact_get_returns_method_response() {
     );
 
     // RFC 8620 §3.3: each Invocation is [name, arguments, methodCallId].
-    // The name MUST be "Contact/get" — the same method we called.
+    // The name MUST be "ChatContact/get" — the same method we called.
     let first_response = &method_responses[0];
     assert_eq!(
         first_response[0].as_str(),
-        Some("Contact/get"),
+        Some("ChatContact/get"),
         "first response method name must be 'Contact/get'; body: {body}"
     );
 
@@ -346,7 +346,7 @@ async fn e2e_unknown_method_returns_unknownmethod_error() {
     let app = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
             ["NoSuchMethod/foo", {"accountId": "a-self"}, "c1"]
         ]
@@ -481,9 +481,9 @@ async fn peer_calls_owner_method_forbidden() {
     // Contact/get requires Role::Owner.  A Role::Peer caller must receive
     // forbiddenMethod, not a 401 (auth already passed).
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
-            ["Contact/get", {"accountId": "a-self", "ids": null}, "p0"]
+            ["ChatContact/get", {"accountId": "a-self", "ids": null}, "p0"]
         ]
     });
 
@@ -518,7 +518,7 @@ async fn peer_calls_owner_method_forbidden() {
     // RFC 8620 §3.3: method name is echoed in error invocations.
     assert_eq!(
         method_responses[0][0].as_str(),
-        Some("Contact/get"),
+        Some("ChatContact/get"),
         "error invocation must echo the original method name; body: {body}"
     );
 
@@ -538,10 +538,10 @@ async fn peer_calls_owner_method_forbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: Peer/deliver with senderTailscaleUserId != WhoIs identity → rejected
+// Test 6: Peer/deliver with senderUserId != WhoIs identity → rejected
 //
 // Oracle: kith authorization model §Defensive Input Handling —
-// senderTailscaleUserId MUST equal the WhoIs-verified caller identity BEFORE
+// senderUserId MUST equal the WhoIs-verified caller identity BEFORE
 // any database write.  The independent oracle is the message state counter:
 // if counter is unchanged after the request, no write occurred.
 //
@@ -581,7 +581,7 @@ async fn peer_deliver_sender_mismatch_rejected() {
         .get_state()
         .expect("get_state must succeed on a fresh in-memory store");
 
-    // Build a Peer/deliver request where senderTailscaleUserId differs from
+    // Build a Peer/deliver request where senderUserId differs from
     // the WhoIs identity (PEER_ID).  The chatId is derived from the correct
     // participants so any failure is solely due to the sender mismatch, not a
     // chatId issue.  (DeliverHandler validates sender first, then chatId.)
@@ -589,13 +589,13 @@ async fn peer_deliver_sender_mismatch_rejected() {
     // unwrap: Ulid::new() cannot fail; to_string() cannot fail.
     let msg_id = Ulid::new().to_string();
     let request_body = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Peer/deliver", {
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": "uid-evil-impersonator",
+                "senderUserId": "uid-evil-impersonator",
                 "body": "injected message",
                 "bodyType": "text/plain",
                 "sentAt": "2026-01-01T00:00:00Z"
@@ -635,7 +635,7 @@ async fn peer_deliver_sender_mismatch_rejected() {
     assert_eq!(
         method_responses[0][1]["type"].as_str(),
         Some("invalidArguments"),
-        "senderTailscaleUserId mismatch must produce 'invalidArguments'; body: {body}"
+        "senderUserId mismatch must produce 'invalidArguments'; body: {body}"
     );
 
     // Oracle: state counter must be identical to the pre-request value, proving

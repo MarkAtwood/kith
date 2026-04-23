@@ -11,17 +11,17 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // Contact/get
 // ---------------------------------------------------------------------------
 
-pub struct ContactGetHandler {
+pub struct ChatContactGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
 
-impl ContactGetHandler {
+impl ChatContactGetHandler {
     pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
         Self { store }
     }
 }
 
-impl JmapHandler for ContactGetHandler {
+impl JmapHandler for ChatContactGetHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
@@ -115,17 +115,17 @@ impl JmapHandler for ContactGetHandler {
 // Contact/set
 // ---------------------------------------------------------------------------
 
-pub struct ContactSetHandler {
+pub struct ChatContactSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
 
-impl ContactSetHandler {
+impl ChatContactSetHandler {
     pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
         Self { store }
     }
 }
 
-impl JmapHandler for ContactSetHandler {
+impl JmapHandler for ChatContactSetHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
@@ -418,17 +418,17 @@ fn process_update(
 // Contact/changes
 // ---------------------------------------------------------------------------
 
-pub struct ContactChangesHandler {
+pub struct ChatContactChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
 
-impl ContactChangesHandler {
+impl ChatContactChangesHandler {
     pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
         Self { store }
     }
 }
 
-impl JmapHandler for ContactChangesHandler {
+impl JmapHandler for ChatContactChangesHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
@@ -491,17 +491,17 @@ impl JmapHandler for ContactChangesHandler {
 // Contact/query
 // ---------------------------------------------------------------------------
 
-pub struct ContactQueryHandler {
+pub struct ChatContactQueryHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
 
-impl ContactQueryHandler {
+impl ChatContactQueryHandler {
     pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
         Self { store }
     }
 }
 
-impl JmapHandler for ContactQueryHandler {
+impl JmapHandler for ChatContactQueryHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
@@ -573,6 +573,109 @@ impl JmapHandler for ContactQueryHandler {
 }
 
 // ---------------------------------------------------------------------------
+// ChatContact/queryChanges
+// ---------------------------------------------------------------------------
+
+pub struct ChatContactQueryChangesHandler {
+    store: Arc<Mutex<kith_store::Store>>,
+}
+
+impl ChatContactQueryChangesHandler {
+    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
+        Self { store }
+    }
+}
+
+impl JmapHandler for ChatContactQueryChangesHandler {
+    fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
+        let store = Arc::clone(&self.store);
+
+        Box::pin(async move {
+            let obj = args
+                .as_object()
+                .ok_or_else(|| JmapError::invalid_arguments("args must be a JSON object"))?;
+
+            let account_id = obj
+                .get("accountId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
+
+            if account_id != "a-self" {
+                return Err(JmapError::invalid_arguments("unknown accountId"));
+            }
+
+            let since_query_state = obj
+                .get("sinceQueryState")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JmapError::invalid_arguments("sinceQueryState is required"))?
+                .to_string();
+
+            // Parse sinceQueryState as "s-N".
+            let since_counter: i64 = since_query_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse::<i64>().ok())
+                .ok_or_else(JmapError::cannot_calculate_changes)?;
+
+            let guard = store
+                .lock()
+                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+
+            let current_state = guard.contacts().get_state().map_err(kith_to_jmap)?;
+            let current_counter: i64 = current_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse::<i64>().ok())
+                .unwrap_or(0);
+
+            // If no changes since sinceQueryState, return early with empty delta.
+            if since_counter >= current_counter {
+                drop(guard);
+                return Ok(json!({
+                    "accountId": "a-self",
+                    "oldQueryState": since_query_state,
+                    "newQueryState": current_state,
+                    "removed": [],
+                    "added": [],
+                }));
+            }
+
+            let changes = guard
+                .contacts()
+                .get_changes_since(&since_query_state)
+                .map_err(kith_to_jmap)?;
+
+            // Get the current full ordered list to compute insertion indices.
+            let full_list = guard.contacts().list().map_err(kith_to_jmap)?;
+
+            drop(guard);
+
+            let new_state = changes.new_state.clone();
+
+            // Build added list with indices (position in the current query result).
+            let added_with_index: Vec<Value> = changes
+                .added
+                .iter()
+                .map(|added_id| {
+                    let index = full_list
+                        .iter()
+                        .position(|c| &c.id == added_id)
+                        .map(|p| p as u64)
+                        .unwrap_or(0);
+                    json!({"id": added_id, "index": index})
+                })
+                .collect();
+
+            Ok(json!({
+                "accountId": "a-self",
+                "oldQueryState": since_query_state,
+                "newQueryState": new_state,
+                "removed": changes.destroyed,
+                "added": added_with_index,
+            }))
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -593,11 +696,11 @@ mod tests {
     #[tokio::test]
     async fn test_contact_get_empty() {
         let store = make_store();
-        let handler = ContactGetHandler::new(Arc::clone(&store));
+        let handler = ChatContactGetHandler::new(Arc::clone(&store));
 
         let args = json!({"accountId": "a-self"});
         let result = handler
-            .call("Contact/get".to_string(), "c0".to_string(), args)
+            .call("ChatContact/get".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -627,10 +730,10 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = ContactGetHandler::new(Arc::clone(&store));
+        let handler = ChatContactGetHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self"});
         let result = handler
-            .call("Contact/get".to_string(), "c0".to_string(), args)
+            .call("ChatContact/get".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -645,11 +748,11 @@ mod tests {
     #[tokio::test]
     async fn test_contact_get_not_found() {
         let store = make_store();
-        let handler = ContactGetHandler::new(Arc::clone(&store));
+        let handler = ChatContactGetHandler::new(Arc::clone(&store));
 
         let args = json!({"accountId": "a-self", "ids": ["nonexistent"]});
         let result = handler
-            .call("Contact/get".to_string(), "c0".to_string(), args)
+            .call("ChatContact/get".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -666,7 +769,7 @@ mod tests {
     #[tokio::test]
     async fn test_contact_set_create_valid() {
         let store = make_store();
-        let handler = ContactSetHandler::new(Arc::clone(&store));
+        let handler = ChatContactSetHandler::new(Arc::clone(&store));
 
         let args = json!({
             "accountId": "a-self",
@@ -680,7 +783,7 @@ mod tests {
         });
 
         let result = handler
-            .call("Contact/set".to_string(), "c0".to_string(), args)
+            .call("ChatContact/set".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -690,7 +793,7 @@ mod tests {
             created.get("c0").is_some(),
             "created.c0 must be present; got: {result}"
         );
-        // Oracle: Contact has an id field (per kith-core Contact struct).
+        // Oracle: ChatContact has an id field (per kith-core Contact struct).
         assert!(
             created["c0"]["id"].as_str().is_some(),
             "created.c0 must have an id field"
@@ -704,7 +807,7 @@ mod tests {
     #[tokio::test]
     async fn test_contact_set_create_oversized_display_name() {
         let store = make_store();
-        let handler = ContactSetHandler::new(Arc::clone(&store));
+        let handler = ChatContactSetHandler::new(Arc::clone(&store));
 
         let long_name = "x".repeat(257);
         let args = json!({
@@ -720,7 +823,7 @@ mod tests {
         });
 
         let result = handler
-            .call("Contact/set".to_string(), "c0".to_string(), args)
+            .call("ChatContact/set".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed (errors go in notCreated, not as handler error)");
 
@@ -739,7 +842,7 @@ mod tests {
     #[tokio::test]
     async fn test_contact_set_destroy_forbidden() {
         let store = make_store();
-        let handler = ContactSetHandler::new(Arc::clone(&store));
+        let handler = ChatContactSetHandler::new(Arc::clone(&store));
 
         let args = json!({
             "accountId": "a-self",
@@ -747,7 +850,7 @@ mod tests {
         });
 
         let result = handler
-            .call("Contact/set".to_string(), "c0".to_string(), args)
+            .call("ChatContact/set".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -770,10 +873,10 @@ mod tests {
             guard.contacts().get_state().unwrap()
         };
 
-        let handler = ContactChangesHandler::new(Arc::clone(&store));
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "sinceState": current_state});
         let result = handler
-            .call("Contact/changes".to_string(), "c0".to_string(), args)
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -805,10 +908,10 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = ContactChangesHandler::new(Arc::clone(&store));
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "sinceState": "s-0"});
         let result = handler
-            .call("Contact/changes".to_string(), "c0".to_string(), args)
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -824,10 +927,10 @@ mod tests {
     #[tokio::test]
     async fn test_contact_changes_malformed_state() {
         let store = make_store();
-        let handler = ContactChangesHandler::new(Arc::clone(&store));
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "sinceState": "garbage"});
         let err = handler
-            .call("Contact/changes".to_string(), "c0".to_string(), args)
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
             .await
             .expect_err("should return Err for malformed state");
 
@@ -872,10 +975,10 @@ mod tests {
             guard.contacts().get_state().unwrap()
         };
 
-        let handler = ContactQueryHandler::new(Arc::clone(&store));
+        let handler = ChatContactQueryHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self"});
         let result = handler
-            .call("Contact/query".to_string(), "c0".to_string(), args)
+            .call("ChatContact/query".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 
@@ -913,10 +1016,10 @@ mod tests {
             }
         }
 
-        let handler = ContactQueryHandler::new(Arc::clone(&store));
+        let handler = ChatContactQueryHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "position": 1, "limit": 2});
         let result = handler
-            .call("Contact/query".to_string(), "c0".to_string(), args)
+            .call("ChatContact/query".to_string(), "c0".to_string(), args)
             .await
             .expect("should succeed");
 

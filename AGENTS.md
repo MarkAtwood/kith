@@ -117,7 +117,7 @@ Auth happens in one place: `kith-tslocal`'s `authorize()` function, called on ev
 ## Protocol Invariants
 
 Never violate these without explicit approval:
-- `senderTailscaleUserId` in `Peer/deliver` must equal the caller's verified `WhoIs` identity
+- `senderUserId` in `Peer/deliver` must equal the caller's verified `WhoIs` identity
 - Chat IDs are `hex(sha256(sorted_user_ids.join("\x00")))` — deterministic, both sides agree
 - Message IDs are ULIDs — time-sortable, no coordination
 - Listener binds ONLY to tailnet IPs from `/localapi/v0/status`
@@ -138,7 +138,7 @@ Never violate these without explicit approval:
 
 Acceptable oracles: manually constructed JMAP request/response pairs from the RFC spec, a separate Python/curl script hitting the running daemon, or hardcoded reference values computed offline.
 
-**Auth rejection must be tested.** For every authorized path, there must be a test that the wrong identity is rejected. For `Peer/deliver`, test that a mismatched `senderTailscaleUserId` is rejected before any write.
+**Auth rejection must be tested.** For every authorized path, there must be a test that the wrong identity is rejected. For `Peer/deliver`, test that a mismatched `senderUserId` is rejected before any write.
 
 ## Defensive Input Handling
 
@@ -150,7 +150,7 @@ When writing any code that handles JMAP requests or peer messages:
 - Validate `content_type` parses as legal MIME before storing
 - Validate all referenced IDs (`chatId`, `replyTo`, `blobId`) exist and belong to the right account/chat before any write
 - Recompute `chatId` from participants on `Peer/deliver` and reject if it doesn't match the supplied value
-- Compare `senderTailscaleUserId` against `WhoIs` result **before** any database write
+- Compare `senderUserId` against `WhoIs` result **before** any database write
 - Use `receivedAt` (local clock) for message ordering; treat peer-supplied `sentAt` as display-only
 - Validate `blobId` format before constructing any file system path from it
 

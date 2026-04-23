@@ -14,7 +14,7 @@ const MAX_CALLS_IN_REQUEST: usize = 16;
 
 /// Parse and validate a raw JMAP request value.
 ///
-/// Returns `Err(JmapError)` on: unknown capability, missing `urn:kith:chat:1`,
+/// Returns `Err(JmapError)` on: unknown capability, missing `urn:ietf:params:jmap:chat`,
 /// too many method calls, or deserialization failure.
 pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> {
     let req: JmapRequest = serde_json::from_value(body)
@@ -26,7 +26,7 @@ pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> 
 
     // Unknown capability URIs are silently ignored for interoperability with stock
     // JMAP clients that include capabilities Kith does not implement (e.g. jmap:mail).
-    // urn:kith:chat:1 is implicit — clients that only declare urn:ietf:params:jmap:core
+    // urn:ietf:params:jmap:chat is implicit — clients that only declare urn:ietf:params:jmap:core
     // are accepted and dispatched against the full kith method set.
 
     if req.method_calls.len() > MAX_CALLS_IN_REQUEST {
@@ -107,7 +107,7 @@ pub struct KithChatCapability {
 pub struct Capabilities {
     #[serde(rename = "urn:ietf:params:jmap:core")]
     pub core: CoreCapability,
-    #[serde(rename = "urn:kith:chat:1")]
+    #[serde(rename = "urn:ietf:params:jmap:chat")]
     pub kith_chat: KithChatCapability,
 }
 
@@ -119,7 +119,7 @@ pub struct KithAccountCapability {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AccountCapabilities {
-    #[serde(rename = "urn:kith:chat:1")]
+    #[serde(rename = "urn:ietf:params:jmap:chat")]
     pub kith_chat: KithAccountCapability,
 }
 
@@ -184,7 +184,7 @@ pub fn build_session(
     );
 
     let mut primary_accounts = HashMap::new();
-    primary_accounts.insert("urn:kith:chat:1".to_string(), "a-self".to_string());
+    primary_accounts.insert("urn:ietf:params:jmap:chat".to_string(), "a-self".to_string());
 
     Session {
         capabilities: Capabilities {
@@ -226,10 +226,11 @@ pub fn build_session(
 /// Method name → required Role table.
 /// Methods not in this list return `unknownMethod`.
 const METHOD_ROLES: &[(&str, Role)] = &[
-    ("Contact/get", Role::Owner),
-    ("Contact/set", Role::Owner),
-    ("Contact/changes", Role::Owner),
-    ("Contact/query", Role::Owner),
+    ("ChatContact/get", Role::Owner),
+    ("ChatContact/set", Role::Owner),
+    ("ChatContact/changes", Role::Owner),
+    ("ChatContact/query", Role::Owner),
+    ("ChatContact/queryChanges", Role::Owner),
     ("Chat/get", Role::Owner),
     ("Chat/set", Role::Owner),
     ("Chat/changes", Role::Owner),
@@ -452,9 +453,9 @@ mod tests {
     #[test]
     fn test_parse_request_valid() {
         let body = json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [
-                ["Contact/get", {"accountId": "a-self"}, "0"]
+                ["ChatContact/get", {"accountId": "a-self"}, "0"]
             ]
         });
         let result = parse_request(body);
@@ -483,15 +484,15 @@ mod tests {
     #[test]
     fn test_parse_request_unknown_capability_ignored() {
         let body = json!({
-            "using": ["urn:kith:chat:1", "urn:example:unknown:1"],
+            "using": ["urn:ietf:params:jmap:chat", "urn:example:unknown:1"],
             "methodCalls": []
         });
         let result = parse_request(body);
         assert!(result.is_ok());
     }
 
-    // Test 4: Only urn:ietf:params:jmap:core (no urn:kith:chat:1) → accepted
-    // urn:kith:chat:1 is implicit; stock clients that only declare core are accepted.
+    // Test 4: Only urn:ietf:params:jmap:core (no urn:ietf:params:jmap:chat) → accepted
+    // urn:ietf:params:jmap:chat is implicit; stock clients that only declare core are accepted.
     #[test]
     fn test_parse_request_core_only_accepted() {
         let body = json!({
@@ -506,10 +507,10 @@ mod tests {
     #[test]
     fn test_parse_request_too_many_calls() {
         let method_calls: Vec<serde_json::Value> = (0..17)
-            .map(|i| json!(["Contact/get", {}, i.to_string()]))
+            .map(|i| json!(["ChatContact/get", {}, i.to_string()]))
             .collect();
         let body = json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": method_calls
         });
         let result = parse_request(body);
@@ -522,10 +523,10 @@ mod tests {
     #[test]
     fn test_parse_request_exactly_16_calls() {
         let method_calls: Vec<serde_json::Value> = (0..16)
-            .map(|i| json!(["Contact/get", {}, i.to_string()]))
+            .map(|i| json!(["ChatContact/get", {}, i.to_string()]))
             .collect();
         let body = json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": method_calls
         });
         let result = parse_request(body);
@@ -542,13 +543,13 @@ mod tests {
         assert_eq!(err.error_type, "invalidArguments");
     }
 
-    // Test 8: Only urn:kith:chat:1 (no core) → Ok
+    // Test 8: Only urn:ietf:params:jmap:chat (no core) → Ok
     // The required condition is that kith:chat:1 is present and no unknown URIs appear.
     // urn:ietf:params:jmap:core is allowed but not required.
     #[test]
     fn test_parse_request_kith_only() {
         let body = json!({
-            "using": ["urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:chat"],
             "methodCalls": []
         });
         let result = parse_request(body);
@@ -654,7 +655,7 @@ mod tests {
         );
         // RFC 8620 §2: primaryAccounts must map each capability to an account
         assert_eq!(
-            session.primary_accounts.get("urn:kith:chat:1"),
+            session.primary_accounts.get("urn:ietf:params:jmap:chat"),
             Some(&"a-self".to_string())
         );
     }
@@ -824,7 +825,7 @@ mod tests {
     async fn test_dispatch_unknown_method() {
         let d = Dispatcher::new();
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
                 "UnknownType/get".to_string(),
                 serde_json::Value::Null,
@@ -844,7 +845,7 @@ mod tests {
     async fn test_dispatch_owner_calls_peer_method() {
         let d = Dispatcher::new();
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
                 "Peer/deliver".to_string(),
                 serde_json::Value::Null,
@@ -860,9 +861,9 @@ mod tests {
     async fn test_dispatch_peer_calls_owner_method() {
         let d = Dispatcher::new();
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
-                "Contact/get".to_string(),
+                "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c2".to_string(),
             )],
@@ -876,13 +877,13 @@ mod tests {
     async fn test_dispatch_success() {
         let mut d = Dispatcher::new();
         d.register(
-            "Contact/get",
+            "ChatContact/get",
             Box::new(EchoHandler(serde_json::json!({"list": []}))),
         );
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
-                "Contact/get".to_string(),
+                "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c3".to_string(),
             )],
@@ -890,7 +891,7 @@ mod tests {
         let resp = d.dispatch(req, Role::Owner, "s-42".to_string()).await;
         assert_eq!(resp.session_state, "s-42");
         let (name, args, call_id) = &resp.method_responses[0];
-        assert_eq!(name, "Contact/get");
+        assert_eq!(name, "ChatContact/get");
         assert_eq!(call_id, "c3");
         assert_eq!(args["list"], serde_json::json!([]));
     }
@@ -901,7 +902,7 @@ mod tests {
         let mut d = Dispatcher::new();
         d.register("Chat/get", Box::new(ErrorHandler(JmapError::not_found())));
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
                 "Chat/get".to_string(),
                 serde_json::Value::Null,
@@ -916,12 +917,12 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_mixed_batch() {
         let mut d = Dispatcher::new();
-        d.register("Contact/get", Box::new(EchoHandler(serde_json::json!({}))));
+        d.register("ChatContact/get", Box::new(EchoHandler(serde_json::json!({}))));
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![
                 (
-                    "Contact/get".to_string(),
+                    "ChatContact/get".to_string(),
                     serde_json::Value::Null,
                     "c0".to_string(),
                 ),
@@ -952,9 +953,9 @@ mod tests {
     async fn test_dispatch_known_method_no_handler() {
         let d = Dispatcher::new(); // no handlers registered
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![(
-                "Contact/get".to_string(),
+                "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c5".to_string(),
             )],
@@ -968,7 +969,7 @@ mod tests {
     async fn test_dispatch_session_state_echoed() {
         let d = Dispatcher::new();
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![],
         };
         let resp = d
@@ -1035,7 +1036,7 @@ mod tests {
         let mut args = json!({
             "#ids": {
                 "resultOf": "c99",
-                "name": "Contact/get",
+                "name": "ChatContact/get",
                 "path": "/list"
             }
         });
@@ -1055,7 +1056,7 @@ mod tests {
         let mut args = json!({
             "#ids": {
                 "resultOf": "c0",
-                "name": "Contact/get",
+                "name": "ChatContact/get",
                 "path": "/nonexistent/0/id"
             }
         });
@@ -1134,7 +1135,7 @@ mod tests {
 
     // Test: dispatch with a ResultReference — integration test for resolve_args
     // through the full dispatch path.
-    // Call 1: "Contact/get" → returns {"list": [{"id": "cid-1"}]}
+    // Call 1: "ChatContact/get" → returns {"list": [{"id": "cid-1"}]}
     // Call 2: "Chat/get" args has "#ids" referencing call 1's /list/0/id
     // After resolution Chat/get receives args with ids: "cid-1".
     // The ArgsCapture handler records what args it received so we can assert.
@@ -1158,16 +1159,16 @@ mod tests {
         let captured: Arc<Mutex<serde_json::Value>> = Arc::new(Mutex::new(json!(null)));
         let mut d = Dispatcher::new();
         d.register(
-            "Contact/get",
+            "ChatContact/get",
             Box::new(EchoHandler(json!({"list": [{"id": "cid-1"}]}))),
         );
         d.register("Chat/get", Box::new(ArgsCapture(Arc::clone(&captured))));
 
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![
                 (
-                    "Contact/get".to_string(),
+                    "ChatContact/get".to_string(),
                     json!({"accountId": "a-self"}),
                     "c0".to_string(),
                 ),
@@ -1177,7 +1178,7 @@ mod tests {
                         "accountId": "a-self",
                         "#ids": {
                             "resultOf": "c0",
-                            "name": "Contact/get",
+                            "name": "ChatContact/get",
                             "path": "/list/0/id"
                         }
                     }),
@@ -1213,7 +1214,7 @@ mod tests {
             serde_json::json!({"list": [{"id": "c-001", "name": "Alice"}], "state": "s-1"}),
         )];
         let mut args = serde_json::json!({
-            "#ids": {"resultOf": "c0", "name": "Contact/get", "path": "/list/0/id"}
+            "#ids": {"resultOf": "c0", "name": "ChatContact/get", "path": "/list/0/id"}
         });
         resolve_args(&mut args, &prior).expect("should resolve");
         // #ids replaced with ids → the resolved value "c-001"
@@ -1229,7 +1230,7 @@ mod tests {
             serde_json::json!({"ids": ["c-001", "c-002"], "total": 2}),
         )];
         let mut args = serde_json::json!({
-            "#ids": {"resultOf": "q0", "name": "Contact/query", "path": "/ids"}
+            "#ids": {"resultOf": "q0", "name": "ChatContact/query", "path": "/ids"}
         });
         resolve_args(&mut args, &prior).expect("should resolve");
         assert_eq!(args["ids"], serde_json::json!(["c-001", "c-002"]));
@@ -1257,7 +1258,7 @@ mod tests {
             serde_json::json!({"list": [{"id": "c-001"}]}),
         )];
         let mut args = serde_json::json!({
-            "#x": {"resultOf": "c0", "name": "Contact/get", "path": "/missing"}
+            "#x": {"resultOf": "c0", "name": "ChatContact/get", "path": "/missing"}
         });
         let result = resolve_args(&mut args, &prior);
         assert!(result.is_err());
@@ -1272,7 +1273,7 @@ mod tests {
             serde_json::json!({"list": [{"id": "c-001"}]}),
         )];
         let mut args = serde_json::json!({
-            "#ids": {"resultOf": "c0", "name": "Contact/get", "path": "/list/99/id"}
+            "#ids": {"resultOf": "c0", "name": "ChatContact/get", "path": "/list/99/id"}
         });
         let result = resolve_args(&mut args, &prior);
         assert!(result.is_err());
@@ -1292,14 +1293,14 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_result_reference_resolution_failure() {
         let mut d = Dispatcher::new();
-        d.register("Contact/get", Box::new(EchoHandler(json!({"list": []}))));
+        d.register("ChatContact/get", Box::new(EchoHandler(json!({"list": []}))));
         d.register("Chat/get", Box::new(EchoHandler(json!({}))));
 
         let req = JmapRequest {
-            using: vec!["urn:kith:chat:1".to_string()],
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
             method_calls: vec![
                 (
-                    "Contact/get".to_string(),
+                    "ChatContact/get".to_string(),
                     json!({"accountId": "a-self"}),
                     "c0".to_string(),
                 ),
@@ -1308,7 +1309,7 @@ mod tests {
                     json!({
                         "#ids": {
                             "resultOf": "c0",
-                            "name": "Contact/get",
+                            "name": "ChatContact/get",
                             "path": "/list/0/id"  // list is empty → OOB
                         }
                     }),
@@ -1347,10 +1348,11 @@ mod tests {
     #[test]
     fn method_roles_contains_expected_methods() {
         let expected: std::collections::HashSet<&str> = [
-            "Contact/get",
-            "Contact/set",
-            "Contact/changes",
-            "Contact/query",
+            "ChatContact/get",
+            "ChatContact/set",
+            "ChatContact/changes",
+            "ChatContact/query",
+            "ChatContact/queryChanges",
             "Chat/get",
             "Chat/set",
             "Chat/changes",

@@ -57,8 +57,8 @@ pub struct DeliverMessageArgs {
     pub id: String,
     #[serde(rename = "chatId")]
     pub chat_id: String,
-    #[serde(rename = "senderTailscaleUserId")]
-    pub sender_tailscale_user_id: String,
+    #[serde(rename = "senderUserId")]
+    pub sender_user_id: String,
     pub body: String,
     #[serde(rename = "bodyType")]
     pub body_type: String,
@@ -88,7 +88,7 @@ pub struct DeliverMessageArgs {
 ///
 /// 1. Extract `_caller_identity` from args.
 /// 2. Parse remaining args into `PeerDeliverArgs`.
-/// 3. `check_sender`: verify `senderTailscaleUserId` equals the WhoIs identity.
+/// 3. `check_sender`: verify `senderUserId` equals the WhoIs identity.
 /// 4. Recompute `chatId` from participants; reject if peer-supplied value differs.
 /// 5. Enforce `maxBodyBytes`.
 /// 6. Validate `bodyType` is supported.
@@ -139,9 +139,9 @@ impl JmapHandler for DeliverHandler {
 
             // Step 3: check_sender — MUST occur before any DB write.
             // Maps SenderMismatch → invalidArguments per CLAUDE.md defensive rules.
-            if identity.user_id != msg.sender_tailscale_user_id {
+            if identity.user_id != msg.sender_user_id {
                 return Err(JmapError::invalid_arguments(
-                    "senderTailscaleUserId mismatch",
+                    "senderUserId mismatch",
                 ));
             }
 
@@ -643,7 +643,7 @@ pub fn build_peer_deliver_request(
     let mut message = json!({
         "id": message_id,
         "chatId": chat_id,
-        "senderTailscaleUserId": sender_user_id,
+        "senderUserId": sender_user_id,
         "body": body,
         "bodyType": body_type,
         "sentAt": sent_at,
@@ -662,7 +662,7 @@ pub fn build_peer_deliver_request(
     }
 
     json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Peer/deliver", {
             "accountId": "a-self",
             "message": message,
@@ -678,7 +678,7 @@ pub fn build_peer_deliver_request(
 /// `at` is an RFC 3339 UTC timestamp string.
 pub fn build_peer_receipt_request(message_id: &str, kind: &str, at: &str) -> Value {
     json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [[
             "Peer/receipt",
             {
@@ -1175,7 +1175,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": identity.user_id,
+                "senderUserId": identity.user_id,
                 "body": body,
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1259,14 +1259,14 @@ mod tests {
         assert!(permitted, "peer must be in contacts after delivery");
     }
 
-    // Oracle: senderTailscaleUserId mismatch must return invalidArguments before any DB write.
+    // Oracle: senderUserId mismatch must return invalidArguments before any DB write.
     #[tokio::test]
     async fn deliver_sender_mismatch_returns_invalid_arguments() {
         let store = make_store();
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        // Build args but override the senderTailscaleUserId to a different value.
+        // Build args but override the senderUserId to a different value.
         let chat_id = compute_chat_id(&["uid-bob", owner_id]);
         let msg_id = Ulid::new().to_string();
         let identity_json = serde_json::to_value(&peer).unwrap();
@@ -1276,7 +1276,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": "uid-evil",  // mismatch
+                "senderUserId": "uid-evil",  // mismatch
                 "body": "Hi",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1313,7 +1313,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": "00000000000000000000000000000000000000000000000000000000000000ff",
-                "senderTailscaleUserId": "uid-bob",
+                "senderUserId": "uid-bob",
                 "body": "Hi",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1380,7 +1380,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": peer.user_id,
+                "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/html",   // not supported
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1417,7 +1417,7 @@ mod tests {
             "message": {
                 "id": "not-a-ulid",
                 "chatId": chat_id,
-                "senderTailscaleUserId": peer.user_id,
+                "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1455,7 +1455,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": peer.user_id,
+                "senderUserId": peer.user_id,
                 "body": "Hi",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1519,7 +1519,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": peer.user_id,
+                "senderUserId": peer.user_id,
                 "body": "reply to wrong chat",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -1827,7 +1827,7 @@ mod tests {
     }
 
     // Oracle: RFC 8620 §3.2 — JMAP request envelope structure.
-    // PeerDeliverArgs wire format: { accountId, message: { id, chatId, senderTailscaleUserId, ... } }.
+    // PeerDeliverArgs wire format: { accountId, message: { id, chatId, senderUserId, ... } }.
     #[test]
     fn build_peer_deliver_request_structure() {
         let sender = "uid:bob@example.com";
@@ -1851,7 +1851,7 @@ mod tests {
         let using = req["using"].as_array().expect("using must be array");
         let using_strs: Vec<&str> = using.iter().map(|v| v.as_str().unwrap()).collect();
         assert!(using_strs.contains(&"urn:ietf:params:jmap:core"));
-        assert!(using_strs.contains(&"urn:kith:chat:1"));
+        assert!(using_strs.contains(&"urn:ietf:params:jmap:chat"));
 
         // Oracle: RFC 8620 §3.2 — methodCalls is an array of invocations.
         let calls = req["methodCalls"]
@@ -1874,7 +1874,7 @@ mod tests {
         let msg = &args["message"];
         assert_eq!(msg["id"].as_str().unwrap(), msg_id);
         assert_eq!(msg["chatId"].as_str().unwrap(), &chat_id);
-        assert_eq!(msg["senderTailscaleUserId"].as_str().unwrap(), sender);
+        assert_eq!(msg["senderUserId"].as_str().unwrap(), sender);
         assert_eq!(msg["body"].as_str().unwrap(), body);
         assert_eq!(msg["bodyType"].as_str().unwrap(), "text/plain");
         assert!(msg["replyTo"].is_null() || msg.get("replyTo").is_none());
@@ -1995,7 +1995,7 @@ mod tests {
             "message": {
                 "id": msg_id,
                 "chatId": chat_id,
-                "senderTailscaleUserId": identity.user_id,
+                "senderUserId": identity.user_id,
                 "body": "Hello",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-19T12:00:00Z",
@@ -2638,7 +2638,7 @@ mod tests {
             "message": {
                 "id": "01JVWXYZ0000000000000000AB",
                 "chatId": "b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6",
-                "senderTailscaleUserId": "uid:alice@example.com",
+                "senderUserId": "uid:alice@example.com",
                 "body": "hello",
                 "bodyType": "text/plain",
                 "sentAt": "2026-04-18T20:14:00Z"
@@ -3024,7 +3024,7 @@ mod tests {
             .expect("participants must be an array");
         // Oracle: for a 1:1 chat (one peer participant), outbox_tick sends an
         // empty participants array.  The receiver's DeliverHandler handles the
-        // empty case by deriving participants from [senderTailscaleUserId, owner_id],
+        // empty case by deriving participants from [senderUserId, owner_id],
         // which produces the correct deterministic chatId.  Sending a non-empty
         // list containing only the peer (not the sender) would cause the receiver
         // to compute a wrong chatId and reject the message with invalidArguments.

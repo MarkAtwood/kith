@@ -338,13 +338,13 @@ mod inner {
 
         let msg_id = ulid::Ulid::new().to_string();
         let deliver_body = serde_json::json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:kith:chat:1"],
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
             "methodCalls": [["Peer/deliver", {
                 "accountId": "a-self",
                 "message": {
                     "id": msg_id,
                     "chatId": chat_id,
-                    "senderTailscaleUserId": SENDER_OWNER_ID,
+                    "senderUserId": SENDER_OWNER_ID,
                     "body": "see attached file",
                     "bodyType": "text/plain",
                     "sentAt": "2026-04-20T00:00:00Z",

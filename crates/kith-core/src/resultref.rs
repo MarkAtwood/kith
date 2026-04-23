@@ -5,14 +5,14 @@ use serde::{Deserialize, Serialize};
 ///
 /// Example JSON:
 /// ```json
-/// {"resultOf": "0", "name": "Contact/get", "path": "/list/0/id"}
+/// {"resultOf": "0", "name": "ChatContact/get", "path": "/list/0/id"}
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResultReference {
     /// The call-id of the prior method invocation being referenced.
     #[serde(rename = "resultOf")]
     pub result_of: String,
-    /// The method name of that prior invocation (e.g. "Contact/get").
+    /// The method name of that prior invocation (e.g. "ChatContact/get").
     pub name: String,
     /// JSON Pointer (RFC 6901) into the result, e.g. "/list/0/id".
     pub path: String,
@@ -46,7 +46,7 @@ mod tests {
         // Independent oracle: RFC 8620 §9 example
         let rr = ResultReference {
             result_of: "0".into(),
-            name: "Contact/get".into(),
+            name: "ChatContact/get".into(),
             path: "/list/0/id".into(),
         };
         let json_str = serde_json::to_string(&rr).unwrap();
@@ -85,13 +85,13 @@ mod tests {
     fn argument_ref_serializes_as_result_reference() {
         let rr = ResultReference {
             result_of: "0".into(),
-            name: "Contact/get".into(),
+            name: "ChatContact/get".into(),
             path: "/list/0/id".into(),
         };
         let arg: Argument<Vec<String>> = Argument::Ref(rr);
         let json_str = serde_json::to_string(&arg).unwrap();
         assert!(json_str.contains("\"resultOf\""));
-        assert!(json_str.contains("\"Contact/get\""));
+        assert!(json_str.contains("\"ChatContact/get\""));
     }
 
     #[test]
