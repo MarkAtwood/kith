@@ -23,6 +23,7 @@ normative:
 
 informative:
   RFC8621:
+  RFC9420:
   ULID:
     title: Universally Unique Lexicographically Sortable Identifier
     target: https://github.com/ulid/spec
@@ -30,6 +31,10 @@ informative:
   KITH:
     title: Kith — tailnet-native chat
     target: https://github.com/MarkAtwood/kith
+    date: 2026
+  NIE:
+    title: nie — encrypted relay chat
+    target: https://github.com/MarkAtwood/nie
     date: 2026
   TAILSCALE:
     title: Tailscale — How it works
@@ -67,11 +72,19 @@ declared in the JMAP Session object.  {{RFC8621}} defines JMAP for
 Mail.  This document defines an analogous capability for real-time
 chat.
 
-The design assumes a **mailbox-per-user** topology: each participant
-runs their own JMAP server (a "mailbox") that stores only their own
-messages.  There is no central server, no central message store, and
-no central operator.  Mailboxes exchange messages directly with each
-other over a secure transport.
+This specification accommodates two primary deployment topologies.
+In the **mailbox-per-user** model, each participant runs their own
+JMAP server (a "mailbox") that stores only their own messages; there
+is no central server, no central message store, and no central
+operator; mailboxes exchange messages directly with each other over a
+secure transport.  In the **relay** model, a shared server routes
+messages between clients; the Peer/* server-to-server methods are
+implemented by the relay rather than individual user-controlled
+mailboxes.  In relay deployments the relay MUST handle only opaque
+ciphertext — it MUST NOT have access to plaintext message content
+(see {{e2ee}}).  Both topologies are fully compatible with this
+specification; transport, identity, and encryption choices are
+confined to the deployment layer.
 
 Authentication is handled entirely at the transport layer.  The
 protocol requires only that the authentication layer provide a stable,
@@ -138,6 +151,8 @@ the following fields:
 
 `supportedBodyTypes` (String[]):
 : MIME types accepted in `bodyType`.  MUST include `"text/plain"`.
+  End-to-end encrypted deployments SHOULD also include an appropriate
+  encrypted-content type such as `"application/mls-ciphertext"`.
 
 `supportsThreads` (Boolean):
 : Whether this server supports the optional thread model defined in
@@ -403,8 +418,13 @@ same chat, the server MAY silently discard the duplicate.
   inbound messages, as verified by the authentication layer.
 
 `body` (String):
-: Message text.  MUST be valid UTF-8.  Cleared to empty string when
-  the message is deleted.
+: Message content.  When `bodyType` is `"text/plain"` or another
+  plaintext type, body MUST be valid UTF-8 text.  When `bodyType`
+  indicates an end-to-end encrypted payload (e.g.,
+  `"application/mls-ciphertext"`), body contains ciphertext encoded
+  as a base64url string; servers MUST store and forward it without
+  inspection or transformation.  Cleared to empty string when the
+  message is deleted.
 
 `bodyType` (String):
 : MIME type of `body`.  MUST be in `supportedBodyTypes`.
@@ -802,7 +822,11 @@ Before storing a new message, the server MUST in order:
    confirm `chatId` matches a known group and the sender is a
    current member.
 4. Confirm the sender is not blocked by the owner.
-5. Validate `body` UTF-8 encoding and byte length.
+5. Validate `body` byte length against `maxBodyBytes`.  For
+   plaintext `bodyType` values, also validate UTF-8 encoding.  For
+   encrypted `bodyType` values (e.g.,
+   `"application/mls-ciphertext"`), body is opaque; servers MUST
+   NOT parse or transform it beyond byte-length checking.
 6. Validate `bodyType` against `supportedBodyTypes`.
 7. Validate each attachment `filename`, `contentType`, `size`.
 8. Fetch each attachment blob from `fetchUrl`; verify byte count
@@ -1123,6 +1147,25 @@ used to ensure message persistence and multi-device visibility.
 Messages from a blocked contact are silently dropped regardless of
 whether they arrive in a direct chat or a group chat context.
 
+## End-to-End Encrypted Deployments {#e2ee}
+
+In relay deployments, the relay routes Peer/* messages but MUST NOT
+have access to plaintext message content.  Implementations MUST
+ensure:
+
+- The `body` field carries ciphertext only; plaintext MUST never be
+  transmitted to the relay in an encrypted deployment.
+- The relay is architecturally excluded from the encryption key
+  schedule (e.g., by using MLS {{RFC9420}} or a similar protocol
+  that does not involve the relay in key agreement).
+- Servers MUST NOT reject or transform `body` based on content when
+  `bodyType` indicates an encrypted type.
+- Metadata visible to the relay — sender id, recipient id,
+  timestamp, and body size — remains an information-leakage surface.
+  Deployments requiring metadata privacy SHOULD apply message
+  padding and cover traffic at the transport layer; those techniques
+  are outside the scope of this document.
+
 --- back
 
 # Implementation Notes: Kith {#impl-notes}
@@ -1160,6 +1203,67 @@ on the peer at delivery time.
 
 One Kith daemon serves exactly one user.  There is no multi-tenant
 mode.
+
+# Implementation Notes: nie {#impl-notes-nie}
+
+This appendix is informative.
+
+## Overview
+
+nie (囁, "whisper") {{NIE}} is an end-to-end encrypted relay chat
+system with privacy-coin subscription gating.  It provides a second
+reference implementation of JMAP for Chat operating in the relay
+topology described in the Introduction.
+
+## Identity
+
+nie users are identified by their Ed25519 public key (base64url-
+encoded, 44 characters), with no account registration, email address,
+or KYC.  This key serves as the Contact.id in the JMAP layer — a
+stable, opaque identity string whose format is deployment-defined.
+
+## Transport and Relay Topology
+
+nie-relay is an axum-based WebSocket relay that routes encrypted
+envelopes between authenticated public keys.  It stores only opaque
+ciphertext; plaintext never reaches the server.  Authentication is
+challenge-response: the relay issues a nonce; the client signs it
+with their Ed25519 private key and returns the signature.
+
+`nie-bridge-jmap` (included in the nie workspace) presents a JMAP
+Chat interface in front of a nie-relay connection.  Owner methods
+(`Contact/get`, `Chat/get`, `Message/get`, `Message/set`, etc.) are
+served from a local SQLite store maintained by the bridge.  Peer/*
+methods are translated to nie-relay WebSocket messages and back.
+
+## End-to-End Encryption
+
+Message payloads are encrypted using MLS (Messaging Layer Security,
+{{RFC9420}}) via the `openmls` Rust crate.  The relay sees only:
+sender public key, recipient public key, blob size, and timestamp.
+The relay is architecturally excluded from the MLS key schedule.
+
+In the JMAP Chat wire format, `body` carries the MLS ciphertext
+encoded as a base64url string and `bodyType` is set to
+`"application/mls-ciphertext"`.  The relay stores and forwards
+this field without inspection per {{e2ee}}.
+
+## Subscription Gating
+
+Access to nie-relay is gated by subscription payment in privacy-
+preserving cryptocurrencies (Zcash, Monero).  The relay accepts
+payment to a per-invoice address, monitors the blockchain for
+confirmation, and grants access to the corresponding public key.
+No identity is required beyond the public key and proof of payment.
+User-to-user payments are negotiated inside end-to-end encrypted
+messages; the relay cannot distinguish payment negotiation from
+ordinary chat traffic.
+
+## Supported Feature Set
+
+The initial nie release implements direct messaging, MLS-encrypted
+payloads, and subscription gating.  Group chat, reactions, editing,
+and the full JMAP Chat method set are planned for subsequent releases.
 
 # Acknowledgements
 
