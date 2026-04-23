@@ -44,18 +44,21 @@ informative:
 --- abstract
 
 This document defines JMAP for Chat, a JMAP capability ({{RFC8620}})
-for direct and group text messaging between users who each operate
-their own mailbox server.  It defines the `urn:jmap:chat:1`
-capability; three data types (Contact, Chat, Message); JMAP methods
-for each type; and five server-to-server methods (Peer/deliver,
-Peer/receipt, Peer/typing, Peer/retract, Peer/groupUpdate) for
-direct mailbox-to-mailbox communication.
+for direct and group text messaging.  It supports both mailbox-per-user
+deployments (each user operates their own server) and relay deployments
+(a shared server routes end-to-end encrypted messages).  It defines the
+`urn:jmap:chat:1` capability; five core data types (Contact, Chat,
+Message, Space, SpaceInvite); JMAP methods for each type; and five
+server-to-server methods (Peer/deliver, Peer/receipt, Peer/typing,
+Peer/retract, Peer/groupUpdate) for server-to-server communication.
 
 The protocol covers the feature set common to contemporary messaging
 systems: group chat with membership roles, message reactions, editing,
 deletion, threading, @mentions, typing indicators, read receipts per
-participant, presence, pinned messages, and per-chat notification
-settings.
+participant, presence, pinned messages, per-chat notification settings,
+sender-controlled message expiry, and burn-on-read.  Spaces provide a
+named multi-channel container with a role-based permission system,
+analogous to what other systems call a server, workspace, or team.
 
 Note: `urn:jmap:chat:1` is a provisional capability URI used in this
 document.  If this specification is adopted by the IETF JMAP working
@@ -148,6 +151,18 @@ the following fields:
 
 `maxGroupMembers` (UnsignedInt):
 : Maximum number of members in a group chat, including the owner.
+
+`maxSpaceMembers` (UnsignedInt):
+: Maximum number of members in a Space, including the owner.
+
+`maxRolesPerSpace` (UnsignedInt):
+: Maximum number of named roles per Space.
+
+`maxChannelsPerSpace` (UnsignedInt):
+: Maximum number of channel Chats per Space.
+
+`maxCategoriesPerSpace` (UnsignedInt):
+: Maximum number of categories per Space.
 
 `supportedBodyTypes` (String[]):
 : MIME types accepted in `bodyType`.  MUST include `"text/plain"`.
@@ -294,7 +309,10 @@ any messages are sent.
 : A ULID assigned by the creating server per {{chat-id}}.
 
 `kind` (String, immutable):
-: `"direct"` or `"group"`.
+: `"direct"`, `"group"`, or `"channel"`.  `"channel"` denotes a
+  Chat that is a channel within a Space.  Channel Chats do not
+  carry a `members` field; membership and access control are
+  determined by the containing Space.
 
 `contactId` (String, immutable):
 : **Direct chats only.**  The Contact.id of the other participant.
@@ -312,6 +330,35 @@ any messages are sent.
 
 `members` (ChatMember[]):
 : **Group chats only.**  Full membership list including the owner.
+
+`spaceId` (String, optional, immutable):
+: **Channel Chats only.**  The id of the containing Space.
+
+`categoryId` (String, optional):
+: **Channel Chats only.**  The Category id within the Space.
+  Absent if this channel is uncategorized.
+
+`position` (UnsignedInt, optional):
+: **Channel Chats only.**  Sort order within the category (or
+  among uncategorized channels).  Lower values appear first.
+
+`topic` (String, optional):
+: **Channel Chats only.**  Short description shown in the channel
+  header.  Mutable by members with `"manage_channels"` permission.
+
+`slowModeSeconds` (UnsignedInt, optional):
+: **Channel Chats only.**  When non-zero, each member MUST wait
+  at least this many seconds between messages in this channel.
+  Members with `"manage_channels"` permission are exempt.
+  Enforced server-side; clients SHOULD display a countdown.
+  Default: `0` (no slow mode).
+
+`permissionOverrides` (ChannelPermission[]):
+: **Channel Chats only.**  Per-channel permission overrides for
+  specific roles or members.  Evaluated after Space-level role
+  permissions; see {{space-permissions}}.  Only members with
+  `"manage_channels"` permission may modify this list.  Empty
+  by default.
 
 `createdAt` (UTCDate, immutable, server-set):
 : Time this chat was first recorded on this mailbox.
@@ -524,6 +571,157 @@ same chat, the server MAY silently discard the duplicate.
 `sha256` (String):
 : Lowercase hex SHA-256 of blob content.  Servers SHOULD verify.
 
+## SpaceRole
+
+A SpaceRole is a named set of permissions within a Space.  Roles are
+ordered by `position`; higher position values outrank lower ones.  The
+implicit `@everyone` role (position 0) is held by all Space members
+and is not included in the `roles` array.
+
+`id` (String, immutable, server-set):
+: A ULID assigned by the server.
+
+`name` (String):
+: Display name of the role.
+
+`color` (String, optional):
+: Hex color string (e.g., `"#5865f2"`).  Clients MAY use this
+  to visually distinguish role holders.
+
+`permissions` (String[]):
+: Named permissions this role grants.  Defined names are:
+  `"view"` (see the channel), `"send"` (send messages),
+  `"pin"` (pin messages), `"manage_channels"` (create, edit,
+  delete, reorder channels), `"manage_members"` (kick members,
+  edit nicknames), `"manage_roles"` (create and edit roles
+  below own highest role), `"manage_space"` (edit Space name,
+  description, icon), `"ban"` (ban and unban members),
+  `"mention_all"` (use @space-wide mentions).  Servers MUST
+  ignore unrecognized permission names.
+
+`position` (UnsignedInt):
+: Role hierarchy position.  No two roles in a Space SHOULD
+  share the same value.
+
+## SpaceMember
+
+A SpaceMember describes one participant in a Space.
+
+`id` (String):
+: The participant's Contact.id.
+
+`roleIds` (String[]):
+: SpaceRole ids held by this member.  Order is not significant.
+  An empty list means the member holds only the `@everyone` role.
+
+`nick` (String, optional):
+: Space-specific display name override.  MAY be absent; clients
+  SHOULD fall back to Contact `displayName`, then `login`.
+
+`joinedAt` (UTCDate):
+: Time this member joined the Space.
+
+## Category
+
+A Category is a named grouping of channels within a Space.
+
+`id` (String, immutable, server-set):
+: A ULID assigned by the server.
+
+`name` (String):
+: Display name of the category.
+
+`position` (UnsignedInt):
+: Sort order among categories.  Lower values appear first.
+
+`channelIds` (String[]):
+: Ordered list of channel Chat ids in this category.
+
+## ChannelPermission
+
+A ChannelPermission record overrides Space-level role permissions for
+a specific channel, for a specific role or member.
+
+`targetId` (String):
+: A SpaceRole id or a SpaceMember Contact.id.
+
+`targetType` (String):
+: `"role"` or `"member"`.
+
+`allow` (String[]):
+: Permissions explicitly granted in this channel, overriding
+  the Space-level role defaults.
+
+`deny` (String[]):
+: Permissions explicitly denied in this channel, overriding
+  the Space-level role defaults.
+
+## Space
+
+A Space is a named container for channel Chats, members, roles, and
+categories.  It corresponds to what other systems call a server,
+workspace, or team.
+
+`id` (String, immutable, server-set):
+: A ULID assigned by the server.
+
+`name` (String):
+: Display name of the Space.
+
+`description` (String, optional):
+: Short description.  Mutable by members with `"manage_space"`
+  permission.
+
+`iconBlobId` (String, optional):
+: blobId of the Space icon.  Mutable by members with
+  `"manage_space"` permission.
+
+`roles` (SpaceRole[]):
+: Named roles defined for this Space, ordered by `position`
+  descending.  Does not include the implicit `@everyone` role.
+
+`members` (SpaceMember[]):
+: Full membership list including the owner.
+
+`categories` (Category[]):
+: Categories, ordered by `position`.
+
+`uncategorizedChannelIds` (String[]):
+: Ordered list of channel Chat ids not assigned to any category.
+
+`createdAt` (UTCDate, immutable, server-set):
+: Time this Space was created.
+
+## SpaceInvite
+
+A SpaceInvite grants a new member access to a Space via a shared
+invite code.
+
+`id` (String, immutable, server-set):
+: The invite code.  Opaque short string.
+
+`spaceId` (String, immutable):
+: The Space this invite grants access to.
+
+`defaultChannelId` (String, optional):
+: Chat id of the channel to highlight when a new member arrives.
+
+`createdBy` (String, immutable, server-set):
+: Contact.id of the member who created this invite.
+
+`expiresAt` (UTCDate, optional):
+: Expiry time.  Servers MUST reject redemption after this time.
+
+`maxUses` (UnsignedInt, optional):
+: Maximum redemption count.  Servers MUST reject redemption when
+  `uses` equals `maxUses`.
+
+`uses` (UnsignedInt, server-set):
+: Number of times this invite has been redeemed.
+
+`createdAt` (UTCDate, immutable, server-set):
+: Time this invite was created.
+
 # Methods
 
 ## Contact Methods
@@ -732,6 +930,133 @@ Default sort: `receivedAt` ascending.
 ### Message/queryChanges
 
 Standard JMAP `/queryChanges` ({{RFC8620}} Section 5.6).
+
+## Space Methods
+
+### Space/get
+
+Standard JMAP `/get`.
+
+### Space/set
+
+Standard JMAP `/set`.
+
+#### Creating a Space
+
+`create` accepts:
+
+`name` (String, required):
+: Display name.
+
+`description` (String, optional), `iconBlobId` (String, optional).
+
+The server assigns a ULID, sets the caller as the owner with all
+permissions, and returns the new Space.
+
+#### Updating a Space
+
+`update` supports the following patch keys:
+
+`name`, `description`, `iconBlobId`:
+: Metadata fields.  Require `"manage_space"` permission.
+
+`addRoles` (Object[]):
+: Each entry contains `name` (String), `permissions` (String[]),
+  `position` (UnsignedInt), and optionally `color` (String).
+  Server assigns ULIDs.  Total roles MUST NOT exceed
+  `maxRolesPerSpace`.  Requires `"manage_roles"` permission.
+
+`removeRoles` (String[]):
+: SpaceRole ids to remove.  Members holding only removed roles
+  are demoted to `@everyone`.  Requires `"manage_roles"`.
+
+`updateRoles` (Object[]):
+: Each entry: `id` (String) and any of `name`, `color`,
+  `permissions`, `position`.  Requires `"manage_roles"`.
+  Members may only modify roles below their own highest-position
+  role; servers MUST enforce this.
+
+`addMembers` (Object[]):
+: Each entry: `id` (Contact.id, String) and optional `roleIds`
+  (String[]).  Total membership MUST NOT exceed `maxSpaceMembers`.
+  Requires `"manage_members"`.
+
+`removeMembers` (String[]):
+: Contact.ids to remove.  Requires `"manage_members"`.  The
+  owner cannot be removed.
+
+`updateMembers` (Object[]):
+: Each entry: `id` (String) and any of `roleIds`, `nick`.
+  Role changes require `"manage_roles"`.
+
+`addCategories` (Object[]):
+: Each entry: `name` (String), optional `position`
+  (UnsignedInt) and `channelIds` (String[]).  Server assigns
+  ULIDs.  Total MUST NOT exceed `maxCategoriesPerSpace`.
+  Requires `"manage_channels"`.
+
+`removeCategories` (String[]):
+: Category ids to remove.  Channels in removed categories move
+  to `uncategorizedChannelIds`.  Requires `"manage_channels"`.
+
+`updateCategories` (Object[]):
+: Each entry: `id` (String) and any of `name`, `position`,
+  `channelIds`.  Requires `"manage_channels"`.
+
+#### Destroying a Space
+
+Cascades to all channel Chats and their Messages.  Hard-deletes all
+records; no tombstones are retained.  Requires owner identity.
+
+### Space/changes
+
+Standard JMAP `/changes`.
+
+### Space/query
+
+Standard JMAP `/query`.
+
+Filter properties: `name` (String, substring match).
+Default sort: `name` ascending.
+
+### Space/join
+
+Allows a caller to join a Space by redeeming an invite code.
+
+Method name: `Space/join`
+
+Request: `accountId` (String), `inviteCode` (String).
+
+The server MUST:
+
+1. Resolve `inviteCode` to a SpaceInvite record.
+2. Verify the invite has not expired and has not reached `maxUses`.
+3. Increment `uses` and add the caller to the Space's member list
+   atomically.  The caller is assigned no roles beyond `@everyone`
+   unless the invite specifies otherwise.
+
+Response: `accountId` (String), `spaceId` (String).
+
+## SpaceInvite Methods
+
+### SpaceInvite/get
+
+Standard JMAP `/get`.  Only members of the Space may retrieve
+its invites.  Members with `"manage_members"` permission see all
+invites; other members see only invites they created.
+
+### SpaceInvite/set
+
+Standard JMAP `/set`.
+
+`create` accepts: `spaceId` (String, required), `defaultChannelId`
+(String, optional), `expiresAt` (UTCDate, optional), `maxUses`
+(UnsignedInt, optional).  Requires `"manage_members"` permission.
+
+`destroy` revokes an invite.  Requires `"manage_members"` permission
+or ownership of the invite.
+
+`update` is not supported.
 
 # Optional: Thread Model {#threads}
 
@@ -1175,6 +1500,36 @@ used to ensure message persistence and multi-device visibility.
 
 Messages from a blocked contact are silently dropped regardless of
 whether they arrive in a direct chat or a group chat context.
+
+## Space Permission Resolution {#space-permissions}
+
+When determining whether a member may perform an action in a channel
+Chat, servers MUST evaluate permissions in this order:
+
+1. The Space owner always has all permissions; skip remaining steps.
+2. Compute the union of `permissions` across all SpaceRoles held by
+   the member (including the implicit `@everyone` role).
+3. Apply `deny` entries from any ChannelPermission records matching
+   the member's roles (`targetType: "role"`), in ascending position
+   order.
+4. Apply `allow` entries from the same role-targeted records.
+5. Apply `deny` entries from any ChannelPermission record matching
+   the member directly (`targetType: "member"`).
+6. Apply `allow` entries from the same member-targeted record.
+
+Servers MUST perform this resolution server-side.  Clients MUST NOT
+be trusted to assert their own permissions.
+
+**Role hierarchy enforcement:**
+Members may only create or modify SpaceRoles whose `position` is
+strictly less than their own highest-position role.  Servers MUST
+reject role management operations that violate this constraint.
+
+**Invite redemption atomicity:**
+The `uses` increment and membership insertion for `Space/join` MUST
+be atomic.  Servers MUST verify `expiresAt` and `maxUses` within the
+same atomic operation to prevent race conditions that could allow
+over-redemption.
 
 ## Sender-Controlled Expiry and Burn-on-Read
 
