@@ -26,7 +26,8 @@ impl<'a> ContactStore<'a> {
         }
     }
 
-    /// Insert or replace a contact record.  Advances the contact state counter.
+    /// Insert or replace a contact record.  Advances the contact state counter only
+    /// when the row is newly inserted or at least one column value actually changed.
     pub fn upsert(
         &self,
         peer_user_id: &str,
@@ -37,7 +38,12 @@ impl<'a> ContactStore<'a> {
     ) -> Result<(), KithError> {
         // Use INSERT OR REPLACE so re-delivery from the same peer updates the record.
         // first_seen_at is preserved via the coalesce sub-select when the row exists.
-        self.conn
+        //
+        // The DO UPDATE WHERE clause ensures the statement changes 0 rows (and
+        // therefore does NOT advance the state counter) when every column is already
+        // at the supplied value — identical successive calls are idempotent.
+        let affected = self
+            .conn
             .execute(
                 "INSERT INTO contacts \
                     (peer_user_id, peer_login, peer_mailbox_host, display_name, \
@@ -47,7 +53,11 @@ impl<'a> ContactStore<'a> {
                     peer_login        = excluded.peer_login, \
                     peer_mailbox_host = excluded.peer_mailbox_host, \
                     display_name      = excluded.display_name, \
-                    last_seen_at      = excluded.last_seen_at",
+                    last_seen_at      = excluded.last_seen_at \
+                 WHERE excluded.peer_login IS NOT peer_login \
+                    OR excluded.peer_mailbox_host IS NOT peer_mailbox_host \
+                    OR excluded.display_name IS NOT display_name \
+                    OR excluded.last_seen_at IS NOT last_seen_at",
                 params![
                     peer_user_id,
                     peer_login,
@@ -57,8 +67,10 @@ impl<'a> ContactStore<'a> {
                 ],
             )
             .map_err(db_err)?;
-        let new_state = advance_state(self.conn)?;
-        self.emit(new_state);
+        if affected > 0 {
+            let new_state = advance_state(self.conn)?;
+            self.emit(new_state);
+        }
         Ok(())
     }
 
@@ -68,6 +80,9 @@ impl<'a> ContactStore<'a> {
     /// - Updates peer_login, peer_mailbox_host, last_seen_at
     /// - Updates display_name ONLY if it is currently NULL (preserves user-set names)
     /// - NEVER updates first_seen_at or blocked
+    ///
+    /// Advances the state counter only when a row is newly inserted or at least one
+    /// column value actually changed; identical successive calls do not advance state.
     pub fn upsert_discovered_contact(
         &self,
         peer_user_id: &str,
@@ -76,7 +91,11 @@ impl<'a> ContactStore<'a> {
         discovered_display_name: Option<&str>,
         now_unix: i64,
     ) -> Result<(), KithError> {
-        self.conn
+        // The effective display_name after conflict resolution is either the existing
+        // value (when non-NULL) or excluded.display_name (when NULL).  The WHERE
+        // clause must mirror that CASE logic so the guard correctly detects no-ops.
+        let affected = self
+            .conn
             .execute(
                 "INSERT INTO contacts \
                     (peer_user_id, peer_login, peer_mailbox_host, display_name, \
@@ -88,7 +107,11 @@ impl<'a> ContactStore<'a> {
                     display_name      = CASE WHEN display_name IS NULL \
                                              THEN excluded.display_name \
                                              ELSE display_name END, \
-                    last_seen_at      = excluded.last_seen_at",
+                    last_seen_at      = excluded.last_seen_at \
+                 WHERE excluded.peer_login IS NOT peer_login \
+                    OR excluded.peer_mailbox_host IS NOT peer_mailbox_host \
+                    OR (display_name IS NULL AND excluded.display_name IS NOT NULL) \
+                    OR excluded.last_seen_at IS NOT last_seen_at",
                 params![
                     peer_user_id,
                     peer_login,
@@ -98,8 +121,10 @@ impl<'a> ContactStore<'a> {
                 ],
             )
             .map_err(db_err)?;
-        let new_state = advance_state(self.conn)?;
-        self.emit(new_state);
+        if affected > 0 {
+            let new_state = advance_state(self.conn)?;
+            self.emit(new_state);
+        }
         Ok(())
     }
 
@@ -648,6 +673,68 @@ mod tests {
             c.first_seen_at,
             crate::util::unix_secs_to_rfc3339(1000),
             "first_seen_at must not be overwritten on re-discovery"
+        );
+    }
+
+    #[test]
+    fn upsert_identical_twice_does_not_advance_state() {
+        // Oracle: calling upsert twice with identical values must NOT advance the state
+        // counter the second time — no data changed so no state event should fire.
+        // Independent check: state string read before and after the second call must be equal.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert(
+            "uid-idem",
+            "idem@example.com",
+            "idem-kith.tail.ts.net",
+            Some("Idem"),
+            1000,
+        )
+        .unwrap();
+        let state_after_first = cs.get_state().unwrap();
+        // Second call with identical values.
+        cs.upsert(
+            "uid-idem",
+            "idem@example.com",
+            "idem-kith.tail.ts.net",
+            Some("Idem"),
+            1000,
+        )
+        .unwrap();
+        let state_after_second = cs.get_state().unwrap();
+        assert_eq!(
+            state_after_first, state_after_second,
+            "upsert with identical values must not advance the state counter"
+        );
+    }
+
+    #[test]
+    fn upsert_discovered_identical_twice_does_not_advance_state() {
+        // Oracle: calling upsert_discovered_contact twice with identical values must NOT
+        // advance the state counter the second time.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert_discovered_contact(
+            "uid-idem2",
+            "idem2@example.com",
+            "idem2-kith.tail.ts.net",
+            Some("Idem2"),
+            2000,
+        )
+        .unwrap();
+        let state_after_first = cs.get_state().unwrap();
+        cs.upsert_discovered_contact(
+            "uid-idem2",
+            "idem2@example.com",
+            "idem2-kith.tail.ts.net",
+            Some("Idem2"),
+            2000,
+        )
+        .unwrap();
+        let state_after_second = cs.get_state().unwrap();
+        assert_eq!(
+            state_after_first, state_after_second,
+            "upsert_discovered_contact with identical values must not advance the state counter"
         );
     }
 

@@ -145,15 +145,7 @@ impl<'a> OutboxStore<'a> {
         last_error: &str,
         now_unix: i64,
     ) -> Result<(), KithError> {
-        let attempt: i64 = self
-            .conn
-            .query_row(
-                "SELECT attempt_count FROM outbox \
-                 WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",
-                params![entry.message_id, entry.peer_user_id, entry.kind],
-                |row| row.get(0),
-            )
-            .map_err(db_err)?;
+        let attempt: i64 = entry.attempt_count as i64;
 
         if attempt >= MAX_DELIVERY_ATTEMPTS - 1 {
             return self.mark_failed(entry, last_error);
@@ -206,6 +198,10 @@ impl<'a> OutboxStore<'a> {
     }
 
     /// Mark as successfully delivered: delete the outbox row.
+    ///
+    /// NOTE: This does not update `messages.delivery_state`. Use `complete_delivery`
+    /// for successful delivery; use this only for orphaned outbox rows where the
+    /// message no longer exists.
     pub fn mark_delivered(&self, entry: &OutboxEntry) -> Result<(), KithError> {
         self.conn
             .execute(

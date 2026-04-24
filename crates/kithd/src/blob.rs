@@ -41,19 +41,28 @@ pub async fn blob_upload_handler<W: WhoIsProvider + Send + Sync + 'static>(
     }
 
     // 3. Extract Content-Type header; cap length; default if absent.
+    //
+    // We must not truncate at a raw byte offset because Content-Type values
+    // may contain non-ASCII characters (e.g. in parameter quoted-strings).
+    // Slicing a &str at an arbitrary byte index panics if that index falls
+    // inside a multi-byte UTF-8 sequence.  We find the char boundary at
+    // MAX_CONTENT_TYPE_LEN instead.
     let content_type = request
         .headers()
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| {
             if s.len() > MAX_CONTENT_TYPE_LEN {
-                &s[..MAX_CONTENT_TYPE_LEN]
+                let cut = s
+                    .char_indices()
+                    .nth(MAX_CONTENT_TYPE_LEN)
+                    .map_or(s.len(), |(i, _)| i);
+                s[..cut].to_string()
             } else {
-                s
+                s.to_string()
             }
         })
-        .unwrap_or("application/octet-stream")
-        .to_string();
+        .unwrap_or_else(|| "application/octet-stream".to_string());
 
     // 4. Buffer body with a hard size cap.  Read one byte over the limit so
     //    we can distinguish "exactly at limit" from "exceeded".
@@ -115,6 +124,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::auth::WhoIsProvider;
+    use crate::blob::MAX_CONTENT_TYPE_LEN;
     use crate::build_app;
     use crate::build_dispatcher;
     use crate::extractors::AppState;
@@ -289,6 +299,66 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: Content-Type truncation for over-length values
+    //
+    // Oracle: A Content-Type value whose char count exceeds MAX_CONTENT_TYPE_LEN
+    // must be truncated to exactly MAX_CONTENT_TYPE_LEN characters.
+    //
+    // HTTP HeaderValue::to_str() only returns visible ASCII (bytes 32–126 plus
+    // tab), so the char-boundary slice in the implementation operates on
+    // purely ASCII strings in practice.  The char_indices-based truncation is
+    // defensive code that remains correct if the code path is ever widened.
+    // This test validates the truncation length and that the handler does not
+    // panic or reject the request.
+    // -----------------------------------------------------------------------
+    #[tokio::test]
+    async fn blob_upload_content_type_truncated_at_char_boundary() {
+        const OWNER_ID: &str = "uid-owner-cttrunc";
+        const OWNER_LOGIN: &str = "owner@cttrunc.example.com";
+
+        // Build a Content-Type value of MAX_CONTENT_TYPE_LEN + 10 ASCII chars.
+        // HTTP headers only carry visible ASCII through to_str(), so we use
+        // ASCII 'x' repeated to MAX_CONTENT_TYPE_LEN, then append '!!!!!!!!!!'.
+        // The stored value must be exactly MAX_CONTENT_TYPE_LEN chars long.
+        let ct_value = format!("{}!!!!!!!!!!", "x".repeat(MAX_CONTENT_TYPE_LEN));
+        assert!(
+            ct_value.len() > MAX_CONTENT_TYPE_LEN,
+            "test setup: value must exceed MAX_CONTENT_TYPE_LEN bytes"
+        );
+        assert!(
+            ct_value.is_ascii(),
+            "test setup: value must be ASCII (matches HTTP visible-ASCII constraint)"
+        );
+
+        let app = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let req = Request::builder()
+            .method("POST")
+            .uri(&format!("/jmap/upload/{OWNER_ID}"))
+            .header("content-type", ct_value.as_str())
+            .body(Body::from(b"x".to_vec()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body_bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+
+        // The stored type must be truncated to exactly MAX_CONTENT_TYPE_LEN chars.
+        let stored_type = json["type"].as_str().expect("type must be a string");
+        assert_eq!(
+            stored_type.len(),
+            MAX_CONTENT_TYPE_LEN,
+            "truncated Content-Type must be exactly MAX_CONTENT_TYPE_LEN chars long"
+        );
+        assert_eq!(
+            stored_type,
+            "x".repeat(MAX_CONTENT_TYPE_LEN).as_str(),
+            "truncated Content-Type must equal the first MAX_CONTENT_TYPE_LEN chars"
+        );
     }
 
     #[tokio::test]

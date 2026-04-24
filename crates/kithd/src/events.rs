@@ -13,7 +13,7 @@ use axum::{
 use kith_core::Role;
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
-use tokio_stream::{wrappers::UnboundedReceiverStream, StreamExt};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 
 use crate::auth::WhoIsProvider;
 use crate::extractors::{AppState, Caller};
@@ -250,7 +250,13 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // Contact + Chat + Message) are queued before any async yield.  After the
     // first recv().await unblocks, try_recv() captures all of them without
     // sleeping, producing one merged SSE frame instead of three.
-    let (live_tx, live_rx) = tokio::sync::mpsc::unbounded_channel::<Result<Event, Infallible>>();
+    //
+    // Bounded channel: a stalled SSE consumer (slow/disconnected client) must
+    // not cause unbounded memory growth.  Capacity 256 is well above the burst
+    // of any realistic JMAP workload (3 types × burst factor).  When the
+    // channel is full the coalescing task blocks until the consumer drains it,
+    // providing natural back-pressure; the task will not allocate further.
+    let (live_tx, live_rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(256);
 
     tokio::spawn(async move {
         // Reuse one HashMap across loop iterations to avoid per-batch allocation.
@@ -340,15 +346,19 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
 
             // If the receiver end of the mpsc is gone (client disconnected),
             // send() returns Err — stop the task.
-            if live_tx.send(Ok(event)).is_err() {
+            if live_tx.send(Ok(event)).await.is_err() {
                 break;
             }
         }
     });
 
-    let live_stream = UnboundedReceiverStream::new(live_rx);
+    let live_stream = ReceiverStream::new(live_rx);
 
     // Replay events are delivered first; the live stream follows.
+    //
+    // We capture the replay count before the Vec is moved into the stream.
+    // This is needed to compute the correct take limit for closeafter=state.
+    let replay_count = replay_events.len();
     let stream = tokio_stream::iter(replay_events).chain(live_stream);
 
     let keepalive_interval = Duration::from_secs(ping_secs.unwrap_or(KEEPALIVE_SECS));
@@ -357,7 +367,18 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // the base Chain stream), so we call .into_response() on each branch
     // rather than trying to unify them behind a box.
     if close_after_first {
-        Sse::new(stream.take(1))
+        // Deliver all pending replay events, then at most one live event.
+        //
+        // When replay_count > 0, the client already has pending state — send
+        // all replays and do NOT wait for a live event (live_limit = 0).
+        // When replay_count == 0, there is nothing to replay — take one live
+        // event as before (live_limit = 1).
+        //
+        // This fixes a bug where multiple JMAP types advancing since
+        // Last-Event-ID produced up to 3 replay events but take(1) only
+        // delivered the first one.
+        let live_limit = if replay_count > 0 { 0 } else { 1 };
+        Sse::new(stream.take(replay_count + live_limit))
             .keep_alive(KeepAlive::new().interval(keepalive_interval))
             .into_response()
     } else {

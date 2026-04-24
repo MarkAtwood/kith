@@ -485,10 +485,11 @@ impl Store {
         // this function.  An empty slice would commit a Pending message with
         // no outbox entry — the retry loop would never fire and the caller
         // would never learn of the failure.
-        debug_assert!(
-            !outbox_peers.is_empty(),
-            "insert_outbound_message: outbox_peers must be non-empty"
-        );
+        if outbox_peers.is_empty() {
+            return Err(KithError::Validation(
+                "outbox_peers must not be empty".to_string(),
+            ));
+        }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = advance_state_counter_in_tx(&tx, "message")?;
         // ?1 = id (reused as sender_msg_id at position 11 — outbound msgs
@@ -1289,6 +1290,54 @@ mod tests {
         assert!(
             err_msg.contains("sender_msg_id must not be NULL"),
             "error must identify the invariant; got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn insert_outbound_message_empty_peers_returns_err() {
+        // Oracle: an empty outbox_peers slice would commit a Pending message with
+        // no outbox row, making it permanently stuck.  The guard must reject this
+        // before touching the database and must NOT advance the message state counter.
+        let store = Store::open_in_memory().expect("open");
+        store
+            .conn
+            .execute(
+                "INSERT INTO chats (id, kind, created_at) VALUES ('chat-ep', 'direct', 1000)",
+                [],
+            )
+            .unwrap();
+
+        let ms = store.messages();
+        let state_before = ms.get_state().expect("state before");
+
+        let result = store.insert_outbound_message(&OutboundMessageParams {
+            id: "msg-ep",
+            chat_id: "chat-ep",
+            body: "hello",
+            body_type: "text/plain",
+            sent_at_peer: None,
+            created_at_unix: 1000,
+            reply_to: None,
+            attachments: &[],
+            outbox_peers: &[],
+        });
+        assert!(
+            result.is_err(),
+            "insert_outbound_message with empty outbox_peers must return Err"
+        );
+
+        // No message row must have been inserted.
+        let msg = ms.get("msg-ep").expect("get must not error");
+        assert!(
+            msg.is_none(),
+            "no message row must exist after rejected insert"
+        );
+
+        // State counter must not have advanced.
+        let state_after = ms.get_state().expect("state after");
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance when insert_outbound_message rejects empty peers"
         );
     }
 }

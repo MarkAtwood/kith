@@ -122,17 +122,17 @@ impl ServerCertVerifier for TailnetCertVerifier {
 // Probe function
 // ---------------------------------------------------------------------------
 
-/// Probe a single tailnet IP:port for a running kithd instance.
+/// Build a shared HTTPS client for tailnet probes.
 ///
-/// Makes a `GET https://<ip>:<port>/.well-known/jmap` and parses the
-/// JMAP session object.  Returns `Some(PeerSession)` if the target responds
-/// with a valid kith session, `None` on any error (timeout, connection
-/// refused, non-kith response, parse failure, etc.).
-///
-/// A 5-second hard timeout covers the entire round trip.
-pub async fn probe_peer(ip: &str, port: u16) -> Option<PeerSession> {
-    let url = format!("https://{}:{}/.well-known/jmap", ip, port);
-
+/// The client uses `TailnetCertVerifier` to accept self-signed certificates
+/// from kithd instances.  Building once per discovery round and sharing via
+/// `Arc` avoids allocating a new `rustls::ClientConfig` per probe task.
+pub(crate) fn build_probe_client() -> Arc<
+    Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Full<Bytes>,
+    >,
+> {
     let verifier = Arc::new(TailnetCertVerifier::new());
     let tls_config = rustls::ClientConfig::builder()
         .dangerous()
@@ -143,7 +143,30 @@ pub async fn probe_peer(ip: &str, port: u16) -> Option<PeerSession> {
         .https_only()
         .enable_http1()
         .build();
-    let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new()).build(connector);
+    Arc::new(Client::builder(TokioExecutor::new()).build(connector))
+}
+
+/// Probe a single tailnet IP:port for a running kithd instance.
+///
+/// Makes a `GET https://<ip>:<port>/.well-known/jmap` and parses the
+/// JMAP session object.  Returns `Some(PeerSession)` if the target responds
+/// with a valid kith session, `None` on any error (timeout, connection
+/// refused, non-kith response, parse failure, etc.).
+///
+/// A 5-second hard timeout covers the entire round trip.
+///
+/// `client` is a pre-built shared HTTPS client from `build_probe_client`.
+/// Sharing a single client across concurrent probe tasks avoids allocating
+/// a new `rustls::ClientConfig` per probe.
+pub async fn probe_peer(
+    client: &Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Full<Bytes>,
+    >,
+    ip: &str,
+    port: u16,
+) -> Option<PeerSession> {
+    let url = format!("https://{}:{}/.well-known/jmap", ip, port);
 
     let result = tokio::time::timeout(PROBE_TIMEOUT, async {
         let req = Request::builder()
@@ -294,6 +317,10 @@ async fn run_discovery_round(
         return;
     }
 
+    // Build one shared HTTPS client for this round.  Sharing across all probe
+    // tasks avoids constructing a new rustls::ClientConfig per probe.
+    let probe_client = build_probe_client();
+
     // Fan out probes concurrently — one task per peer, bounded by PROBE_CONCURRENCY.
     // Each task tries the peer's IPs in order and returns as soon as one responds.
     let sem = Arc::new(tokio::sync::Semaphore::new(PROBE_CONCURRENCY));
@@ -301,11 +328,12 @@ async fn run_discovery_round(
 
     for peer in peers.into_iter().cloned() {
         let sem = Arc::clone(&sem);
+        let client = Arc::clone(&probe_client);
         join_set.spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore never closed");
             let mut session = None;
             for ip in &peer.tailscale_ips {
-                if let Some(s) = probe_peer(ip, port).await {
+                if let Some(s) = probe_peer(&client, ip, port).await {
                     session = Some(s);
                     break;
                 }
@@ -429,7 +457,8 @@ mod tests {
     async fn probe_peer_returns_none_on_refused() {
         install_crypto_provider();
         // Nothing is expected to be listening on port 19999 during tests.
-        let result = probe_peer("127.0.0.1", 19999).await;
+        let client = build_probe_client();
+        let result = probe_peer(&client, "127.0.0.1", 19999).await;
         assert!(
             result.is_none(),
             "probe_peer must return None when connection is refused"

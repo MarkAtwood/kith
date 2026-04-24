@@ -50,9 +50,10 @@ pub static ALLOW_LOOPBACK_FOR_TESTS: std::sync::atomic::AtomicBool =
 /// - Rejects an empty host.
 /// - If the host part parses as an [`IpAddr`], applies IP-range checks
 ///   (loopback, unspecified, RFC 1918, link-local).
-/// - If it does not parse as an IP, treats it as a hostname and accepts it
-///   (Tailscale MagicDNS names like `alice-kith.tail-xxxxx.ts.net` are
-///   always hostnames, not IPs).
+/// - If it does not parse as an IP, rejects it: plain hostnames are not
+///   accepted because a hostname could resolve to an RFC 1918 or loopback
+///   address at fetch time (SSRF via DNS).  All legitimate kithd instances
+///   are discovered and stored with their tailnet IP literal.
 pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
     if host.is_empty() {
         return false;
@@ -149,8 +150,10 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
     let ip: IpAddr = match ip_part.parse() {
         Ok(addr) => addr,
         Err(_) => {
-            // Not an IP — treat as a hostname and allow it.
-            return true;
+            // Reject plain hostnames: a hostname could resolve to an RFC 1918 or
+            // loopback address at fetch time (SSRF via DNS). All legitimate kithd
+            // instances are discovered and stored with their tailnet IP literal.
+            return false;
         }
     };
 
@@ -424,6 +427,12 @@ async fn fetch_with_https_client(
         Ok(c) => c,
         Err(e) => {
             let msg = e.to_string();
+            // `http_body_util::Limited` does not expose a typed error variant for
+            // the limit-exceeded case — it wraps the error as a boxed `std::error::Error`
+            // with the message "length limit exceeded".  String matching is the only
+            // available way to distinguish a size-exceeded error from other I/O errors
+            // without forking the crate.  This string was introduced in
+            // http-body-util 0.1.0 and has not changed through 0.1.x.
             if msg.contains("length limit") {
                 tracing::warn!(blob_id, "fetch_peer_blob: body exceeded size limit");
                 return Err(FetchBlobError::SizeExceeded);
@@ -531,6 +540,8 @@ async fn fetch_peer_blob_from_url(
         Ok(c) => c,
         Err(e) => {
             let msg = e.to_string();
+            // Same string-match heuristic as the production path — see the
+            // comment in `fetch_with_https_client` for rationale.
             if msg.contains("length limit") {
                 return Err(FetchBlobError::SizeExceeded);
             }
@@ -614,14 +625,22 @@ mod tests {
         assert!(!is_valid_fetch_host("2600::1")); // public IPv6
     }
 
+    // Oracle: plain hostnames must be rejected to prevent SSRF via DNS.
+    // Legitimate kithd peers are always stored and fetched by tailnet IP literal.
     #[test]
-    fn magicdns_accepted() {
-        assert!(is_valid_fetch_host("alice-kith.tail-xxxxx.ts.net"));
+    fn magicdns_hostname_rejected() {
+        assert!(!is_valid_fetch_host("alice-kith.tail-xxxxx.ts.net"));
     }
 
     #[test]
-    fn custom_port_accepted() {
-        assert!(is_valid_fetch_host("alice.ts.net:8443"));
+    fn arbitrary_hostname_rejected() {
+        assert!(!is_valid_fetch_host("evil.attacker.com"));
+        assert!(!is_valid_fetch_host("alice-node.tail12345.ts.net"));
+    }
+
+    #[test]
+    fn hostname_with_port_rejected() {
+        assert!(!is_valid_fetch_host("alice.ts.net:8443"));
     }
 
     #[test]

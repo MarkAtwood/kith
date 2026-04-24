@@ -175,6 +175,13 @@ impl JmapHandler for MessageSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
+            let old_state = {
+                let guard = store
+                    .lock()
+                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                guard.messages().get_state().map_err(kith_to_jmap)?
+            };
+
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
             let mut updated: Map<String, Value> = Map::new();
@@ -231,7 +238,7 @@ impl JmapHandler for MessageSetHandler {
 
             Ok(json!({
                 "accountId": "a-self",
-                "oldState": Value::Null,
+                "oldState": old_state,
                 "newState": new_state,
                 "created": created,
                 "updated": updated,
@@ -472,6 +479,14 @@ fn process_update(
             |_| json!({"type": "invalidArguments", "description": "readAt must be RFC 3339"}),
         )?;
 
+    // Reject epoch-0 or negative timestamps — these cannot represent a real
+    // read event and would corrupt unread-message display.
+    if read_at_unix_raw <= 0 {
+        return Err(
+            json!({"type": "invalidArguments", "description": "readAt must be after epoch"}),
+        );
+    }
+
     // Clamp readAt to the current time as an upper bound.  A far-future value
     // (e.g. 2099-01-01) cannot represent a real read event and would corrupt
     // UI sort order.  We allow up to 60 seconds in the future to tolerate minor
@@ -705,18 +720,21 @@ impl JmapHandler for MessageQueryHandler {
                 return Err(JmapError::invalid_arguments("unknown chatId"));
             }
 
-            let messages = guard
+            let page_messages = guard
                 .messages()
-                .list_by_chat(&chat_id, limit + position)
+                .list_by_chat_paged(&chat_id, limit, position)
                 .map_err(kith_to_jmap)?;
 
-            let total_count = messages.len();
+            let page_ids: Vec<String> = page_messages.into_iter().map(|m| m.id).collect();
 
-            let page_ids: Vec<String> = messages
-                .into_iter()
-                .skip(position as usize)
-                .map(|m| m.id)
-                .collect();
+            let total_count = if calculate_total {
+                guard
+                    .messages()
+                    .count_by_chat(&chat_id)
+                    .map_err(kith_to_jmap)?
+            } else {
+                0
+            };
 
             let query_state = guard.messages().get_state().map_err(kith_to_jmap)?;
             drop(guard);
@@ -817,37 +835,43 @@ impl JmapHandler for MessageQueryChangesHandler {
                 }));
             }
 
-            // Get the changes since sinceQueryState.
+            // Get the changes since sinceQueryState.  This returns IDs from
+            // ALL chats; filter to only those belonging to the requested chat.
             let changes = guard
                 .messages()
                 .get_changes_since(&since_query_state)
                 .map_err(kith_to_jmap)?;
 
-            // Get the current full ordered list for this chat (no cap — all
-            // messages must be present so position() returns a correct index
-            // for any message, not just the newest 200).
-            let full_list = guard
-                .messages()
-                .list_by_chat(&chat_id, u32::MAX)
-                .map_err(kith_to_jmap)?;
-
-            drop(guard);
+            // Filter: keep only added IDs whose chat_id matches the filter.
+            let chat_added: Vec<String> = changes
+                .added
+                .iter()
+                .filter(|id| {
+                    guard
+                        .messages()
+                        .get(id)
+                        .ok()
+                        .flatten()
+                        .map(|m| m.chat_id == chat_id)
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect();
 
             let new_state = changes.new_state.clone();
 
-            // Build added list with indexes.
-            let added_with_index: Vec<Value> = changes
-                .added
-                .iter()
-                .map(|added_id| {
-                    let index = full_list
-                        .iter()
-                        .position(|m| &m.id == added_id)
-                        .map(|p| p as u64)
-                        .unwrap_or(0);
-                    json!({"id": added_id, "index": index})
-                })
-                .collect();
+            // Build added list with SQL-computed indexes (O(1) per message via COUNT query).
+            let mut added_with_index: Vec<Value> = Vec::with_capacity(chat_added.len());
+            for added_id in &chat_added {
+                let index = guard
+                    .messages()
+                    .get_position_in_chat(&chat_id, added_id)
+                    .map_err(kith_to_jmap)?
+                    .unwrap_or(0) as u64;
+                added_with_index.push(json!({"id": added_id, "index": index}));
+            }
+
+            drop(guard);
 
             Ok(json!({
                 "accountId": "a-self",
@@ -2279,6 +2303,156 @@ mod tests {
         assert_eq!(
             state_before, state_after,
             "state counter must not advance: empty-members guard must fire before any INSERT"
+        );
+    }
+
+    // Oracle: readAt with epoch-0 timestamp ("1970-01-01T00:00:00Z") must be
+    // rejected with invalidArguments.  Independent oracle: epoch 0 cannot
+    // represent a real read event; accepting it corrupts unread-message display.
+    #[tokio::test]
+    async fn test_read_at_epoch_zero_rejected() {
+        let store = make_store();
+        let chat_id = "chat-epoch0";
+        let peer_uid = "peer-epoch0";
+        setup_chat_and_contact(&store, chat_id, peer_uid, "peer-epoch0.tail.ts.net");
+
+        // Insert a message to update.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .messages()
+                .insert(
+                    "msg-epoch0",
+                    chat_id,
+                    peer_uid,
+                    "hi",
+                    "text/plain",
+                    None,
+                    1000,
+                    &DeliveryState::Received,
+                    None,
+                    "msg-epoch0",
+                )
+                .unwrap();
+        }
+
+        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let args = json!({
+            "accountId": "a-self",
+            "update": {
+                "msg-epoch0": {
+                    "readAt": "1970-01-01T00:00:00Z"
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("handler must not return top-level Err; errors go in notUpdated");
+
+        // Oracle: epoch-0 readAt must appear in notUpdated with invalidArguments.
+        let not_updated = result["notUpdated"]
+            .as_object()
+            .expect("notUpdated must be an object");
+        assert!(
+            not_updated.contains_key("msg-epoch0"),
+            "epoch-0 readAt must be notUpdated; got: {result:?}"
+        );
+        assert_eq!(
+            not_updated["msg-epoch0"]["type"], "invalidArguments",
+            "error type must be invalidArguments; got: {:?}",
+            not_updated["msg-epoch0"]
+        );
+    }
+
+    // Oracle: Message/queryChanges for chat A must not include messages that
+    // belong to chat B.  Independent oracle: JMAP RFC 8620 §5.6 — queryChanges
+    // must be scoped to the filter supplied by the caller.
+    #[tokio::test]
+    async fn test_querychanges_does_not_leak_cross_chat_messages() {
+        let store = make_store();
+
+        // Set up two independent direct chats.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-xc-a", "direct", None, 1000)
+                .unwrap();
+            guard
+                .chats()
+                .create("chat-xc-b", "direct", None, 1000)
+                .unwrap();
+        }
+
+        // Capture state before any messages are inserted.
+        let state_before = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+
+        // Insert one message into chat A and one into chat B.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .messages()
+                .insert(
+                    "msg-xc-a",
+                    "chat-xc-a",
+                    "self",
+                    "in chat A",
+                    "text/plain",
+                    None,
+                    1000,
+                    &DeliveryState::Pending,
+                    None,
+                    "msg-xc-a",
+                )
+                .unwrap();
+            guard
+                .messages()
+                .insert(
+                    "msg-xc-b",
+                    "chat-xc-b",
+                    "self",
+                    "in chat B",
+                    "text/plain",
+                    None,
+                    1001,
+                    &DeliveryState::Pending,
+                    None,
+                    "msg-xc-b",
+                )
+                .unwrap();
+        }
+
+        // Call queryChanges scoped to chat A only.
+        let handler = MessageQueryChangesHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "sinceQueryState": state_before,
+            "filter": {"chatId": "chat-xc-a"}
+        });
+        let result = handler
+            .call("Message/queryChanges".to_string(), "c0".to_string(), args)
+            .await
+            .expect("queryChanges must succeed");
+
+        let added = result["added"].as_array().expect("added must be array");
+
+        // Oracle: only msg-xc-a must appear; msg-xc-b (chat B) must be absent.
+        let added_ids: Vec<&str> = added
+            .iter()
+            .filter_map(|e| e.get("id").and_then(|v| v.as_str()))
+            .collect();
+        assert!(
+            added_ids.contains(&"msg-xc-a"),
+            "msg-xc-a must appear in chat A queryChanges; got: {added_ids:?}"
+        );
+        assert!(
+            !added_ids.contains(&"msg-xc-b"),
+            "msg-xc-b (chat B) must NOT appear in chat A queryChanges; got: {added_ids:?}"
         );
     }
 }

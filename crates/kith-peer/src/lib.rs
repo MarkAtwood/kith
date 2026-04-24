@@ -112,6 +112,13 @@ impl PeerJmapHandler for DeliverHandler {
             let msg = &deliver.message;
 
             // Step 2: check_sender — MUST occur before any DB write.
+            // Reject empty identity.user_id before any comparison: an empty string
+            // would match an empty sender_user_id and store "" as contact_id.
+            if identity.user_id.is_empty() {
+                return Err(JmapError::invalid_arguments(
+                    "caller identity has empty userId",
+                ));
+            }
             // Maps SenderMismatch → invalidArguments per CLAUDE.md defensive rules.
             if identity.user_id != msg.sender_user_id {
                 return Err(JmapError::invalid_arguments("senderUserId mismatch"));
@@ -160,26 +167,6 @@ impl PeerJmapHandler for DeliverHandler {
             let guard = store
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
-
-            // Step 6: Validate replyTo — referenced message must exist and be in this chat.
-            if let Some(ref reply_id) = msg.reply_to {
-                match guard.messages().get(reply_id) {
-                    Ok(Some(ref referenced)) if referenced.chat_id == msg.chat_id => {}
-                    Ok(Some(_)) => {
-                        return Err(JmapError::invalid_arguments(
-                            "replyTo references a message in a different chat",
-                        ));
-                    }
-                    Ok(None) => {
-                        return Err(JmapError::invalid_arguments(
-                            "replyTo references a nonexistent message",
-                        ));
-                    }
-                    Err(_) => {
-                        return Err(JmapError::server_fail("store error checking replyTo"));
-                    }
-                }
-            }
 
             // Step 8: Resolve the chat to use for this message.
             //
@@ -245,6 +232,30 @@ impl PeerJmapHandler for DeliverHandler {
                 }
             };
 
+            // Step 6 (deferred): Validate replyTo — referenced message must exist
+            // and be in the resolved chat.  This check uses `resolved_chat_id`
+            // rather than `msg.chat_id` because the peer may supply a stale chatId
+            // (cases b/c above); messages are stored under `resolved_chat_id` so a
+            // check against `msg.chat_id` would never find them.
+            if let Some(ref reply_id) = msg.reply_to {
+                match guard.messages().get(reply_id) {
+                    Ok(Some(ref referenced)) if referenced.chat_id == resolved_chat_id => {}
+                    Ok(Some(_)) => {
+                        return Err(JmapError::invalid_arguments(
+                            "replyTo references a message in a different chat",
+                        ));
+                    }
+                    Ok(None) => {
+                        return Err(JmapError::invalid_arguments(
+                            "replyTo references a nonexistent message",
+                        ));
+                    }
+                    Err(_) => {
+                        return Err(JmapError::server_fail("store error checking replyTo"));
+                    }
+                }
+            }
+
             // Step 9: Idempotency check — if we've already received this sender_msg_id
             // for this chat, return the stored receivedAt without re-inserting.
             // The `?` propagates store errors so a transient DB failure can never
@@ -258,6 +269,7 @@ impl PeerJmapHandler for DeliverHandler {
                 })?
             {
                 return Ok(json!({
+                    "accountId": "a-self",
                     "accepted": true,
                     "id": existing.id,
                     "receivedAt": existing.received_at,
@@ -902,7 +914,10 @@ fn validate_attachments(
             ));
         }
         match a.content_type.split_once('/') {
-            Some((t, s)) if !t.is_empty() && !s.is_empty() => {} // valid
+            // Exactly one '/': both type and subtype must be non-empty and the
+            // subtype must not contain another '/' (e.g. "text/plain/extra" is
+            // rejected — split_once gives s="plain/extra" which contains '/').
+            Some((t, s)) if !t.is_empty() && !s.is_empty() && !s.contains('/') => {} // valid
             _ => {
                 return Err(JmapError::invalid_arguments(
                     "invalid attachment contentType",
@@ -1093,14 +1108,14 @@ pub async fn outbox_tick<C: DeliverClient>(
         let guard = match store.lock() {
             Ok(g) => g,
             Err(_) => {
-                eprintln!("outbox: store lock poisoned getting due entries");
+                tracing::warn!("outbox: store lock poisoned getting due entries");
                 return;
             }
         };
         match guard.outbox().get_due(now_unix) {
             Ok(entries) => entries,
             Err(err) => {
-                eprintln!("outbox: get_due failed: {err}");
+                tracing::warn!("outbox: get_due failed: {err}");
                 return;
             }
         }
@@ -1113,7 +1128,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             let guard = match store.lock() {
                 Ok(g) => g,
                 Err(_) => {
-                    eprintln!(
+                    tracing::warn!(
                         "outbox: store lock poisoned during contact re-validation; aborting tick"
                     );
                     return;
@@ -1140,7 +1155,7 @@ pub async fn outbox_tick<C: DeliverClient>(
                 continue;
             }
             Err(err) => {
-                eprintln!("outbox: contact lookup error: {err}");
+                tracing::warn!("outbox: contact lookup error: {err}");
                 continue;
             }
         };
@@ -1218,7 +1233,9 @@ pub async fn outbox_tick<C: DeliverClient>(
             let guard = match store.lock() {
                 Ok(g) => g,
                 Err(_) => {
-                    eprintln!("outbox: store lock poisoned loading message payload; aborting tick");
+                    tracing::warn!(
+                        "outbox: store lock poisoned loading message payload; aborting tick"
+                    );
                     return;
                 }
             };
@@ -1515,6 +1532,52 @@ mod tests {
         assert!(
             guard.messages().get(&msg_id).unwrap().is_none(),
             "no message must be stored on sender mismatch"
+        );
+    }
+
+    // Oracle: an empty identity.user_id must be rejected before any DB write.
+    // An empty string would match an empty senderUserId and store "" as contact_id,
+    // which violates the invariant that contact_id is always a real Tailscale user ID.
+    #[tokio::test]
+    async fn deliver_empty_identity_user_id_returns_invalid_arguments() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        // Construct an identity with an empty user_id — simulates a broken WhoIs result.
+        let empty_identity = Identity {
+            user_id: "".to_string(),
+            login_name: "ghost@example.com".to_string(),
+            node_name: "ghost".to_string(),
+            display_name: None,
+        };
+        let chat_id = "test-direct-chat-empty-uid";
+        let msg_id = Ulid::new().to_string();
+        let args = json!({
+            "accountId": "a-self",
+            "message": {
+                "id": msg_id,
+                "chatId": chat_id,
+                "senderUserId": "",
+                "body": "Hi",
+                "bodyType": "text/plain",
+                "sentAt": "2026-04-19T12:00:00Z",
+            }
+        });
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let err = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                empty_identity,
+            )
+            .await
+            .expect_err("empty user_id must be rejected");
+        assert_eq!(err.error_type, "invalidArguments");
+        // Oracle: no message must have been stored.
+        let guard = store.lock().unwrap();
+        assert!(
+            guard.messages().get(&msg_id).unwrap().is_none(),
+            "no message must be stored when identity.user_id is empty"
         );
     }
 
@@ -2728,6 +2791,43 @@ mod tests {
         );
     }
 
+    // Oracle: contentType with more than one '/' (e.g. "text/plain/extra") must be
+    // rejected.  split_once('/') gives subtype="plain/extra" which contains a '/';
+    // the guard `!s.contains('/')` catches this.  This cannot be valid MIME per
+    // RFC 2045 §5.1 which defines type/subtype with no further slashes.
+    #[tokio::test]
+    async fn deliver_attachment_double_slash_content_type_rejected() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-direct-chat-07";
+        let msg_id = Ulid::new().to_string();
+        let bad_att = json!({
+            "blobId": "a".repeat(64),
+            "filename": "doc.txt",
+            "contentType": "text/plain/extra",
+            "size": 1024u64,
+            "sha256": "f".repeat(64),
+        });
+        let args = deliver_args_full(&peer, chat_id, &msg_id, json!([bad_att]));
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let err = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
+            .await
+            .expect_err("contentType with extra slash must be rejected");
+        assert_eq!(err.error_type, "invalidArguments");
+        let guard = store.lock().unwrap();
+        assert!(
+            guard.messages().get(&msg_id).unwrap().is_none(),
+            "no message must be stored when contentType has extra slash"
+        );
+    }
+
     // Oracle: contentType containing CRLF must be rejected before storage.
     //
     // Independent oracle: a CRLF in an HTTP header value is a protocol
@@ -3309,10 +3409,14 @@ mod tests {
             .await
             .expect("retransmit must succeed (idempotent)");
 
-        // Oracle: accepted=true on both calls.
+        // Oracle: accepted=true and accountId="a-self" on both calls.
         assert_eq!(
             second["accepted"], true,
             "retransmit must return accepted=true"
+        );
+        assert_eq!(
+            second["accountId"], "a-self",
+            "retransmit idempotency response must include accountId"
         );
 
         // Oracle: second call returns the receiver-assigned id from the FIRST call.

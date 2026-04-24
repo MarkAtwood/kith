@@ -21,7 +21,7 @@ pub use resultref::{Argument, ResultReference};
 /// RFC 3339 UTC string (e.g., `"2020-09-13T12:26:40Z"`).
 ///
 /// Uses the Hinnant civil-calendar algorithm for accuracy without an
-/// external time crate.  Correct for dates from 1970-03-01 through 2299.
+/// external time crate.  Correct for dates from the Unix epoch (t=0) through 2299.
 ///
 /// Single canonical implementation shared by `kith-store` and `kith-peer`.
 pub fn unix_secs_to_rfc3339(secs: i64) -> String {

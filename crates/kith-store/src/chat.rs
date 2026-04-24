@@ -183,14 +183,18 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id, kind, contact_id, created_at, last_message_at \
-                 FROM chats \
-                 ORDER BY last_message_at DESC NULLS LAST, created_at DESC",
+                "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
+                        (SELECT COUNT(*) FROM messages m \
+                         WHERE m.chat_id = c.id \
+                           AND m.delivery_state = 'received' \
+                           AND m.read_at IS NULL) AS unread_count \
+                 FROM chats c \
+                 ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC",
             )
             .map_err(db_err)?;
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, Option<String>, i64, Option<i64>)> = stmt
+        let rows: Vec<(String, String, Option<String>, i64, Option<i64>, u32)> = stmt
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -198,26 +202,52 @@ impl<'a> ChatStore<'a> {
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
                     row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, u32>(5)?,
                 ))
             })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
-        let mut chats = Vec::with_capacity(rows.len());
-        for (id, kind, contact_id, created_at_secs, last_message_at_secs) in rows {
-            let unread = self.unread_count(&id)?;
-            chats.push(Chat {
-                id,
-                kind,
-                contact_id,
-                created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
-                last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
-                unread_count: unread,
-            });
-        }
+        let chats = rows
+            .into_iter()
+            .map(
+                |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
+                    Chat {
+                        id,
+                        kind,
+                        contact_id,
+                        created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
+                        last_message_at: last_message_at_secs
+                            .map(crate::util::unix_secs_to_rfc3339),
+                        unread_count,
+                    }
+                },
+            )
+            .collect();
 
         Ok(chats)
+    }
+
+    /// List all chat IDs ordered by last_message_at DESC (nulls last), then created_at DESC.
+    ///
+    /// More efficient than `list()` when only IDs are needed.
+    pub fn list_ids(&self) -> Result<Vec<String>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id FROM chats \
+                 ORDER BY last_message_at DESC NULLS LAST, created_at DESC",
+            )
+            .map_err(db_err)?;
+
+        let ids = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok(ids)
     }
 
     /// Update the last_message_at timestamp for a chat and advance the chat state counter.
@@ -412,6 +442,54 @@ mod tests {
     }
 
     #[test]
+    fn list_returns_correct_unread_count() {
+        // Oracle: list() must return unread_count matching the correlated subquery —
+        // messages with delivery_state='received' AND read_at IS NULL for that chat.
+        // Insert 3 received+unread, 1 received+read, 1 pending into chat-y1.
+        // chat-y2 has no messages at all. Expect unread_count=3 and 0 respectively.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-y1", "direct", Some("uid:hank"), 1_000_000)
+            .unwrap();
+        cs.create("chat-y2", "direct", Some("uid:irene"), 1_000_001)
+            .unwrap();
+
+        let insert_msg = |id: &str, chat: &str, state: &str, read_at: Option<i64>| {
+            store
+                .conn
+                .execute(
+                    "INSERT INTO messages \
+                     (id, chat_id, sender_user_id, body, created_at, delivery_state, read_at, sender_msg_id) \
+                     VALUES (?1, ?2, 'uid:hank', 'hi', 1000000, ?3, ?4, ?1)",
+                    params![id, chat, state, read_at],
+                )
+                .unwrap();
+        };
+
+        insert_msg("uy-r1", "chat-y1", "received", None); // unread
+        insert_msg("uy-r2", "chat-y1", "received", None); // unread
+        insert_msg("uy-r3", "chat-y1", "received", None); // unread
+        insert_msg("uy-r4", "chat-y1", "received", Some(1_000_001)); // read
+        insert_msg("uy-p1", "chat-y1", "pending", None); // outgoing — not counted
+
+        let chats = cs.list().unwrap();
+        assert_eq!(chats.len(), 2);
+
+        let y2 = chats.iter().find(|c| c.id == "chat-y2").unwrap();
+        assert_eq!(
+            y2.unread_count, 0,
+            "chat with no messages must have unread_count=0"
+        );
+
+        let y1 = chats.iter().find(|c| c.id == "chat-y1").unwrap();
+        assert_eq!(
+            y1.unread_count, 3,
+            "list() must return 3 for chat with 3 received+unread messages"
+        );
+    }
+
+    #[test]
     fn update_last_message_at_changes_field_and_advances_state() {
         // Oracle: after update_last_message_at, the returned Chat reflects the new
         // timestamp and the state counter is strictly greater than before.
@@ -494,6 +572,31 @@ mod tests {
             state_after_create, state_after_hit,
             "state counter must not advance on a pure cache hit"
         );
+    }
+
+    #[test]
+    fn list_ids_returns_only_ids_in_correct_order() {
+        // Oracle: list_ids must return the same ordering as list() but only the id field.
+        // With last_message_at set: chat-x1 (most recent) → chat-x2 → chat-x3 (no message).
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-lid1", "direct", Some("uid:a"), 1_000_001)
+            .unwrap();
+        cs.create("chat-lid2", "direct", Some("uid:b"), 1_000_002)
+            .unwrap();
+        cs.create("chat-lid3", "direct", Some("uid:c"), 1_000_003)
+            .unwrap();
+
+        cs.update_last_message_at("chat-lid1", 2_000_000).unwrap();
+        cs.update_last_message_at("chat-lid2", 1_500_000).unwrap();
+        // chat-lid3 has no message.
+
+        let ids = cs.list_ids().unwrap();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids[0], "chat-lid1", "most recent message first");
+        assert_eq!(ids[1], "chat-lid2", "second most recent next");
+        assert_eq!(ids[2], "chat-lid3", "no messages last");
     }
 
     #[test]

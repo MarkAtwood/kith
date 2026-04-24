@@ -198,7 +198,7 @@ impl<'a> MessageStore<'a> {
                         delivered_at, read_at, reply_to, sender_msg_id \
                  FROM messages \
                  WHERE chat_id = ?1 \
-                 ORDER BY created_at DESC \
+                 ORDER BY created_at DESC, id DESC \
                  LIMIT ?2",
             )
             .map_err(db_err)?;
@@ -222,7 +222,10 @@ impl<'a> MessageStore<'a> {
             "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
              FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
         );
-        let mut att_stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
+        // The SQL string varies by message count (different ? placeholders per call),
+        // so prepare() is used here instead of prepare_cached() to avoid unbounded
+        // cache growth — each unique placeholder count would add a permanent cache entry.
+        let mut att_stmt = self.conn.prepare(&sql).map_err(db_err)?;
         let att_rows = att_stmt
             .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
                 Ok((
@@ -251,6 +254,136 @@ impl<'a> MessageStore<'a> {
         }
 
         Ok(messages)
+    }
+
+    /// List messages for a chat with SQL-level pagination.
+    ///
+    /// Returns up to `limit` messages starting at 0-based `offset`, newest first.
+    /// Both `limit` and `offset` are applied in SQL via `LIMIT ? OFFSET ?`.
+    pub fn list_by_chat_paged(
+        &self,
+        chat_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<Message>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, chat_id, sender_user_id, body, body_type, \
+                        sent_at_peer, created_at, delivery_state, \
+                        delivered_at, read_at, reply_to, sender_msg_id \
+                 FROM messages \
+                 WHERE chat_id = ?1 \
+                 ORDER BY created_at DESC, id DESC \
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(db_err)?;
+
+        let rows = stmt
+            .query_map(params![chat_id, limit, offset], row_to_message)
+            .map_err(db_err)?;
+
+        let mut messages: Vec<Message> = rows
+            .map(|r| r.map_err(db_err))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if messages.is_empty() {
+            return Ok(messages);
+        }
+
+        // Batch-load all attachments for all messages in a single query.
+        let ids: Vec<&str> = messages.iter().map(|m| m.id.as_str()).collect();
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
+             FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
+        );
+        let mut att_stmt = self.conn.prepare(&sql).map_err(db_err)?;
+        let att_rows = att_stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(1)?, // message_id
+                    kith_core::Attachment {
+                        blob_id: row.get(0)?,
+                        filename: row.get(2)?,
+                        content_type: row.get(3)?,
+                        size: row.get::<_, i64>(4)?.max(0) as u64,
+                        sha256: row.get(5)?,
+                    },
+                ))
+            })
+            .map_err(db_err)?;
+
+        let mut att_map: HashMap<String, Vec<kith_core::Attachment>> = HashMap::new();
+        for row in att_rows {
+            let (msg_id, att) = row.map_err(db_err)?;
+            att_map.entry(msg_id).or_default().push(att);
+        }
+
+        for msg in &mut messages {
+            if let Some(atts) = att_map.remove(&msg.id) {
+                msg.attachments = atts;
+            }
+        }
+
+        Ok(messages)
+    }
+
+    /// Count the total number of messages in a chat.
+    pub fn count_by_chat(&self, chat_id: &str) -> Result<usize, KithError> {
+        let count: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE chat_id = ?1",
+                params![chat_id],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(count as usize)
+    }
+
+    /// Return the 0-based position of a message in its chat's newest-first ordering.
+    ///
+    /// Returns the count of messages that are newer than (or tie-break-after) the
+    /// given message, which equals its 0-based index in `ORDER BY created_at DESC, id DESC`.
+    ///
+    /// Returns `None` if the message does not exist in this chat.
+    pub fn get_position_in_chat(
+        &self,
+        chat_id: &str,
+        msg_id: &str,
+    ) -> Result<Option<u32>, KithError> {
+        // Check the message exists in this chat first.
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE id = ?1 AND chat_id = ?2",
+                params![msg_id, chat_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(db_err)?
+            > 0;
+
+        if !exists {
+            return Ok(None);
+        }
+
+        // Count messages that come before this one in newest-first order.
+        // A message M is "before" (has a lower index) if it has a larger created_at,
+        // or the same created_at but a lexicographically larger id.
+        let pos: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages \
+                 WHERE chat_id = ?1 \
+                 AND (created_at > (SELECT created_at FROM messages WHERE id = ?2) \
+                      OR (created_at = (SELECT created_at FROM messages WHERE id = ?2) AND id > ?2))",
+                params![chat_id, msg_id],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+
+        Ok(Some(pos as u32))
     }
 
     /// Find a message by the sender-assigned ID within a specific chat.
@@ -370,6 +503,11 @@ impl<'a> MessageStore<'a> {
     /// roll back without advancing the counter. A crash at any intermediate point rolls
     /// back atomically, keeping read_at and state_version consistent.
     pub fn update_read_at(&self, id: &str, read_at_unix: i64) -> Result<(), KithError> {
+        if read_at_unix <= 0 {
+            return Err(KithError::Validation(
+                "read_at_unix must be a positive Unix timestamp".to_string(),
+            ));
+        }
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let affected = tx
             .execute(
@@ -775,6 +913,70 @@ mod tests {
     }
 
     #[test]
+    fn update_read_at_zero_returns_err() {
+        // Oracle: zero is not a valid Unix timestamp for a read receipt; the guard
+        // must reject it before touching the database. The state counter must not advance.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ra0");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ra0",
+            "chat-ra0",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ra0",
+        )
+        .expect("insert");
+
+        let state_before = ms.get_state().expect("state before");
+        let result = ms.update_read_at("msg-ra0", 0);
+        assert!(result.is_err(), "update_read_at(id, 0) must return Err");
+        let state_after = ms.get_state().expect("state after");
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance when update_read_at rejects zero timestamp"
+        );
+    }
+
+    #[test]
+    fn update_read_at_negative_returns_err() {
+        // Oracle: negative Unix timestamps are pre-epoch and invalid for read receipts.
+        // The guard must reject them before touching the database.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ran");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ran",
+            "chat-ran",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ran",
+        )
+        .expect("insert");
+
+        let state_before = ms.get_state().expect("state before");
+        let result = ms.update_read_at("msg-ran", -1);
+        assert!(result.is_err(), "update_read_at(id, -1) must return Err");
+        let state_after = ms.get_state().expect("state after");
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance when update_read_at rejects negative timestamp"
+        );
+    }
+
+    #[test]
     fn update_read_at_nonexistent_does_not_advance_counter() {
         // Oracle: calling update_read_at with a nonexistent message ID must return
         // Err and must NOT advance the state counter.
@@ -995,6 +1197,86 @@ mod tests {
             "message with one attachment must return it"
         );
         assert_eq!(msg_with_att.attachments[0].blob_id, "e".repeat(64));
+    }
+
+    #[test]
+    fn get_position_in_chat_returns_correct_0_based_index() {
+        // Oracle: with 3 messages at created_at 100, 200, 300, newest-first order is
+        // msg-300 (index 0), msg-200 (index 1), msg-100 (index 2).
+        // get_position_in_chat must return the COUNT of messages that are newer, which
+        // equals the 0-based index in ORDER BY created_at DESC, id DESC.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-pos");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-pos-100",
+            "chat-pos",
+            "u",
+            "a",
+            "text/plain",
+            None,
+            100,
+            &DeliveryState::Received,
+            None,
+            "msg-pos-100",
+        )
+        .expect("insert t=100");
+        ms.insert(
+            "msg-pos-200",
+            "chat-pos",
+            "u",
+            "b",
+            "text/plain",
+            None,
+            200,
+            &DeliveryState::Received,
+            None,
+            "msg-pos-200",
+        )
+        .expect("insert t=200");
+        ms.insert(
+            "msg-pos-300",
+            "chat-pos",
+            "u",
+            "c",
+            "text/plain",
+            None,
+            300,
+            &DeliveryState::Received,
+            None,
+            "msg-pos-300",
+        )
+        .expect("insert t=300");
+
+        // Newest message → index 0.
+        assert_eq!(
+            ms.get_position_in_chat("chat-pos", "msg-pos-300")
+                .expect("query"),
+            Some(0),
+            "newest message must be at index 0"
+        );
+        // Middle message → index 1.
+        assert_eq!(
+            ms.get_position_in_chat("chat-pos", "msg-pos-200")
+                .expect("query"),
+            Some(1),
+            "middle message must be at index 1"
+        );
+        // Oldest message → index 2.
+        assert_eq!(
+            ms.get_position_in_chat("chat-pos", "msg-pos-100")
+                .expect("query"),
+            Some(2),
+            "oldest message must be at index 2"
+        );
+        // Nonexistent message → None.
+        assert_eq!(
+            ms.get_position_in_chat("chat-pos", "no-such-msg")
+                .expect("query"),
+            None,
+            "nonexistent message must return None"
+        );
     }
 
     #[test]

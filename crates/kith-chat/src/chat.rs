@@ -194,7 +194,15 @@ impl JmapHandler for ChatSetHandler {
                 }
             };
 
-            // Step 3: Timestamp for created_at on new chats.
+            // Step 3: Capture oldState before any mutations.
+            let old_state = store
+                .lock()
+                .map_err(|_| JmapError::server_fail("store lock poisoned"))?
+                .chats()
+                .get_state()
+                .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+            // Step 4: Timestamp for created_at on new chats.
             let now_unix: i64 = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 // System clock is always >= UNIX_EPOCH on any real deployment;
@@ -202,11 +210,16 @@ impl JmapHandler for ChatSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            // Step 4: Process each create entry.
+            // Step 5: Process each create entry.
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
 
             if let Some(create_map) = create {
+                // Acquire the store lock once for the entire create batch.
+                let guard = store
+                    .lock()
+                    .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+
                 for (client_id, fields) in create_map {
                     // Extract contactId (required).
                     let contact_id = match fields.get("contactId").and_then(|v| v.as_str()) {
@@ -220,11 +233,6 @@ impl JmapHandler for ChatSetHandler {
                         }
                     };
 
-                    // Acquire lock per entry.
-                    let guard = store
-                        .lock()
-                        .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
-
                     // Step 4c: Look up contact (needed for blocked check).
                     let _contact = match guard
                         .contacts()
@@ -232,7 +240,6 @@ impl JmapHandler for ChatSetHandler {
                         .map_err(|e| JmapError::server_fail(e.to_string()))?
                     {
                         None => {
-                            drop(guard);
                             not_created.insert(
                                 client_id,
                                 json!({"type": "notFound", "description": "contact not found"}),
@@ -249,7 +256,6 @@ impl JmapHandler for ChatSetHandler {
                         .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
                     if !permitted {
-                        drop(guard);
                         not_created.insert(
                             client_id,
                             json!({"type": "forbidden", "description": "contact is blocked"}),
@@ -266,7 +272,6 @@ impl JmapHandler for ChatSetHandler {
                     // Step 4f: Create or reuse.
                     let chat = if let Some(existing_chat) = existing {
                         // RFC 8620 §5.3: already exists → notCreated / alreadyExists.
-                        drop(guard);
                         not_created.insert(
                             client_id,
                             json!({"type": "alreadyExists", "existingId": existing_chat.id}),
@@ -280,17 +285,17 @@ impl JmapHandler for ChatSetHandler {
                             .map_err(|e| JmapError::server_fail(e.to_string()))?
                     };
 
-                    // Step 4h: Drop lock.
-                    drop(guard);
-
-                    // Step 4i: Record as created.
+                    // Step 4h: Record as created.
                     let chat_value = serde_json::to_value(chat)
                         .map_err(|e| JmapError::server_fail(e.to_string()))?;
                     created.insert(client_id, chat_value);
                 }
+
+                // Step 5i: Drop lock after the entire batch is processed.
+                drop(guard);
             }
 
-            // Step 5: All updates are forbidden.
+            // Step 6: All updates are forbidden.
             let mut not_updated: Map<String, Value> = Map::new();
             if let Some(update_map) = update {
                 for (id, _) in update_map {
@@ -301,7 +306,7 @@ impl JmapHandler for ChatSetHandler {
                 }
             }
 
-            // Step 6: All destroys are forbidden.
+            // Step 7: All destroys are forbidden.
             let mut not_destroyed: Map<String, Value> = Map::new();
             if let Some(destroy_list) = destroy {
                 for id in destroy_list {
@@ -312,7 +317,7 @@ impl JmapHandler for ChatSetHandler {
                 }
             }
 
-            // Step 7: Get new state after all operations.
+            // Step 8: Get new state after all operations.
             let new_state = store
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?
@@ -322,7 +327,7 @@ impl JmapHandler for ChatSetHandler {
 
             Ok(json!({
                 "accountId": "a-self",
-                "oldState": null,
+                "oldState": old_state,
                 "newState": new_state,
                 "created": created,
                 "updated": null,
@@ -341,8 +346,8 @@ impl JmapHandler for ChatSetHandler {
 
 /// Handler for the `Chat/changes` JMAP method.
 ///
-/// Returns the set of chat IDs that have changed since the given state token.
-/// Phase 1: no per-row state tracking — any advance returns all chat IDs as added.
+/// Returns the set of chat IDs that have changed since the given state token,
+/// using per-row state tracking via `get_changes_since`.
 pub struct ChatChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -479,14 +484,12 @@ impl JmapHandler for ChatQueryHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-            // Step 4: Fetch all chats (ordered by lastMessageAt DESC NULLS LAST, createdAt DESC).
-            let chats = guard
+            // Step 4: Fetch all chat IDs (ordered by lastMessageAt DESC NULLS LAST, createdAt DESC).
+            let ids = guard
                 .chats()
-                .list()
+                .list_ids()
                 .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
-            // Step 5: Extract IDs.
-            let ids: Vec<String> = chats.into_iter().map(|c| c.id).collect();
             let total = ids.len();
 
             // Step 7: Apply pagination.

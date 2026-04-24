@@ -78,6 +78,12 @@ pub fn load_or_generate_cert(
         let key = PrivateKeyDer::from(PrivatePkcs8KeyDer::from(key_der));
         Ok((vec![cert], key))
     } else {
+        // The SAN "kith.local" is intentionally a placeholder.  All kithd
+        // TLS connections are made through TailnetCertVerifier, which accepts
+        // any certificate and does not validate the SAN field.  Tailscale
+        // provides cryptographic peer identity at the network layer; the
+        // certificate is used solely for transport confidentiality, not
+        // authentication.  The SAN value is therefore irrelevant for security.
         let rcgen::CertifiedKey { cert, signing_key } =
             rcgen::generate_simple_self_signed(vec!["kith.local".to_string()])?;
 
