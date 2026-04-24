@@ -1706,7 +1706,10 @@ mod tests {
             }
             found
         };
-        assert!(subscribed, "coalescing task must subscribe within 10 yields");
+        assert!(
+            subscribed,
+            "coalescing task must subscribe within 10 yields"
+        );
 
         // Drop the response — this drops the response body, which drops live_rx,
         // which makes live_tx.closed() resolve in the coalescing task.
@@ -1777,7 +1780,10 @@ mod tests {
             }
             found
         };
-        assert!(subscribed, "coalescing task must subscribe within 10 yields");
+        assert!(
+            subscribed,
+            "coalescing task must subscribe within 10 yields"
+        );
 
         // Simulate client disconnect: drop the response body.
         // This drops live_rx, making live_tx.closed() resolve.

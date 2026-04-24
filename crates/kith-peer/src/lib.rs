@@ -5,7 +5,7 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use kith_core::{DeliveryState, Identity, JmapError, unix_secs_to_rfc3339};
+use kith_core::{unix_secs_to_rfc3339, DeliveryState, Identity, JmapError};
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
@@ -1384,11 +1384,7 @@ mod tests {
     }
 
     /// Build the args JSON for a DeliverHandler call, injecting the identity.
-    fn deliver_args(
-        identity: &Identity,
-        msg_id: &str,
-        body: &str,
-    ) -> serde_json::Value {
+    fn deliver_args(identity: &Identity, msg_id: &str, body: &str) -> serde_json::Value {
         let chat_id = "test-direct-chat-01";
         json!({
             "accountId": "a-self",
