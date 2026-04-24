@@ -372,12 +372,12 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                     if live_tx.send(None).await.is_err() {
                         break;
                     }
+                } else if live_tx.is_closed() {
+                    break;
                 }
-                // close_after_first=false + empty batch: do NOT break on
-                // receiver drop here.  Disconnection will be detected on the
-                // next non-empty batch when send(Some(...)).await.is_err().
-                // This is correct: we have nothing to send, so there is no
-                // meaningful point to check for disconnection right now.
+                // close_after_first=false + empty batch: no event to send, but check
+                // whether the receiver is still alive so we don't loop forever if the
+                // client disconnected while only filtered-out event types are active.
                 continue;
             }
 

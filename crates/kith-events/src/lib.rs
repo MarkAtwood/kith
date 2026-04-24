@@ -61,7 +61,7 @@ mod tests {
         let (tx, rx) = make_channel(64);
         drop(rx);
         let result = tx.send(StateChange {
-            type_name: "Contact".to_string(),
+            type_name: "ChatContact".to_string(),
             new_state: "s-3".to_string(),
         });
         // SendError when no receivers is expected; must not panic
@@ -103,7 +103,7 @@ mod tests {
         // Send 3 messages: only the last one survives in the ring buffer.
         // rx has not consumed anything, so it will receive Lagged(2) then msg3.
         let _ = tx.send(StateChange {
-            type_name: "Contact".to_string(),
+            type_name: "ChatContact".to_string(),
             new_state: "s-1".to_string(),
         });
         let _ = tx.send(StateChange {
