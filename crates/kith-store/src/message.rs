@@ -671,6 +671,93 @@ impl<'a> MessageStore<'a> {
         Ok(ids)
     }
 
+    /// Return `(id, index)` pairs for messages newly added to `chat_id` since `since_state`,
+    /// ordered by `state_version ASC` (insertion order).
+    ///
+    /// `index` is the 0-based position in the chat's newest-first query result — the same
+    /// ordering as `Message/query` (created_at DESC, id DESC).  All positions are computed
+    /// against the chat's final message set in a single CTE query, avoiding N+1 round trips.
+    ///
+    /// `max_changes`: if `Some(n)`, return at most `n` entries and signal `has_more = true`
+    /// when the result was truncated.  `newQueryState` is then set to the `state_version`
+    /// of the last returned entry so the client can page forward correctly.
+    pub fn get_querychanges_since_for_chat(
+        &self,
+        since_state: &str,
+        chat_id: &str,
+        max_changes: Option<usize>,
+    ) -> Result<(Vec<(String, u64)>, bool, String), KithError> {
+        let since_version = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Jmap(JmapError::cannot_calculate_changes()))?;
+
+        let current_state = self.get_state()?;
+        let current_counter: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        if since_version >= current_counter {
+            return Ok((vec![], false, current_state));
+        }
+
+        // Fetch max_changes+1 rows to detect whether there are more results.
+        // SQLite treats LIMIT -1 as "no limit".
+        let limit: i64 = max_changes
+            .map(|n| n.saturating_add(1) as i64)
+            .unwrap_or(-1);
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "WITH all_in_chat AS ( \
+                 SELECT id, \
+                        ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) - 1 AS idx \
+                 FROM messages WHERE chat_id = ?1 \
+             ), \
+             new_msgs AS ( \
+                 SELECT id, state_version FROM messages \
+                 WHERE chat_id = ?1 AND state_version > ?2 \
+                 ORDER BY state_version LIMIT ?3 \
+             ) \
+             SELECT n.id, a.idx, n.state_version \
+             FROM new_msgs n \
+             JOIN all_in_chat a ON a.id = n.id \
+             ORDER BY n.state_version",
+            )
+            .map_err(db_err)?;
+
+        // Each row: (id, 0-based-index, state_version).
+        let mut rows: Vec<(String, u64, i64)> = stmt
+            .query_map(params![chat_id, since_version, limit], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        let has_more = max_changes.map(|n| rows.len() > n).unwrap_or(false);
+        if has_more {
+            rows.truncate(max_changes.expect("has_more implies max_changes is Some"));
+        }
+
+        let new_state = if has_more {
+            rows.last()
+                .map(|(_, _, sv)| format!("s-{sv}"))
+                .expect("rows is non-empty when has_more is true")
+        } else {
+            current_state
+        };
+
+        let result: Vec<(String, u64)> = rows.into_iter().map(|(id, idx, _)| (id, idx)).collect();
+        Ok((result, has_more, new_state))
+    }
+
     /// Return the current state token for messages.
     pub fn get_state(&self) -> Result<String, KithError> {
         let counter: i64 = self

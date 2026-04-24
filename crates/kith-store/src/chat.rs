@@ -56,18 +56,16 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
 
         if affected > 0 {
-            let new_state = self.advance_state()?;
-            let counter: i64 = new_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse().ok())
-                .expect("advance_state always returns s-<integer>");
-            self.conn
-                .execute(
-                    "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
-                    params![counter, chat_id],
-                )
-                .map_err(db_err)?;
-            self.emit(new_state);
+            // Atomic: advance state counter and write changed_at_counter in one transaction.
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
+            tx.execute(
+                "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+                params![counter, chat_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
         }
 
         // Try by primary key first (covers PK conflict and the new-insert case).
@@ -315,18 +313,15 @@ impl<'a> ChatStore<'a> {
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let new_state = self.advance_state()?;
-            let counter: i64 = new_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse().ok())
-                .expect("advance_state always returns s-<integer>");
-            self.conn
-                .execute(
-                    "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
-                    params![counter, chat_id],
-                )
-                .map_err(db_err)?;
-            self.emit(new_state);
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
+            tx.execute(
+                "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+                params![counter, chat_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
         }
         Ok(())
     }

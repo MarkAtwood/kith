@@ -889,61 +889,49 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .map(|s| s.to_string())
                 .ok_or_else(|| JmapError::invalid_arguments("filter.chatId is required"))?;
 
-            // Parse sinceQueryState as "s-N".
-            let since_counter: i64 = since_query_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse::<i64>().ok())
-                .ok_or_else(JmapError::cannot_calculate_changes)?;
-
-            let (added_with_index, new_state) = {
-                let guard = store
-                    .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
-
-                if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
-                    return Err(JmapError::invalid_arguments("unknown chatId"));
+            // RFC 8620 §5.6: maxChanges=0 must return invalidArguments.
+            let max_changes: Option<usize> = match obj.get("maxChanges") {
+                None => None,
+                Some(v) => {
+                    let n = v.as_u64().ok_or_else(|| {
+                        JmapError::invalid_arguments("maxChanges must be a positive integer")
+                    })?;
+                    if n == 0 {
+                        return Err(JmapError::invalid_arguments(
+                            "maxChanges must not be 0 (RFC 8620 §5.6)",
+                        ));
+                    }
+                    Some(n as usize)
                 }
-
-                let new_state = guard.messages().get_state().map_err(kith_to_jmap)?;
-                let current_counter: i64 = new_state
-                    .strip_prefix("s-")
-                    .and_then(|n| n.parse::<i64>().ok())
-                    .unwrap_or(0);
-
-                if since_counter >= current_counter {
-                    return Ok(json!({
-                        "accountId": "a-self",
-                        "oldQueryState": since_query_state,
-                        "newQueryState": new_state,
-                        "removed": [],
-                        "added": [],
-                    }));
-                }
-
-                let chat_added = guard
-                    .messages()
-                    .get_changes_since_for_chat(&since_query_state, &chat_id)
-                    .map_err(kith_to_jmap)?;
-
-                let added_with_index: Vec<Value> = chat_added
-                    .iter()
-                    .map(|id| {
-                        let index = guard
-                            .messages()
-                            .get_position_in_chat(&chat_id, id)
-                            .map_err(kith_to_jmap)?
-                            .unwrap_or(0) as u64;
-                        Ok(json!({"id": id, "index": index}))
-                    })
-                    .collect::<Result<Vec<_>, JmapError>>()?;
-
-                (added_with_index, new_state)
             };
+
+            let guard = store
+                .lock()
+                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+
+            if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
+                return Err(JmapError::invalid_arguments("unknown chatId"));
+            }
+
+            // Single query: bulk-fetch new messages with pre-computed position indices.
+            // Avoids N+1 round trips to get_position_in_chat.
+            let (added_pairs, has_more, new_query_state) = guard
+                .messages()
+                .get_querychanges_since_for_chat(&since_query_state, &chat_id, max_changes)
+                .map_err(kith_to_jmap)?;
+
+            drop(guard);
+
+            let added_with_index: Vec<Value> = added_pairs
+                .into_iter()
+                .map(|(id, index)| json!({"id": id, "index": index}))
+                .collect();
 
             Ok(json!({
                 "accountId": "a-self",
                 "oldQueryState": since_query_state,
-                "newQueryState": new_state,
+                "newQueryState": new_query_state,
+                "hasMoreChanges": has_more,
                 "removed": [],
                 "added": added_with_index,
             }))
@@ -1759,6 +1747,106 @@ mod tests {
 
         let added = result["added"].as_array().expect("added must be array");
         assert!(added.is_empty(), "no changes at current state");
+    }
+
+    // Oracle: Message/queryChanges maxChanges=0 → invalidArguments (RFC 8620 §5.6).
+    #[tokio::test]
+    async fn test_querychanges_max_changes_zero_returns_invalid_arguments() {
+        let store = make_store();
+        let handler = MessageQueryChangesHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "sinceQueryState": "s-0",
+            "filter": {"chatId": "chat-any"},
+            "maxChanges": 0,
+        });
+        let err = handler
+            .call("Message/queryChanges".to_string(), "c0".to_string(), args)
+            .await
+            .expect_err("maxChanges=0 must return error");
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: Message/queryChanges with maxChanges=1 and 3 new messages →
+    // hasMoreChanges=true, 1 entry returned; subsequent page returns remaining.
+    #[tokio::test]
+    async fn test_querychanges_max_changes_truncation() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-qct", "direct", None, 1000)
+                .unwrap();
+            for i in 0..3u32 {
+                guard
+                    .messages()
+                    .insert(
+                        &format!("msg-qct-{i}"),
+                        "chat-qct",
+                        "self",
+                        "body",
+                        "text/plain",
+                        None,
+                        1000 + i as i64,
+                        &DeliveryState::Pending,
+                        None,
+                        &format!("msg-qct-{i}"),
+                    )
+                    .unwrap();
+            }
+        }
+        let handler = MessageQueryChangesHandler::new(Arc::clone(&store));
+
+        // Page 1: maxChanges=1 from s-0 → 1 entry, hasMoreChanges=true.
+        let r1 = handler
+            .call(
+                "Message/queryChanges".to_string(),
+                "c0".to_string(),
+                json!({"accountId":"a-self","sinceQueryState":"s-0","filter":{"chatId":"chat-qct"},"maxChanges":1}),
+            )
+            .await
+            .expect("page 1 must succeed");
+        assert_eq!(
+            r1["hasMoreChanges"], true,
+            "page 1 hasMoreChanges; got {r1:?}"
+        );
+        assert_eq!(
+            r1["added"].as_array().unwrap().len(),
+            1,
+            "page 1 must have 1 entry; got {r1:?}"
+        );
+        let state1 = r1["newQueryState"].as_str().unwrap().to_string();
+
+        // Page 2: from state1 → 1 more entry.
+        let r2 = handler
+            .call(
+                "Message/queryChanges".to_string(),
+                "c1".to_string(),
+                json!({"accountId":"a-self","sinceQueryState":state1,"filter":{"chatId":"chat-qct"},"maxChanges":1}),
+            )
+            .await
+            .expect("page 2 must succeed");
+        assert_eq!(
+            r2["hasMoreChanges"], true,
+            "page 2 hasMoreChanges; got {r2:?}"
+        );
+        let state2 = r2["newQueryState"].as_str().unwrap().to_string();
+
+        // Page 3: last item, hasMoreChanges=false.
+        let r3 = handler
+            .call(
+                "Message/queryChanges".to_string(),
+                "c2".to_string(),
+                json!({"accountId":"a-self","sinceQueryState":state2,"filter":{"chatId":"chat-qct"},"maxChanges":1}),
+            )
+            .await
+            .expect("page 3 must succeed");
+        assert_eq!(
+            r3["hasMoreChanges"], false,
+            "page 3 must have no more; got {r3:?}"
+        );
+        assert_eq!(r3["added"].as_array().unwrap().len(), 1);
     }
 
     // Oracle: readAt update on an incoming message (sender_id != "self") succeeds and

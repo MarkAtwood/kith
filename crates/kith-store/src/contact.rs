@@ -68,18 +68,18 @@ impl<'a> ContactStore<'a> {
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let new_state = advance_state(self.conn)?;
-            let counter: i64 = new_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0);
-            self.conn
-                .execute(
-                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            self.emit(new_state);
+            // Atomic: advance state counter and write changed_at_counter in one transaction.
+            // A crash after the counter advances but before the row update would leave
+            // this contact invisible to ChatContact/changes forever.
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
+            tx.execute(
+                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                params![counter, peer_user_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
         }
         Ok(())
     }
@@ -132,18 +132,15 @@ impl<'a> ContactStore<'a> {
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let new_state = advance_state(self.conn)?;
-            let counter: i64 = new_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0);
-            self.conn
-                .execute(
-                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            self.emit(new_state);
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
+            tx.execute(
+                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                params![counter, peer_user_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
         }
         Ok(())
     }
@@ -213,18 +210,15 @@ impl<'a> ContactStore<'a> {
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let new_state = advance_state(self.conn)?;
-            let counter: i64 = new_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse().ok())
-                .unwrap_or(0);
-            self.conn
-                .execute(
-                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            self.emit(new_state);
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
+            tx.execute(
+                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                params![counter, peer_user_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
         }
         Ok(())
     }
