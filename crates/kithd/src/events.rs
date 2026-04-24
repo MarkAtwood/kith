@@ -317,17 +317,21 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             };
 
         loop {
-            // Wait for the first available StateChange in this batch.
-            let first = match rx.recv().await {
-                Ok(sc) => sc,
-                Err(RecvError::Lagged(n)) => {
-                    tracing::warn!(
-                        dropped = n,
-                        "SSE receiver lagged; client must resync via /changes"
-                    );
-                    continue;
-                }
-                Err(RecvError::Closed) => break,
+            // Wait for the first available StateChange in this batch,
+            // or for the client to disconnect (live_tx.closed()).
+            let first = tokio::select! {
+                result = rx.recv() => match result {
+                    Ok(sc) => sc,
+                    Err(RecvError::Lagged(n)) => {
+                        tracing::warn!(
+                            dropped = n,
+                            "SSE receiver lagged; client must resync via /changes"
+                        );
+                        continue;
+                    }
+                    Err(RecvError::Closed) => break,
+                },
+                _ = live_tx.closed() => break,
             };
 
             // Merge this batch into the reused map.
@@ -1379,7 +1383,7 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // events_coalesce_multi_type_batch
-    // Oracle: Three StateChange events (Contact s-1, Chat s-2, Message s-42)
+    // Oracle: Three StateChange events (ChatContact s-1, Chat s-2, Message s-42)
     //         are queued into the broadcast channel before the background task
     //         can process them.  The coalescing loop must merge them into a
     //         single SSE frame containing all three types and use the highest
@@ -1391,7 +1395,7 @@ mod tests {
     //
     // The single-frame constraint is the key assertion: if coalescing fails,
     // three separate frames would be emitted and closeafter=state would only
-    // return the first one (Contact s-1), causing the Chat and Message
+    // return the first one (ChatContact s-1), causing the Chat and Message
     // assertions to fail.
     // -----------------------------------------------------------------------
     #[tokio::test]
@@ -1460,7 +1464,7 @@ mod tests {
         // All three state tokens must appear.
         assert!(
             body.contains("s-1"),
-            "Contact s-1 must appear, body: {body:?}"
+            "ChatContact s-1 must appear, body: {body:?}"
         );
         assert!(body.contains("s-2"), "Chat s-2 must appear, body: {body:?}");
         assert!(
