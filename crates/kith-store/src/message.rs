@@ -709,9 +709,10 @@ impl<'a> MessageStore<'a> {
         }
 
         // Fetch max_changes+1 rows to detect whether there are more results.
-        // SQLite treats LIMIT -1 as "no limit".
+        // SQLite treats LIMIT -1 as "no limit".  Cap at i64::MAX to prevent
+        // wrap-around when max_changes is usize::MAX (pathological but valid JSON).
         let limit: i64 = max_changes
-            .map(|n| n.saturating_add(1) as i64)
+            .map(|n| n.min(i64::MAX as usize).saturating_add(1) as i64)
             .unwrap_or(-1);
 
         let mut stmt = self

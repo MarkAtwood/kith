@@ -521,17 +521,24 @@ pub enum PeerDeliveryError {
 
 /// Returns true if this delivery error is permanent — retrying will never succeed.
 ///
-/// 4xx HTTP responses are client errors the peer controls; the peer has explicitly
-/// refused the request and will keep refusing it.  `PeerRejected` means the peer
-/// parsed the request and returned a JMAP-level error type — also permanent.
+/// 4xx HTTP responses (except 429) are client errors the peer controls; the peer
+/// has explicitly refused the request and will keep refusing it.  `PeerRejected`
+/// means the peer parsed the request and returned a JMAP-level error type — also
+/// permanent.
+///
+/// 429 (Too Many Requests) is explicitly excluded: it is a transient rate-limit
+/// condition and must go through the normal exponential-backoff retry path.
 ///
 /// 5xx, network, and timeout errors are transient and should go through the normal
 /// exponential-backoff retry path.
 fn is_permanent_delivery_error(err: &PeerDeliveryError) -> bool {
-    matches!(
-        err,
-        PeerDeliveryError::PeerRejected(_) | PeerDeliveryError::HttpError(400..=499)
-    )
+    match err {
+        PeerDeliveryError::PeerRejected(_) => true,
+        // 429 is rate-limiting: transient, must retry with backoff.
+        PeerDeliveryError::HttpError(429) => false,
+        PeerDeliveryError::HttpError(400..=499) => true,
+        _ => false,
+    }
 }
 
 type HttpsClient = Client<
@@ -3809,6 +3816,45 @@ mod tests {
             msg.delivery_state,
             DeliveryState::Failed,
             "delivery_state must be Failed after 4xx permanent rejection"
+        );
+    }
+
+    // Oracle: HTTP 429 (Too Many Requests) → record_failure (transient, must retry).
+    // Spec: 429 is a rate-limit and is NOT permanent — retrying after backoff may succeed.
+    #[tokio::test]
+    async fn outbox_tick_http_429_uses_backoff_not_mark_failed() {
+        let store = make_store();
+        let now: i64 = 1000;
+        let msg_id = "msg-ob-429";
+        add_contact_and_enqueue(&store, msg_id, now);
+
+        let client = MockClient::fails(PeerDeliveryError::HttpError(429));
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        assert_eq!(client.call_count(), 1, "deliver must be attempted once");
+        // Outbox row must still exist (record_failure keeps it for retry).
+        let entries = store
+            .lock()
+            .unwrap()
+            .outbox()
+            .get_by_message(msg_id)
+            .unwrap();
+        assert!(
+            !entries.is_empty(),
+            "outbox row must remain after 429 (transient rate-limit): message must be retried"
+        );
+        // Oracle: message delivery_state must remain Pending (not Failed).
+        let msg = store
+            .lock()
+            .unwrap()
+            .messages()
+            .get(msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Pending,
+            "delivery_state must remain Pending after 429 rate-limit"
         );
     }
 
