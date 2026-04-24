@@ -20,7 +20,7 @@ pub mod static_files;
 pub mod tls;
 
 use axum::body::Body;
-use axum::extract::{Path, Query};
+use axum::extract::{DefaultBodyLimit, Path};
 use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -41,7 +41,6 @@ use kith_core::Role;
 use kith_jmap::{build_session, parse_request, request_error, Dispatcher};
 use kith_peer::{DeliverHandler, ReceiptHandler};
 use kith_store::Store;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio_util::io::ReaderStream;
 use tower_http::trace::TraceLayer;
@@ -54,6 +53,31 @@ use auth::WhoIsProvider;
 /// LocalAPI /status.  For v1 it is read from KITHD_BASE_URL (default:
 /// "https://kith.local").
 pub const DEFAULT_BASE_URL: &str = "https://kith.local";
+
+/// Read and validate the base URL from environment variables.
+///
+/// Reads `KITHD_BASE_URL` first; falls back to the deprecated `KITH_BASE_URL`
+/// (with a one-time warning), then to `DEFAULT_BASE_URL`.  Must be called
+/// once at startup and stored in `AppState` — do not call per request.
+pub fn resolve_base_url() -> String {
+    let raw = if let Ok(v) = std::env::var("KITHD_BASE_URL") {
+        v
+    } else if let Ok(v) = std::env::var("KITH_BASE_URL") {
+        tracing::warn!("KITH_BASE_URL is deprecated; use KITHD_BASE_URL instead");
+        v
+    } else {
+        return DEFAULT_BASE_URL.to_string();
+    };
+    if raw.starts_with("https://") {
+        raw
+    } else {
+        tracing::warn!(
+            "KITHD_BASE_URL {:?} does not start with https://, using default",
+            raw
+        );
+        DEFAULT_BASE_URL.to_string()
+    }
+}
 
 /// Derive a single opaque session-state string from all three JMAP counters.
 ///
@@ -75,15 +99,6 @@ pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
     State(app): State<AppState<W>>,
     caller: Caller,
 ) -> impl axum::response::IntoResponse {
-    let base_url = if let Ok(v) = std::env::var("KITHD_BASE_URL") {
-        v
-    } else if let Ok(v) = std::env::var("KITH_BASE_URL") {
-        eprintln!("kithd: KITH_BASE_URL is deprecated, use KITHD_BASE_URL");
-        v
-    } else {
-        DEFAULT_BASE_URL.to_string()
-    };
-
     let state_str = match app.store.lock() {
         Ok(guard) => combined_state(&guard),
         Err(_) => "s-0-s-0-s-0".to_string(),
@@ -92,7 +107,7 @@ pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
     let session = build_session(
         caller.role,
         &caller.identity,
-        &base_url,
+        &app.base_url,
         state_str,
         app.owner_id.clone(),
         app.owner_login.clone(),
@@ -147,9 +162,12 @@ pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
 /// [`BlobStore::validate_blob_id`]; an invalid ID returns 400 before any
 /// disk I/O.
 ///
-/// Content-Type is taken from the optional `?accept=...` query parameter
-/// (max 256 bytes; must contain `/`).  If absent or malformed, falls back to
-/// `application/octet-stream`.
+/// Content-Type is read from the `attachments` table (stored at message
+/// creation time under server control).  Falls back to
+/// `application/octet-stream` if the blob has no metadata row.  The
+/// `?accept=` query parameter is intentionally ignored — reflecting it would
+/// allow a malicious peer to store an HTML blob and trigger stored-XSS by
+/// serving it with `Content-Type: text/html`.
 ///
 /// Content-Disposition is set to `attachment; filename="<sanitized_name>"`.
 /// The filename is the last path segment from the URL, stripped of path
@@ -158,7 +176,6 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
     State(state): State<AppState<W>>,
     caller: Caller,
     Path((account_id, blob_id, name)): Path<(String, String, String)>,
-    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     // 1. Owner-only.
     if caller.role != Role::Owner {
@@ -181,16 +198,31 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
     let path = state.blob_store.blob_path(&blob_id);
     let (file, serve_content_type, serve_filename) = match tokio::fs::File::open(&path).await {
         Ok(f) => {
-            // Local hit: derive content-type and filename from URL params.
-            let ct = params
-                .get("accept")
-                .filter(|v| v.len() <= 256 && v.chars().filter(|&c| c == '/').count() == 1)
-                .map(|v| v.as_str())
-                .unwrap_or("application/octet-stream")
-                .to_string();
+            // Local hit: look up content-type from the DB (stored at message
+            // creation time under server control).  Never reflect the ?accept=
+            // URL parameter as Content-Type — that path would let a peer deliver
+            // an HTML blob and supply ?accept=text/html to execute it in the
+            // browser's kithd origin (stored XSS).
+            //
+            // Falls back to application/octet-stream for blobs uploaded but not
+            // yet referenced in any message (the pre-Message/set upload window).
+            let ct = match state.store.lock() {
+                Err(_) => {
+                    tracing::error!("store lock poisoned during blob metadata lookup");
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "store error").into_response();
+                }
+                Ok(guard) => match guard.attachments().get(&blob_id) {
+                    Ok(Some(info)) => info.content_type,
+                    Ok(None) => "application/octet-stream".to_string(),
+                    Err(e) => {
+                        tracing::warn!("attachment metadata lookup failed for id={blob_id:?}: {e}");
+                        "application/octet-stream".to_string()
+                    }
+                },
+            };
             let sanitized: String = name
                 .chars()
-                .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | '/' | '\\'))
+                .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | ';' | '/' | '\\'))
                 .take(255)
                 .collect();
             (f, ct, sanitized)
@@ -259,7 +291,15 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 }
             };
             // Use DB metadata for content-type and filename (not URL params).
-            (f, info.content_type, info.filename)
+            // Sanitize filename from DB the same way as the local-hit path:
+            // strip chars that could escape the Content-Disposition quoted string.
+            let sanitized_peer: String = info
+                .filename
+                .chars()
+                .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | ';' | '/' | '\\'))
+                .take(255)
+                .collect();
+            (f, info.content_type, sanitized_peer)
         }
         Err(e) => {
             tracing::error!("blob open failed for id={blob_id:?}: {e}");
@@ -313,10 +353,7 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, owner_id: &str) -> Dispatcher 
     );
     d.register(
         "Chat/set",
-        Box::new(ChatSetHandler::new(
-            Arc::clone(&store),
-            owner_id.to_string(),
-        )),
+        Box::new(ChatSetHandler::new(Arc::clone(&store))),
     );
     d.register(
         "Chat/changes",
@@ -376,7 +413,13 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, owner_id: &str) -> Dispatcher 
 pub fn build_app<W: WhoIsProvider + Send + Sync + 'static>(state: AppState<W>) -> Router {
     Router::new()
         .route("/.well-known/jmap", get(session_handler::<W>))
-        .route("/jmap/api", post(jmap_handler::<W>))
+        .route(
+            "/jmap/api",
+            // Enforce the 10 MiB max_size_request limit advertised in the session.
+            // Applied at the route level so the blob upload endpoint (which has its
+            // own 100 MiB cap enforced in the handler) is not affected.
+            post(jmap_handler::<W>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
         .route("/jmap/events", get(events::events_handler::<W>))
         .route(
             "/jmap/upload/{account_id}",
@@ -547,6 +590,7 @@ mod tests {
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
+            base_url: DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher,
             blob_store: Arc::clone(&blob_store),

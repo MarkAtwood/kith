@@ -310,6 +310,12 @@ fn process_create(
 
     // Validate replyTo if present.
     if let Some(ref reply_id) = reply_to {
+        // Validates existence and same-chat membership but does NOT walk the
+        // chain to detect cycles (A→B→A).  SQLite has no referential-cycle
+        // constraint, so a pair of colluding clients could construct one.
+        // Phase 1 clients must cap reply-chain traversal depth to avoid an
+        // infinite loop on malformed data.  Cycle detection is deferred to
+        // Phase 2 when a recursive UI is introduced.
         match guard.messages().get(reply_id) {
             Ok(Some(ref referenced)) if referenced.chat_id == chat_id => {}
             Ok(Some(_)) => {
@@ -358,6 +364,12 @@ fn process_create(
         outbox_peers.push((peer_id.clone(), host));
     } else if chat.kind == "group" {
         // Group chat: fan out to all members in chat_members.
+        // Policy: all-or-nothing.  If any member has no mailbox host the
+        // entire send fails with serverFail.  Best-effort fan-out (silently
+        // skipping members with no host) is worse: the sender believes the
+        // message reached everyone when some members never see it.  A hard
+        // failure with a specific peer_id in the error tells the sender
+        // exactly which contact record needs fixing.
         let members = guard
             .chats()
             .get_members(&chat_id)
@@ -407,11 +419,9 @@ fn process_create(
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 
     // Update last_message_at on the chat (best-effort cache; not part of the
-    // delivery transaction — a failure here does not un-deliver the message).
-    guard
-        .chats()
-        .update_last_message_at(&chat_id, now_unix)
-        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+    // delivery transaction — a failure here does not un-deliver the message,
+    // and must not cause notCreated when the message was already committed).
+    let _ = guard.chats().update_last_message_at(&chat_id, now_unix);
 
     // Fetch the created message for the response.
     let msg = guard
@@ -456,11 +466,17 @@ fn process_update(
         )?;
 
     // Parse RFC 3339 to unix timestamp.
-    let read_at_unix: i64 = chrono::DateTime::parse_from_rfc3339(read_at_str)
+    let read_at_unix_raw: i64 = chrono::DateTime::parse_from_rfc3339(read_at_str)
         .map(|dt| dt.timestamp())
         .map_err(
             |_| json!({"type": "invalidArguments", "description": "readAt must be RFC 3339"}),
         )?;
+
+    // Clamp readAt to the current time as an upper bound.  A far-future value
+    // (e.g. 2099-01-01) cannot represent a real read event and would corrupt
+    // UI sort order.  We allow up to 60 seconds in the future to tolerate minor
+    // clock skew between the client and the server.
+    let read_at_unix = read_at_unix_raw.min(now_unix + 60);
 
     let guard = store
         .lock()
@@ -807,10 +823,12 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .get_changes_since(&since_query_state)
                 .map_err(kith_to_jmap)?;
 
-            // Get the current full ordered list for this chat.
+            // Get the current full ordered list for this chat (no cap — all
+            // messages must be present so position() returns a correct index
+            // for any message, not just the newest 200).
             let full_list = guard
                 .messages()
-                .list_by_chat(&chat_id, 200)
+                .list_by_chat(&chat_id, u32::MAX)
                 .map_err(kith_to_jmap)?;
 
             drop(guard);
@@ -1166,6 +1184,82 @@ mod tests {
         assert!(
             updated.get("msg-ra").is_some(),
             "updated[msg-ra] must be present"
+        );
+    }
+
+    // Oracle: readAt far in the future (2099-01-01) is clamped to approximately now.
+    // The oracle value "2099-01-01T00:00:00Z" is known a priori (independent of the
+    // code under test). After the update the stored readAt must be in the current year,
+    // not 2099 — confirming the `min(now_unix + 60)` clamp is applied.
+    #[tokio::test]
+    async fn test_message_set_update_read_at_far_future_clamped() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-clamp", "direct", None, 1000)
+                .unwrap();
+            guard
+                .messages()
+                .insert(
+                    "msg-clamp",
+                    "chat-clamp",
+                    "self",
+                    "body",
+                    "text/plain",
+                    None,
+                    1000,
+                    &DeliveryState::Pending,
+                    None,
+                    "msg-clamp",
+                )
+                .unwrap();
+        }
+
+        // Submit a readAt that is clearly in the far future (year 2099).
+        let set_handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let set_args = json!({
+            "accountId": "a-self",
+            "update": {
+                "msg-clamp": {
+                    "readAt": "2099-01-01T00:00:00Z"
+                }
+            }
+        });
+        let set_result = set_handler
+            .call("Message/set".to_string(), "c0".to_string(), set_args)
+            .await
+            .expect("should succeed");
+
+        // Update must succeed — clamping is silent, not an error.
+        assert!(
+            set_result["updated"].get("msg-clamp").is_some(),
+            "updated[msg-clamp] must be present: {set_result:?}"
+        );
+
+        // Retrieve the stored readAt via Message/get.
+        let get_handler = MessageGetHandler::new(Arc::clone(&store));
+        let get_args = json!({
+            "accountId": "a-self",
+            "ids": ["msg-clamp"]
+        });
+        let get_result = get_handler
+            .call("Message/get".to_string(), "c1".to_string(), get_args)
+            .await
+            .expect("get should succeed");
+
+        let msg = &get_result["list"][0];
+        let stored_read_at = msg["readAt"]
+            .as_str()
+            .expect("readAt must be a string after update");
+
+        // Oracle: the stored readAt must not be in year 2099.  The clamp caps it at
+        // now+60 s; the current year when this test runs is at most a few years past
+        // 2026, so the year prefix "2099" is a reliable sentinel.
+        assert!(
+            !stored_read_at.starts_with("2099"),
+            "far-future readAt must be clamped: got {stored_read_at}"
         );
     }
 
@@ -2001,6 +2095,121 @@ mod tests {
         assert_eq!(
             state_before, state_after,
             "state counter must not advance: failure must occur before any INSERT"
+        );
+    }
+
+    // Oracle: queryChanges position indices are correct for chats with > 200
+    // messages.  list_by_chat previously capped at 200 rows; messages with
+    // created_at rank >= 200 (oldest messages in newest-first order) would not
+    // appear in the reference list, so position() returned None and the index
+    // fell back to 0 — wrong.
+    //
+    // Independent oracle: with 205 messages inserted with created_at=1..=205,
+    // list_by_chat returns newest first: msg-205 at index 0, msg-1 at index 204.
+    // The oldest message must therefore appear at index 204 in the queryChanges
+    // added list.  If the cap were still 200, the oldest 5 messages would be
+    // absent from the reference list and their index would be 0 (the None
+    // fallback), not 204.
+    #[tokio::test]
+    async fn test_message_querychanges_index_beyond_200() {
+        let store = make_store();
+
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-pos205", "direct", None, 1000)
+                .unwrap();
+        }
+
+        // Capture state before any inserts (sinceQueryState for the full scan).
+        let state_before = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+        assert_eq!(state_before, "s-0", "precondition: empty store");
+
+        // Insert 205 messages with strictly increasing created_at timestamps
+        // so oldest = created_at 1, newest = created_at 205.
+        // Message ID encodes its position: msg-qc-pos-001 .. msg-qc-pos-205.
+        {
+            let guard = store.lock().unwrap();
+            for i in 1u32..=205 {
+                let id = format!("msg-qc-pos-{i:03}");
+                guard
+                    .messages()
+                    .insert(
+                        &id,
+                        "chat-pos205",
+                        "self",
+                        "body",
+                        "text/plain",
+                        None,
+                        i as i64,
+                        &DeliveryState::Pending,
+                        None,
+                        &id,
+                    )
+                    .unwrap_or_else(|e| panic!("insert {id} failed: {e}"));
+            }
+        }
+
+        let handler = MessageQueryChangesHandler::new(Arc::clone(&store));
+        let args = serde_json::json!({
+            "accountId": "a-self",
+            "sinceQueryState": state_before,
+            "filter": {"chatId": "chat-pos205"}
+        });
+        let result = handler
+            .call("Message/queryChanges".to_string(), "c0".to_string(), args)
+            .await
+            .expect("queryChanges must succeed");
+
+        let added = result["added"].as_array().expect("added must be array");
+        assert_eq!(added.len(), 205, "all 205 messages must appear in added");
+
+        // list_by_chat returns newest first.
+        // msg-qc-pos-001 has created_at=1 (oldest) → must be at index 204.
+        // msg-qc-pos-205 has created_at=205 (newest) → must be at index 0.
+        // With the old 200-row cap the five oldest messages were absent from
+        // the reference list and fell back to index 0; the fix removes the cap.
+        let find_index = |target_id: &str| {
+            added
+                .iter()
+                .find(|e| e["id"].as_str() == Some(target_id))
+                .unwrap_or_else(|| panic!("{target_id} not found in added"))["index"]
+                .as_u64()
+                .unwrap_or_else(|| panic!("{target_id} index is not a u64"))
+        };
+
+        // Newest message → index 0.
+        assert_eq!(
+            find_index("msg-qc-pos-205"),
+            0,
+            "newest message must be at index 0"
+        );
+
+        // Oldest message → index 204 (the 205th slot, 0-based).
+        // This is the regression check: with the old cap the oldest 5 messages
+        // were not in the reference list and would return index 0.
+        assert_eq!(
+            find_index("msg-qc-pos-001"),
+            204,
+            "oldest message must be at index 204, not the None-fallback 0"
+        );
+
+        // Messages at the boundary: msg-qc-pos-006 (created_at=6) is the
+        // 200th-newest message; it was always within the old 200-row cap.
+        // msg-qc-pos-005 (created_at=5) was the first to fall outside the cap.
+        assert_eq!(
+            find_index("msg-qc-pos-006"),
+            199,
+            "200th-newest message must be at index 199"
+        );
+        assert_eq!(
+            find_index("msg-qc-pos-005"),
+            200,
+            "201st-newest message must be at index 200 (would be wrong with old cap)"
         );
     }
 

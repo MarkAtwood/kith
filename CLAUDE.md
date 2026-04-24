@@ -146,7 +146,7 @@ JMAP (RFC 8620 core) with custom capability `urn:ietf:params:jmap:chat`. JSON ov
 
 **Push:** EventSource at `/jmap/events`. On state advance the daemon emits `event: state` with changed type→state map. Client calls `Message/changes` (or `Chat/changes`) to pull the delta.
 
-**Chat IDs** are deterministic: `hex(sha256(sorted_tailscale_user_ids joined by \x00))`. Both sides compute the same ID without negotiation.
+**Chat IDs** are server-assigned ULIDs, created by whichever side opens the chat first (`Chat/set create` on the owner side, or implicitly on the first `Peer/deliver` from a contact). The receiving side stores the sender's chatId when it arrives; direct chats are indexed by `contact_id` (UNIQUE constraint) so each contact has exactly one chat. There is no deterministic formula — the chatId is opaque.
 
 ## Storage
 
@@ -194,7 +194,7 @@ Integration tests that hit a real SQLite file are preferred over unit tests that
 | Peer `body` text | Nothing | May be oversized, malformed UTF-8, or injection attempts |
 | Peer attachment metadata | Nothing | `filename`, `content_type`, `size` are all attacker-controlled |
 | Peer `sentAt` timestamp | Nothing — use `receivedAt` (local clock) for ordering | Sender clock is unverified |
-| `chatId` in `Peer/deliver` | Nothing — recompute from participants and compare | Peer-supplied value may be wrong or malicious |
+| `chatId` in `Peer/deliver` | Nothing — look up the existing chat row and verify the caller's WhoIs identity matches `contact_id` (direct) or is in `chat_members` (group) | Peer-supplied value may be wrong or malicious; a new chatId causes a new chat row to be created, bounded by the UNIQUE INDEX on `(contact_id, kind='direct')` |
 | `replyTo` in any message | Nothing — validate the referenced ID exists before storing | May reference nonexistent or cross-chat messages |
 
 **Validate at every boundary:**

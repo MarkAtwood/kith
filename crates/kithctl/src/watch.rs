@@ -16,6 +16,9 @@ use tokio_rustls::TlsConnector;
 use crate::Config;
 use kith_tslocal::LocalApiClient;
 
+/// Maximum JMAP response body size accepted from kithd (bytes).
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
+
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 /// Truncate `body` to at most `max_chars` Unicode scalar values.
@@ -41,12 +44,15 @@ pub fn truncate_body(body: &str, max_chars: usize) -> String {
     result
 }
 
-/// Remove characters that must not appear in a desktop notification argument:
-/// NUL (`\0`), carriage return (`\r`), newline (`\n`), and tab (`\t`).
+/// Remove characters that must not appear in a desktop notification argument.
+///
+/// Strips control characters (NUL, CR, LF, TAB) and, on macOS, characters
+/// that would break AppleScript string literals: `"` (terminates the literal)
+/// and `&` (AppleScript string-concatenation operator).
 pub fn sanitize_sender(sender: &str) -> String {
     sender
         .chars()
-        .filter(|&c| c != '\0' && c != '\r' && c != '\n' && c != '\t')
+        .filter(|&c| c != '\0' && c != '\r' && c != '\n' && c != '\t' && c != '"' && c != '&')
         .collect()
 }
 
@@ -204,14 +210,12 @@ fn fire_notification(sender: &str, preview: &str) {
 
     #[cfg(target_os = "macos")]
     {
-        // Build the AppleScript display notification command.
-        // The preview and sender are passed as Rust Debug-escaped strings,
-        // which produces valid AppleScript string literals for ASCII-safe text.
-        // For arbitrary Unicode this is safe because format!("{:?}") produces
-        // a Rust escaped string; AppleScript accepts the same escapes for
-        // printable Unicode.
+        // AppleScript string literals use `"` as delimiter with no backslash
+        // escaping. Strip `"` and `&` (string-concatenation operator) from
+        // both values before splicing them into the script.
+        let preview_as = sanitize_sender(&preview_clean);
         let script = format!(
-            "display notification {preview_clean:?} with title \"Kith\" subtitle {sender_clean:?}"
+            "display notification \"{preview_as}\" with title \"Kith\" subtitle \"{sender_clean}\""
         );
         let status = std::process::Command::new("osascript")
             .arg("-e")
@@ -239,7 +243,7 @@ async fn watch_once(
     config: &Config,
     tailnet_ip: &str,
     cert_der: &[u8],
-    last_event_id: &Option<String>,
+    last_event_id: &mut Option<String>,
     last_message_state: &mut String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let connector = build_tls_connector(cert_der.to_vec())?;
@@ -289,8 +293,12 @@ async fn watch_once(
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(0);
 
-    if status_code == 403 || status_code == 401 {
-        eprintln!("watch: not recognized as owner (HTTP {status_code}); check that kithd is running and this is the correct tailnet identity");
+    if status_code == 401 {
+        eprintln!("watch: not recognized as a kithd identity (HTTP 401) — is tailscaled running on this node?");
+        return Ok(()); // clean exit — do not reconnect
+    }
+    if status_code == 403 {
+        eprintln!("watch: recognized as a peer, not the owner (HTTP 403) — run kithctl from the same Tailscale node as kithd");
         return Ok(()); // clean exit — do not reconnect
     }
     if status_code != 200 {
@@ -336,18 +344,6 @@ async fn watch_once(
 
                 let (event_type, data, id) = parse_sse_frame(&frame);
 
-                if let Some(ref new_id) = id {
-                    if is_valid_last_event_id(new_id) {
-                        // Update last_event_id for next reconnect — we don't
-                        // have a mutable ref here so we capture it via the
-                        // last_message_state update path instead. The caller
-                        // updates last_event_id after watch_once returns.
-                        // For now, store the raw id in last_message_state if
-                        // it looks like a message state token.
-                        let _ = new_id; // used below via id capture
-                    }
-                }
-
                 if event_type.as_deref() == Some("state") || event_type.is_none() {
                     if let Some(ref json_str) = data {
                         if let Ok(state_map) = serde_json::from_str::<serde_json::Value>(json_str) {
@@ -376,13 +372,10 @@ async fn watch_once(
                     }
                 }
 
-                // Update last_event_id tracking via id field.
+                // Update last_event_id when the server provides an SSE id: field.
                 if let Some(ref new_id) = id {
                     if is_valid_last_event_id(new_id) {
-                        // Store the id token in last_message_state only if it
-                        // looks like a state token (starts with "s-").
-                        // The actual last_event_id is managed by cmd_watch.
-                        let _ = new_id;
+                        *last_event_id = Some(new_id.clone());
                     }
                 }
             }
@@ -537,14 +530,22 @@ async fn jmap_post(
         }
     }
 
-    // Read response body.
+    // Read response body, bounded by MAX_RESPONSE_BYTES to prevent OOM from a
+    // misbehaving or malicious kithd.
     let response_bytes = if let Some(len) = content_length_hint {
-        let mut buf = vec![0u8; len];
+        // Cap at MAX_RESPONSE_BYTES even if Content-Length claims more.
+        let capped = len.min(MAX_RESPONSE_BYTES);
+        let mut buf = vec![0u8; capped];
         tokio::io::AsyncReadExt::read_exact(&mut buf_reader, &mut buf).await?;
         buf
     } else {
+        let mut limited =
+            tokio::io::AsyncReadExt::take(&mut buf_reader, MAX_RESPONSE_BYTES as u64 + 1);
         let mut buf = Vec::new();
-        tokio::io::AsyncReadExt::read_to_end(&mut buf_reader, &mut buf).await?;
+        tokio::io::AsyncReadExt::read_to_end(&mut limited, &mut buf).await?;
+        if buf.len() > MAX_RESPONSE_BYTES {
+            return Err("JMAP response exceeds size limit".into());
+        }
         buf
     };
 
@@ -590,7 +591,7 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
             config,
             &tailnet_ip,
             &cert_der,
-            &last_event_id,
+            &mut last_event_id,
             &mut last_message_state,
         )
         .await

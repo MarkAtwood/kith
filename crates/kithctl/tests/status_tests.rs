@@ -15,6 +15,16 @@
 /// error: tailscaled not reachable: WhoIs failed: connect to tailscaled socket: ...
 /// ```
 
-/// Compile-check: ensures the status command wiring compiles end-to-end.
-#[test]
-fn status_command_compiles() {}
+/// The status command calls LocalApiClient::status() and maps errors to an
+/// "tailscaled not reachable" message. When the socket path does not exist,
+/// status() must return Err (not panic or hang).
+#[tokio::test]
+async fn status_fails_when_tailscaled_socket_unreachable() {
+    use kith_tslocal::LocalApiClient;
+    let client = LocalApiClient::new("/nonexistent/tailscaled.sock");
+    let result = client.status().await;
+    assert!(
+        result.is_err(),
+        "status() should fail when socket path does not exist"
+    );
+}

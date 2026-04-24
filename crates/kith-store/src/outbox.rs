@@ -4,6 +4,10 @@ use rand::Rng;
 use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
+/// Maximum number of delivery attempts before an outbox entry is marked failed.
+/// The condition `attempt >= MAX_DELIVERY_ATTEMPTS - 1` triggers on the 72nd call.
+const MAX_DELIVERY_ATTEMPTS: i64 = 72;
+
 #[derive(Debug)]
 pub struct OutboxEntry {
     pub message_id: String,
@@ -91,14 +95,14 @@ impl<'a> OutboxStore<'a> {
     pub fn get_due(&self, now_unix: i64) -> Result<Vec<OutboxEntry>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT message_id, peer_user_id, peer_mailbox_host, kind, read_at_unix, \
                         next_attempt_at, attempt_count, last_error \
                  FROM outbox \
                  WHERE next_attempt_at <= ?1 \
                  ORDER BY next_attempt_at \
                  LIMIT 50", // LIMIT 50: caps one delivery batch to prevent blocking the retry loop
-                            // on a large backlog. With 60s base retry interval, 50 concurrent
+                            // on a large backlog. With 30s base retry interval, 50 concurrent
                             // delivery attempts per tick is sufficient for typical single-user load.
             )
             .map_err(db_err)?;
@@ -127,8 +131,9 @@ impl<'a> OutboxStore<'a> {
     /// Record a delivery failure. Increments attempt_count and schedules next retry
     /// with exponential backoff (30s base, 2× per attempt, 1h cap) and ±20% jitter.
     ///
-    /// `attempt_count` is 0-indexed: after 72 calls (attempt_count reaching 71 before
-    /// this call), `mark_failed` is triggered on the 72nd failure.
+    /// `attempt_count` is 0-indexed: after `MAX_DELIVERY_ATTEMPTS` calls
+    /// (attempt_count reaching `MAX_DELIVERY_ATTEMPTS - 1` before this call),
+    /// `mark_failed` is triggered on the final failure.
     ///
     /// # Concurrency
     /// `record_failure` reads then updates `attempt_count` in two separate statements.
@@ -150,8 +155,7 @@ impl<'a> OutboxStore<'a> {
             )
             .map_err(db_err)?;
 
-        if attempt >= 71 {
-            // 72nd failure (attempt_count == 71 means 71 prior failures recorded).
+        if attempt >= MAX_DELIVERY_ATTEMPTS - 1 {
             return self.mark_failed(entry, last_error);
         }
 
@@ -304,7 +308,7 @@ impl<'a> OutboxStore<'a> {
     pub fn get_by_message(&self, message_id: &str) -> Result<Vec<OutboxEntry>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT message_id, peer_user_id, peer_mailbox_host, kind, read_at_unix, \
                         next_attempt_at, attempt_count, last_error \
                  FROM outbox \
@@ -347,8 +351,8 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO messages \
-             (id, chat_id, sender_user_id, body, created_at, delivery_state) \
-             VALUES (?1, 'chat-1', 'user-a', 'hello', 1000, 'pending')",
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES (?1, 'chat-1', 'user-a', 'hello', 1000, 'pending', ?1)",
             [msg_id],
         )
         .unwrap();

@@ -20,6 +20,8 @@ use axum::http::{Request, StatusCode};
 use axum::Router;
 use kith_core::AuthError;
 use kith_events::make_channel;
+#[cfg(feature = "test-utils")]
+use kith_peer;
 use kith_store::Store;
 use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
 use kithd::auth::WhoIsProvider;
@@ -48,6 +50,7 @@ fn make_state_for_listener(whois: MockWhoIs) -> AppState<MockWhoIs> {
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
+        base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
         blob_store: make_blob_store(),
@@ -165,6 +168,7 @@ fn make_full_app(whois: MockWhoIs) -> Router {
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
+        base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
         blob_store: make_blob_store(),
@@ -193,6 +197,7 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>) {
         store: Arc::clone(&store),
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
+        base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
         blob_store: make_blob_store(),
@@ -789,5 +794,339 @@ async fn peer_deliver_chatid_contact_mismatch_rejected() {
         state_before, state_after,
         "message state counter must be unchanged after chatId mismatch rejection \
          (before={state_before}, after={state_after})"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 8: Peer/receipt from wrong contact returns notFound
+//
+// Oracle: ReceiptHandler step i — only the chat's contact_id may send receipts
+// for messages in that conversation.  A peer who is a known contact but whose
+// user_id does not match chat.contact_id must receive notFound (not forbidden,
+// to avoid leaking whether the message_id exists).
+//
+// Independent oracle: message state counter must be unchanged, proving the
+// delivery_state was not updated before the check fired.
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn peer_receipt_wrong_contact_returns_not_found() {
+    const PEER_ALICE_ID: &str = "uid-peer-alice-receipt";
+    const PEER_ALICE_LOGIN: &str = "alice@receipt.example.com";
+    const PEER_BOB_ID: &str = "uid-peer-bob-receipt";
+    const PEER_BOB_LOGIN: &str = "bob@receipt.example.com";
+
+    // App identifies every incoming connection as Alice.
+    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+        PEER_ALICE_ID,
+        PEER_ALICE_LOGIN,
+    ))));
+
+    // Register Alice as a contact so the Caller extractor grants Role::Peer.
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(
+            PEER_ALICE_ID,
+            PEER_ALICE_LOGIN,
+            "alice-kith.tail.ts.net",
+            None,
+            1_000_000,
+        )
+        .expect("upsert alice must succeed");
+
+    // Register Bob as a contact and create Bob's outbound chat.
+    store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .contacts()
+        .upsert(
+            PEER_BOB_ID,
+            PEER_BOB_LOGIN,
+            "bob-kith.tail.ts.net",
+            None,
+            1_000_001,
+        )
+        .expect("upsert bob must succeed");
+
+    let bob_chat_id = "chat-for-bob-receipt-test";
+    store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .chats()
+        .create(bob_chat_id, "direct", Some(PEER_BOB_ID), 1_000_002)
+        .expect("create Bob's chat must succeed");
+
+    // Insert an outbound message in Bob's chat.  This is the message Alice will
+    // attempt to send a receipt for.  sender_user_id = 'self' and delivery_state
+    // = 'pending' so ReceiptHandler reaches the contact_id check.
+    let msg_id = Ulid::new().to_string();
+    {
+        let guard = store.lock().expect("store lock must not be poisoned");
+        guard
+            .insert_outbound_message(&kith_store::OutboundMessageParams {
+                id: &msg_id,
+                chat_id: bob_chat_id,
+                body: "hello bob",
+                body_type: "text/plain",
+                sent_at_peer: None,
+                created_at_unix: 1_000_003,
+                reply_to: None,
+                attachments: &[],
+                outbox_peers: &[(PEER_BOB_ID, "bob-kith.tail.ts.net")],
+            })
+            .expect("insert outbound message must succeed");
+    }
+
+    // Read the message state counter BEFORE the receipt request.
+    let state_before = store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed");
+
+    // Alice sends Peer/receipt claiming to have received the message in Bob's chat.
+    let request_body = serde_json::json!({
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+        "methodCalls": [["Peer/receipt", {
+            "accountId": "a-self",
+            "messageId": msg_id,
+            "kind": "delivered",
+            "at": "2026-01-01T00:00:00Z"
+        }, "r0"]]
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/jmap/api")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+
+    // RFC 8620 §3: method-level errors always produce HTTP 200.
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "method-level error must produce HTTP 200"
+    );
+
+    let body = body_string(resp).await;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("jmap response must be valid JSON");
+
+    let method_responses = json["methodResponses"]
+        .as_array()
+        .expect("methodResponses must be an array");
+    assert!(
+        !method_responses.is_empty(),
+        "methodResponses must not be empty; body: {body}"
+    );
+
+    // Oracle: ReceiptHandler step i — wrong contact_id → notFound.
+    // notFound (not forbidden) to avoid leaking whether the message_id exists.
+    assert_eq!(
+        method_responses[0][1]["type"].as_str(),
+        Some("notFound"),
+        "wrong contact sending receipt must produce 'notFound'; body: {body}"
+    );
+
+    // Oracle: state counter must be unchanged — delivery_state was not updated.
+    let state_after = store
+        .lock()
+        .expect("store lock must not be poisoned after oneshot")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed after request");
+
+    assert_eq!(
+        state_before, state_after,
+        "message state counter must be unchanged after rejected Peer/receipt \
+         (before={state_before}, after={state_after})"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: Peer/receipt for a nonexistent message returns notFound
+//
+// Oracle: ReceiptHandler step f — message lookup returns None → notFound.
+// A peer who is a valid contact must not learn whether an arbitrary message_id
+// exists or belongs to a different conversation.
+//
+// Independent oracle: state counter must be unchanged (no write occurred).
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn peer_receipt_nonexistent_message_returns_not_found() {
+    const PEER_ID: &str = "uid-peer-dana-receipt";
+    const PEER_LOGIN: &str = "dana@receipt.example.com";
+
+    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+
+    // Register peer as a contact so the Caller extractor grants Role::Peer.
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(
+            PEER_ID,
+            PEER_LOGIN,
+            "dana-kith.tail.ts.net",
+            None,
+            1_000_000,
+        )
+        .expect("upsert must succeed");
+
+    let state_before = store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed");
+
+    // Send receipt for a message_id that does not exist in the store.
+    let request_body = serde_json::json!({
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+        "methodCalls": [["Peer/receipt", {
+            "accountId": "a-self",
+            "messageId": "01JQNONEXISTENTMESSAGEID0001",
+            "kind": "read",
+            "at": "2026-01-01T00:00:00Z"
+        }, "r1"]]
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/jmap/api")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "method-level error must produce HTTP 200"
+    );
+
+    let body = body_string(resp).await;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("jmap response must be valid JSON");
+
+    let method_responses = json["methodResponses"]
+        .as_array()
+        .expect("methodResponses must be an array");
+    assert!(
+        !method_responses.is_empty(),
+        "methodResponses must not be empty; body: {body}"
+    );
+
+    // Oracle: ReceiptHandler step f — nonexistent message_id → notFound.
+    assert_eq!(
+        method_responses[0][1]["type"].as_str(),
+        Some("notFound"),
+        "receipt for nonexistent message must produce 'notFound'; body: {body}"
+    );
+
+    // Oracle: state counter unchanged — no write occurred.
+    let state_after = store
+        .lock()
+        .expect("store lock must not be poisoned after oneshot")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed after request");
+
+    assert_eq!(
+        state_before, state_after,
+        "message state counter must be unchanged after rejected Peer/receipt \
+         (before={state_before}, after={state_after})"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test: PeerHttpClient::new() connects to a self-signed certificate.
+//
+// Oracle: kithd generates self-signed certs via rcgen (load_or_generate_cert).
+// PeerHttpClient::new() must use TailnetCertVerifier (accept any cert) rather
+// than WebPKI roots, which would reject a self-signed cert.  This test fails
+// if PeerHttpClient::new() is ever changed back to .with_webpki_roots().
+//
+// Only compiled with --features test-utils (requires spawn_test_listener).
+// ---------------------------------------------------------------------------
+#[cfg(feature = "test-utils")]
+#[tokio::test]
+async fn peer_http_client_new_accepts_self_signed_cert() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    kithd::allow_loopback_for_tests();
+
+    // The receiver's MockWhoIs returns the peer identity so all incoming
+    // requests are classified as Peer role (not Owner, not unauthorized).
+    const PEER_ID: &str = "uid-peer-webpki-regression";
+    const PEER_LOGIN: &str = "peer@webpki-regression.example.com";
+
+    // Build the state manually so we can upsert the peer contact before
+    // handing the store off to spawn_test_listener (which takes ownership of
+    // the AppState).  Without a contacts row the Caller extractor returns 401
+    // before the request reaches DeliverHandler.
+    let store = Arc::new(Mutex::new(
+        Store::open_in_memory().expect("in-memory store must open"),
+    ));
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(
+            PEER_ID,
+            PEER_LOGIN,
+            "peer-kith.tail.ts.net",
+            None,
+            1_000_000,
+        )
+        .expect("upsert must succeed for a correctly-opened in-memory store");
+    let (events_tx, _events_rx) = make_channel(64);
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let state = AppState {
+        ts: Arc::new(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN)))),
+        store,
+        owner_id: OWNER_ID.to_string(),
+        owner_login: OWNER_LOGIN.to_string(),
+        base_url: kithd::DEFAULT_BASE_URL.to_string(),
+        events_tx,
+        dispatcher,
+        blob_store: make_blob_store(),
+    };
+    let (addr, _cert_der, handle) = kithd::spawn_test_listener(state)
+        .await
+        .expect("spawn_test_listener must succeed");
+
+    // Build a valid Peer/deliver request.  The sender identity matches PEER_ID
+    // so the senderUserId check in DeliverHandler passes.
+    let msg_id = Ulid::new().to_string();
+    let jmap_request = kith_peer::build_peer_deliver_request(
+        &msg_id,
+        "regression-chat-01",
+        PEER_ID,
+        "regression: PeerHttpClient::new must accept self-signed certs",
+        "text/plain",
+        "2026-04-24T00:00:00Z",
+        None,
+        &[],
+    );
+
+    // Use PeerHttpClient::new() — NOT new_with_root_cert — to prove the
+    // production path works against a self-signed cert.
+    let client = kith_peer::PeerHttpClient::new();
+    let url = format!("https://127.0.0.1:{}/jmap/api", addr.port());
+    let result = client.deliver(&url, jmap_request).await;
+
+    handle.abort();
+
+    assert!(
+        result.is_ok(),
+        "PeerHttpClient::new() must accept self-signed cert from kithd; \
+         got: {:?}",
+        result.err()
     );
 }

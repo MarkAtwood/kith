@@ -165,7 +165,7 @@ impl<'a> MessageStore<'a> {
     pub fn get(&self, id: &str) -> Result<Option<Message>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, chat_id, sender_user_id, body, body_type, \
                         sent_at_peer, created_at, delivery_state, \
                         delivered_at, read_at, reply_to, sender_msg_id \
@@ -192,7 +192,7 @@ impl<'a> MessageStore<'a> {
     pub fn list_by_chat(&self, chat_id: &str, limit: u32) -> Result<Vec<Message>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, chat_id, sender_user_id, body, body_type, \
                         sent_at_peer, created_at, delivery_state, \
                         delivered_at, read_at, reply_to, sender_msg_id \
@@ -222,7 +222,7 @@ impl<'a> MessageStore<'a> {
             "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
              FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
         );
-        let mut att_stmt = self.conn.prepare(&sql).map_err(db_err)?;
+        let mut att_stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
         let att_rows = att_stmt
             .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
                 Ok((
@@ -264,7 +264,7 @@ impl<'a> MessageStore<'a> {
     ) -> Result<Option<Message>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, chat_id, sender_user_id, body, body_type, \
                         sent_at_peer, created_at, delivery_state, \
                         delivered_at, read_at, reply_to, sender_msg_id \
@@ -404,7 +404,9 @@ impl<'a> MessageStore<'a> {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT id FROM messages WHERE state_version > ?1 ORDER BY state_version")
+            .prepare_cached(
+                "SELECT id FROM messages WHERE state_version > ?1 ORDER BY state_version",
+            )
             .map_err(db_err)?;
 
         let ids: Vec<String> = stmt

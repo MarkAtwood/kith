@@ -140,7 +140,7 @@ impl<'a> ContactStore<'a> {
     pub fn list(&self) -> Result<Vec<ChatContact>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT peer_user_id, peer_login, display_name, \
                         first_seen_at, last_seen_at, blocked \
                  FROM contacts ORDER BY peer_login",
@@ -235,7 +235,7 @@ impl<'a> ContactStore<'a> {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT peer_user_id FROM contacts ORDER BY peer_login")
+            .prepare_cached("SELECT peer_user_id FROM contacts ORDER BY peer_login")
             .map_err(db_err)?;
         let ids: Vec<String> = stmt
             .query_map([], |row| row.get(0))

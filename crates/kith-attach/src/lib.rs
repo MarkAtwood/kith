@@ -47,6 +47,10 @@ impl BlobStore {
     }
 
     pub fn blob_path(&self, id: &str) -> PathBuf {
+        debug_assert!(
+            Self::validate_blob_id(id).is_ok(),
+            "blob_path called with invalid id: {id:?} — callers must validate first"
+        );
         self.base_dir.join(id)
     }
 
@@ -55,11 +59,24 @@ impl BlobStore {
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;
 
         let final_path = self.blob_path(id);
-        let tmp_path = self.base_dir.join(format!("{}.tmp", id));
+        // Unique nonce per write so concurrent writes for the same blob_id don't
+        // share a temp path and corrupt each other.
+        let nonce: u32 = rand::thread_rng().gen();
+        let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
         let mut file = tokio::fs::File::create(&tmp_path).await?;
-        tokio::io::AsyncWriteExt::write_all(&mut file, data).await?;
-        file.sync_all().await?;
+
+        // Clean up the temp file if write or sync fails (don't leave orphaned .tmp files).
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, data).await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
+        if let Err(e) = file.sync_all().await {
+            drop(file);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
         drop(file);
 
         tokio::fs::rename(&tmp_path, &final_path).await?;
@@ -87,7 +104,10 @@ impl BlobStore {
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;
 
         let final_path = self.blob_path(id);
-        let tmp_path = self.base_dir.join(format!("{id}.tmp"));
+        // Unique nonce per write so concurrent writes for the same blob_id don't
+        // share a temp path and corrupt each other.
+        let nonce: u32 = rand::thread_rng().gen();
+        let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
         let mut tmp_file = tokio::fs::File::create(&tmp_path).await?;
         let mut hasher = Sha256::new();
@@ -114,13 +134,21 @@ impl BlobStore {
                             ));
                         }
                         hasher.update(&data);
-                        tmp_file.write_all(&data).await?;
+                        if let Err(e) = tmp_file.write_all(&data).await {
+                            drop(tmp_file);
+                            let _ = tokio::fs::remove_file(&tmp_path).await;
+                            return Err(e);
+                        }
                     }
                 }
             }
         }
 
-        tmp_file.sync_all().await?;
+        if let Err(e) = tmp_file.sync_all().await {
+            drop(tmp_file);
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
         drop(tmp_file);
         tokio::fs::rename(&tmp_path, &final_path).await?;
 

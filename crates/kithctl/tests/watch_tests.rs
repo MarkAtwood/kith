@@ -46,8 +46,11 @@ fn truncate_body_utf8() {
 
 // ── Test 3: sanitize_sender ───────────────────────────────────────────────────
 
-/// Oracle: NUL, CR, LF, and TAB must be stripped; all other chars preserved.
-/// Regular email-style sender must pass through unchanged.
+/// Oracle: NUL, CR, LF, TAB, `"`, and `&` must be stripped.
+/// `"` terminates AppleScript string literals; `&` is the AppleScript
+/// concatenation operator — both could break the osascript command built
+/// from this output.
+/// Regular Tailscale login names (e.g. user@example.com) pass through unchanged.
 #[test]
 fn sanitize_sender_strips_control_chars() {
     assert_eq!(
@@ -59,6 +62,16 @@ fn sanitize_sender_strips_control_chars() {
         sanitize_sender("alice@example.com"),
         "alice@example.com",
         "clean sender must pass through unchanged"
+    );
+    assert_eq!(
+        sanitize_sender("evil\"&injection"),
+        "evilinjection",
+        "double-quote and ampersand must be stripped (AppleScript injection chars)"
+    );
+    assert_eq!(
+        sanitize_sender("alice\r\t bob"),
+        "alice bob",
+        "CR and TAB must be removed"
     );
 }
 

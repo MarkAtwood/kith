@@ -21,6 +21,9 @@ const MAX_PROBE_RESPONSE_BYTES: usize = 64 * 1024;
 /// Timeout for the entire probe round trip.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Maximum number of peer probes running concurrently per discovery round.
+const PROBE_CONCURRENCY: usize = 10;
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -291,18 +294,38 @@ async fn run_discovery_round(
         return;
     }
 
-    let mut found = 0usize;
-    for peer in peers {
-        let mut session = None;
-        for ip in &peer.tailscale_ips {
-            if let Some(s) = probe_peer(ip, port).await {
-                session = Some(s);
-                break;
-            }
-        }
+    // Fan out probes concurrently — one task per peer, bounded by PROBE_CONCURRENCY.
+    // Each task tries the peer's IPs in order and returns as soon as one responds.
+    let sem = Arc::new(tokio::sync::Semaphore::new(PROBE_CONCURRENCY));
+    let mut join_set = tokio::task::JoinSet::new();
 
-        let Some(ps) = session else {
-            tracing::debug!("discovery: no kithd found for peer {}", peer.dns_name);
+    for peer in peers.into_iter().cloned() {
+        let sem = Arc::clone(&sem);
+        join_set.spawn(async move {
+            let _permit = sem.acquire_owned().await.expect("semaphore never closed");
+            let mut session = None;
+            for ip in &peer.tailscale_ips {
+                if let Some(s) = probe_peer(ip, port).await {
+                    session = Some(s);
+                    break;
+                }
+            }
+            (peer.dns_name.clone(), session)
+        });
+    }
+
+    let mut found = 0usize;
+    while let Some(res) = join_set.join_next().await {
+        let (dns_name, session_opt) = match res {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("discovery: probe task panicked: {e}");
+                continue;
+            }
+        };
+
+        let Some(ps) = session_opt else {
+            tracing::debug!("discovery: no kithd found for peer {dns_name}");
             continue;
         };
 
@@ -331,10 +354,10 @@ async fn run_discovery_round(
         match result {
             Ok(()) => {
                 found += 1;
-                tracing::debug!("discovery: upserted contact {}", ps.owner_login);
+                tracing::debug!("discovery: upserted contact uid={}", ps.owner_user_id);
             }
             Err(e) => {
-                tracing::warn!("discovery: upsert failed for {}: {e}", ps.owner_login);
+                tracing::warn!("discovery: upsert failed for uid={}: {e}", ps.owner_user_id);
             }
         }
     }

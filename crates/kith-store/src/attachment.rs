@@ -66,7 +66,7 @@ impl<'a> AttachmentStore<'a> {
     pub fn list_by_message(&self, message_id: &str) -> Result<Vec<Attachment>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, filename, content_type, size_bytes, sha256 \
                  FROM attachments WHERE message_id = ?1 ORDER BY created_at",
             )
@@ -123,8 +123,8 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO messages \
-             (id, chat_id, sender_user_id, body, created_at, delivery_state) \
-             VALUES ('msg-1', 'chat-1', 'user-a', 'hello', 1000, 'pending')",
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES ('msg-1', 'chat-1', 'user-a', 'hello', 1000, 'pending', 'msg-1')",
             [],
         )
         .unwrap();

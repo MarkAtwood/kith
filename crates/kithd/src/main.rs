@@ -27,9 +27,9 @@ async fn main() {
     let config = kithd::config::Config::from_env();
 
     // Extract fallback_bind_addr before config fields are partially moved.
-    let fallback_bind_addr = config
-        .fallback_bind_addr
-        .unwrap_or_else(|| "127.0.0.1:8080".to_string());
+    // Remains None in production (tailnet binding is mandatory); set only via
+    // KITHD_BIND_ADDR for development/test without a real Tailscale network.
+    let fallback_bind_addr = config.fallback_bind_addr;
 
     // -----------------------------------------------------------------------
     // 3. Tailscale LocalAPI client -- needed before owner_id resolution
@@ -181,6 +181,7 @@ async fn main() {
         store: Arc::clone(&store),
         owner_id: owner_id.clone(),
         owner_login: owner_login.clone(),
+        base_url: kithd::resolve_base_url(),
         events_tx,
         dispatcher,
         blob_store,
@@ -345,8 +346,21 @@ async fn main() {
             tracing::info!("kithd shutdown complete");
         }
         Err(e) => {
-            // Development / no-Tailscale fallback: plain HTTP
-            let fallback_addr = fallback_bind_addr;
+            // Only fall back to plain HTTP when KITHD_BIND_ADDR is explicitly
+            // set (development/test without a real Tailscale network).  In
+            // production (KITHD_BIND_ADDR unset), refuse to start rather than
+            // silently serving the full API over an unauthenticated plaintext
+            // loopback listener.
+            let fallback_addr = match fallback_bind_addr {
+                Some(addr) => addr,
+                None => {
+                    tracing::error!(
+                        "tailnet binding failed ({e}); kithd requires a Tailscale network. \
+                         Set KITHD_BIND_ADDR to enable a plain-HTTP dev fallback."
+                    );
+                    std::process::exit(1);
+                }
+            };
             tracing::warn!(
                 "tailnet binding failed ({e}), falling back to plain HTTP on {fallback_addr}"
             );

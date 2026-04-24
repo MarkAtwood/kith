@@ -54,15 +54,18 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>, owner_id: &str) -> Disp
         )),
     );
     d.register(
+        "ChatContact/queryChanges",
+        Box::new(kith_chat::contact::ChatContactQueryChangesHandler::new(
+            Arc::clone(&store),
+        )),
+    );
+    d.register(
         "Chat/get",
         Box::new(kith_chat::chat::ChatGetHandler::new(Arc::clone(&store))),
     );
     d.register(
         "Chat/set",
-        Box::new(kith_chat::chat::ChatSetHandler::new(
-            Arc::clone(&store),
-            owner_id.to_string(),
-        )),
+        Box::new(kith_chat::chat::ChatSetHandler::new(Arc::clone(&store))),
     );
     d.register(
         "Chat/changes",

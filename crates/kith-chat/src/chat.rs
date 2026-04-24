@@ -122,13 +122,11 @@ impl JmapHandler for ChatGetHandler {
 /// Update and destroy operations are rejected (chats are immutable records).
 pub struct ChatSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
-    /// The owner's Tailscale user ID, used to compute the deterministic chatId.
-    owner_id: String,
 }
 
 impl ChatSetHandler {
-    pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_id: String) -> Self {
-        Self { store, owner_id }
+    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
+        Self { store }
     }
 }
 
@@ -140,7 +138,6 @@ impl JmapHandler for ChatSetHandler {
         args: serde_json::Value,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
-        let _owner_id = self.owner_id.clone();
 
         Box::pin(async move {
             // Step 1: Extract accountId, create, update, destroy.
@@ -598,12 +595,11 @@ mod tests {
     #[tokio::test]
     async fn test_chat_set_create_valid() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let contact_peer_user_id = "uid-bob";
 
         upsert_contact(&store, contact_peer_user_id);
 
-        let handler = ChatSetHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = ChatSetHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Chat/set".to_string(),
@@ -648,9 +644,8 @@ mod tests {
     #[tokio::test]
     async fn test_chat_set_create_unknown_contact() {
         let store = make_store();
-        let owner_id = "uid-owner";
 
-        let handler = ChatSetHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = ChatSetHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Chat/set".to_string(),
@@ -690,7 +685,6 @@ mod tests {
     #[tokio::test]
     async fn test_chat_set_create_blocked_contact() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let contact_peer_user_id = "uid-blocked";
 
         upsert_contact(&store, contact_peer_user_id);
@@ -704,7 +698,7 @@ mod tests {
                 .expect("set_blocked must succeed");
         }
 
-        let handler = ChatSetHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = ChatSetHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Chat/set".to_string(),
@@ -935,12 +929,11 @@ mod tests {
     #[tokio::test]
     async fn test_chat_set_create_duplicate_returns_not_created_already_exists() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let contact_peer_user_id = "uid-bob";
 
         upsert_contact(&store, contact_peer_user_id);
 
-        let handler = ChatSetHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = ChatSetHandler::new(Arc::clone(&store));
 
         // First create — must succeed.
         let first_result = handler

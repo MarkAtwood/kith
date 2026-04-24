@@ -204,6 +204,20 @@ CREATE UNIQUE INDEX messages_sender_msg_id
     ON messages(chat_id, sender_msg_id);
 ";
 
+// V6: Enforce sender_msg_id NOT NULL at the DB level via a BEFORE INSERT trigger.
+// SQLite does not support ALTER COLUMN to add NOT NULL after the fact, and both
+// current insert paths already take &str (non-nullable in Rust).  The trigger
+// provides a second layer of defense against raw SQL access or a future refactor
+// that changes the parameter type to Option<&str> without updating this invariant.
+const SCHEMA_V6: &str = "
+CREATE TRIGGER IF NOT EXISTS messages_sender_msg_id_not_null
+BEFORE INSERT ON messages
+WHEN NEW.sender_msg_id IS NULL
+BEGIN
+    SELECT RAISE(ABORT, 'sender_msg_id must not be NULL');
+END;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -215,6 +229,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
+    (6, SCHEMA_V6),
 ];
 
 impl Store {
@@ -466,6 +481,14 @@ impl Store {
             attachments,
             outbox_peers,
         } = params;
+        // Callers must resolve and validate all outbox peers before calling
+        // this function.  An empty slice would commit a Pending message with
+        // no outbox entry — the retry loop would never fire and the caller
+        // would never learn of the failure.
+        debug_assert!(
+            !outbox_peers.is_empty(),
+            "insert_outbound_message: outbox_peers must be non-empty"
+        );
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = advance_state_counter_in_tx(&tx, "message")?;
         // ?1 = id (reused as sender_msg_id at position 11 — outbound msgs
@@ -532,7 +555,7 @@ impl Store {
     pub fn get_all_states(&self) -> Result<[(&'static str, String); 3], kith_core::KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT type_name, counter FROM state_counters \
                  WHERE type_name IN ('contact', 'chat', 'message')",
             )
@@ -647,8 +670,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has five entries (versions 1-5), so user_version must be 5 after open.
-        assert_eq!(version, 5);
+        // MIGRATIONS has six entries (versions 1-6), so user_version must be 6 after open.
+        assert_eq!(version, 6);
     }
 
     #[test]
@@ -684,7 +707,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 5, "migration 5 must be applied");
+        assert_eq!(v1, 6, "migration 6 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -706,7 +729,7 @@ mod tests {
         let store = Store::open_in_memory().expect("open");
         let mut stmt = store
             .conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .prepare_cached("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
             .unwrap();
         let tables: Vec<String> = stmt
             .query_map([], |row| row.get(0))
@@ -739,7 +762,7 @@ mod tests {
         let store = Store::open_in_memory().expect("open");
         let mut stmt = store
             .conn
-            .prepare("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
+            .prepare_cached("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name")
             .unwrap();
         let indexes: Vec<String> = stmt
             .query_map([], |row| row.get(0))
@@ -766,7 +789,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 5, "migration v5 must set user_version to 5");
+        assert_eq!(v, 6, "migration v6 must set user_version to 6");
     }
 
     #[test]
@@ -1008,8 +1031,8 @@ mod tests {
         .unwrap();
         conn.execute(
             "INSERT INTO messages \
-             (id, chat_id, sender_user_id, body, created_at, delivery_state) \
-             VALUES (?1, ?2, ?3, 'hello', 1000, 'received')",
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES (?1, ?2, ?3, 'hello', 1000, 'received', ?1)",
             rusqlite::params![message_id, chat_id, peer_user_id],
         )
         .unwrap();
@@ -1065,8 +1088,8 @@ mod tests {
             .conn
             .execute(
                 "INSERT INTO messages \
-                 (id, chat_id, sender_user_id, body, created_at, delivery_state) \
-                 VALUES ('msg-own', 'chat-own', 'uid-owner', 'hi', 1000, 'pending')",
+                 (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+                 VALUES ('msg-own', 'chat-own', 'uid-owner', 'hi', 1000, 'pending', 'msg-own')",
                 [],
             )
             .unwrap();
@@ -1223,5 +1246,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(idx_exists, 1, "UNIQUE index must exist after V5 migration");
+    }
+
+    #[test]
+    fn v6_trigger_rejects_null_sender_msg_id() {
+        use rusqlite::Connection;
+
+        // Apply all migrations up through V6 on a fresh in-memory database.
+        let conn = Connection::open_in_memory().unwrap();
+        Store::init_conn(&conn).unwrap();
+        for &(version, sql) in MIGRATIONS {
+            conn.execute_batch(sql).unwrap();
+            conn.execute_batch(&format!("PRAGMA user_version = {version}"))
+                .unwrap();
+        }
+
+        // Prerequisite: a chat row for the FK.
+        conn.execute(
+            "INSERT INTO chats (id, kind, created_at) VALUES ('chat-trigger', 'direct', 1000)",
+            [],
+        )
+        .unwrap();
+
+        // Oracle: inserting with a non-NULL sender_msg_id must succeed.
+        conn.execute(
+            "INSERT INTO messages \
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES ('msg-ok', 'chat-trigger', 'uid-peer', 'hello', 1001, 'received', 'sender-ulid-1')",
+            [],
+        )
+        .expect("non-NULL sender_msg_id must be accepted");
+
+        // Oracle: inserting with a NULL sender_msg_id must be rejected by the trigger.
+        let result = conn.execute(
+            "INSERT INTO messages \
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES ('msg-bad', 'chat-trigger', 'uid-peer', 'oops', 1002, 'received', NULL)",
+            [],
+        );
+        assert!(result.is_err(), "V6 trigger must reject NULL sender_msg_id");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("sender_msg_id must not be NULL"),
+            "error must identify the invariant; got: {err_msg}"
+        );
     }
 }

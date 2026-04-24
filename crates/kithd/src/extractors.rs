@@ -32,6 +32,11 @@ pub struct AppState<W> {
     /// owner's own tailnet address.  Falls back to an empty string when
     /// Tailscale is unavailable (development mode without tailscaled).
     pub owner_login: String,
+    /// Base URL used in JMAP Session object URL fields (`apiUrl`, `downloadUrl`
+    /// etc.).  Read once at startup from `KITHD_BASE_URL` (or the deprecated
+    /// `KITH_BASE_URL`) and stored here so `session_handler` does not re-read
+    /// the environment on every request.
+    pub base_url: String,
     /// Broadcast sender for state-change notifications.  Handlers and the
     /// store layer use this to signal EventSource subscribers that a JMAP
     /// object type has advanced its state counter.
@@ -51,6 +56,7 @@ impl<W> Clone for AppState<W> {
             store: Arc::clone(&self.store),
             owner_id: self.owner_id.clone(),
             owner_login: self.owner_login.clone(),
+            base_url: self.base_url.clone(),
             events_tx: self.events_tx.clone(),
             dispatcher: Arc::clone(&self.dispatcher),
             blob_store: Arc::clone(&self.blob_store),
@@ -218,6 +224,7 @@ mod tests {
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
+            base_url: crate::DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher: Arc::new(kith_jmap::Dispatcher::new()),
             blob_store: make_blob_store(),
@@ -417,6 +424,7 @@ mod tests {
                 store: Arc::new(std::sync::Mutex::new(Store::open_in_memory().unwrap())),
                 owner_id: "uid".to_string(),
                 owner_login: String::new(),
+                base_url: crate::DEFAULT_BASE_URL.to_string(),
                 events_tx,
                 dispatcher: Arc::new(kith_jmap::Dispatcher::new()),
                 blob_store: Arc::new(kith_attach::BlobStore::new(blob_dir)),

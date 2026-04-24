@@ -2,6 +2,9 @@
 # Beads / Dolt files (added by bd init)
 .dolt/
 !.beads/embeddeddolt/KITH/.dolt/
+# Dolt noms object store grows unboundedly and exceeds GitHub's 100 MB limit.
+# Use `bd dolt push` to back up beads data to a DoltHub remote instead.
+.beads/embeddeddolt/KITH/.dolt/noms/
 *.db
 .beads-credential-key
 

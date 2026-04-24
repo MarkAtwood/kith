@@ -22,7 +22,7 @@ const chats = new Map();
 // chatState: opaque state token from last Chat/get, for Chat/changes
 let chatState = null;
 
-// contactState: opaque state token from last Contact/get, for Contact/changes
+// contactState: opaque state token from last ChatContact/get, for ChatContact/changes
 let contactState = null;
 
 // messageState: opaque state token from last Message/get, for Message/changes
@@ -135,7 +135,7 @@ export function buildAttachmentElement(att) {
 
   const a = document.createElement('a');
   a.href = downloadUrl;
-  a.download = att.filename;      // forces save-as dialog
+  a.download = att.filename.replace(/[/\\]/g, '_').replace(/\0/g, ''); // strip path separators
   a.textContent = att.filename;   // CRITICAL: textContent not innerHTML
 
   const sz = document.createElement('span');
@@ -227,10 +227,10 @@ export function getContactName(contact) {
  */
 export async function fetchContacts() {
   const responses = await callJmap([
-    ['Contact/get', { accountId: session.accountId, ids: null }, 'c0'],
+    ['ChatContact/get', { accountId: session.accountId, ids: null }, 'c0'],
   ]);
   const [, result] = responses[0];
-  if (result.type) throw new Error('Contact/get error: ' + result.type);
+  if (result.type) throw new Error('ChatContact/get error: ' + result.type);
   for (const c of result.list) {
     contacts.set(c.id, c);
   }
@@ -288,7 +288,7 @@ export function renderContactList(contactList) {
 }
 
 /**
- * Block or unblock a contact via Contact/set update.
+ * Block or unblock a contact via ChatContact/set update.
  * Updates the local contacts Map and re-renders the contact list.
  * @param {string} contactId - The contact's tailscaleUserId
  * @param {boolean} blocked - true to block, false to unblock
@@ -300,7 +300,7 @@ export async function setContactBlocked(contactId, blocked) {
   let responses;
   try {
     responses = await callJmap([
-      ['Contact/set', {
+      ['ChatContact/set', {
         accountId: session.accountId,
         update: { [contactId]: { blocked } },
       }, 'm0'],
@@ -336,8 +336,9 @@ export async function setContactBlocked(contactId, blocked) {
 export async function openOrCreateChat(contact) {
   // Look for existing direct chat with this contact
   // chats Map is populated by fetchChats() in bead g7q; for now stub it
+  // Chat.contactId is the server field for the peer's userId in a direct chat.
   const existing = [...(typeof chats !== 'undefined' ? chats.values() : [])].find(
-    (ch) => ch.participants && ch.participants.includes(contact.id)
+    (ch) => ch.contactId === contact.id
   );
   if (existing) {
     selectChat(existing.id);
@@ -395,17 +396,17 @@ export async function fetchChats() {
 }
 
 /**
- * Return a display name for a chat, derived from its participants list.
- * Falls back to the first 8 chars of the chat ID if participants is empty.
+ * Return a display name for a chat, derived from its contactId.
+ * Falls back to the first 8 chars of the chat ID if contactId is absent.
  * @param {Object} chat
  * @returns {string}
  */
 export function getChatDisplayName(chat) {
-  if (!chat.participants || chat.participants.length === 0) {
+  if (!chat.contactId) {
     return chat.id.slice(0, 8); // fallback to partial id
   }
-  const contact = contacts.get(chat.participants[0]);
-  return contact ? getContactName(contact) : chat.participants[0];
+  const contact = contacts.get(chat.contactId);
+  return contact ? getContactName(contact) : chat.contactId;
 }
 
 /**
@@ -861,26 +862,26 @@ async function handleStateEvent(event) {
     console.error('Kith EventSource: error handling state event', err);
   }
 
-  // Handle Contact state changes (e.g., new peer discovered or contact blocked)
-  if (changed.Contact) {
+  // Handle ChatContact state changes (e.g., new peer discovered or contact blocked)
+  if (changed.ChatContact) {
     if (contactState === null) {
-      contactState = changed.Contact;
+      contactState = changed.ChatContact;
     } else {
       try {
         const responses = await callJmap([
-          ['Contact/changes', {
+          ['ChatContact/changes', {
             accountId: session.accountId,
             sinceState: contactState,
           }, 'cc0'],
         ]);
         const [, result] = responses[0];
         if (result.type === 'cannotCalculateChanges') {
-          // fetchContacts updates contactState via Contact/get
+          // fetchContacts updates contactState via ChatContact/get
           const contactList = await fetchContacts();
           renderContactList(contactList);
         } else if (result.type) {
-          console.error('Kith: Contact/changes error:', result.type);
-          contactState = changed.Contact;
+          console.error('Kith: ChatContact/changes error:', result.type);
+          contactState = changed.ChatContact;
         } else {
           contactState = result.newState;
           if ((result.created && result.created.length > 0) ||
@@ -891,7 +892,7 @@ async function handleStateEvent(event) {
           }
         }
       } catch (err) {
-        console.warn('Contact/changes failed:', err);
+        console.warn('ChatContact/changes failed:', err);
         // Non-fatal: will resync on next state event
       }
     }

@@ -100,6 +100,7 @@ fn make_app() -> Router {
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
+        base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
         blob_store: make_blob_store(),

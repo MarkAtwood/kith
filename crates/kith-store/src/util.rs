@@ -1,34 +1,10 @@
 /// Format a Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) as an
-/// RFC 3339 UTC string (e.g., "2020-09-13T12:26:40Z").
+/// RFC 3339 UTC string (e.g., `"2020-09-13T12:26:40Z"`).
 ///
-/// Uses the Hinnant civil-calendar algorithm for accuracy without an
-/// external time crate. Correct for dates from 1970-03-01 through 2299.
+/// Delegates to [`kith_core::unix_secs_to_rfc3339`]; the single canonical
+/// implementation lives in `kith-core`.
 pub(crate) fn unix_secs_to_rfc3339(secs: i64) -> String {
-    // Manual implementation: avoid pulling in a date-time crate.
-    // Compute year/month/day/hour/min/sec from Unix epoch seconds.
-    // Algorithm: Euclidean / astronomical calendar arithmetic.
-    let secs_in_day: i64 = 86400;
-    let days = secs.div_euclid(secs_in_day);
-    let time_secs = secs.rem_euclid(secs_in_day);
-
-    let hh = time_secs / 3600;
-    let mm = (time_secs % 3600) / 60;
-    let ss = time_secs % 60;
-
-    // Civil date from days since epoch (1970-01-01).
-    // Source: https://howardhinnant.github.io/date_algorithms.html
-    let z = days + 719468;
-    let era = z.div_euclid(146097);
-    let doe = z.rem_euclid(146097);
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-
-    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
+    kith_core::unix_secs_to_rfc3339(secs)
 }
 
 #[cfg(test)]

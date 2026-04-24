@@ -96,7 +96,7 @@ impl<'a> ChatStore<'a> {
     pub fn get_members(&self, chat_id: &str) -> Result<Vec<String>, KithError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT peer_user_id FROM chat_members WHERE chat_id = ?1")
+            .prepare_cached("SELECT peer_user_id FROM chat_members WHERE chat_id = ?1")
             .map_err(db_err)?;
         let members = stmt
             .query_map(params![chat_id], |row| row.get::<_, String>(0))
@@ -182,7 +182,7 @@ impl<'a> ChatStore<'a> {
     pub fn list(&self) -> Result<Vec<Chat>, KithError> {
         let mut stmt = self
             .conn
-            .prepare(
+            .prepare_cached(
                 "SELECT id, kind, contact_id, created_at, last_message_at \
                  FROM chats \
                  ORDER BY last_message_at DESC NULLS LAST, created_at DESC",
@@ -314,7 +314,7 @@ impl<'a> ChatStore<'a> {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT id FROM chats ORDER BY created_at")
+            .prepare_cached("SELECT id FROM chats ORDER BY created_at")
             .map_err(db_err)?;
         let ids: Vec<String> = stmt
             .query_map([], |row| row.get(0))
@@ -456,8 +456,8 @@ mod tests {
                 .conn
                 .execute(
                     "INSERT INTO messages \
-                     (id, chat_id, sender_user_id, body, created_at, delivery_state, read_at) \
-                     VALUES (?1, 'chat-ddd', 'uid:frank', 'hi', 1000000, ?2, ?3)",
+                     (id, chat_id, sender_user_id, body, created_at, delivery_state, read_at, sender_msg_id) \
+                     VALUES (?1, 'chat-ddd', 'uid:frank', 'hi', 1000000, ?2, ?3, ?1)",
                     params![id, state, read_at],
                 )
                 .unwrap();

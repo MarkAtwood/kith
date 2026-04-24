@@ -431,6 +431,7 @@ mod tests {
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
+            base_url: crate::DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher: Arc::new(kith_jmap::Dispatcher::new()),
             blob_store: make_blob_store_for_events_tests(),

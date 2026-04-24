@@ -188,7 +188,11 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
                 return false;
             }
 
-            true
+            // Accept only the Tailscale CGNAT range 100.64.0.0/10.
+            // This covers all Tailscale IPv4 peer addresses and prevents
+            // SSRF to arbitrary public internet IPs if a mailbox_host value
+            // ever ends up pointing outside the tailnet.
+            octets[0] == 100 && (64..=127).contains(&octets[1])
         }
         IpAddr::V6(v6) => {
             // Link-local: fe80::/10
@@ -198,7 +202,10 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
                 return false;
             }
 
-            true
+            // Accept only ULA addresses (fc00::/7), which covers Tailscale's
+            // IPv6 range (fd7a:115c:a1e0::/48).  Reject all public IPv6
+            // addresses to prevent SSRF to the public internet.
+            (segs[0] & 0xfe00) == 0xfc00
         }
     }
 }
@@ -216,6 +223,36 @@ use crate::discovery::TailnetCertVerifier;
 /// Build a Hyper HTTPS client that accepts any TLS certificate from a
 /// tailnet peer.
 ///
+/// Percent-encode a string for use as a URL path segment (RFC 3986).
+///
+/// Only unreserved characters (A–Z, a–z, 0–9, `-`, `.`, `_`, `~`) are left
+/// unencoded. Everything else, including `#`, `?`, `/`, and space, is encoded
+/// as `%XX` using uppercase hex digits.
+fn percent_encode_path_segment(s: &str) -> String {
+    let mut encoded = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(b as char);
+            }
+            _ => {
+                encoded.push('%');
+                encoded.push(
+                    char::from_digit((b >> 4) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
+                encoded.push(
+                    char::from_digit((b & 0xf) as u32, 16)
+                        .unwrap()
+                        .to_ascii_uppercase(),
+                );
+            }
+        }
+    }
+    encoded
+}
+
 /// The client uses [`TailnetCertVerifier`] so it can connect to kithd
 /// instances that present self-signed certificates.  HTTP/1.1 only;
 /// plaintext (`http://`) connections are rejected by the connector.
@@ -304,8 +341,11 @@ pub(crate) async fn fetch_peer_blob(
 
     // URL-encode '/' and '+' in the content_type query parameter value.
     let ct_encoded = content_type.replace('/', "%2F").replace('+', "%2B");
+    // Percent-encode the filename path segment: characters like '#' or '?' would
+    // truncate or corrupt the URL path before it reaches the server.
+    let filename_encoded = percent_encode_path_segment(filename);
     let url = format!(
-        "https://{mailbox_host}/jmap/download/a-self/{blob_id}/{filename}?accept={ct_encoded}"
+        "https://{mailbox_host}/jmap/download/a-self/{blob_id}/{filename_encoded}?accept={ct_encoded}"
     );
 
     let fetch_timeout = Duration::from_secs((expected_size / 65536).saturating_add(30).min(300));
@@ -546,6 +586,32 @@ mod tests {
     fn tailscale_ip_accepted() {
         // Tailscale CGNAT range 100.64.0.0/10 — not RFC 1918, not loopback.
         assert!(is_valid_fetch_host("100.64.0.1"));
+        // Full extent of the CGNAT range (100.64.0.0/10 = 100.64–127.x)
+        assert!(is_valid_fetch_host("100.127.255.255"));
+    }
+
+    // Oracle: public internet IPs must be rejected even though they are not
+    // RFC 1918 or link-local.  Only the Tailscale CGNAT range is allowed.
+    #[test]
+    fn public_ipv4_rejected() {
+        assert!(!is_valid_fetch_host("1.2.3.4"));
+        assert!(!is_valid_fetch_host("8.8.8.8"));
+        assert!(!is_valid_fetch_host("100.63.255.255")); // one below CGNAT range
+        assert!(!is_valid_fetch_host("100.128.0.0")); // one above CGNAT range
+    }
+
+    // Oracle: Tailscale ULA IPv6 (fd7a:115c:a1e0::/48) is within fc00::/7;
+    // public IPv6 addresses are outside fc00::/7 and must be rejected.
+    #[test]
+    fn tailscale_ipv6_ula_accepted() {
+        assert!(is_valid_fetch_host("fd7a:115c:a1e0::1"));
+        assert!(is_valid_fetch_host("fd00::1"));
+    }
+
+    #[test]
+    fn public_ipv6_rejected() {
+        assert!(!is_valid_fetch_host("2001:db8::1")); // documentation range (public)
+        assert!(!is_valid_fetch_host("2600::1")); // public IPv6
     }
 
     #[test]
