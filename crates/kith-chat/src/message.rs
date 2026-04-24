@@ -175,23 +175,30 @@ impl JmapHandler for MessageSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            let old_state = {
-                let guard = store
-                    .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
-                guard.messages().get_state().map_err(kith_to_jmap)?
-            };
-
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
             let mut updated: Map<String, Value> = Map::new();
             let mut not_updated: Map<String, Value> = Map::new();
             let mut not_destroyed: Map<String, Value> = Map::new();
 
+            // old_state is captured lazily: the first process_create or process_update
+            // call captures it inside its own lock scope, before any DB write in that
+            // call.  This prevents a concurrent Peer/deliver from slipping in between
+            // a separate pre-loop lock scope and the first create, which would make
+            // oldState describe a state before that concurrent write (RFC 8620 §5.3).
+            let mut old_state_cell: Option<String> = None;
+
             // Process creates.
             if let Some(creates) = create_map {
                 for (client_id, value) in creates {
-                    match process_create(&store, client_id, value, now_unix, &owner_id) {
+                    match process_create(
+                        &store,
+                        client_id,
+                        value,
+                        now_unix,
+                        &owner_id,
+                        &mut old_state_cell,
+                    ) {
                         Ok(msg_value) => {
                             created.insert(client_id.clone(), msg_value);
                         }
@@ -205,7 +212,7 @@ impl JmapHandler for MessageSetHandler {
             // Process updates (only readAt is patchable).
             if let Some(updates) = update_map {
                 for (server_id, patch) in updates {
-                    match process_update(&store, server_id, patch, now_unix) {
+                    match process_update(&store, server_id, patch, now_unix, &mut old_state_cell) {
                         Ok(()) => {
                             updated.insert(server_id.clone(), Value::Null);
                         }
@@ -228,6 +235,18 @@ impl JmapHandler for MessageSetHandler {
                     );
                 }
             }
+
+            // Resolve old_state: if at least one create/update ran, it was captured
+            // inside the first lock scope.  If no creates or updates ran, capture now.
+            let old_state = match old_state_cell {
+                Some(s) => s,
+                None => {
+                    let guard = store
+                        .lock()
+                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                    guard.messages().get_state().map_err(kith_to_jmap)?
+                }
+            };
 
             let new_state = {
                 let guard = store
@@ -257,6 +276,7 @@ fn process_create(
     value: &Value,
     now_unix: i64,
     _owner_id: &str,
+    old_state_out: &mut Option<String>,
 ) -> Result<Value, Value> {
     let obj = value.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "create entry must be an object"}),
@@ -307,6 +327,16 @@ fn process_create(
     let guard = store
         .lock()
         .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+
+    // Capture old_state on the first call, inside the lock, before any DB write.
+    if old_state_out.is_none() {
+        *old_state_out = Some(
+            guard
+                .messages()
+                .get_state()
+                .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+        );
+    }
 
     // Validate chatId exists.
     let chat = guard
@@ -451,6 +481,7 @@ fn process_update(
     server_id: &str,
     patch: &Value,
     now_unix: i64,
+    old_state_out: &mut Option<String>,
 ) -> Result<(), Value> {
     let patch_obj = patch.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "update patch must be an object"}),
@@ -497,6 +528,16 @@ fn process_update(
         .lock()
         .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
 
+    // Capture old_state on the first call, inside the lock, before any DB write.
+    if old_state_out.is_none() {
+        *old_state_out = Some(
+            guard
+                .messages()
+                .get_state()
+                .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+        );
+    }
+
     guard
         .messages()
         .update_read_at(server_id, read_at_unix)
@@ -506,6 +547,8 @@ fn process_update(
     // Failures are silently ignored — receipt enqueue must not fail the readAt update.
     if let Ok(Some(msg)) = guard.messages().get(server_id) {
         if msg.sender_id != "self" {
+            // Intentional: receipts are not sent to blocked senders. Marking a blocked
+            // contact's message as read is a local-only operation.
             if let Ok(true) = guard.contacts().is_permitted(&msg.sender_id) {
                 if let Ok(Some(host)) = guard.contacts().get_mailbox_host(&msg.sender_id) {
                     let _ = guard.outbox().enqueue_receipt(
@@ -808,10 +851,12 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .and_then(|n| n.parse::<i64>().ok())
                 .ok_or_else(JmapError::cannot_calculate_changes)?;
 
-            // Validate chatId, fetch changes, and get current state — then release the lock.
-            // Position lookups happen outside this critical section so the mutex is not
-            // held for an unbounded number of SQL queries.
-            let (chat_added, new_state, destroyed) = {
+            // Lock 1: validate chatId and fetch chat-scoped changes.  new_state is NOT
+            // captured here — it will be captured atomically with position lookups in
+            // lock 2 so that newQueryState and index values always come from the same
+            // consistent snapshot (no intervening write can shift positions while
+            // newQueryState still reflects a pre-write state).
+            let (chat_added, destroyed) = {
                 let guard = store
                     .lock()
                     .map_err(|_| JmapError::server_fail("store poisoned"))?;
@@ -838,49 +883,41 @@ impl JmapHandler for MessageQueryChangesHandler {
                     }));
                 }
 
-                // Get the changes since sinceQueryState.  This returns IDs from
-                // ALL chats; filter to only those belonging to the requested chat.
-                let changes = guard
+                // Fetch only the changed IDs that belong to this chat in a single query.
+                let chat_changes = guard
                     .messages()
-                    .get_changes_since(&since_query_state)
+                    .get_changes_since_for_chat(&since_query_state, &chat_id)
                     .map_err(kith_to_jmap)?;
 
-                // Filter: keep only added IDs whose chat_id matches the filter.
-                let chat_added: Vec<String> = changes
-                    .added
-                    .iter()
-                    .filter(|id| {
-                        guard
-                            .messages()
-                            .get(id)
-                            .ok()
-                            .flatten()
-                            .map(|m| m.chat_id == chat_id)
-                            .unwrap_or(false)
-                    })
-                    .cloned()
-                    .collect();
-
-                (chat_added, changes.new_state, changes.destroyed)
+                (chat_changes.added, chat_changes.destroyed)
                 // lock released here
             };
 
-            // Build added list with SQL-computed indexes.  The lock is acquired briefly
-            // per message rather than held for the entire loop.
-            let mut added_with_index: Vec<Value> = Vec::with_capacity(chat_added.len());
-            for added_id in &chat_added {
-                let index = {
-                    let guard = store
-                        .lock()
-                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
-                    guard
-                        .messages()
-                        .get_position_in_chat(&chat_id, added_id)
-                        .map_err(kith_to_jmap)?
-                        .unwrap_or(0) as u64
-                };
-                added_with_index.push(json!({"id": added_id, "index": index}));
-            }
+            // Lock 2: compute position indexes and capture new_state atomically.
+            // new_state is read first so that newQueryState and all index values come
+            // from the same consistent snapshot — no write between the two can produce
+            // positions that disagree with newQueryState.
+            let (added_with_index, new_state) = {
+                let guard = store
+                    .lock()
+                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
+
+                let new_state = guard.messages().get_state().map_err(kith_to_jmap)?;
+
+                let added_with_index: Vec<Value> = chat_added
+                    .iter()
+                    .map(|id| {
+                        let index = guard
+                            .messages()
+                            .get_position_in_chat(&chat_id, id)
+                            .map_err(kith_to_jmap)?
+                            .unwrap_or(0) as u64;
+                        Ok(json!({"id": id, "index": index}))
+                    })
+                    .collect::<Result<Vec<_>, JmapError>>()?;
+
+                (added_with_index, new_state)
+            };
 
             Ok(json!({
                 "accountId": "a-self",

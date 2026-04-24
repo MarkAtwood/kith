@@ -166,7 +166,14 @@ pub async fn probe_peer(
     ip: &str,
     port: u16,
 ) -> Option<PeerSession> {
-    let url = format!("https://{}:{}/.well-known/jmap", ip, port);
+    // IPv6 literal addresses must be bracketed in URLs (RFC 3986 §3.2.2).
+    // An unbracketed IPv6 address like "fd7a::1" produces an invalid URL
+    // because the colons are ambiguous with the port separator.
+    let url = if ip.contains(':') {
+        format!("https://[{}]:{}/.well-known/jmap", ip, port)
+    } else {
+        format!("https://{}:{}/.well-known/jmap", ip, port)
+    };
 
     let result = tokio::time::timeout(PROBE_TIMEOUT, async {
         let req = Request::builder()
@@ -463,5 +470,39 @@ mod tests {
             result.is_none(),
             "probe_peer must return None when connection is refused"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_peer_ipv6_url_is_bracketed
+    // Oracle: RFC 3986 §3.2.2 — IPv6 literal addresses in URLs must be
+    //         enclosed in square brackets.  "https://fd7a::1:4430/..." is an
+    //         invalid URL; "https://[fd7a::1]:4430/..." is correct.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn probe_peer_ipv6_url_is_bracketed() {
+        let ip = "fd7a::1";
+        let port: u16 = 4430;
+        let url = if ip.contains(':') {
+            format!("https://[{}]:{}/.well-known/jmap", ip, port)
+        } else {
+            format!("https://{}:{}/.well-known/jmap", ip, port)
+        };
+        assert_eq!(url, "https://[fd7a::1]:4430/.well-known/jmap");
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_peer_ipv4_url_is_not_bracketed
+    // Oracle: IPv4 addresses must NOT be bracketed.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn probe_peer_ipv4_url_is_not_bracketed() {
+        let ip = "127.0.0.1";
+        let port: u16 = 4430;
+        let url = if ip.contains(':') {
+            format!("https://[{}]:{}/.well-known/jmap", ip, port)
+        } else {
+            format!("https://{}:{}/.well-known/jmap", ip, port)
+        };
+        assert_eq!(url, "https://127.0.0.1:4430/.well-known/jmap");
     }
 }

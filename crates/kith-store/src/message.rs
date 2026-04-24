@@ -93,6 +93,55 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     })
 }
 
+/// Batch-load all attachments for a set of message IDs in a single SQL query.
+///
+/// Returns a `HashMap` keyed by `message_id`. Each value is the ordered list
+/// of attachments for that message.  Callers merge the map into their message
+/// list by removing entries by ID.
+///
+/// When `msg_ids` is empty the function returns an empty map without touching
+/// the database.
+fn load_attachments_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, Vec<kith_core::Attachment>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
+         FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
+    );
+    // The SQL string varies by message count (different ? placeholders per call),
+    // so prepare() is used here instead of prepare_cached() to avoid unbounded
+    // cache growth — each unique placeholder count would add a permanent cache entry.
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            Ok((
+                row.get::<_, String>(1)?, // message_id
+                kith_core::Attachment {
+                    blob_id: row.get(0)?,
+                    filename: row.get(2)?,
+                    content_type: row.get(3)?,
+                    size: row.get::<_, i64>(4)?.max(0) as u64,
+                    sha256: row.get(5)?,
+                },
+            ))
+        })
+        .map_err(db_err)?;
+
+    let mut att_map: HashMap<String, Vec<kith_core::Attachment>> = HashMap::new();
+    for row in rows {
+        let (msg_id, att) = row.map_err(db_err)?;
+        att_map.entry(msg_id).or_default().push(att);
+    }
+
+    Ok(att_map)
+}
+
 impl<'a> MessageStore<'a> {
     pub fn new(
         conn: &'a Connection,
@@ -215,38 +264,8 @@ impl<'a> MessageStore<'a> {
             return Ok(messages);
         }
 
-        // Batch-load all attachments for all messages in a single query.
-        let ids: Vec<&str> = messages.iter().map(|m| m.id.as_str()).collect();
-        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!(
-            "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
-             FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
-        );
-        // The SQL string varies by message count (different ? placeholders per call),
-        // so prepare() is used here instead of prepare_cached() to avoid unbounded
-        // cache growth — each unique placeholder count would add a permanent cache entry.
-        let mut att_stmt = self.conn.prepare(&sql).map_err(db_err)?;
-        let att_rows = att_stmt
-            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
-                Ok((
-                    row.get::<_, String>(1)?, // message_id
-                    kith_core::Attachment {
-                        blob_id: row.get(0)?,
-                        filename: row.get(2)?,
-                        content_type: row.get(3)?,
-                        size: row.get::<_, i64>(4)?.max(0) as u64,
-                        sha256: row.get(5)?,
-                    },
-                ))
-            })
-            .map_err(db_err)?;
-
-        let mut att_map: HashMap<String, Vec<kith_core::Attachment>> = HashMap::new();
-        for row in att_rows {
-            let (msg_id, att) = row.map_err(db_err)?;
-            att_map.entry(msg_id).or_default().push(att);
-        }
-
+        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
             if let Some(atts) = att_map.remove(&msg.id) {
                 msg.attachments = atts;
@@ -291,35 +310,8 @@ impl<'a> MessageStore<'a> {
             return Ok(messages);
         }
 
-        // Batch-load all attachments for all messages in a single query.
-        let ids: Vec<&str> = messages.iter().map(|m| m.id.as_str()).collect();
-        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        let sql = format!(
-            "SELECT id, message_id, filename, content_type, size_bytes, sha256 \
-             FROM attachments WHERE message_id IN ({placeholders}) ORDER BY created_at"
-        );
-        let mut att_stmt = self.conn.prepare(&sql).map_err(db_err)?;
-        let att_rows = att_stmt
-            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
-                Ok((
-                    row.get::<_, String>(1)?, // message_id
-                    kith_core::Attachment {
-                        blob_id: row.get(0)?,
-                        filename: row.get(2)?,
-                        content_type: row.get(3)?,
-                        size: row.get::<_, i64>(4)?.max(0) as u64,
-                        sha256: row.get(5)?,
-                    },
-                ))
-            })
-            .map_err(db_err)?;
-
-        let mut att_map: HashMap<String, Vec<kith_core::Attachment>> = HashMap::new();
-        for row in att_rows {
-            let (msg_id, att) = row.map_err(db_err)?;
-            att_map.entry(msg_id).or_default().push(att);
-        }
-
+        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
             if let Some(atts) = att_map.remove(&msg.id) {
                 msg.attachments = atts;
@@ -573,6 +565,47 @@ impl<'a> MessageStore<'a> {
 
         let ids: Vec<String> = stmt
             .query_map(params![since_version], |row| row.get(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        let new_state = self.get_state()?;
+
+        Ok(ChangesResult {
+            added: ids,
+            updated: vec![],
+            destroyed: vec![],
+            new_state,
+        })
+    }
+
+    /// Return IDs of messages in a specific chat created or updated since the given state token.
+    ///
+    /// Identical to `get_changes_since` but scoped to a single `chat_id`.
+    /// The `new_state` comes from `get_state()`, not from the filtered query,
+    /// so it always reflects the global message state counter.
+    /// Messages cannot be deleted, so `destroyed` is always empty.
+    pub fn get_changes_since_for_chat(
+        &self,
+        since_state: &str,
+        chat_id: &str,
+    ) -> Result<ChangesResult, KithError> {
+        let since_version = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Jmap(JmapError::cannot_calculate_changes()))?;
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id FROM messages \
+                 WHERE state_version > ?1 AND chat_id = ?2 \
+                 ORDER BY state_version",
+            )
+            .map_err(db_err)?;
+
+        let ids: Vec<String> = stmt
+            .query_map(params![since_version, chat_id], |row| row.get(0))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;

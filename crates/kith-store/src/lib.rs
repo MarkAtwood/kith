@@ -218,6 +218,19 @@ BEGIN
 END;
 ";
 
+// V7: Add a partial index to accelerate the unread_count correlated subquery
+// used in ChatStore::list(), get(), and find_direct_by_contact_id().
+// The query filters on chat_id, delivery_state='received', and read_at IS NULL.
+// messages_chat_time(chat_id, created_at) covers the chat_id seek but requires
+// a full per-chat scan to filter delivery_state and read_at.  This partial index
+// indexes only the rows that are both received and unread, allowing the planner
+// to evaluate the correlated subquery with an index scan rather than a full scan.
+const SCHEMA_V7: &str = "
+CREATE INDEX IF NOT EXISTS messages_unread
+    ON messages(chat_id)
+    WHERE delivery_state = 'received' AND read_at IS NULL;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -230,6 +243,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (4, SCHEMA_V4),
     (5, SCHEMA_V5),
     (6, SCHEMA_V6),
+    (7, SCHEMA_V7),
 ];
 
 impl Store {
@@ -618,11 +632,17 @@ pub(crate) fn advance_state_counter_in_tx(
     tx: &rusqlite::Transaction<'_>,
     type_name: &str,
 ) -> Result<i64, KithError> {
-    tx.execute(
-        "UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1",
-        rusqlite::params![type_name],
-    )
-    .map_err(db_err)?;
+    let rows = tx
+        .execute(
+            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1",
+            rusqlite::params![type_name],
+        )
+        .map_err(db_err)?;
+    if rows != 1 {
+        return Err(KithError::Store(format!(
+            "advance_state_counter: unknown type_name '{type_name}'"
+        )));
+    }
     let version: i64 = tx
         .query_row(
             "SELECT counter FROM state_counters WHERE type_name = ?1",
@@ -671,8 +691,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has six entries (versions 1-6), so user_version must be 6 after open.
-        assert_eq!(version, 6);
+        // MIGRATIONS has seven entries (versions 1-7), so user_version must be 7 after open.
+        assert_eq!(version, 7);
     }
 
     #[test]
@@ -708,7 +728,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 6, "migration 6 must be applied");
+        assert_eq!(v1, 7, "migration 7 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -772,7 +792,12 @@ mod tests {
             .filter(|n: &String| !n.starts_with("sqlite_"))
             .collect();
 
-        for expected in &["messages_chat_time", "messages_pending", "outbox_next"] {
+        for expected in &[
+            "messages_chat_time",
+            "messages_pending",
+            "messages_unread",
+            "outbox_next",
+        ] {
             assert!(
                 indexes.contains(&expected.to_string()),
                 "expected index '{}' to exist, found: {:?}",
@@ -783,14 +808,14 @@ mod tests {
     }
 
     #[test]
-    fn schema_v1_user_version_is_1() {
+    fn schema_user_version_after_all_migrations() {
         // Oracle: PRAGMA user_version semantics. After applying migration 1, version must be 1.
         let store = Store::open_in_memory().expect("open");
         let v: u32 = store
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 6, "migration v6 must set user_version to 6");
+        assert_eq!(v, 7, "migration v7 must set user_version to 7");
     }
 
     #[test]

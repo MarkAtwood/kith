@@ -25,7 +25,7 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use sha2::{Digest, Sha256};
 use std::net::IpAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// When set to `true`, `is_valid_fetch_host` allows loopback addresses
@@ -278,6 +278,21 @@ pub(crate) fn build_tailnet_https_client(
     Client::builder(TokioExecutor::new()).build(connector)
 }
 
+/// Process-wide singleton HTTPS client for tailnet peer blob fetches.
+///
+/// Building a `rustls::ClientConfig` on every `fetch_peer_blob` call is
+/// unnecessary overhead.  `OnceLock` initialises the client exactly once and
+/// returns a cheap `Arc::clone` on every subsequent call.
+static TAILNET_CLIENT: OnceLock<
+    Arc<Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>>>,
+> = OnceLock::new();
+
+/// Return a reference-counted handle to the shared tailnet HTTPS client,
+/// building it on the first call.
+fn tailnet_https_client() -> Arc<Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>>> {
+    Arc::clone(TAILNET_CLIENT.get_or_init(|| Arc::new(build_tailnet_https_client())))
+}
+
 // ---------------------------------------------------------------------------
 // Blob fetch
 // ---------------------------------------------------------------------------
@@ -346,8 +361,11 @@ pub(crate) async fn fetch_peer_blob(
         return Err(FetchBlobError::BlobIdInvalid);
     }
 
-    // URL-encode '/' and '+' in the content_type query parameter value.
-    let ct_encoded = content_type.replace('/', "%2F").replace('+', "%2B");
+    // Percent-encode the content_type query parameter value using the RFC 3986
+    // unreserved character set.  A naive replace of only '/' and '+' leaves
+    // '&', '=', '#', and other characters that would corrupt the query string
+    // or enable SSRF if a malicious peer supplies a crafted content_type.
+    let ct_encoded = percent_encode_path_segment(content_type);
     // Percent-encode the filename path segment: characters like '#' or '?' would
     // truncate or corrupt the URL path before it reaches the server.
     let filename_encoded = percent_encode_path_segment(filename);
@@ -357,9 +375,9 @@ pub(crate) async fn fetch_peer_blob(
 
     let fetch_timeout = Duration::from_secs((expected_size / 65536).saturating_add(30).min(300));
 
-    let client = build_tailnet_https_client();
+    let client = tailnet_https_client();
     fetch_with_https_client(
-        client,
+        &client,
         &url,
         blob_store,
         blob_id,
@@ -376,7 +394,7 @@ pub(crate) async fn fetch_peer_blob(
 /// client via the cfg(test) helper without duplicating the verification logic.
 #[allow(clippy::too_many_arguments)]
 async fn fetch_with_https_client(
-    client: Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>>,
+    client: &Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>>,
     url: &str,
     blob_store: &kith_attach::BlobStore,
     blob_id: &str,

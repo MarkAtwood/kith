@@ -281,13 +281,14 @@ impl<'a> OutboxStore<'a> {
             tx.execute(
                 "UPDATE messages \
                  SET delivery_state = ?1, delivered_at = ?2 \
-                 WHERE id = ?3",
+                 WHERE id = ?3 AND delivery_state != 'delivered'",
                 params![final_state, at, entry.message_id],
             )
             .map_err(db_err)?
         } else {
             tx.execute(
-                "UPDATE messages SET delivery_state = ?1 WHERE id = ?2",
+                "UPDATE messages SET delivery_state = ?1 \
+                 WHERE id = ?2 AND delivery_state != 'delivered'",
                 params![final_state, entry.message_id],
             )
             .map_err(db_err)?

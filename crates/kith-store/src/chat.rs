@@ -112,8 +112,12 @@ impl<'a> ChatStore<'a> {
     /// contact already exists, return it rather than creating a new one.
     pub fn find_direct_by_contact_id(&self, contact_id: &str) -> Result<Option<Chat>, KithError> {
         let row = self.conn.query_row(
-            "SELECT id, kind, contact_id, created_at, last_message_at \
-             FROM chats WHERE kind = 'direct' AND contact_id = ?1",
+            "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
+                    (SELECT COUNT(*) FROM messages m \
+                     WHERE m.chat_id = c.id \
+                       AND m.delivery_state = 'received' \
+                       AND m.read_at IS NULL) AS unread_count \
+             FROM chats c WHERE c.kind = 'direct' AND c.contact_id = ?1",
             params![contact_id],
             |row| {
                 Ok((
@@ -122,6 +126,7 @@ impl<'a> ChatStore<'a> {
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
                     row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, u32>(5)?,
                 ))
             },
         );
@@ -130,23 +135,27 @@ impl<'a> ChatStore<'a> {
             Err(e) => return Err(db_err(e)),
             Ok(_) => {}
         }
-        let (id, kind, contact_id_val, created_at_secs, last_message_at_secs) = row.unwrap();
-        let unread = self.unread_count(&id)?;
+        let (id, kind, contact_id_val, created_at_secs, last_message_at_secs, unread_count) =
+            row.unwrap();
         Ok(Some(Chat {
             id,
             kind,
             contact_id: contact_id_val,
             created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
             last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
-            unread_count: unread,
+            unread_count,
         }))
     }
 
     /// Fetch a single chat by ID, returning None if it does not exist.
     pub fn get(&self, chat_id: &str) -> Result<Option<Chat>, KithError> {
         let row = self.conn.query_row(
-            "SELECT id, kind, contact_id, created_at, last_message_at \
-             FROM chats WHERE id = ?1",
+            "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
+                    (SELECT COUNT(*) FROM messages m \
+                     WHERE m.chat_id = c.id \
+                       AND m.delivery_state = 'received' \
+                       AND m.read_at IS NULL) AS unread_count \
+             FROM chats c WHERE c.id = ?1",
             params![chat_id],
             |row| {
                 Ok((
@@ -155,6 +164,7 @@ impl<'a> ChatStore<'a> {
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
                     row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, u32>(5)?,
                 ))
             },
         );
@@ -165,8 +175,8 @@ impl<'a> ChatStore<'a> {
             Ok(_) => {}
         }
 
-        let (id, kind, contact_id, created_at_secs, last_message_at_secs) = row.unwrap();
-        let unread = self.unread_count(&id)?;
+        let (id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count) =
+            row.unwrap();
 
         Ok(Some(Chat {
             id,
@@ -174,7 +184,7 @@ impl<'a> ChatStore<'a> {
             contact_id,
             created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
             last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
-            unread_count: unread,
+            unread_count,
         }))
     }
 
@@ -243,6 +253,29 @@ impl<'a> ChatStore<'a> {
 
         let ids = stmt
             .query_map([], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok(ids)
+    }
+
+    /// List a page of chat IDs with SQL-level LIMIT and OFFSET.
+    ///
+    /// Uses the same ORDER BY as `list()`: last_message_at DESC NULLS LAST, created_at DESC.
+    /// Returns up to `limit` IDs starting at 0-based `offset`.
+    pub fn list_ids_paged(&self, limit: u32, offset: u32) -> Result<Vec<String>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id FROM chats \
+                 ORDER BY last_message_at DESC NULLS LAST, created_at DESC \
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(db_err)?;
+
+        let ids = stmt
+            .query_map(params![limit, offset], |row| row.get::<_, String>(0))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;

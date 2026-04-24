@@ -15,6 +15,16 @@ use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 
+/// Parse a state token of the form `"s-<N>"` and return `N` as an `i64`.
+///
+/// Returns `None` if the string is not in the expected format or if the
+/// numeric suffix does not parse as an `i64`.  Used for numeric comparison
+/// during Last-Event-ID replay to avoid spurious replays when the server
+/// state counter is behind the client's.
+fn parse_state_counter(s: &str) -> Option<i64> {
+    s.strip_prefix("s-").and_then(|n| n.parse().ok())
+}
+
 use crate::auth::WhoIsProvider;
 use crate::extractors::{AppState, Caller};
 
@@ -224,8 +234,14 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                         return None;
                     }
                 }
-                // Replay only if the type has advanced past the client's LEI.
-                if current_state == *lei {
+                // Replay only if the server counter is strictly ahead of the
+                // client's LEI counter.  String equality is insufficient:
+                // "s-3" != "s-5" but the client is *ahead* of the server, so
+                // replaying would send stale data.  Numeric comparison is the
+                // correct guard.
+                let server_n = parse_state_counter(&current_state);
+                let lei_n = parse_state_counter(lei);
+                if server_n <= lei_n {
                     return None;
                 }
                 let data = serde_json::json!({
@@ -256,7 +272,16 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // of any realistic JMAP workload (3 types × burst factor).  When the
     // channel is full the coalescing task blocks until the consumer drains it,
     // providing natural back-pressure; the task will not allocate further.
-    let (live_tx, live_rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(256);
+    //
+    // Channel item is `Option<Result<Event, Infallible>>`:
+    //   Some(event) — a real SSE event to forward to the client.
+    //   None        — close-signal: the live_stream must stop.
+    //
+    // `None` is only sent when `close_after_first` is true AND the batch was
+    // entirely filtered out by the type filter.  It allows `closeafter=state`
+    // to terminate the SSE connection even when no type-matching event was
+    // present in the live broadcast batch.
+    let (live_tx, live_rx) = tokio::sync::mpsc::channel::<Option<Result<Event, Infallible>>>(256);
 
     tokio::spawn(async move {
         // Reuse one HashMap across loop iterations to avoid per-batch allocation.
@@ -322,8 +347,15 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 }
             }
 
-            // If the filter removed every event in the batch, skip emission.
+            // If the filter removed every event in the batch and closeafter=state
+            // is active, send a None close-signal so the stream terminates even
+            // though no type-matching content was produced.  Without this, the
+            // take(N) combinator would wait forever for a live item that never
+            // arrives when all broadcasts are type-filtered.
             if batch.is_empty() {
+                if close_after_first {
+                    let _ = live_tx.send(None).await;
+                }
                 continue;
             }
 
@@ -346,13 +378,17 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
 
             // If the receiver end of the mpsc is gone (client disconnected),
             // send() returns Err — stop the task.
-            if live_tx.send(Ok(event)).await.is_err() {
+            if live_tx.send(Some(Ok(event))).await.is_err() {
                 break;
             }
         }
     });
 
-    let live_stream = ReceiverStream::new(live_rx);
+    // The live stream carries Option items: Some(event) is forwarded;
+    // None is a close-signal that terminates the stream.
+    let live_stream = ReceiverStream::new(live_rx)
+        .take_while(|item| item.is_some())
+        .map(|item| item.expect("Some guaranteed by take_while"));
 
     // Replay events are delivered first; the live stream follows.
     //

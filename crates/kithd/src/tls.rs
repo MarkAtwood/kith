@@ -105,7 +105,12 @@ pub fn load_or_generate_cert(
             key_file.write_all(&key_der)?;
         }
         #[cfg(not(unix))]
-        std::fs::write(key_path, &key_der)?;
+        compile_error!(
+            "kithd TLS key generation is only supported on Unix platforms. \
+             The non-Unix code path cannot restrict key file permissions to 0o600. \
+             kithd targets Linux/musl exclusively; if you are porting to a non-Unix \
+             platform, implement owner-only file permissions before removing this error."
+        );
 
         tracing::info!(
             "TLS: generated new self-signed certificate at {:?}",

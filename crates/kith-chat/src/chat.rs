@@ -486,19 +486,23 @@ impl JmapHandler for ChatQueryHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-            // Step 4: Fetch all chat IDs (ordered by lastMessageAt DESC NULLS LAST, createdAt DESC).
-            let ids = guard
+            // Step 4: Fetch a page of chat IDs with SQL-level pagination
+            // (ordered by lastMessageAt DESC NULLS LAST, createdAt DESC).
+            let offset = position.unwrap_or(0);
+            let sql_limit = limit.unwrap_or(u32::MAX);
+            let page = guard
                 .chats()
-                .list_ids()
+                .list_ids_paged(sql_limit, offset)
                 .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
-            let total = ids.len();
-
-            // Step 7: Apply pagination.
-            let skip = position.unwrap_or(0) as usize;
-            let page: Vec<String> = match limit {
-                Some(n) => ids.into_iter().skip(skip).take(n as usize).collect(),
-                None => ids.into_iter().skip(skip).collect(),
+            let total = if calculate_total {
+                guard
+                    .chats()
+                    .list_ids()
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?
+                    .len()
+            } else {
+                0
             };
 
             // Step 8: Get query state.
