@@ -69,6 +69,16 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let new_state = advance_state(self.conn)?;
+            let counter: i64 = new_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            self.conn
+                .execute(
+                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
             self.emit(new_state);
         }
         Ok(())
@@ -123,6 +133,16 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let new_state = advance_state(self.conn)?;
+            let counter: i64 = new_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            self.conn
+                .execute(
+                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
             self.emit(new_state);
         }
         Ok(())
@@ -194,6 +214,16 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let new_state = advance_state(self.conn)?;
+            let counter: i64 = new_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            self.conn
+                .execute(
+                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
             self.emit(new_state);
         }
         Ok(())
@@ -231,12 +261,18 @@ impl<'a> ContactStore<'a> {
         advance_state(self.conn)
     }
 
-    /// Return IDs of all contacts if the state has advanced since `since_state`.
+    /// Return IDs of contacts that changed after `since_state`.
     ///
-    /// Phase 1: no per-row state tracking for contacts.  Any change after
-    /// `since_state` triggers a full re-sync: all peer_user_ids are returned
-    /// as `added`.  If `since_state` is already the current state, the result
-    /// is empty.
+    /// Uses per-row `changed_at_counter` to return only contacts that were
+    /// actually modified after the given state — not a full re-sync.  Results
+    /// are ordered by `changed_at_counter ASC` so that callers applying
+    /// `maxChanges` truncation always see the oldest changes first.
+    ///
+    /// `new_state` in the result is always the current store state.  When the
+    /// caller applies `maxChanges` truncation it must use the last returned
+    /// item's counter to compute the correct `newState` for the response
+    /// (see `get_changes_since_ordered` for a form that surfaces per-item
+    /// counters directly).
     pub fn get_changes_since(&self, since_state: &str) -> Result<ChangesResult, KithError> {
         let since_counter = since_state
             .strip_prefix("s-")
@@ -260,10 +296,14 @@ impl<'a> ContactStore<'a> {
 
         let mut stmt = self
             .conn
-            .prepare_cached("SELECT peer_user_id FROM contacts ORDER BY peer_login")
+            .prepare_cached(
+                "SELECT peer_user_id FROM contacts \
+                 WHERE changed_at_counter > ?1 \
+                 ORDER BY changed_at_counter ASC",
+            )
             .map_err(db_err)?;
         let ids: Vec<String> = stmt
-            .query_map([], |row| row.get(0))
+            .query_map(params![since_counter], |row| row.get(0))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
@@ -274,6 +314,48 @@ impl<'a> ContactStore<'a> {
             destroyed: vec![],
             new_state: current_state,
         })
+    }
+
+    /// Return contacts that changed after `since_state` with per-row counters.
+    ///
+    /// Returns `(Vec<(peer_user_id, changed_at_counter)>, current_state)` ordered
+    /// by `changed_at_counter ASC`.  The caller uses the last entry's counter to
+    /// compute the correct `newState` when `maxChanges` truncation is applied
+    /// (RFC 8620 §5.6): `newState = format!("s-{last_counter}")`.
+    pub fn get_changes_since_ordered(
+        &self,
+        since_state: &str,
+    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+        let since_counter = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
+
+        let current_state = self.get_state()?;
+        let current_counter: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        if since_counter >= current_counter {
+            return Ok((vec![], current_state));
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT peer_user_id, changed_at_counter FROM contacts \
+                 WHERE changed_at_counter > ?1 \
+                 ORDER BY changed_at_counter ASC",
+            )
+            .map_err(db_err)?;
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok((rows, current_state))
     }
 }
 

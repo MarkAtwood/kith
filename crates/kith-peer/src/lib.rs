@@ -5,7 +5,7 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use kith_core::{DeliveryState, Identity, JmapError};
+use kith_core::{DeliveryState, Identity, JmapError, unix_secs_to_rfc3339};
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
@@ -1060,9 +1060,6 @@ fn is_valid_mailbox_host(host: &str) -> bool {
     }
 }
 
-// Format a Unix timestamp (seconds since epoch) as an RFC 3339 UTC string.
-use kith_core::unix_secs_to_rfc3339;
-
 // ---------------------------------------------------------------------------
 // Outbox worker
 // ---------------------------------------------------------------------------
@@ -1389,7 +1386,6 @@ mod tests {
     /// Build the args JSON for a DeliverHandler call, injecting the identity.
     fn deliver_args(
         identity: &Identity,
-        _owner_id: &str,
         msg_id: &str,
         body: &str,
     ) -> serde_json::Value {
@@ -1426,7 +1422,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_valid_message_accepted() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
@@ -1435,7 +1430,7 @@ mod tests {
             .call(
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
-                deliver_args(&peer, owner_id, &msg_id, "Hello!"),
+                deliver_args(&peer, &msg_id, "Hello!"),
                 peer.clone(),
             )
             .await;
@@ -1469,7 +1464,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_upserts_contact() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let msg_id = Ulid::new().to_string();
 
@@ -1478,7 +1472,7 @@ mod tests {
             .call(
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
-                deliver_args(&peer, owner_id, &msg_id, "Hi"),
+                deliver_args(&peer, &msg_id, "Hi"),
                 peer.clone(),
             )
             .await
@@ -1631,7 +1625,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_oversized_body_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         let oversized_body = "x".repeat(MAX_BODY_BYTES + 1);
@@ -1642,7 +1635,7 @@ mod tests {
             .call(
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
-                deliver_args(&peer, owner_id, &msg_id, &oversized_body),
+                deliver_args(&peer, &msg_id, &oversized_body),
                 peer.clone(),
             )
             .await

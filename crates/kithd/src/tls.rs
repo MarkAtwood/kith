@@ -9,6 +9,8 @@ use tokio_rustls::TlsAcceptor;
 pub enum TlsError {
     #[error("TLS I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("TLS configuration error: {0}")]
+    Config(String),
     #[error("certificate generation failed: {0}")]
     Rcgen(#[from] rcgen::Error),
     #[error("rustls error: {0}")]
@@ -42,15 +44,11 @@ pub fn load_or_generate_cert(
         } else {
             (key_path, cert_path)
         };
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!(
-                "TLS setup error: {:?} exists but {:?} does not. \
-                 Delete both files and restart to generate a new keypair.",
-                present, missing,
-            ),
-        )
-        .into());
+        return Err(TlsError::Config(format!(
+            "TLS setup error: {:?} exists but {:?} does not. \
+             Delete both files and restart to generate a new keypair.",
+            present, missing,
+        )));
     }
 
     if cert_exists && key_exists {
@@ -251,6 +249,31 @@ mod tests {
             std::fs::read(&cert_path).unwrap(),
             b"fake cert bytes",
             "surviving cert file must not be overwritten"
+        );
+
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    // Oracle: if only the key file is present (cert absent), load_or_generate_cert
+    // must return an error — not silently overwrite the surviving file.
+    #[test]
+    fn test_partial_presence_key_only_returns_error() {
+        let (cert_path, key_path) = tmp_paths("partial-key-only");
+
+        // Create only the key file; leave the cert absent.
+        std::fs::write(&key_path, b"fake key bytes").unwrap();
+
+        let result = load_or_generate_cert(&cert_path, &key_path);
+        assert!(
+            result.is_err(),
+            "expected Err when only key exists, got Ok"
+        );
+        // The key file must NOT have been overwritten.
+        assert_eq!(
+            std::fs::read(&key_path).unwrap(),
+            b"fake key bytes",
+            "surviving key file must not be overwritten"
         );
 
         let _ = std::fs::remove_file(&cert_path);

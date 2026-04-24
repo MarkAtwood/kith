@@ -327,13 +327,18 @@ fn process_update(
         || json!({"type": "invalidArguments", "description": "update patch must be an object"}),
     )?;
 
-    // RFC 8620 §5.3: unknown/unsupported patch properties must yield invalidArguments.
+    // RFC 8620 §5.3: unknown/unsupported patch properties must yield invalidProperties
+    // (a per-object SetError), not invalidArguments (a method-level error type).
+    // COUPLING: this list must stay in sync with the patchable fields of ChatContact
+    // in kith-store. If a new field is added to the Contact struct in kith-store and
+    // should be patchable via JMAP, add its JMAP name here.
     const KNOWN_UPDATE_KEYS: &[&str] = &["displayName", "blocked"];
     for key in patch_obj.keys() {
         if !KNOWN_UPDATE_KEYS.contains(&key.as_str()) {
             return Err(json!({
-                "type": "invalidArguments",
-                "description": format!("unknown or read-only property: {key}")
+                "type": "invalidProperties",
+                "description": format!("unknown or read-only property: {key}"),
+                "properties": [key]
             }));
         }
     }
@@ -461,10 +466,11 @@ impl JmapHandler for ChatContactChangesHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("store poisoned"))?;
 
-            // 4. Call get_changes_since.
-            let result = guard
+            // 4. Fetch changes with per-row counters (needed for correct newState
+            //    when maxChanges truncation occurs — RFC 8620 §5.6).
+            let (added_with_counter, current_state) = guard
                 .contacts()
-                .get_changes_since(&since_state)
+                .get_changes_since_ordered(&since_state)
                 .map_err(|e| match e {
                     KithError::Validation(_) => JmapError::state_mismatch(),
                     _ => JmapError::server_fail("store error"),
@@ -474,39 +480,34 @@ impl JmapHandler for ChatContactChangesHandler {
             drop(guard);
 
             // 6. Apply maxChanges limit (RFC 8620 §5.6).
-            let mut created = result.added;
-            let mut updated = result.updated;
-            let mut destroyed = result.destroyed;
-            let total = created.len() + updated.len() + destroyed.len();
-            let has_more = if let Some(max) = max_changes {
+            // Phase 1 contacts only ever produce "added" (no per-row update/destroy
+            // tracking), so the total is just the added count.
+            let total = added_with_counter.len();
+            let (items, has_more, new_state) = if let Some(max) = max_changes {
                 if total > max {
-                    // Truncate: fill from created, then updated, then destroyed.
-                    let mut remaining = max;
-                    let take_created = remaining.min(created.len());
-                    created.truncate(take_created);
-                    remaining -= take_created;
-                    let take_updated = remaining.min(updated.len());
-                    updated.truncate(take_updated);
-                    remaining -= take_updated;
-                    let take_destroyed = remaining.min(destroyed.len());
-                    destroyed.truncate(take_destroyed);
-                    true
+                    // Truncate to max.  newState must be the state of the last
+                    // returned change so the client can page forward correctly.
+                    let truncated = &added_with_counter[..max];
+                    let last_counter = truncated.last().map(|(_, c)| *c).unwrap_or(0);
+                    (truncated.to_vec(), true, format!("s-{last_counter}"))
                 } else {
-                    false
+                    (added_with_counter, false, current_state)
                 }
             } else {
-                false
+                (added_with_counter, false, current_state)
             };
+
+            let created: Vec<Value> = items.into_iter().map(|(id, _)| Value::String(id)).collect();
 
             // 7. Return changes response.
             Ok(json!({
                 "accountId": "a-self",
                 "oldState": since_state,
-                "newState": result.new_state,
+                "newState": new_state,
                 "hasMoreChanges": has_more,
                 "created": created,
-                "updated": updated,
-                "destroyed": destroyed,
+                "updated": [],
+                "destroyed": [],
             }))
         })
     }
@@ -1055,15 +1056,16 @@ mod tests {
             .await
             .expect("handler must succeed (errors go in notUpdated)");
 
-        // Oracle: RFC 8620 §5.3 — unknown/read-only property yields invalidArguments.
+        // Oracle: RFC 8620 §5.3 — unknown/read-only property yields invalidProperties
+        // (per-object SetError), not invalidArguments (method-level error).
         let not_updated = &result["notUpdated"];
         assert!(
             not_updated.get("uid-dave").is_some(),
             "notUpdated[uid-dave] must be present; got: {result}"
         );
         assert_eq!(
-            not_updated["uid-dave"]["type"], "invalidArguments",
-            "error type must be invalidArguments; got: {not_updated}"
+            not_updated["uid-dave"]["type"], "invalidProperties",
+            "error type must be invalidProperties (RFC 8620 §5.3); got: {not_updated}"
         );
         // Oracle: updated must be empty — the contact must not have been modified.
         assert_eq!(result["updated"], json!({}));
@@ -1126,6 +1128,77 @@ mod tests {
             created_len + updated_len + destroyed_len <= 1,
             "total returned changes must be <= maxChanges=1; got created={created_len} updated={updated_len} destroyed={destroyed_len}"
         );
+    }
+
+    // Oracle: RFC 8620 §5.6 — when maxChanges truncation occurs, newState must be
+    // the state at the last returned change, not the current store state.  A paging
+    // client uses newState as sinceState on the next call; returning the current
+    // state would cause remaining changes to be silently lost.
+    // Scenario: 3 contacts inserted (each gets counter s-1, s-2, s-3).  Paging
+    // through with maxChanges=1 must deliver all 3 and terminate cleanly.
+    #[tokio::test]
+    async fn test_contact_changes_newstate_correct_after_truncation() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            for (uid, login) in [
+                ("uid-pg1", "pg1@example.com"),
+                ("uid-pg2", "pg2@example.com"),
+                ("uid-pg3", "pg3@example.com"),
+            ] {
+                guard
+                    .contacts()
+                    .upsert(uid, login, "host.tail.ts.net", None, 1000)
+                    .unwrap();
+            }
+        }
+
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
+
+        // Page 1: maxChanges=1 from s-0 → 1 contact returned, hasMoreChanges=true.
+        let args1 = json!({"accountId": "a-self", "sinceState": "s-0", "maxChanges": 1});
+        let r1 = handler
+            .call("ChatContact/changes".to_string(), "c1".to_string(), args1)
+            .await
+            .expect("page 1 must succeed");
+        assert_eq!(r1["hasMoreChanges"], true, "page 1: hasMoreChanges; got: {r1}");
+        let c1 = r1["created"].as_array().expect("created must be array");
+        assert_eq!(c1.len(), 1, "page 1 must return exactly 1; got: {r1}");
+        let state1 = r1["newState"].as_str().expect("newState must be string").to_string();
+        // newState must NOT skip to the current state "s-3".
+        assert_ne!(state1, "s-3", "newState must not jump to current state; got {state1}");
+
+        // Page 2: sinceState=state1 → 1 more contact, hasMoreChanges=true.
+        let args2 = json!({"accountId": "a-self", "sinceState": state1, "maxChanges": 1});
+        let r2 = handler
+            .call("ChatContact/changes".to_string(), "c2".to_string(), args2)
+            .await
+            .expect("page 2 must succeed");
+        assert_eq!(r2["hasMoreChanges"], true, "page 2: hasMoreChanges; got: {r2}");
+        let c2 = r2["created"].as_array().expect("created must be array");
+        assert_eq!(c2.len(), 1, "page 2 must return exactly 1; got: {r2}");
+        let state2 = r2["newState"].as_str().expect("newState must be string").to_string();
+        assert_ne!(state2, state1, "newState must advance on page 2");
+
+        // Page 3: sinceState=state2 → last contact, hasMoreChanges=false.
+        let args3 = json!({"accountId": "a-self", "sinceState": state2, "maxChanges": 1});
+        let r3 = handler
+            .call("ChatContact/changes".to_string(), "c3".to_string(), args3)
+            .await
+            .expect("page 3 must succeed");
+        assert_eq!(r3["hasMoreChanges"], false, "page 3: no more; got: {r3}");
+        let c3 = r3["created"].as_array().expect("created must be array");
+        assert_eq!(c3.len(), 1, "page 3 must return exactly 1; got: {r3}");
+
+        // After page 3: no remaining changes.
+        let state3 = r3["newState"].as_str().expect("newState must be string").to_string();
+        let args4 = json!({"accountId": "a-self", "sinceState": state3});
+        let r4 = handler
+            .call("ChatContact/changes".to_string(), "c4".to_string(), args4)
+            .await
+            .expect("final page must succeed");
+        assert_eq!(r4["created"], json!([]), "no changes remain after full page traversal");
+        assert_eq!(r4["hasMoreChanges"], false);
     }
 
     // Oracle: RFC 8620 §5.6 — when maxChanges is present but changes are within the
