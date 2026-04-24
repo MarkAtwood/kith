@@ -224,9 +224,14 @@ impl JmapHandler for DeliverHandler {
 
             // Step 9: Idempotency check — if we've already received this sender_msg_id
             // for this chat, return the stored receivedAt without re-inserting.
-            if let Ok(Some(ref existing)) = guard
+            // The `?` propagates store errors so a transient DB failure can never
+            // silently fall through to a duplicate insert.
+            if let Some(ref existing) = guard
                 .messages()
                 .find_by_sender_msg_id(&msg.chat_id, &msg.id)
+                .map_err(|e| {
+                    JmapError::server_fail(format!("store error in idempotency check: {e}"))
+                })?
             {
                 return Ok(json!({
                     "accepted": true,
@@ -255,6 +260,18 @@ impl JmapHandler for DeliverHandler {
                 )
                 .map_err(|e| {
                     JmapError::server_fail(format!("store error inserting message: {e}"))
+                })?;
+
+            // Update the chat's last_message_at so Chat/query ordering reflects
+            // inbound messages.  Must run after the message insert so the timestamp
+            // is always >= the message's created_at.
+            guard
+                .chats()
+                .update_last_message_at(&msg.chat_id, now_unix)
+                .map_err(|e| {
+                    JmapError::server_fail(format!(
+                        "store error updating chat last_message_at: {e}"
+                    ))
                 })?;
 
             // Step 10: Upsert the contact record for this peer.
@@ -318,12 +335,27 @@ impl JmapHandler for ReceiptHandler {
         &self,
         _method_name: String,
         _call_id: String,
-        args: serde_json::Value,
+        mut args: serde_json::Value,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
         Box::pin(async move {
-            // Step a: parse args.
+            // Step a: Extract caller identity injected by the axum layer.
+            // Same protocol as DeliverHandler — identity is removed from args
+            // before parsing so it is never visible to serde.
+            let identity: Identity = {
+                let obj = args
+                    .as_object_mut()
+                    .ok_or_else(|| JmapError::invalid_arguments("args must be a JSON object"))?;
+                let raw = obj.remove("_caller_identity").ok_or_else(|| {
+                    JmapError::server_fail("caller identity not injected into args")
+                })?;
+                serde_json::from_value::<Identity>(raw).map_err(|_| {
+                    JmapError::server_fail("caller identity value could not be deserialized")
+                })?
+            };
+
+            // Step b: parse remaining args.
             let parsed: PeerReceiptArgs = serde_json::from_value(args).map_err(|e| {
                 JmapError::invalid_arguments(format!("invalid Peer/receipt arguments: {e}"))
             })?;
@@ -379,7 +411,21 @@ impl JmapHandler for ReceiptHandler {
                 return Err(JmapError::not_found());
             }
 
-            // Steps h-i: apply the state update.
+            // Step h: verify the caller is the intended recipient of this message.
+            // The chat's contact_id is the single peer authorised to send receipts
+            // for messages in this conversation.  Return not_found (not forbidden)
+            // to avoid leaking whether the message_id exists to an unauthorised caller.
+            // Group chats (contact_id = None) are not yet supported for Peer/receipt.
+            let chat = guard
+                .chats()
+                .get(&msg.chat_id)
+                .map_err(|e| JmapError::server_fail(e.to_string()))?
+                .ok_or_else(JmapError::not_found)?;
+            if chat.contact_id.as_deref() != Some(identity.user_id.as_str()) {
+                return Err(JmapError::not_found());
+            }
+
+            // Steps i-j: apply the state update.
             match parsed.kind.as_str() {
                 "delivered" => {
                     guard
@@ -1078,13 +1124,16 @@ mod tests {
         ))
     }
 
-    /// Insert a chat row via the public ChatStore API to satisfy the FK on messages.
-    fn insert_chat(store: &Arc<Mutex<Store>>, chat_id: &str) {
+    /// Insert a direct chat with a specific contact_id.
+    ///
+    /// Use this in ReceiptHandler tests so the caller-identity check can pass:
+    /// pass the same `contact_id` as the `user_id` in `_caller_identity`.
+    fn insert_chat_with_contact(store: &Arc<Mutex<Store>>, chat_id: &str, contact_id: &str) {
         let guard = store.lock().unwrap();
         guard
             .chats()
-            .create(chat_id, "direct", None, 1000)
-            .expect("insert chat");
+            .create(chat_id, "direct", Some(contact_id), 1000)
+            .expect("insert chat with contact");
     }
 
     /// Insert a message row via the public MessageStore API.
@@ -1545,15 +1594,18 @@ mod tests {
     #[tokio::test]
     async fn receipt_delivered_accepted() {
         let store = make_store();
-        insert_chat(&store, "chat-r1");
+        // contact_id must match the caller identity below.
+        insert_chat_with_contact(&store, "chat-r1", "uid-bob");
         insert_msg(&store, "msg-r1", "chat-r1", "self", &DeliveryState::Pending);
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r1",
                     "kind": "delivered",
@@ -1577,7 +1629,7 @@ mod tests {
     #[tokio::test]
     async fn receipt_read_accepted() {
         let store = make_store();
-        insert_chat(&store, "chat-r2");
+        insert_chat_with_contact(&store, "chat-r2", "uid-bob");
         insert_msg(
             &store,
             "msg-r2",
@@ -1586,12 +1638,14 @@ mod tests {
             &DeliveryState::Delivered,
         );
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r2",
                     "kind": "read",
@@ -1614,7 +1668,7 @@ mod tests {
     #[tokio::test]
     async fn receipt_for_inbound_message_returns_not_found() {
         let store = make_store();
-        insert_chat(&store, "chat-r3");
+        insert_chat_with_contact(&store, "chat-r3", "uid-peer");
         insert_msg(
             &store,
             "msg-r3",
@@ -1623,12 +1677,14 @@ mod tests {
             &DeliveryState::Received,
         );
 
+        let caller = make_identity("uid-peer");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r3",
                     "kind": "delivered",
@@ -1646,12 +1702,14 @@ mod tests {
     async fn receipt_for_nonexistent_message_returns_not_found() {
         let store = make_store();
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "does-not-exist",
                     "kind": "delivered",
@@ -1668,15 +1726,17 @@ mod tests {
     #[tokio::test]
     async fn receipt_invalid_kind_returns_invalid_arguments() {
         let store = make_store();
-        insert_chat(&store, "chat-r4");
+        insert_chat_with_contact(&store, "chat-r4", "uid-bob");
         insert_msg(&store, "msg-r4", "chat-r4", "self", &DeliveryState::Pending);
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r4",
                     "kind": "bounced",
@@ -1694,12 +1754,14 @@ mod tests {
     async fn receipt_empty_message_id_returns_invalid_arguments() {
         let store = make_store();
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "",
                     "kind": "delivered",
@@ -1716,7 +1778,7 @@ mod tests {
     #[tokio::test]
     async fn receipt_self_sender_but_received_state_returns_not_found() {
         let store = make_store();
-        insert_chat(&store, "chat-r5");
+        insert_chat_with_contact(&store, "chat-r5", "uid-bob");
         insert_msg(
             &store,
             "msg-r5",
@@ -1725,12 +1787,14 @@ mod tests {
             &DeliveryState::Received,
         );
 
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r5",
                     "kind": "delivered",
@@ -1743,21 +1807,79 @@ mod tests {
         assert_eq!(err.error_type, "notFound");
     }
 
-    // Oracle: malformed args must return invalidArguments.
+    // Oracle: malformed args (after identity extraction) must return invalidArguments.
     #[tokio::test]
     async fn receipt_malformed_args_returns_invalid_arguments() {
         let store = make_store();
+        let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
-                json!({"not": "a valid receipt"}),
+                json!({
+                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
+                    "not": "a valid receipt"
+                }),
             )
             .await;
 
         let err = result.expect_err("should return invalidArguments");
         assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: a Peer/receipt from a contact that is NOT the chat's contact_id must
+    // return notFound.  This is the core security boundary: only the peer the
+    // message was actually sent to may update its delivery state.
+    //
+    // Independent oracle: the DB has no message state change; delivery_state
+    // remains Pending — verified by reading the message after the rejected call.
+    #[tokio::test]
+    async fn receipt_wrong_contact_returns_not_found() {
+        let store = make_store();
+        // Chat belongs to uid-bob; message was sent by "self" to uid-bob.
+        insert_chat_with_contact(&store, "chat-rwc", "uid-bob");
+        insert_msg(
+            &store,
+            "msg-rwc",
+            "chat-rwc",
+            "self",
+            &DeliveryState::Pending,
+        );
+
+        // uid-eve is a valid contact but NOT the recipient of this message.
+        let eve = make_identity("uid-eve");
+        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "_caller_identity": serde_json::to_value(&eve).unwrap(),
+                    "accountId": "a-self",
+                    "messageId": "msg-rwc",
+                    "kind": "delivered",
+                    "at": "2026-04-19T00:00:00Z"
+                }),
+            )
+            .await;
+
+        let err =
+            result.expect_err("uid-eve must not be able to forge a receipt for uid-bob's message");
+        assert_eq!(
+            err.error_type, "notFound",
+            "wrong-contact rejection must return notFound"
+        );
+
+        // Independent oracle: delivery_state must still be Pending — the call must
+        // have made no state change.
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get("msg-rwc").unwrap().unwrap();
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Pending,
+            "delivery_state must remain Pending after rejected receipt"
+        );
     }
 
     // ---------------------------------------------------------------------------
@@ -2464,6 +2586,105 @@ mod tests {
             .await
             .expect("second delivery from same sender must succeed");
         assert_eq!(result["accepted"], true);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Idempotency dedup path tests
+    // Oracle: at-most-once delivery guarantee — a retransmitted Peer/deliver with
+    // the same sender msg_id must produce exactly one message row, not two.
+    // Independent oracle: message count in the DB before/after the second call.
+    // ---------------------------------------------------------------------------
+
+    // Oracle: delivering the same message_id twice must return accepted=true on
+    // both calls, return the SAME receiver-assigned id and receivedAt on the second
+    // call (idempotency), and result in exactly ONE message row in the database.
+    #[tokio::test]
+    async fn deliver_retransmit_returns_original_id_and_no_duplicate_row() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-alice");
+        let chat_id = "01JX000000000000000000IDEM1";
+        let sender_msg_id = Ulid::new().to_string();
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+
+        // First delivery.
+        let first = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_full(&peer, chat_id, &sender_msg_id, json!([])),
+            )
+            .await
+            .expect("first delivery must succeed");
+        let original_id = first["id"]
+            .as_str()
+            .expect("id must be a string")
+            .to_string();
+        let original_received_at = first["receivedAt"]
+            .as_str()
+            .expect("receivedAt must be a string")
+            .to_string();
+        assert_eq!(first["accepted"], true);
+
+        // Capture the state counter after the first delivery.
+        let state_after_first = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().expect("state after first")
+        };
+
+        // Second delivery of the exact same sender_msg_id (simulates retransmit).
+        let second = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_full(&peer, chat_id, &sender_msg_id, json!([])),
+            )
+            .await
+            .expect("retransmit must succeed (idempotent)");
+
+        // Oracle: accepted=true on both calls.
+        assert_eq!(
+            second["accepted"], true,
+            "retransmit must return accepted=true"
+        );
+
+        // Oracle: second call returns the receiver-assigned id from the FIRST call.
+        assert_eq!(
+            second["id"].as_str().expect("id must be a string"),
+            original_id,
+            "retransmit must return the original receiver-assigned id"
+        );
+
+        // Oracle: second call returns the same receivedAt.
+        assert_eq!(
+            second["receivedAt"]
+                .as_str()
+                .expect("receivedAt must be a string"),
+            original_received_at,
+            "retransmit must return the original receivedAt"
+        );
+
+        // Oracle: state counter must NOT advance on the second call.
+        let state_after_second = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().expect("state after second")
+        };
+        assert_eq!(
+            state_after_first, state_after_second,
+            "state counter must not advance for a retransmitted message"
+        );
+
+        // Oracle: exactly ONE message row exists for this sender_msg_id.
+        let guard = store.lock().unwrap();
+        let found = guard
+            .messages()
+            .find_by_sender_msg_id(chat_id, &sender_msg_id)
+            .expect("find_by_sender_msg_id must not error")
+            .expect("message must exist after both delivers");
+        assert_eq!(
+            found.id, original_id,
+            "the stored row must have the receiver-assigned id from the first delivery"
+        );
     }
 
     // ---------------------------------------------------------------------------

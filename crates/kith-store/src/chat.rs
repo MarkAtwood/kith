@@ -29,9 +29,16 @@ impl<'a> ChatStore<'a> {
     /// Create a chat with a caller-supplied ID (server-assigned ULID for owner
     /// chats, peer-supplied chatId for inbound Peer/deliver).
     ///
-    /// Idempotent: INSERT OR IGNORE means a second call with the same `chat_id`
-    /// is a no-op and returns the existing row.  State is advanced only when a
-    /// new row is actually inserted.
+    /// Idempotent: INSERT OR IGNORE means a second call is a no-op when a row
+    /// already exists.  State is advanced only when a new row is actually inserted.
+    ///
+    /// Two distinct cases trigger IGNORE:
+    /// - Same `chat_id` already exists (PRIMARY KEY conflict): `self.get(chat_id)`
+    ///   returns the existing row.  This is the Peer/deliver retry path.
+    /// - Same `contact_id` already exists with a different ULID (UNIQUE INDEX
+    ///   `chats_direct_contact` conflict): `self.get(chat_id)` returns None because
+    ///   the new ULID was never written.  We fall back to `find_direct_by_contact_id`
+    ///   to return the row that won the race.  This is the concurrent Chat/set path.
     pub fn create(
         &self,
         chat_id: &str,
@@ -53,8 +60,21 @@ impl<'a> ChatStore<'a> {
             self.emit(new_state);
         }
 
-        self.get(chat_id)?
-            .ok_or_else(|| KithError::Store(format!("chat '{}' not found after insert", chat_id)))
+        // Try by primary key first (covers PK conflict and the new-insert case).
+        if let Some(chat) = self.get(chat_id)? {
+            return Ok(chat);
+        }
+        // INSERT OR IGNORE fired due to the contact_id UNIQUE constraint: a concurrent
+        // create for the same contact won the race.  Return whichever row was written.
+        if let Some(cid) = contact_id {
+            if let Some(chat) = self.find_direct_by_contact_id(cid)? {
+                return Ok(chat);
+            }
+        }
+        Err(KithError::Store(format!(
+            "chat '{}' not found after insert",
+            chat_id
+        )))
     }
 
     /// Add a peer participant to a group chat.

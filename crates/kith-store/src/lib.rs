@@ -161,6 +161,16 @@ CREATE INDEX IF NOT EXISTS messages_sender_msg_id
     ON messages(chat_id, sender_msg_id);
 ";
 
+// V5: replace the non-unique messages_sender_msg_id index (V4) with a UNIQUE
+//     INDEX so the idempotency guarantee is enforced at the database level, not
+//     only in application logic.  SQLite does not support upgrading a non-unique
+//     index to UNIQUE in place; the old index must be dropped and recreated.
+const SCHEMA_V5: &str = "
+DROP INDEX IF EXISTS messages_sender_msg_id;
+CREATE UNIQUE INDEX messages_sender_msg_id
+    ON messages(chat_id, sender_msg_id);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -171,6 +181,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (2, SCHEMA_V2),
     (3, SCHEMA_V3),
     (4, SCHEMA_V4),
+    (5, SCHEMA_V5),
 ];
 
 impl Store {
@@ -518,8 +529,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has four entries (versions 1-4), so user_version must be 4 after open.
-        assert_eq!(version, 4);
+        // MIGRATIONS has five entries (versions 1-5), so user_version must be 5 after open.
+        assert_eq!(version, 5);
     }
 
     #[test]
@@ -555,7 +566,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 4, "migration 4 must be applied");
+        assert_eq!(v1, 5, "migration 5 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -637,7 +648,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 4, "migration v4 must set user_version to 4");
+        assert_eq!(v, 5, "migration v5 must set user_version to 5");
     }
 
     #[test]

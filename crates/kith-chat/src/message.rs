@@ -370,9 +370,17 @@ fn process_create(
     // Enqueue for peer participants.
     if let Some(peer_id) = &chat.contact_id {
         // Direct chat: single peer via contact_id.
-        if let Ok(Some(host)) = guard.contacts().get_mailbox_host(peer_id) {
-            let _ = guard.outbox().enqueue(&msg_id, peer_id, &host, now_unix);
-        }
+        // Both error cases (store error and missing host) must fail the request:
+        // a message stored as Pending with no outbox entry will never be delivered.
+        let host = guard
+            .contacts()
+            .get_mailbox_host(peer_id)
+            .map_err(|e| json!({"type": "serverFail", "description": format!("could not look up mailbox host: {e}")}))?
+            .ok_or_else(|| json!({"type": "serverFail", "description": "contact has no mailbox host — add the contact before sending"}))?;
+        guard
+            .outbox()
+            .enqueue(&msg_id, peer_id, &host, now_unix)
+            .map_err(|e| json!({"type": "serverFail", "description": format!("could not enqueue message: {e}")}))?;
     } else if chat.kind == "group" {
         // Group chat: fan out to all members in chat_members table.
         if let Ok(members) = guard.chats().get_members(&chat_id) {

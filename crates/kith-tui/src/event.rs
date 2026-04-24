@@ -585,11 +585,7 @@ fn unread_ids_from_loaded_messages(
 ///
 /// On success the set is cleared. On error the IDs are left for the next
 /// attempt; the caller should not treat a failed flush as fatal.
-async fn flush_unread_receipts(
-    http_client: &reqwest::Client,
-    api_url: &str,
-    state: &mut AppState,
-) {
+async fn flush_unread_receipts(http_client: &reqwest::Client, api_url: &str, state: &mut AppState) {
     let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
     // On error: silently leave unread_message_ids for next attempt
     if !unread.is_empty()
@@ -701,8 +697,7 @@ pub(crate) async fn handle_state_change(
                 .unwrap_or_default();
 
             // Deduplicate combined IDs — use a HashSet for O(n) membership checks.
-            let mut seen: std::collections::HashSet<String> =
-                created.iter().cloned().collect();
+            let mut seen: std::collections::HashSet<String> = created.iter().cloned().collect();
             let mut all_ids: Vec<String> = created;
             for id in updated {
                 if seen.insert(id.clone()) {
