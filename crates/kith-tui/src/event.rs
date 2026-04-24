@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Stdout;
 use std::time::Duration;
 
@@ -289,6 +289,14 @@ fn format_message_line(
     Some(sanitize_display(&format!("{hhmm} {sender_name}: {body}")))
 }
 
+/// Collects the fields extracted from a single message during `load_messages_for_chat`.
+struct MessageEntry {
+    received_at: String,
+    display_line: String,
+    msg_id: String,
+    sender_id: String,
+}
+
 /// Fetch messages for a specific chat and return three parallel VecDeques.
 ///
 /// Performs Message/query to get IDs, then Message/get to fetch content.
@@ -393,11 +401,14 @@ pub(crate) async fn load_messages_for_chat(
         }
     };
 
-    // Step C — Format each message, collecting id and senderId alongside each entry
-    // (receivedAt, display_line, message_id, sender_id)
-    let mut entries: Vec<(String, String, String, String)> = Vec::with_capacity(list.len());
+    // Step C — Format each message, collecting id and senderId alongside each entry.
+    let mut entries: Vec<MessageEntry> = Vec::with_capacity(list.len());
     for msg in list {
-        let received_at = msg.get("receivedAt").and_then(Value::as_str).unwrap_or("?");
+        let received_at = msg
+            .get("receivedAt")
+            .and_then(Value::as_str)
+            .unwrap_or("?")
+            .to_string();
         let msg_id = msg
             .get("id")
             .and_then(Value::as_str)
@@ -408,16 +419,21 @@ pub(crate) async fn load_messages_for_chat(
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        if let Some(line) = format_message_line(msg, contacts) {
-            entries.push((received_at.to_string(), line, msg_id, sender_id));
+        if let Some(display_line) = format_message_line(msg, contacts) {
+            entries.push(MessageEntry {
+                received_at,
+                display_line,
+                msg_id,
+                sender_id,
+            });
         }
     }
 
     // Step D — Sort ascending by receivedAt (oldest first)
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    let lines = entries.iter().map(|(_, l, _, _)| l.clone()).collect();
-    let msg_ids = entries.iter().map(|(_, _, id, _)| id.clone()).collect();
-    let senders = entries.iter().map(|(_, _, _, s)| s.clone()).collect();
+    entries.sort_by(|a, b| a.received_at.cmp(&b.received_at));
+    let lines = entries.iter().map(|e| e.display_line.clone()).collect();
+    let msg_ids = entries.iter().map(|e| e.msg_id.clone()).collect();
+    let senders = entries.iter().map(|e| e.sender_id.clone()).collect();
     (lines, msg_ids, senders)
 }
 
@@ -547,6 +563,44 @@ pub(crate) async fn send_read_receipts(
     Ok(())
 }
 
+/// Build the set of unread message IDs from a freshly loaded message list.
+///
+/// An unread message is one whose sender is not `"self"` and whose id is
+/// non-empty. `ids` and `senders` must be the same length (they are parallel
+/// VecDeques returned by `load_messages_for_chat`).
+fn unread_ids_from_loaded_messages(
+    ids: &VecDeque<String>,
+    senders: &VecDeque<String>,
+) -> HashSet<String> {
+    senders
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.as_str() != "self")
+        .map(|(i, _)| ids[i].clone())
+        .filter(|id| !id.is_empty())
+        .collect()
+}
+
+/// Attempt to flush all pending unread receipts in `state.unread_message_ids`.
+///
+/// On success the set is cleared. On error the IDs are left for the next
+/// attempt; the caller should not treat a failed flush as fatal.
+async fn flush_unread_receipts(
+    http_client: &reqwest::Client,
+    api_url: &str,
+    state: &mut AppState,
+) {
+    let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
+    // On error: silently leave unread_message_ids for next attempt
+    if !unread.is_empty()
+        && send_read_receipts(http_client, api_url, &unread)
+            .await
+            .is_ok()
+    {
+        state.unread_message_ids.clear();
+    }
+}
+
 /// Handle a single [`StateChange`] event received from the SSE channel.
 ///
 /// On a "Message" state change: calls `Message/changes` to find new/updated
@@ -646,10 +700,12 @@ pub(crate) async fn handle_state_change(
                 })
                 .unwrap_or_default();
 
-            // Deduplicate combined IDs
+            // Deduplicate combined IDs — use a HashSet for O(n) membership checks.
+            let mut seen: std::collections::HashSet<String> =
+                created.iter().cloned().collect();
             let mut all_ids: Vec<String> = created;
             for id in updated {
-                if !all_ids.contains(&id) {
+                if seen.insert(id.clone()) {
                     all_ids.push(id);
                 }
             }
@@ -782,23 +838,10 @@ pub async fn run(
             load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
         state.messages = msgs;
         state.message_ids = ids;
-        state.message_senders = senders.clone();
-        state.unread_message_ids = senders
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.as_str() != "self")
-            .map(|(i, _)| state.message_ids[i].clone())
-            .filter(|id| !id.is_empty())
-            .collect();
-        let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
-        // On error: silently leave unread_message_ids for next attempt
-        if !unread.is_empty()
-            && send_read_receipts(&http_client, &api_url, &unread)
-                .await
-                .is_ok()
-        {
-            state.unread_message_ids.clear();
-        }
+        state.message_senders = senders;
+        state.unread_message_ids =
+            unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+        flush_unread_receipts(&http_client, &api_url, state).await;
         state.scroll_offset = 0;
     }
 
@@ -874,23 +917,10 @@ pub async fn run(
                     load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
                 state.messages = msgs;
                 state.message_ids = ids;
-                state.message_senders = senders.clone();
-                state.unread_message_ids = senders
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| s.as_str() != "self")
-                    .map(|(i, _)| state.message_ids[i].clone())
-                    .filter(|id| !id.is_empty())
-                    .collect();
-                let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
-                // On error: silently leave unread_message_ids for next attempt
-                if !unread.is_empty()
-                    && send_read_receipts(&http_client, &api_url, &unread)
-                        .await
-                        .is_ok()
-                {
-                    state.unread_message_ids.clear();
-                }
+                state.message_senders = senders;
+                state.unread_message_ids =
+                    unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+                flush_unread_receipts(&http_client, &api_url, state).await;
                 state.scroll_offset = 0;
             }
             prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
@@ -1422,23 +1452,10 @@ mod tests {
                 load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
             state.messages = msgs;
             state.message_ids = ids;
-            state.message_senders = senders.clone();
-            state.unread_message_ids = senders
-                .iter()
-                .enumerate()
-                .filter(|(_, s)| s.as_str() != "self")
-                .map(|(i, _)| state.message_ids[i].clone())
-                .filter(|id| !id.is_empty())
-                .collect();
-            let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
-            if !unread.is_empty() {
-                if send_read_receipts(&http_client, &api_url, &unread)
-                    .await
-                    .is_ok()
-                {
-                    state.unread_message_ids.clear();
-                }
-            }
+            state.message_senders = senders;
+            state.unread_message_ids =
+                unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+            flush_unread_receipts(&http_client, &api_url, &mut state).await;
             state.message_state = "s-4".to_string(); // set from Message/get state field
             state.scroll_offset = 0;
         }
