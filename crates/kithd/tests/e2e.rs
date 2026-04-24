@@ -656,3 +656,138 @@ async fn peer_deliver_sender_mismatch_rejected() {
          (before={state_before}, after={state_after})"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 7: Peer/deliver where chatId belongs to a different contact → rejected
+//
+// Oracle: the chatId-contact ownership check in DeliverHandler rejects a
+// peer that tries to inject a message into a chat that belongs to a different
+// contact.  This test exercises the full HTTP → Caller extractor →
+// _caller_identity → DeliverHandler path, not just the handler in isolation.
+//
+// Independent oracle: the message state counter must be unchanged, proving
+// no database write occurred before the check fired.
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn peer_deliver_chatid_contact_mismatch_rejected() {
+    const PEER_ALICE_ID: &str = "uid-peer-alice-e2e";
+    const PEER_ALICE_LOGIN: &str = "alice@peer.example.com";
+    const PEER_BOB_ID: &str = "uid-peer-bob-e2e";
+    const PEER_BOB_LOGIN: &str = "bob@peer.example.com";
+
+    // App is configured to identify every incoming connection as Alice.
+    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+        PEER_ALICE_ID,
+        PEER_ALICE_LOGIN,
+    ))));
+
+    // Register both Alice and Bob as contacts so Role::Peer is assigned.
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(
+            PEER_ALICE_ID,
+            PEER_ALICE_LOGIN,
+            "alice-kith.tail.ts.net",
+            None,
+            1_000_000,
+        )
+        .expect("upsert alice must succeed");
+
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(
+            PEER_BOB_ID,
+            PEER_BOB_LOGIN,
+            "bob-kith.tail.ts.net",
+            None,
+            1_000_001,
+        )
+        .expect("upsert bob must succeed");
+
+    // Pre-create a direct chat belonging to Bob (contact_id = PEER_BOB_ID).
+    let bob_chat_id = "chat-owned-by-bob-e2e";
+    store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .chats()
+        .create(bob_chat_id, "direct", Some(PEER_BOB_ID), 1_000_002)
+        .expect("pre-create Bob's chat must succeed");
+
+    // Read message state counter before the request.
+    let state_before = store
+        .lock()
+        .expect("store lock must not be poisoned")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed on a fresh store");
+
+    // Alice attempts to deliver into Bob's chat.
+    let msg_id = ulid::Ulid::new().to_string();
+    let request_body = serde_json::json!({
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+        "methodCalls": [["Peer/deliver", {
+            "accountId": "a-self",
+            "message": {
+                "id": msg_id,
+                "chatId": bob_chat_id,
+                "senderUserId": PEER_ALICE_ID,
+                "body": "Alice injecting into Bob's chat",
+                "bodyType": "text/plain",
+                "sentAt": "2026-01-01T00:00:00Z"
+            }
+        }, "d0"]]
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/jmap/api")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+
+    // RFC 8620 §3: method-level errors always produce HTTP 200.
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "method-level error must produce HTTP 200"
+    );
+
+    let body = body_string(resp).await;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("jmap response must be valid JSON");
+
+    let method_responses = json["methodResponses"]
+        .as_array()
+        .expect("methodResponses must be an array");
+    assert!(
+        !method_responses.is_empty(),
+        "methodResponses must not be empty; body: {body}"
+    );
+
+    // Oracle: chatId-contact mismatch → "invalidArguments".
+    assert_eq!(
+        method_responses[0][1]["type"].as_str(),
+        Some("invalidArguments"),
+        "chatId-contact mismatch must produce 'invalidArguments'; body: {body}"
+    );
+
+    // Oracle: state counter must be unchanged — no message was written.
+    let state_after = store
+        .lock()
+        .expect("store lock must not be poisoned after oneshot")
+        .messages()
+        .get_state()
+        .expect("get_state must succeed after request");
+
+    assert_eq!(
+        state_before, state_after,
+        "message state counter must be unchanged after chatId mismatch rejection \
+         (before={state_before}, after={state_after})"
+    );
+}

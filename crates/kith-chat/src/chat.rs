@@ -268,12 +268,11 @@ impl JmapHandler for ChatSetHandler {
 
                     // Step 4f: Create or reuse.
                     let chat = if let Some(existing_chat) = existing {
-                        // Already exists — report as updated rather than created.
+                        // RFC 8620 §5.3: already exists → notCreated / alreadyExists.
                         drop(guard);
-                        created.insert(
-                            client_id.clone(),
-                            serde_json::to_value(&existing_chat)
-                                .map_err(|e| JmapError::server_fail(e.to_string()))?,
+                        not_created.insert(
+                            client_id,
+                            json!({"type": "alreadyExists", "existingId": existing_chat.id}),
                         );
                         continue;
                     } else {
@@ -927,6 +926,79 @@ mod tests {
             json!(chat_id_2),
             "position=1 limit=1 must return chat_id_2; got: {}",
             ids[0]
+        );
+    }
+
+    // Oracle: Chat/set create for a contact that already has a direct chat must return
+    // notCreated/alreadyExists per RFC 8620 §5.3, not the existing chat in `created`.
+    // The existingId field must contain the ID of the already-existing chat.
+    #[tokio::test]
+    async fn test_chat_set_create_duplicate_returns_not_created_already_exists() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let contact_peer_user_id = "uid-bob";
+
+        upsert_contact(&store, contact_peer_user_id);
+
+        let handler = ChatSetHandler::new(Arc::clone(&store), owner_id.to_string());
+
+        // First create — must succeed.
+        let first_result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": { "c0": {"contactId": contact_peer_user_id} }
+                }),
+            )
+            .await
+            .expect("first Chat/set create must succeed");
+
+        let existing_id = first_result["created"]["c0"]["id"]
+            .as_str()
+            .expect("first create must return an id")
+            .to_string();
+        assert!(!existing_id.is_empty());
+
+        // Second create for the same contact — must be notCreated/alreadyExists.
+        let second_result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c1".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": { "c1": {"contactId": contact_peer_user_id} }
+                }),
+            )
+            .await
+            .expect("second Chat/set must succeed (method-level, not HTTP-level error)");
+
+        // Oracle: RFC 8620 §5.3 — duplicate must go to notCreated, not created.
+        let created = second_result["created"]
+            .as_object()
+            .expect("created must be object");
+        assert!(
+            !created.contains_key("c1"),
+            "duplicate create must NOT appear in created; got: {created:?}"
+        );
+
+        let not_created = second_result["notCreated"]
+            .as_object()
+            .expect("notCreated must be object");
+        assert!(
+            not_created.contains_key("c1"),
+            "duplicate create must appear in notCreated; got: {not_created:?}"
+        );
+        assert_eq!(
+            not_created["c1"]["type"], "alreadyExists",
+            "error type must be alreadyExists; got: {:?}",
+            not_created["c1"]
+        );
+        assert_eq!(
+            not_created["c1"]["existingId"], existing_id,
+            "existingId must point to the original chat; got: {:?}",
+            not_created["c1"]
         );
     }
 }

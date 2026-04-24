@@ -216,7 +216,20 @@ impl JmapHandler for DeliverHandler {
                         })?;
                 }
                 Some(existing) => {
-                    if existing.contact_id.as_deref() != Some(identity.user_id.as_str()) {
+                    let sender_permitted = match existing.contact_id.as_deref() {
+                        // Direct chat: sender must be the contact.
+                        Some(cid) => cid == identity.user_id.as_str(),
+                        // Group chat: sender must be in chat_members.
+                        None => guard
+                            .chats()
+                            .get_members(&msg.chat_id)
+                            .map_err(|e| {
+                                JmapError::server_fail(format!("store error fetching members: {e}"))
+                            })?
+                            .iter()
+                            .any(|m| m == identity.user_id.as_str()),
+                    };
+                    if !sender_permitted {
                         return Err(JmapError::invalid_arguments("chatId sender mismatch"));
                     }
                 }
@@ -3166,5 +3179,116 @@ mod tests {
         assert_eq!(args["kind"], "read");
         assert_eq!(args["at"], "2026-04-19T12:00:00Z");
         assert_eq!(req["methodCalls"][0][2], "0");
+    }
+
+    // ---------------------------------------------------------------------------
+    // Group chat Peer/deliver authorization tests
+    // Oracle: KITH-orvy.7 — group chats store contact_id=NULL; authorization
+    // must check chat_members, not contact_id, for these chats.
+    // ---------------------------------------------------------------------------
+
+    // Oracle: a member of a group chat (in chat_members) must be allowed to deliver.
+    #[tokio::test]
+    async fn deliver_group_chat_member_allowed() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let alice = make_identity("uid-alice");
+        let group_chat_id = "group-chat-01";
+
+        // Pre-create a group chat (contact_id = NULL) and add Alice as a member.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create(group_chat_id, "group", None, 1000)
+                .expect("create group chat");
+            guard
+                .chats()
+                .add_member(group_chat_id, &alice.user_id)
+                .expect("add alice as member");
+        }
+
+        let msg_id = Ulid::new().to_string();
+        let identity_json = serde_json::to_value(&alice).unwrap();
+        let args = json!({
+            "_caller_identity": identity_json,
+            "accountId": "a-self",
+            "message": {
+                "id": msg_id,
+                "chatId": group_chat_id,
+                "senderUserId": alice.user_id,
+                "body": "Hello group",
+                "bodyType": "text/plain",
+                "sentAt": "2026-04-19T12:00:00Z",
+            }
+        });
+
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let result = handler
+            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .await
+            .expect("group chat member must be allowed to deliver");
+
+        assert_eq!(
+            result["accepted"], true,
+            "accepted must be true for a group member"
+        );
+    }
+
+    // Oracle: a non-member attempting Peer/deliver into a group chat must be rejected
+    // with invalidArguments ("chatId sender mismatch"), and no message must be stored.
+    #[tokio::test]
+    async fn deliver_group_chat_non_member_rejected() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let alice = make_identity("uid-alice");
+        let bob = make_identity("uid-bob");
+        let group_chat_id = "group-chat-02";
+
+        // Pre-create a group chat with only Alice as a member; Bob is not in it.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create(group_chat_id, "group", None, 1000)
+                .expect("create group chat");
+            guard
+                .chats()
+                .add_member(group_chat_id, &alice.user_id)
+                .expect("add alice as member");
+        }
+
+        let msg_id = Ulid::new().to_string();
+        let identity_json = serde_json::to_value(&bob).unwrap();
+        let args = json!({
+            "_caller_identity": identity_json,
+            "accountId": "a-self",
+            "message": {
+                "id": msg_id,
+                "chatId": group_chat_id,
+                "senderUserId": bob.user_id,
+                "body": "Bob injecting into group",
+                "bodyType": "text/plain",
+                "sentAt": "2026-04-19T12:00:00Z",
+            }
+        });
+
+        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let err = handler
+            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .await
+            .expect_err("non-member must be rejected");
+
+        assert_eq!(
+            err.error_type, "invalidArguments",
+            "non-member group chat deliver must return invalidArguments"
+        );
+
+        // Oracle: no message stored.
+        let guard = store.lock().unwrap();
+        assert!(
+            guard.messages().get(&msg_id).unwrap().is_none(),
+            "no message must be stored on non-member group chat delivery attempt"
+        );
     }
 }

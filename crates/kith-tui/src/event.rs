@@ -268,6 +268,7 @@ fn format_message_line(
     msg: &serde_json::Value,
     contacts: &std::collections::HashMap<String, String>,
 ) -> Option<String> {
+    // receivedAt is required; absence silently drops the message from display.
     let received_at = msg.get("receivedAt").and_then(serde_json::Value::as_str)?;
     let hhmm = received_at.get(11..16).unwrap_or("??:??");
     let sender_id = msg
@@ -297,24 +298,28 @@ struct MessageEntry {
     sender_id: String,
 }
 
-/// Fetch messages for a specific chat and return three parallel VecDeques.
+/// Named return type for `load_messages_for_chat`.
+///
+/// All three deques are sorted oldest-first and are always the same length.
+#[derive(Default)]
+pub(crate) struct LoadedMessages {
+    pub display_lines: VecDeque<String>,
+    pub message_ids: VecDeque<String>,
+    pub sender_ids: VecDeque<String>,
+}
+
+/// Fetch messages for a specific chat.
 ///
 /// Performs Message/query to get IDs, then Message/get to fetch content.
-/// Returns three empty VecDeques on any error or if the chat has no messages.
-/// All three deques are sorted oldest-first (ascending receivedAt) and are
+/// Returns an empty `LoadedMessages` on any error or if the chat has no messages.
+/// The three deques are sorted oldest-first (ascending receivedAt) and are
 /// always the same length.
-///
-/// Returns `(display_lines, message_ids, sender_ids)`.
 pub(crate) async fn load_messages_for_chat(
     http_client: &reqwest::Client,
     api_url: &str,
     chat_id: &str,
     contacts: &std::collections::HashMap<String, String>,
-) -> (
-    std::collections::VecDeque<String>,
-    std::collections::VecDeque<String>,
-    std::collections::VecDeque<String>,
-) {
+) -> LoadedMessages {
     // Step A — Message/query
     let query_req = JmapRequest {
         using: vec![
@@ -332,11 +337,7 @@ pub(crate) async fn load_messages_for_chat(
         Ok(r) => r,
         Err(e) => {
             eprintln!("kith-tui: Message/query failed: {e}");
-            return (
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-            );
+            return LoadedMessages::default();
         }
     };
 
@@ -353,11 +354,7 @@ pub(crate) async fn load_messages_for_chat(
         .unwrap_or_default();
 
     if ids.is_empty() {
-        return (
-            std::collections::VecDeque::new(),
-            std::collections::VecDeque::new(),
-            std::collections::VecDeque::new(),
-        );
+        return LoadedMessages::default();
     }
 
     // Step B — Message/get
@@ -377,11 +374,7 @@ pub(crate) async fn load_messages_for_chat(
         Ok(r) => r,
         Err(e) => {
             eprintln!("kith-tui: Message/get failed: {e}");
-            return (
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-            );
+            return LoadedMessages::default();
         }
     };
 
@@ -392,13 +385,7 @@ pub(crate) async fn load_messages_for_chat(
         .and_then(Value::as_array)
     {
         Some(l) => l,
-        None => {
-            return (
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-                std::collections::VecDeque::new(),
-            )
-        }
+        None => return LoadedMessages::default(),
     };
 
     // Step C — Format each message, collecting id and senderId alongside each entry.
@@ -429,12 +416,16 @@ pub(crate) async fn load_messages_for_chat(
         }
     }
 
-    // Step D — Sort ascending by receivedAt (oldest first)
+    // Step D — Sort ascending by receivedAt (oldest first), then move fields
+    // into the return struct in a single pass (no clone needed).
     entries.sort_by(|a, b| a.received_at.cmp(&b.received_at));
-    let lines = entries.iter().map(|e| e.display_line.clone()).collect();
-    let msg_ids = entries.iter().map(|e| e.msg_id.clone()).collect();
-    let senders = entries.iter().map(|e| e.sender_id.clone()).collect();
-    (lines, msg_ids, senders)
+    let mut loaded = LoadedMessages::default();
+    for e in entries {
+        loaded.display_lines.push_back(e.display_line);
+        loaded.message_ids.push_back(e.msg_id);
+        loaded.sender_ids.push_back(e.sender_id);
+    }
+    loaded
 }
 
 /// Send a new message to the given chat via JMAP Message/set create.
@@ -574,9 +565,9 @@ fn unread_ids_from_loaded_messages(
 ) -> HashSet<String> {
     senders
         .iter()
-        .enumerate()
-        .filter(|(_, s)| s.as_str() != "self")
-        .map(|(i, _)| ids[i].clone())
+        .zip(ids.iter())
+        .filter(|(s, _)| s.as_str() != "self")
+        .map(|(_, id)| id.clone())
         .filter(|id| !id.is_empty())
         .collect()
 }
@@ -587,11 +578,11 @@ fn unread_ids_from_loaded_messages(
 /// attempt; the caller should not treat a failed flush as fatal.
 async fn flush_unread_receipts(http_client: &reqwest::Client, api_url: &str, state: &mut AppState) {
     let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
-    // On error: silently leave unread_message_ids for next attempt
-    if !unread.is_empty()
-        && send_read_receipts(http_client, api_url, &unread)
-            .await
-            .is_ok()
+    // send_read_receipts is a no-op on empty input; no need to guard here.
+    // On error: silently leave unread_message_ids for next attempt.
+    if send_read_receipts(http_client, api_url, &unread)
+        .await
+        .is_ok()
     {
         state.unread_message_ids.clear();
     }
@@ -656,12 +647,12 @@ pub(crate) async fn handle_state_change(
                 if error_type == "stateMismatch" {
                     if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
                         // Reload full message list for current chat; silently skipped if no chats loaded.
-                        let (msgs, ids, senders) =
+                        let loaded =
                             load_messages_for_chat(http_client, api_url, &chat_id, &state.contacts)
                                 .await;
-                        state.messages = msgs;
-                        state.message_ids = ids;
-                        state.message_senders = senders;
+                        state.messages = loaded.display_lines;
+                        state.message_ids = loaded.message_ids;
+                        state.message_senders = loaded.sender_ids;
                     }
                     state.message_state = sc.new_state.clone();
                 } else {
@@ -829,11 +820,11 @@ pub async fn run(
             return Ok(());
         };
         let chat_id = chat_id.clone();
-        let (msgs, ids, senders) =
+        let loaded =
             load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
-        state.messages = msgs;
-        state.message_ids = ids;
-        state.message_senders = senders;
+        state.messages = loaded.display_lines;
+        state.message_ids = loaded.message_ids;
+        state.message_senders = loaded.sender_ids;
         state.unread_message_ids =
             unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
         flush_unread_receipts(&http_client, &api_url, state).await;
@@ -908,11 +899,11 @@ pub async fn run(
             if let Some(chat_id) = state.chat_ids.get(state.selected_chat) {
                 // Reload messages for the newly selected chat.
                 let chat_id = chat_id.clone();
-                let (msgs, ids, senders) =
+                let loaded =
                     load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
-                state.messages = msgs;
-                state.message_ids = ids;
-                state.message_senders = senders;
+                state.messages = loaded.display_lines;
+                state.message_ids = loaded.message_ids;
+                state.message_senders = loaded.sender_ids;
                 state.unread_message_ids =
                     unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
                 flush_unread_receipts(&http_client, &api_url, state).await;
@@ -1122,8 +1113,8 @@ mod tests {
         let mut contacts = HashMap::new();
         contacts.insert("c-1".to_string(), "Alice".to_string());
 
-        let (msgs, _, _) =
-            load_messages_for_chat(&http_client, &api_url, "chat-abc", &contacts).await;
+        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-abc", &contacts).await;
+        let msgs = loaded.display_lines;
 
         // Oracle: derived from mock data above — HH:MM from receivedAt[11..16]
         assert_eq!(msgs.len(), 2);
@@ -1159,10 +1150,12 @@ mod tests {
         let http_client = reqwest::Client::new();
         let contacts = HashMap::new();
 
-        let (msgs, _, _) =
-            load_messages_for_chat(&http_client, &api_url, "chat-xyz", &contacts).await;
+        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-xyz", &contacts).await;
 
-        assert!(msgs.is_empty(), "empty query must return empty VecDeque");
+        assert!(
+            loaded.display_lines.is_empty(),
+            "empty query must return empty VecDeque"
+        );
         // Verify the mock was called exactly once (no second Message/get call)
         // wiremock verifies unused mocks by default, so not mounting a Message/get mock
         // proves no second call was made.
@@ -1259,9 +1252,10 @@ mod tests {
         handle_state_change(&http_client, api_url, &sc, &mut state).await;
 
         assert_eq!(state.message_state, "s-5", "message_state must not change");
-        assert!(
-            !state.messages.is_empty() || state.messages.is_empty(),
-            "no panic"
+        assert_eq!(
+            state.messages.len(),
+            crate::app::AppState::new().messages.len(),
+            "messages must be unchanged for unknown type"
         );
     }
 
@@ -1443,11 +1437,11 @@ mod tests {
 
         // Step 2+3: initial message load (+ step 3: send_read_receipts for inbound m-init)
         if let Some(chat_id) = state.chat_ids.first().cloned() {
-            let (msgs, ids, senders) =
+            let loaded =
                 load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
-            state.messages = msgs;
-            state.message_ids = ids;
-            state.message_senders = senders;
+            state.messages = loaded.display_lines;
+            state.message_ids = loaded.message_ids;
+            state.message_senders = loaded.sender_ids;
             state.unread_message_ids =
                 unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
             flush_unread_receipts(&http_client, &api_url, &mut state).await;
