@@ -111,9 +111,12 @@ pub fn load_or_generate_cert(
         let cert_der: Vec<u8> = cert.der().to_vec();
         let key_der: Vec<u8> = signing_key.serialize_der();
 
-        std::fs::write(cert_path, &cert_der)?;
-
-        // Create the key file with mode 0o600 atomically before writing secret bytes.
+        // Write key first (mode 0o600) before the cert.  If the key write
+        // fails nothing is on disk and the next startup regenerates cleanly.
+        // If the subsequent cert write fails, the partial-presence check on
+        // the next startup detects key-without-cert and requires the operator
+        // to delete both files — the same safe-stop as the reverse ordering,
+        // but without leaving a private key stranded.
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -125,6 +128,8 @@ pub fn load_or_generate_cert(
                 .open(key_path)?;
             key_file.write_all(&key_der)?;
         }
+
+        std::fs::write(cert_path, &cert_der)?;
         #[cfg(not(unix))]
         compile_error!(
             "kithd TLS key generation is only supported on Unix platforms. \
@@ -265,10 +270,7 @@ mod tests {
         std::fs::write(&key_path, b"fake key bytes").unwrap();
 
         let result = load_or_generate_cert(&cert_path, &key_path);
-        assert!(
-            result.is_err(),
-            "expected Err when only key exists, got Ok"
-        );
+        assert!(result.is_err(), "expected Err when only key exists, got Ok");
         // The key file must NOT have been overwritten.
         assert_eq!(
             std::fs::read(&key_path).unwrap(),

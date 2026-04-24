@@ -177,7 +177,7 @@ fn probe_https_client() -> Arc<
 /// An unbracketed IPv6 address like "fd7a::1" produces an invalid URL
 /// because the colons are ambiguous with the port separator.
 pub(crate) fn probe_url(ip: &str, port: u16) -> String {
-    if ip.contains(':') {
+    if ip.contains(':') && !ip.starts_with('[') {
         format!("https://[{}]:{}/.well-known/jmap", ip, port)
     } else {
         format!("https://{}:{}/.well-known/jmap", ip, port)
@@ -526,6 +526,22 @@ mod tests {
         assert_eq!(
             probe_url("127.0.0.1", 4430),
             "https://127.0.0.1:4430/.well-known/jmap"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // probe_url_pre_bracketed_ipv6_not_double_bracketed
+    // Oracle: RFC 3986 §3.2.2 — an input that is already bracketed (e.g.
+    // "[fd7a::1]") must pass through unchanged.  Without the
+    // `!ip.starts_with('[')` guard, `ip.contains(':')` is true for the
+    // inner colon and the address gets double-bracketed:
+    // "https://[[fd7a::1]]:4430/..." (invalid URL).
+    // -----------------------------------------------------------------------
+    #[test]
+    fn probe_url_pre_bracketed_ipv6_not_double_bracketed() {
+        assert_eq!(
+            probe_url("[fd7a::1]", 4430),
+            "https://[fd7a::1]:4430/.well-known/jmap"
         );
     }
 }

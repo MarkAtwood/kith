@@ -487,9 +487,15 @@ impl JmapHandler for ChatContactChangesHandler {
                 if total > max {
                     // Truncate to max.  newState must be the state of the last
                     // returned change so the client can page forward correctly.
+                    // RFC 8620 §5.6: newState must never be less than sinceState.
+                    // When max=0 the truncated slice is empty and there is no last
+                    // item; use sinceState verbatim so the client does not regress.
                     let truncated = &added_with_counter[..max];
-                    let last_counter = truncated.last().map(|(_, c)| *c).unwrap_or(0);
-                    (truncated.to_vec(), true, format!("s-{last_counter}"))
+                    let new_state = truncated
+                        .last()
+                        .map(|(_, c)| format!("s-{c}"))
+                        .unwrap_or_else(|| since_state.clone());
+                    (truncated.to_vec(), true, new_state)
                 } else {
                     (added_with_counter, false, current_state)
                 }
@@ -1161,12 +1167,21 @@ mod tests {
             .call("ChatContact/changes".to_string(), "c1".to_string(), args1)
             .await
             .expect("page 1 must succeed");
-        assert_eq!(r1["hasMoreChanges"], true, "page 1: hasMoreChanges; got: {r1}");
+        assert_eq!(
+            r1["hasMoreChanges"], true,
+            "page 1: hasMoreChanges; got: {r1}"
+        );
         let c1 = r1["created"].as_array().expect("created must be array");
         assert_eq!(c1.len(), 1, "page 1 must return exactly 1; got: {r1}");
-        let state1 = r1["newState"].as_str().expect("newState must be string").to_string();
+        let state1 = r1["newState"]
+            .as_str()
+            .expect("newState must be string")
+            .to_string();
         // newState must NOT skip to the current state "s-3".
-        assert_ne!(state1, "s-3", "newState must not jump to current state; got {state1}");
+        assert_ne!(
+            state1, "s-3",
+            "newState must not jump to current state; got {state1}"
+        );
 
         // Page 2: sinceState=state1 → 1 more contact, hasMoreChanges=true.
         let args2 = json!({"accountId": "a-self", "sinceState": state1, "maxChanges": 1});
@@ -1174,10 +1189,16 @@ mod tests {
             .call("ChatContact/changes".to_string(), "c2".to_string(), args2)
             .await
             .expect("page 2 must succeed");
-        assert_eq!(r2["hasMoreChanges"], true, "page 2: hasMoreChanges; got: {r2}");
+        assert_eq!(
+            r2["hasMoreChanges"], true,
+            "page 2: hasMoreChanges; got: {r2}"
+        );
         let c2 = r2["created"].as_array().expect("created must be array");
         assert_eq!(c2.len(), 1, "page 2 must return exactly 1; got: {r2}");
-        let state2 = r2["newState"].as_str().expect("newState must be string").to_string();
+        let state2 = r2["newState"]
+            .as_str()
+            .expect("newState must be string")
+            .to_string();
         assert_ne!(state2, state1, "newState must advance on page 2");
 
         // Page 3: sinceState=state2 → last contact, hasMoreChanges=false.
@@ -1191,13 +1212,20 @@ mod tests {
         assert_eq!(c3.len(), 1, "page 3 must return exactly 1; got: {r3}");
 
         // After page 3: no remaining changes.
-        let state3 = r3["newState"].as_str().expect("newState must be string").to_string();
+        let state3 = r3["newState"]
+            .as_str()
+            .expect("newState must be string")
+            .to_string();
         let args4 = json!({"accountId": "a-self", "sinceState": state3});
         let r4 = handler
             .call("ChatContact/changes".to_string(), "c4".to_string(), args4)
             .await
             .expect("final page must succeed");
-        assert_eq!(r4["created"], json!([]), "no changes remain after full page traversal");
+        assert_eq!(
+            r4["created"],
+            json!([]),
+            "no changes remain after full page traversal"
+        );
         assert_eq!(r4["hasMoreChanges"], false);
     }
 
@@ -1235,6 +1263,52 @@ mod tests {
             created.iter().any(|v| v == "uid-y1"),
             "uid-y1 must appear in created; got: {created:?}"
         );
+    }
+
+    // Oracle: RFC 8620 §5.6 — maxChanges=0 must not regress newState below sinceState.
+    // When the client sends maxChanges=0 and at least one change is pending,
+    // the server must return hasMoreChanges=true and newState == sinceState
+    // (no progress was made, so the state must not move backwards).
+    #[tokio::test]
+    async fn test_contact_changes_max_changes_zero_does_not_regress_state() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .contacts()
+                .upsert("uid-r1", "r1@example.com", "host.tail.ts.net", None, 1000)
+                .unwrap();
+            guard
+                .contacts()
+                .upsert("uid-r2", "r2@example.com", "host.tail.ts.net", None, 1000)
+                .unwrap();
+        }
+        // sinceState "s-1" is behind current state (s-2).
+        let since_state = "s-1".to_string();
+
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "sinceState": since_state,
+            "maxChanges": 0
+        });
+        let result = handler
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        // Oracle: hasMoreChanges=true because there are pending changes.
+        assert_eq!(
+            result["hasMoreChanges"], true,
+            "hasMoreChanges must be true with pending changes and maxChanges=0; got: {result}"
+        );
+        // Oracle: newState must equal sinceState — no progress, no regression.
+        assert_eq!(
+            result["newState"], since_state,
+            "newState must not be less than sinceState when maxChanges=0; got: {result}"
+        );
+        // Oracle: created must be empty (zero items returned).
+        assert_eq!(result["created"], json!([]));
     }
 
     // Oracle: RFC 8620 Contact/query pagination — position=1, limit=2 on a 3-contact
