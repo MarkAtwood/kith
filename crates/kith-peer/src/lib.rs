@@ -5,7 +5,7 @@ use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use kith_core::{DeliveryState, Identity, JmapError};
-use kith_jmap::{HandlerFuture, JmapHandler};
+use kith_jmap::{HandlerFuture, PeerJmapHandler};
 #[cfg(any(test, feature = "test-utils"))]
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 #[cfg(any(test, feature = "test-utils"))]
@@ -75,25 +75,17 @@ pub struct DeliverMessageArgs {
 /// Accepts an inbound message from a peer, validates it, and writes it to the
 /// local message store.
 ///
-/// # Identity injection
-///
-/// `JmapHandler::call` does not receive the caller identity directly.
-/// The axum HTTP handler MUST inject the verified `Identity` into the `args`
-/// JSON object under the private key `"_caller_identity"` before calling
-/// `Dispatcher::dispatch`.  This handler extracts and removes that key.
-///
 /// # Validation order (mandatory — do not reorder)
 ///
-/// 1. Extract `_caller_identity` from args.
-/// 2. Parse remaining args into `PeerDeliverArgs`.
-/// 3. `check_sender`: verify `senderUserId` equals the WhoIs identity.
-/// 4. Enforce `maxBodyBytes`.
-/// 5. Validate `bodyType` is supported.
-/// 6. Validate message `id` is a well-formed ULID.
-/// 7. (If `replyTo` present) verify the referenced message exists in this chat.
-/// 8. `chats().get` or `create`; verify sender matches `contact_id` if chat exists.
-/// 9. `messages().insert` with `delivery_state = Received`.
-/// 10. `contacts().upsert`.
+/// 1. Parse args into `PeerDeliverArgs`.
+/// 2. `check_sender`: verify `senderUserId` equals the typed caller identity.
+/// 3. Enforce `maxBodyBytes`.
+/// 4. Validate `bodyType` is supported.
+/// 5. Validate message `id` is a well-formed ULID.
+/// 6. (If `replyTo` present) verify the referenced message exists in this chat.
+/// 7. `chats().get` or `create`; verify sender matches `contact_id` if chat exists.
+/// 8. `messages().insert` with `delivery_state = Received`.
+/// 9. `contacts().upsert`.
 pub struct DeliverHandler {
     store: Arc<Mutex<kith_store::Store>>,
     owner_id: String,
@@ -105,59 +97,47 @@ impl DeliverHandler {
     }
 }
 
-impl JmapHandler for DeliverHandler {
+impl PeerJmapHandler for DeliverHandler {
     fn call(
         &self,
         _method_name: String,
         _call_id: String,
-        mut args: serde_json::Value,
+        args: serde_json::Value,
+        identity: Identity,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
         let _owner_id = self.owner_id.clone();
 
         Box::pin(async move {
-            // Step 1: Extract caller identity injected by the axum layer.
-            let identity: Identity = {
-                let obj = args
-                    .as_object_mut()
-                    .ok_or_else(|| JmapError::invalid_arguments("args must be a JSON object"))?;
-                let raw = obj.remove("_caller_identity").ok_or_else(|| {
-                    JmapError::server_fail("caller identity not injected into args")
-                })?;
-                serde_json::from_value::<Identity>(raw).map_err(|_| {
-                    JmapError::server_fail("caller identity value could not be deserialized")
-                })?
-            };
-
-            // Step 2: Parse the public Peer/deliver arguments.
+            // Step 1: Parse the public Peer/deliver arguments.
             let deliver: PeerDeliverArgs = serde_json::from_value(args)
                 .map_err(|_| JmapError::invalid_arguments("invalid Peer/deliver arguments"))?;
             let msg = &deliver.message;
 
-            // Step 3: check_sender — MUST occur before any DB write.
+            // Step 2: check_sender — MUST occur before any DB write.
             // Maps SenderMismatch → invalidArguments per CLAUDE.md defensive rules.
             if identity.user_id != msg.sender_user_id {
                 return Err(JmapError::invalid_arguments("senderUserId mismatch"));
             }
 
-            // Step 4: Enforce maxBodyBytes.
+            // Step 3: Enforce maxBodyBytes.
             if msg.body.len() > MAX_BODY_BYTES {
                 return Err(JmapError::invalid_arguments("body exceeds maxBodyBytes"));
             }
 
-            // Step 6: Validate bodyType.
+            // Step 4: Validate bodyType.
             if !SUPPORTED_BODY_TYPES.contains(&msg.body_type.as_str()) {
                 return Err(JmapError::invalid_arguments("unsupported bodyType"));
             }
 
-            // Step 7: Validate message id is a well-formed ULID.
+            // Step 5: Validate message id is a well-formed ULID.
             if msg.id.parse::<Ulid>().is_err() {
                 return Err(JmapError::invalid_arguments(
                     "message id is not a valid ULID",
                 ));
             }
 
-            // Step 7.5: Validate attachment metadata (before lock acquisition).
+            // Step 5.5: Validate attachment metadata (before lock acquisition).
             let attachments = validate_attachments(&msg.attachments)?;
 
             // Capture received_at before acquiring the store lock.
@@ -174,7 +154,7 @@ impl JmapHandler for DeliverHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-            // Step 7: Validate replyTo — referenced message must exist and be in this chat.
+            // Step 6: Validate replyTo — referenced message must exist and be in this chat.
             if let Some(ref reply_id) = msg.reply_to {
                 match guard.messages().get(reply_id) {
                     Ok(Some(ref referenced)) if referenced.chat_id == msg.chat_id => {}
@@ -343,37 +323,23 @@ impl ReceiptHandler {
     }
 }
 
-impl JmapHandler for ReceiptHandler {
+impl PeerJmapHandler for ReceiptHandler {
     fn call(
         &self,
         _method_name: String,
         _call_id: String,
-        mut args: serde_json::Value,
+        args: serde_json::Value,
+        identity: Identity,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
 
         Box::pin(async move {
-            // Step a: Extract caller identity injected by the axum layer.
-            // Same protocol as DeliverHandler — identity is removed from args
-            // before parsing so it is never visible to serde.
-            let identity: Identity = {
-                let obj = args
-                    .as_object_mut()
-                    .ok_or_else(|| JmapError::invalid_arguments("args must be a JSON object"))?;
-                let raw = obj.remove("_caller_identity").ok_or_else(|| {
-                    JmapError::server_fail("caller identity not injected into args")
-                })?;
-                serde_json::from_value::<Identity>(raw).map_err(|_| {
-                    JmapError::server_fail("caller identity value could not be deserialized")
-                })?
-            };
-
-            // Step b: parse remaining args.
+            // Step a: parse args.
             let parsed: PeerReceiptArgs = serde_json::from_value(args).map_err(|e| {
                 JmapError::invalid_arguments(format!("invalid Peer/receipt arguments: {e}"))
             })?;
 
-            // Step b: validate kind.
+            // Step c: validate kind.
             if parsed.kind != "delivered" && parsed.kind != "read" {
                 return Err(JmapError::invalid_arguments(format!(
                     "kind must be 'delivered' or 'read', got '{}'",
@@ -381,14 +347,14 @@ impl JmapHandler for ReceiptHandler {
                 )));
             }
 
-            // Step c: validate messageId is non-empty.
+            // Step d: validate messageId is non-empty.
             if parsed.message_id.is_empty() {
                 return Err(JmapError::invalid_arguments(
                     "messageId must not be empty".to_string(),
                 ));
             }
 
-            // Steps d-g: look up message and validate ownership.
+            // Steps e-h: look up message and validate ownership.
             // We hold the lock only for the lookup+update block and drop it
             // before returning, keeping the critical section minimal.
             let now_unix: i64 = SystemTime::now()
@@ -410,21 +376,21 @@ impl JmapHandler for ReceiptHandler {
                 .get(&parsed.message_id)
                 .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
-            // Step e: not found.
+            // Step f: not found.
             let msg = msg.ok_or_else(JmapError::not_found)?;
 
-            // Step f: ownership check -- only messages we sent may be updated.
+            // Step g: ownership check -- only messages we sent may be updated.
             // Return not_found (not forbidden) to avoid distinguishing owned vs not-owned.
             if msg.sender_id != "self" {
                 return Err(JmapError::not_found());
             }
 
-            // Step g: inbound messages (Received state) are not ours to update.
+            // Step h: inbound messages (Received state) are not ours to update.
             if msg.delivery_state == DeliveryState::Received {
                 return Err(JmapError::not_found());
             }
 
-            // Step h: verify the caller is the intended recipient of this message.
+            // Step i: verify the caller is the intended recipient of this message.
             // The chat's contact_id is the single peer authorised to send receipts
             // for messages in this conversation.  Return not_found (not forbidden)
             // to avoid leaking whether the message_id exists to an unauthorised caller.
@@ -438,7 +404,7 @@ impl JmapHandler for ReceiptHandler {
                 return Err(JmapError::not_found());
             }
 
-            // Steps i-j: apply the state update.
+            // Steps j-k: apply the state update.
             match parsed.kind.as_str() {
                 "delivered" => {
                     guard
@@ -460,7 +426,7 @@ impl JmapHandler for ReceiptHandler {
                 _ => unreachable!("kind already validated to be 'delivered' or 'read'"),
             }
 
-            // Step j: release lock (guard drops here) and return success.
+            // Step k: release lock (guard drops here) and return success.
             drop(guard);
 
             Ok(json!({
@@ -1140,7 +1106,7 @@ mod tests {
     /// Insert a direct chat with a specific contact_id.
     ///
     /// Use this in ReceiptHandler tests so the caller-identity check can pass:
-    /// pass the same `contact_id` as the `user_id` in `_caller_identity`.
+    /// pass the same `contact_id` as the `user_id` in the `Identity` argument.
     fn insert_chat_with_contact(store: &Arc<Mutex<Store>>, chat_id: &str, contact_id: &str) {
         let guard = store.lock().unwrap();
         guard
@@ -1183,9 +1149,7 @@ mod tests {
         body: &str,
     ) -> serde_json::Value {
         let chat_id = "test-direct-chat-01";
-        let identity_json = serde_json::to_value(identity).unwrap();
         json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1227,6 +1191,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args(&peer, owner_id, &msg_id, "Hello!"),
+                peer.clone(),
             )
             .await;
 
@@ -1269,6 +1234,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args(&peer, owner_id, &msg_id, "Hi"),
+                peer.clone(),
             )
             .await
             .expect("delivery should succeed");
@@ -1289,9 +1255,7 @@ mod tests {
         // Build args but override the senderUserId to a different value.
         let chat_id = "test-direct-chat-02";
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1305,7 +1269,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("sender mismatch must fail");
 
@@ -1338,9 +1307,7 @@ mod tests {
 
         // uid-bob tries to deliver into a chat that belongs to uid-alice.
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&bob).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1354,7 +1321,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                bob.clone(),
+            )
             .await
             .expect_err("sender mismatch on existing chat must fail");
 
@@ -1383,6 +1355,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args(&peer, owner_id, &msg_id, &oversized_body),
+                peer.clone(),
             )
             .await
             .expect_err("oversized body must fail");
@@ -1404,9 +1377,7 @@ mod tests {
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1420,7 +1391,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("unsupported bodyType must fail");
 
@@ -1440,9 +1416,7 @@ mod tests {
         let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
-        let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": "not-a-ulid",
@@ -1456,7 +1430,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("non-ULID id must fail");
 
@@ -1477,9 +1456,7 @@ mod tests {
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1494,7 +1471,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("replyTo nonexistent must fail");
 
@@ -1540,9 +1522,7 @@ mod tests {
         }
 
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&peer).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -1557,7 +1537,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("replyTo in different chat must fail");
 
@@ -1567,33 +1552,6 @@ mod tests {
         assert!(
             guard.messages().get(&msg_id).unwrap().is_none(),
             "no message must be stored when replyTo references a different chat"
-        );
-    }
-
-    // Oracle: missing _caller_identity must return serverFail (not invalidArguments).
-    #[tokio::test]
-    async fn deliver_missing_identity_returns_server_fail() {
-        let store = make_store();
-        let owner_id = "uid-owner";
-
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
-        let err = handler
-            .call(
-                "Peer/deliver".to_string(),
-                "c0".to_string(),
-                json!({"accountId": "a-self", "message": {}}),
-            )
-            .await
-            .expect_err("missing identity must fail");
-
-        assert_eq!(err.error_type, "serverFail");
-        // Oracle: identity extraction fails before any DB write — store must be empty.
-        let guard = store.lock().unwrap(); // safe: single-threaded test
-        let state_str = guard.messages().get_state().unwrap();
-        // State "s-0" means no messages have ever been inserted (counter never advanced).
-        assert_eq!(
-            state_str, "s-0",
-            "no message state advance must occur when identity is missing"
         );
     }
 
@@ -1618,12 +1576,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r1",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1658,12 +1616,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r2",
                     "kind": "read",
                     "at": "2026-04-19T00:01:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1697,12 +1655,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r3",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1722,12 +1680,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "does-not-exist",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1749,12 +1707,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r4",
                     "kind": "bounced",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1774,12 +1732,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1807,12 +1765,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-r5",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1831,9 +1789,9 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&caller).unwrap(),
                     "not": "a valid receipt"
                 }),
+                caller.clone(),
             )
             .await;
 
@@ -1868,12 +1826,12 @@ mod tests {
                 "Peer/receipt".to_string(),
                 "c0".to_string(),
                 json!({
-                    "_caller_identity": serde_json::to_value(&eve).unwrap(),
                     "accountId": "a-self",
                     "messageId": "msg-rwc",
                     "kind": "delivered",
                     "at": "2026-04-19T00:00:00Z"
                 }),
+                eve.clone(),
             )
             .await;
 
@@ -2082,9 +2040,7 @@ mod tests {
         msg_id: &str,
         attachments: serde_json::Value,
     ) -> serde_json::Value {
-        let identity_json = serde_json::to_value(identity).unwrap();
         json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -2134,7 +2090,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("blob_id with ../ must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2163,7 +2124,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("empty blobId must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2192,7 +2158,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("filename with ../ must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2221,7 +2192,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("empty filename must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2250,7 +2226,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("content_type without '/' must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2280,7 +2261,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("content_type with empty type part must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2310,7 +2296,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("content_type with empty subtype part must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2339,7 +2330,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("size 1 byte over cap must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2368,7 +2364,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("size=0 must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2398,7 +2399,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("uppercase sha256 must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2427,7 +2433,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("sha256 with wrong length must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2461,7 +2472,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, serde_json::Value::Array(atts));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect_err("21 attachments must be rejected");
         assert_eq!(err.error_type, "invalidArguments");
@@ -2489,7 +2505,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect("valid attachment delivery must succeed");
         assert_eq!(result["accepted"], true);
@@ -2521,7 +2542,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect("delivery with empty attachments must succeed");
         assert_eq!(result["accepted"], true);
@@ -2550,7 +2576,12 @@ mod tests {
         let args = deliver_args_full(&peer, chat_id, &msg_id, json!([]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect("delivery with new chatId must succeed");
         assert_eq!(result["accepted"], true);
@@ -2584,6 +2615,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args_full(&peer, chat_id, &msg1, json!([])),
+                peer.clone(),
             )
             .await
             .expect("first delivery must succeed");
@@ -2595,6 +2627,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args_full(&peer, chat_id, &msg2, json!([])),
+                peer.clone(),
             )
             .await
             .expect("second delivery from same sender must succeed");
@@ -2626,6 +2659,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args_full(&peer, chat_id, &sender_msg_id, json!([])),
+                peer.clone(),
             )
             .await
             .expect("first delivery must succeed");
@@ -2651,6 +2685,7 @@ mod tests {
                 "Peer/deliver".to_string(),
                 "c0".to_string(),
                 deliver_args_full(&peer, chat_id, &sender_msg_id, json!([])),
+                peer.clone(),
             )
             .await
             .expect("retransmit must succeed (idempotent)");
@@ -2721,7 +2756,12 @@ mod tests {
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                peer.clone(),
+            )
             .await
             .expect("delivery with attachment must succeed");
         let state_after = {
@@ -3209,9 +3249,7 @@ mod tests {
         }
 
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&alice).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -3225,7 +3263,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let result = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                alice.clone(),
+            )
             .await
             .expect("group chat member must be allowed to deliver");
 
@@ -3259,9 +3302,7 @@ mod tests {
         }
 
         let msg_id = Ulid::new().to_string();
-        let identity_json = serde_json::to_value(&bob).unwrap();
         let args = json!({
-            "_caller_identity": identity_json,
             "accountId": "a-self",
             "message": {
                 "id": msg_id,
@@ -3275,7 +3316,12 @@ mod tests {
 
         let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
         let err = handler
-            .call("Peer/deliver".to_string(), "c0".to_string(), args)
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                args,
+                bob.clone(),
+            )
             .await
             .expect_err("non-member must be rejected");
 

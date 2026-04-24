@@ -22,6 +22,24 @@ pub struct PeerBlobInfo {
     pub size_bytes: u64,
 }
 
+/// Parameters for [`Store::insert_outbound_message`].
+///
+/// Using a struct instead of positional arguments makes call sites
+/// self-documenting and allows new fields to be added without changing
+/// every call site.
+pub struct OutboundMessageParams<'a> {
+    pub id: &'a str,
+    pub chat_id: &'a str,
+    pub body: &'a str,
+    pub body_type: &'a str,
+    pub sent_at_peer: Option<&'a str>,
+    pub created_at_unix: i64,
+    pub reply_to: Option<&'a str>,
+    pub attachments: &'a [Attachment],
+    /// `(peer_user_id, peer_mailbox_host)` pairs.  Must be non-empty.
+    pub outbox_peers: &'a [(&'a str, &'a str)],
+}
+
 /// Wraps a rusqlite connection and owns the database handle for this mailbox.
 pub struct Store {
     pub(crate) conn: Connection,
@@ -165,7 +183,22 @@ CREATE INDEX IF NOT EXISTS messages_sender_msg_id
 //     INDEX so the idempotency guarantee is enforced at the database level, not
 //     only in application logic.  SQLite does not support upgrading a non-unique
 //     index to UNIQUE in place; the old index must be dropped and recreated.
+//
+//     The dedup DELETE runs first to handle the (unlikely but possible) case
+//     where a V4 database has duplicate (chat_id, sender_msg_id) rows from a
+//     retransmission that landed while KITH-orvy.1 (error-swallowing idempotency
+//     check) was present.  Without it, CREATE UNIQUE INDEX would fail on any
+//     such database.  MIN(rowid) keeps the first-received row, which is the
+//     canonical one.  Only non-NULL sender_msg_id rows are considered because
+//     UNIQUE INDEX permits multiple NULLs and they should not be deduplicated.
 const SCHEMA_V5: &str = "
+DELETE FROM messages
+WHERE sender_msg_id IS NOT NULL
+  AND rowid NOT IN (
+    SELECT MIN(rowid) FROM messages
+    WHERE sender_msg_id IS NOT NULL
+    GROUP BY chat_id, sender_msg_id
+  );
 DROP INDEX IF EXISTS messages_sender_msg_id;
 CREATE UNIQUE INDEX messages_sender_msg_id
     ON messages(chat_id, sender_msg_id);
@@ -394,6 +427,91 @@ impl Store {
                     att.sha256,
                     created_at_unix
                 ],
+            )
+            .map_err(db_err)?;
+        }
+        tx.commit().map_err(db_err)?;
+        if let Some(ref tx_ch) = self.events_tx {
+            let _ = tx_ch.send(StateChange {
+                type_name: "Message".to_string(),
+                new_state: format!("s-{version}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Insert an outbound (owner-sent) message with its attachments and outbox
+    /// entries in a single atomic transaction.
+    ///
+    /// The message, all attachment rows, and all outbox rows are written inside
+    /// one `BEGIN … COMMIT` block.  If any insert fails the entire transaction
+    /// is rolled back — no Pending message with missing outbox entries will be
+    /// left in the database.
+    ///
+    /// For outbound messages `sender_user_id` is always `"self"` and
+    /// `sender_msg_id` is always equal to `id` — both are baked in here rather
+    /// than threaded through as parameters.
+    pub fn insert_outbound_message(
+        &self,
+        params: &OutboundMessageParams<'_>,
+    ) -> Result<(), KithError> {
+        let OutboundMessageParams {
+            id,
+            chat_id,
+            body,
+            body_type,
+            sent_at_peer,
+            created_at_unix,
+            reply_to,
+            attachments,
+            outbox_peers,
+        } = params;
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let version = advance_state_counter_in_tx(&tx, "message")?;
+        // ?1 = id (reused as sender_msg_id at position 11 — outbound msgs
+        // always have sender_msg_id == id).
+        tx.execute(
+            "INSERT INTO messages \
+             (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
+              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, 'self', ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?1)",
+            rusqlite::params![
+                id,
+                chat_id,
+                body,
+                body_type,
+                sent_at_peer,
+                created_at_unix,
+                version,
+                reply_to,
+            ],
+        )
+        .map_err(db_err)?;
+        for att in *attachments {
+            let size_i64 = i64::try_from(att.size)
+                .map_err(|_| KithError::Store("attachment size exceeds i64::MAX".into()))?;
+            tx.execute(
+                "INSERT INTO attachments \
+                     (id, message_id, filename, content_type, size_bytes, sha256, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    att.blob_id,
+                    id,
+                    att.filename,
+                    att.content_type,
+                    size_i64,
+                    att.sha256,
+                    created_at_unix
+                ],
+            )
+            .map_err(db_err)?;
+        }
+        for (peer_user_id, peer_mailbox_host) in *outbox_peers {
+            tx.execute(
+                "INSERT INTO outbox \
+                 (message_id, peer_user_id, peer_mailbox_host, next_attempt_at, attempt_count) \
+                 VALUES (?1, ?2, ?3, ?4, 0)",
+                rusqlite::params![id, peer_user_id, peer_mailbox_host, created_at_unix],
             )
             .map_err(db_err)?;
         }
@@ -1005,5 +1123,105 @@ mod tests {
         assert_eq!(change.type_name, "ChatContact");
         let expected = store.contacts().get_state().expect("get_state");
         assert_eq!(change.new_state, expected);
+    }
+
+    // Oracle: if a V4 database has duplicate (chat_id, sender_msg_id) rows
+    // (possible when KITH-orvy.1 was present and a retransmission occurred),
+    // the V5 migration must succeed by deduplicating first rather than failing
+    // with a UNIQUE constraint error.
+    //
+    // Independent oracle: after migration, SELECT COUNT(*) for the duplicate
+    // pair returns 1 (not 2), and the UNIQUE index exists.
+    #[test]
+    fn v5_migration_deduplicates_before_creating_unique_index() {
+        use rusqlite::Connection;
+
+        // Build a V4 database by applying migrations 1-4 on a raw connection.
+        let conn = Connection::open_in_memory().unwrap();
+        Store::init_conn(&conn).unwrap();
+        for &(version, sql) in MIGRATIONS {
+            if version <= 4 {
+                conn.execute_batch(sql).unwrap();
+                conn.execute_batch(&format!("PRAGMA user_version = {version}"))
+                    .unwrap();
+            }
+        }
+
+        // Insert the prerequisite chat row (FK required by messages).
+        conn.execute(
+            "INSERT INTO chats (id, kind, created_at) VALUES ('chat-dup', 'direct', 1000)",
+            [],
+        )
+        .unwrap();
+
+        // Insert two messages with the same (chat_id, sender_msg_id) — simulating
+        // the retransmission-duplicate bug that KITH-orvy.3 fixed.
+        // At V4 the index is non-unique so this succeeds.
+        let dup_sender_msg_id = "sender-ulid-duplicate";
+        conn.execute(
+            "INSERT INTO messages \
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES ('msg-a', 'chat-dup', 'uid-peer', 'first',  1001, 'received', ?1)",
+            rusqlite::params![dup_sender_msg_id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages \
+             (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+             VALUES ('msg-b', 'chat-dup', 'uid-peer', 'second', 1002, 'received', ?1)",
+            rusqlite::params![dup_sender_msg_id],
+        )
+        .unwrap();
+
+        // Pre-flight: confirm two rows exist before V5.
+        let count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE sender_msg_id = ?1",
+                rusqlite::params![dup_sender_msg_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_before, 2, "two duplicate rows must exist before V5");
+
+        // Apply V5 — must succeed (no UNIQUE constraint error).
+        conn.execute_batch(SCHEMA_V5)
+            .expect("V5 migration must succeed even with pre-existing duplicate rows");
+
+        // Oracle: exactly one row remains for the duplicate sender_msg_id.
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE sender_msg_id = ?1",
+                rusqlite::params![dup_sender_msg_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count_after, 1,
+            "dedup must leave exactly one row per (chat_id, sender_msg_id)"
+        );
+
+        // Oracle: the retained row is the one with the smaller rowid (first received).
+        let retained_id: String = conn
+            .query_row(
+                "SELECT id FROM messages WHERE sender_msg_id = ?1",
+                rusqlite::params![dup_sender_msg_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            retained_id, "msg-a",
+            "MIN(rowid) — the first-received message — must be retained"
+        );
+
+        // Oracle: the UNIQUE index now exists.
+        let idx_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master \
+                 WHERE type='index' AND name='messages_sender_msg_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx_exists, 1, "UNIQUE index must exist after V5 migration");
     }
 }

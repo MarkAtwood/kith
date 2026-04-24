@@ -102,9 +102,9 @@ pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
 
 /// `POST /jmap/api` — parse and dispatch a JMAP request.
 ///
-/// For `Peer/deliver`, the verified caller identity is injected into every
-/// method call's args under the private key `"_caller_identity"` before
-/// dispatch.  Handlers that do not use this key ignore it safely.
+/// The verified caller identity is passed to the dispatcher as a typed
+/// parameter and forwarded directly to peer-role handlers (`Peer/deliver`,
+/// `Peer/receipt`) without JSON injection.
 pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
     State(app): State<AppState<W>>,
     caller: Caller,
@@ -122,23 +122,12 @@ pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
         Err(_) => "s-0-s-0-s-0".to_string(),
     };
 
-    // Step 3: inject caller identity into each method call's args so peer
-    // handlers (Peer/deliver) can verify the sender without requiring an
-    // extra extractor parameter.
-    let identity_value = serde_json::to_value(&caller.identity)
-        .expect("Identity always serializes: only String fields");
-
-    let mut request = request;
-    for (_, args, _) in &mut request.method_calls {
-        if let Some(obj) = args.as_object_mut() {
-            obj.insert("_caller_identity".to_string(), identity_value.clone());
-        }
-    }
-
-    // Step 4: dispatch.
+    // Step 3: dispatch.  Caller identity is passed as a typed parameter; the
+    // dispatcher routes it directly to peer handlers (Peer/deliver, Peer/receipt)
+    // without JSON injection.
     let response = app
         .dispatcher
-        .dispatch(request, caller.role, session_state)
+        .dispatch(request, caller.role, caller.identity, session_state)
         .await;
 
     axum::response::Response::builder()
@@ -363,15 +352,16 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, owner_id: &str) -> Dispatcher 
         Box::new(MessageQueryChangesHandler::new(Arc::clone(&store))),
     );
 
-    // Peer methods
-    d.register(
+    // Peer methods — use register_peer so the dispatcher passes the verified
+    // caller Identity as a typed parameter instead of injecting it into args.
+    d.register_peer(
         "Peer/deliver",
         Box::new(DeliverHandler::new(
             Arc::clone(&store),
             owner_id.to_string(),
         )),
     );
-    d.register(
+    d.register_peer(
         "Peer/receipt",
         Box::new(ReceiptHandler::new(Arc::clone(&store))),
     );
@@ -492,13 +482,22 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use kith_attach::BlobStore;
-    use kith_core::{auth::Role, jmap::JmapRequest, AuthError};
+    use kith_core::{auth::Role, jmap::JmapRequest, AuthError, Identity};
     use kith_events::make_channel;
     use kith_store::Store;
     use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tower::ServiceExt;
+
+    fn dummy_identity() -> Identity {
+        Identity {
+            user_id: "uid-test".to_string(),
+            login_name: "test@example.com".to_string(),
+            display_name: None,
+            node_name: "test-node.tail12345.ts.net".to_string(),
+        }
+    }
 
     use crate::auth::WhoIsProvider;
     use crate::extractors::AppState;
@@ -596,7 +595,7 @@ mod tests {
                 method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
             };
             let resp = dispatcher
-                .dispatch(req, Role::Owner, "s-0".to_string())
+                .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
                 .await;
             let first = &resp.method_responses[0];
             let error_type = first.1.get("type").and_then(|v| v.as_str());
@@ -613,7 +612,7 @@ mod tests {
                 method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
             };
             let resp = dispatcher
-                .dispatch(req, Role::Peer, "s-0".to_string())
+                .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
                 .await;
             let first = &resp.method_responses[0];
             let error_type = first.1.get("type").and_then(|v| v.as_str());

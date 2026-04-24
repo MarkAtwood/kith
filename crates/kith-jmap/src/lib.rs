@@ -250,10 +250,12 @@ const METHOD_ROLES: &[(&str, Role)] = &[
 /// Pinned boxed future returned by [`JmapHandler::call`].
 pub type HandlerFuture = Pin<Box<dyn Future<Output = Result<serde_json::Value, JmapError>> + Send>>;
 
-/// Trait for JMAP method handlers.
+/// Trait for JMAP owner-role method handlers.
 ///
 /// Implementors are stateful objects (e.g., holding an `Arc<Store>`) registered
 /// with the [`Dispatcher`].  The dispatcher calls them after role-checking passes.
+///
+/// `Role::Peer` methods use [`PeerJmapHandler`] instead.
 ///
 /// # Panics
 ///
@@ -269,6 +271,28 @@ pub trait JmapHandler: Send + Sync {
     fn call(&self, method_name: String, call_id: String, args: serde_json::Value) -> HandlerFuture;
 }
 
+/// Trait for JMAP peer-role method handlers.
+///
+/// Unlike [`JmapHandler`], the verified caller [`Identity`] is passed as a
+/// typed parameter.  There is no JSON extraction step and no possibility of
+/// forgetting to verify the caller: the dispatcher enforces the typed parameter
+/// at every call site, and the compiler enforces that callers provide it.
+///
+/// `Role::Owner` methods use [`JmapHandler`] instead.
+///
+/// # Panics
+///
+/// Handlers must not panic.
+pub trait PeerJmapHandler: Send + Sync {
+    fn call(
+        &self,
+        method_name: String,
+        call_id: String,
+        args: serde_json::Value,
+        caller: Identity,
+    ) -> HandlerFuture;
+}
+
 /// Method dispatch registry for JMAP.
 ///
 /// # Usage
@@ -278,20 +302,30 @@ pub trait JmapHandler: Send + Sync {
 /// 3. Call [`Dispatcher::dispatch`] for each incoming request.
 pub struct Dispatcher {
     handlers: HashMap<String, Box<dyn JmapHandler>>,
+    peer_handlers: HashMap<String, Box<dyn PeerJmapHandler>>,
 }
 
 impl Dispatcher {
     pub fn new() -> Self {
         Self {
             handlers: HashMap::new(),
+            peer_handlers: HashMap::new(),
         }
     }
 
-    /// Register a handler for a specific JMAP method name.
+    /// Register an owner-role handler for a specific JMAP method name.
     ///
     /// Overwrites any previously registered handler for that method.
     pub fn register(&mut self, method: impl Into<String>, handler: Box<dyn JmapHandler>) {
         self.handlers.insert(method.into(), handler);
+    }
+
+    /// Register a peer-role handler for a specific JMAP method name.
+    ///
+    /// Peer handlers receive the verified caller [`Identity`] as a typed
+    /// parameter; no JSON extraction is required.
+    pub fn register_peer(&mut self, method: impl Into<String>, handler: Box<dyn PeerJmapHandler>) {
+        self.peer_handlers.insert(method.into(), handler);
     }
 
     /// Dispatch a complete JMAP request and return a [`JmapResponse`].
@@ -309,6 +343,7 @@ impl Dispatcher {
         &self,
         request: JmapRequest,
         caller_role: Role,
+        caller_identity: Identity,
         session_state: String,
     ) -> JmapResponse {
         let mut responses: Vec<Invocation> = Vec::with_capacity(request.method_calls.len());
@@ -316,7 +351,14 @@ impl Dispatcher {
 
         for (method_name, mut args, call_id) in request.method_calls {
             let invocation = self
-                .dispatch_one(&method_name, &call_id, &mut args, caller_role, &prior)
+                .dispatch_one(
+                    &method_name,
+                    &call_id,
+                    &mut args,
+                    caller_role,
+                    &caller_identity,
+                    &prior,
+                )
                 .await;
             // Record the result value for subsequent ResultReference lookups.
             prior.push((call_id.clone(), invocation.1.clone()));
@@ -335,6 +377,7 @@ impl Dispatcher {
         call_id: &str,
         args: &mut serde_json::Value,
         caller_role: Role,
+        caller_identity: &Identity,
         prior_responses: &[(String, serde_json::Value)],
     ) -> Invocation {
         // Resolve any ResultReference arguments before role check or handler dispatch.
@@ -356,17 +399,36 @@ impl Dispatcher {
             return error_invocation(method_name, call_id, JmapError::forbidden_method());
         }
 
-        let Some(handler) = self.handlers.get(method_name) else {
-            // Method is known in METHOD_ROLES but no handler is registered yet.
-            return error_invocation(method_name, call_id, JmapError::unknown_method());
-        };
-
-        match handler
-            .call(method_name.to_string(), call_id.to_string(), args.clone())
-            .await
-        {
-            Ok(result) => (method_name.to_string(), result, call_id.to_string()),
-            Err(err) => error_invocation(method_name, call_id, err),
+        if required_role == Role::Peer {
+            // Peer methods: use the typed-identity handler map.
+            let Some(handler) = self.peer_handlers.get(method_name) else {
+                return error_invocation(method_name, call_id, JmapError::unknown_method());
+            };
+            match handler
+                .call(
+                    method_name.to_string(),
+                    call_id.to_string(),
+                    args.clone(),
+                    caller_identity.clone(),
+                )
+                .await
+            {
+                Ok(result) => (method_name.to_string(), result, call_id.to_string()),
+                Err(err) => error_invocation(method_name, call_id, err),
+            }
+        } else {
+            // Owner methods: use the standard handler map.
+            let Some(handler) = self.handlers.get(method_name) else {
+                // Method is known in METHOD_ROLES but no handler is registered yet.
+                return error_invocation(method_name, call_id, JmapError::unknown_method());
+            };
+            match handler
+                .call(method_name.to_string(), call_id.to_string(), args.clone())
+                .await
+            {
+                Ok(result) => (method_name.to_string(), result, call_id.to_string()),
+                Err(err) => error_invocation(method_name, call_id, err),
+            }
         }
     }
 }
@@ -379,11 +441,15 @@ impl Default for Dispatcher {
 
 #[cfg(test)]
 impl Dispatcher {
-    /// Returns the names of all currently registered method handlers.
+    /// Returns the names of all currently registered method handlers (owner and peer).
     ///
     /// Used only in tests to verify that the handler registry matches METHOD_ROLES.
     pub fn registered_method_names(&self) -> Vec<&str> {
-        self.handlers.keys().map(String::as_str).collect()
+        self.handlers
+            .keys()
+            .chain(self.peer_handlers.keys())
+            .map(String::as_str)
+            .collect()
     }
 }
 
@@ -451,6 +517,15 @@ mod tests {
 
     // Oracle: RFC 8620 §3 (request format), §7.1 (error type strings).
     // Expected values are derived from the RFC spec, not from running the code.
+
+    fn dummy_identity() -> Identity {
+        Identity {
+            user_id: "uid-test".to_string(),
+            login_name: "test@example.com".to_string(),
+            display_name: None,
+            node_name: "test-node.tail12345.ts.net".to_string(),
+        }
+    }
 
     // Test 1: Valid request with both capabilities → Ok
     #[test]
@@ -835,7 +910,9 @@ mod tests {
                 "c0".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses.len(), 1);
         let (name, args, call_id) = &resp.method_responses[0];
         assert_eq!(name, "UnknownType/get");
@@ -855,7 +932,9 @@ mod tests {
                 "c1".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses[0].1["type"], "forbiddenMethod"); // RFC 8620 §7.1
     }
 
@@ -871,7 +950,9 @@ mod tests {
                 "c2".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Peer, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses[0].1["type"], "forbiddenMethod");
     }
 
@@ -891,7 +972,9 @@ mod tests {
                 "c3".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-42".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-42".to_string())
+            .await;
         assert_eq!(resp.session_state, "s-42");
         let (name, args, call_id) = &resp.method_responses[0];
         assert_eq!(name, "ChatContact/get");
@@ -912,7 +995,9 @@ mod tests {
                 "c4".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses[0].1["type"], "notFound");
     }
 
@@ -944,7 +1029,9 @@ mod tests {
                 ),
             ],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses.len(), 3);
         // c0: success — no "type" field in response args
         assert!(resp.method_responses[0].1.get("type").is_none());
@@ -966,7 +1053,9 @@ mod tests {
                 "c5".to_string(),
             )],
         };
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses[0].1["type"], "unknownMethod");
     }
 
@@ -979,7 +1068,12 @@ mod tests {
             method_calls: vec![],
         };
         let resp = d
-            .dispatch(req, Role::Owner, "state-token-xyz".to_string())
+            .dispatch(
+                req,
+                Role::Owner,
+                dummy_identity(),
+                "state-token-xyz".to_string(),
+            )
             .await;
         assert_eq!(resp.session_state, "state-token-xyz");
     }
@@ -1193,7 +1287,9 @@ mod tests {
             ],
         };
 
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses.len(), 2);
         // c0 must have succeeded
         assert!(resp.method_responses[0].1.get("type").is_none());
@@ -1327,7 +1423,9 @@ mod tests {
             ],
         };
 
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(resp.method_responses.len(), 2);
         // c0 succeeded
         assert!(resp.method_responses[0].1.get("type").is_none());

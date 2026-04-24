@@ -3,10 +3,19 @@
 // These tests use the full Dispatcher → handler → in-memory store path.
 // No mocks. All expected values are hand-derived from RFC 8620 and kith specs.
 
-use kith_core::{JmapRequest, Role};
+use kith_core::{Identity, JmapRequest, Role};
 use kith_jmap::Dispatcher;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
+
+fn dummy_identity() -> Identity {
+    Identity {
+        user_id: "uid-test".to_string(),
+        login_name: "test@example.com".to_string(),
+        display_name: None,
+        node_name: "test-node.tail12345.ts.net".to_string(),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Setup helpers
@@ -137,7 +146,9 @@ async fn test_full_contact_workflow() {
         }),
         "c0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, call_id) = &resp.method_responses[0];
     assert_eq!(name, "ChatContact/set");
     assert_eq!(call_id, "c0");
@@ -159,7 +170,9 @@ async fn test_full_contact_workflow() {
         }),
         "c1",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, call_id) = &resp.method_responses[0];
     assert_eq!(name, "ChatContact/get");
     assert_eq!(call_id, "c1");
@@ -177,7 +190,9 @@ async fn test_full_contact_workflow() {
         json!({"accountId": "a-self"}),
         "c2",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "ChatContact/query");
     let ids = args["ids"].as_array().expect("ids must be array");
@@ -192,7 +207,9 @@ async fn test_full_contact_workflow() {
         json!({"accountId": "a-self", "sinceState": "s-0"}),
         "c3",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "ChatContact/changes");
     let created = args["created"].as_array().expect("created must be array");
@@ -228,7 +245,9 @@ async fn test_full_chat_workflow() {
         }),
         "c0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     assert!(
         resp.method_responses[0].1["created"].get("c0").is_some(),
         "ChatContact/set must succeed"
@@ -245,7 +264,9 @@ async fn test_full_chat_workflow() {
         }),
         "ch0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Chat/set");
     // Oracle: created.ch0 must have an id.
@@ -268,7 +289,9 @@ async fn test_full_chat_workflow() {
         }),
         "ch1",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Chat/get");
     let list = args["list"].as_array().expect("list must be array");
@@ -279,7 +302,9 @@ async fn test_full_chat_workflow() {
 
     // Step 4: Chat/query — chat appears in id list.
     let req = kith_request(vec![("Chat/query", json!({"accountId": "a-self"}), "ch2")]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (_, args, _) = &resp.method_responses[0];
     let ids = args["ids"].as_array().expect("ids must be array");
     assert!(
@@ -293,7 +318,9 @@ async fn test_full_chat_workflow() {
         json!({"accountId": "a-self", "sinceState": "s-0"}),
         "ch3",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Chat/changes");
     let created = args["created"].as_array().expect("created must be array");
@@ -327,7 +354,8 @@ async fn test_full_message_workflow() {
         }),
         "c0",
     )]);
-    d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
 
     // Step 2: Create a chat.
     let req = kith_request(vec![(
@@ -338,7 +366,9 @@ async fn test_full_message_workflow() {
         }),
         "ch0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let chat_id = resp.method_responses[0].1["created"]["ch0"]["id"]
         .as_str()
         .expect("chat id must be a string")
@@ -364,7 +394,9 @@ async fn test_full_message_workflow() {
         }),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Message/set");
     // Oracle: RFC 8620 §5.3 — created.m0 must be present.
@@ -389,7 +421,9 @@ async fn test_full_message_workflow() {
         }),
         "m1",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Message/get");
     let list = args["list"].as_array().expect("list must be array");
@@ -409,7 +443,9 @@ async fn test_full_message_workflow() {
         }),
         "m2",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Message/query");
     let ids = args["ids"].as_array().expect("ids must be array");
@@ -429,7 +465,9 @@ async fn test_full_message_workflow() {
         }),
         "m3",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Message/changes");
     let created = args["created"].as_array().expect("created must be array");
@@ -450,7 +488,9 @@ async fn test_full_message_workflow() {
         }),
         "m4",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (name, args, _) = &resp.method_responses[0];
     assert_eq!(name, "Message/queryChanges");
     let added = args["added"].as_array().expect("added must be array");
@@ -500,7 +540,9 @@ async fn test_peer_cannot_call_owner_methods() {
 
     for method in owner_methods {
         let req = kith_request(vec![(method, json!({"accountId": "a-self"}), "c0")]);
-        let resp = d.dispatch(req, Role::Peer, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
+            .await;
         assert_eq!(
             resp.method_responses.len(),
             1,
@@ -524,7 +566,9 @@ async fn test_owner_cannot_call_unknown_method() {
     let d = make_dispatcher(Arc::clone(&store), "uid-owner");
 
     let req = kith_request(vec![("Foo/bar", json!({}), "c0")]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     assert_eq!(resp.method_responses.len(), 1);
     let (_, args, _) = &resp.method_responses[0];
     // Oracle: RFC 8620 §7.1 — type must be "unknownMethod".
@@ -543,7 +587,9 @@ async fn test_owner_cannot_call_peer_methods() {
 
     for method in ["Peer/deliver", "Peer/receipt"] {
         let req = kith_request(vec![(method, json!({}), "c0")]);
-        let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
         let (_, args, _) = &resp.method_responses[0];
         assert_eq!(
             args["type"], "forbiddenMethod",
@@ -601,7 +647,9 @@ async fn test_message_body_size_boundary_exact() {
         }),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (_, args, _) = &resp.method_responses[0];
     // Oracle: created.m0 must be present (no type="error" in args).
     assert!(
@@ -661,7 +709,9 @@ async fn test_message_body_size_boundary_exceeded() {
         }),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (_, args, _) = &resp.method_responses[0];
     // Oracle: notCreated.m0 must be present with type=invalidArguments.
     assert!(
@@ -704,7 +754,9 @@ async fn test_message_query_requires_chat_id() {
         json!({"accountId": "a-self"}),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (method_name, args, _) = &resp.method_responses[0];
     // Oracle: error invocation — method_name is "Message/query" (dispatcher echoes it),
     // and args["type"] is the error type.
@@ -723,7 +775,9 @@ async fn test_message_query_requires_chat_id() {
         }),
         "m1",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (_, args, _) = &resp.method_responses[0];
     assert_eq!(
         args["type"], "invalidArguments",
@@ -748,7 +802,9 @@ async fn test_message_changes_future_state() {
         }),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (method_name, args, _) = &resp.method_responses[0];
     assert_eq!(method_name, "Message/changes");
     // Oracle: s-99999 parses successfully; no messages have state_version > 99999 →
@@ -782,7 +838,9 @@ async fn test_contact_changes_malformed_state() {
         }),
         "c0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (method_name, args, _) = &resp.method_responses[0];
     assert_eq!(method_name, "ChatContact/changes");
     // Oracle: ChatContactChangesHandler maps KithError::Validation → stateMismatch.
@@ -813,7 +871,9 @@ async fn test_message_set_wrong_chat_id() {
         }),
         "m0",
     )]);
-    let resp = d.dispatch(req, Role::Owner, "s-0".to_string()).await;
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
     let (method_name, args, _) = &resp.method_responses[0];
     assert_eq!(method_name, "Message/set");
     // Oracle: method must succeed (HTTP 200 with the error in notCreated).

@@ -2,8 +2,9 @@
 
 use crate::kith_to_jmap;
 use kith_attach::BlobStore;
-use kith_core::{Attachment, DeliveryState, JmapError};
+use kith_core::{Attachment, JmapError};
 use kith_jmap::{HandlerFuture, JmapHandler};
+use kith_store::OutboundMessageParams;
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -342,55 +343,75 @@ fn process_create(
         })
         .collect();
 
-    // Insert message and all attachment rows in a single transaction.
-    // If any attachment insert fails (e.g. duplicate blob_id / UNIQUE constraint),
-    // the transaction rolls back automatically — no partial state is left in the DB.
-    guard
-        .insert_message_with_attachments(
-            &msg_id,
-            &chat_id,
-            "self",
-            &body,
-            &body_type,
-            sent_at.as_deref(),
-            now_unix,
-            &DeliveryState::Pending,
-            reply_to.as_deref(),
-            &msg_id,
-            &core_attachments,
-        )
-        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
-
-    // Update last_message_at on the chat.
-    guard
-        .chats()
-        .update_last_message_at(&chat_id, now_unix)
-        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
-
-    // Enqueue for peer participants.
+    // Build the outbox peer list BEFORE inserting the message so we can fail
+    // early on missing hosts without leaving a Pending message with no outbox
+    // entry.  The message insert and all outbox inserts are then committed
+    // atomically inside insert_outbound_message.
+    let mut outbox_peers: Vec<(String, String)> = Vec::new();
     if let Some(peer_id) = &chat.contact_id {
         // Direct chat: single peer via contact_id.
-        // Both error cases (store error and missing host) must fail the request:
-        // a message stored as Pending with no outbox entry will never be delivered.
         let host = guard
             .contacts()
             .get_mailbox_host(peer_id)
             .map_err(|e| json!({"type": "serverFail", "description": format!("could not look up mailbox host: {e}")}))?
             .ok_or_else(|| json!({"type": "serverFail", "description": "contact has no mailbox host — add the contact before sending"}))?;
-        guard
-            .outbox()
-            .enqueue(&msg_id, peer_id, &host, now_unix)
-            .map_err(|e| json!({"type": "serverFail", "description": format!("could not enqueue message: {e}")}))?;
+        outbox_peers.push((peer_id.clone(), host));
     } else if chat.kind == "group" {
-        // Group chat: fan out to all members in chat_members table.
-        if let Ok(members) = guard.chats().get_members(&chat_id) {
-            for peer_id in &members {
-                if let Ok(Some(host)) = guard.contacts().get_mailbox_host(peer_id) {
-                    let _ = guard.outbox().enqueue(&msg_id, peer_id, &host, now_unix);
-                }
-            }
+        // Group chat: fan out to all members in chat_members.
+        let members = guard
+            .chats()
+            .get_members(&chat_id)
+            .map_err(|e| json!({"type": "serverFail", "description": format!("could not fetch group members: {e}")}))?;
+        for peer_id in members {
+            let host = guard
+                .contacts()
+                .get_mailbox_host(&peer_id)
+                .map_err(|e| json!({"type": "serverFail", "description": format!("could not look up mailbox host for {peer_id}: {e}")}))?
+                .ok_or_else(|| json!({"type": "serverFail", "description": format!("group member {peer_id} has no mailbox host — update the contact before sending")}))?;
+            outbox_peers.push((peer_id, host));
         }
     }
+
+    // Reject sends with no delivery target.  An empty outbox_peers would
+    // store the message as 'pending' forever with no outbox row — the retry
+    // loop never fires and the caller gets no error.  The only way to reach
+    // this for a direct chat is if the host lookup above already failed (and
+    // returned an error), so in practice this guard fires only for a group
+    // chat that has no members in chat_members yet.
+    if outbox_peers.is_empty() {
+        return Err(json!({
+            "type": "serverFail",
+            "description": "no delivery targets — add members to the group before sending"
+        }));
+    }
+
+    // Insert message, attachments, and outbox entries atomically.
+    // A failure in any of these rolls back the whole transaction — no Pending
+    // message with missing outbox entries is ever left in the database.
+    let peer_refs: Vec<(&str, &str)> = outbox_peers
+        .iter()
+        .map(|(p, h)| (p.as_str(), h.as_str()))
+        .collect();
+    guard
+        .insert_outbound_message(&OutboundMessageParams {
+            id: &msg_id,
+            chat_id: &chat_id,
+            body: &body,
+            body_type: &body_type,
+            sent_at_peer: sent_at.as_deref(),
+            created_at_unix: now_unix,
+            reply_to: reply_to.as_deref(),
+            attachments: &core_attachments,
+            outbox_peers: &peer_refs,
+        })
+        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+
+    // Update last_message_at on the chat (best-effort cache; not part of the
+    // delivery transaction — a failure here does not un-deliver the message).
+    guard
+        .chats()
+        .update_last_message_at(&chat_id, now_unix)
+        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 
     // Fetch the created message for the response.
     let msg = guard
@@ -828,6 +849,7 @@ impl JmapHandler for MessageQueryChangesHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kith_core::DeliveryState;
     use kith_store::Store;
     use serde_json::json;
 
@@ -1877,6 +1899,177 @@ mod tests {
             get_message_count(&store),
             0,
             "no message row must remain after transactional rollback"
+        );
+    }
+
+    // Oracle: Message/set create to a group chat where a member has no mailbox
+    // host must return notCreated/serverFail AND leave no message row in the DB.
+    //
+    // The host lookup now happens BEFORE insert_outbound_message is called, so
+    // the failure fires before any INSERT — no partial state is left.
+    //
+    // Independent oracle: the message state counter must be unchanged, proving
+    // no message row was committed.
+    //
+    // The store-error path for get_members/enqueue cannot be injected via
+    // in-memory SQLite without additional plumbing, so that path is left to
+    // integration tests.
+    #[tokio::test]
+    async fn test_group_chat_member_missing_host_returns_server_fail() {
+        let store = make_store();
+        let chat_id = "group-chat-no-host";
+        let member_with_host = "uid-alice";
+        let member_without_host = "uid-bob";
+
+        {
+            let guard = store.lock().unwrap();
+            // Group chat: contact_id = None, kind = "group".
+            guard.chats().create(chat_id, "group", None, 1000).unwrap();
+            guard.chats().add_member(chat_id, member_with_host).unwrap();
+            guard
+                .chats()
+                .add_member(chat_id, member_without_host)
+                .unwrap();
+            // Alice has a mailbox host; Bob does not appear in contacts at all.
+            guard
+                .contacts()
+                .upsert(
+                    member_with_host,
+                    "alice@example.com",
+                    "alice.tail.ts.net",
+                    None,
+                    1000,
+                )
+                .unwrap();
+            // Bob is in chat_members but NOT in contacts → get_mailbox_host returns Ok(None).
+        }
+
+        let state_before = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+
+        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let result = handler
+            .call(
+                "Message/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": {
+                        "m0": {
+                            "chatId": chat_id,
+                            "body": "hello group",
+                        }
+                    }
+                }),
+            )
+            .await
+            .expect("handler must not return Err; errors go in notCreated");
+
+        // Oracle: must appear in notCreated with serverFail.
+        // This is the primary invariant: the CALLER must learn that delivery
+        // failed, not silently believe the message was sent.
+        let not_created = result["notCreated"]
+            .as_object()
+            .expect("notCreated must be an object");
+        assert!(
+            not_created.contains_key("m0"),
+            "group message with member missing host must be notCreated; got: {result:?}"
+        );
+        assert_eq!(
+            not_created["m0"]["type"], "serverFail",
+            "error type must be serverFail; got: {:?}",
+            not_created["m0"]
+        );
+
+        // Confirm created is empty — the message must not appear as a success.
+        let created = result["created"]
+            .as_object()
+            .expect("created must be an object");
+        assert!(
+            !created.contains_key("m0"),
+            "group message with member missing host must NOT appear in created; got: {result:?}"
+        );
+
+        // Oracle: state counter must be unchanged — the host-lookup failure fires
+        // before insert_outbound_message is called, so no message row is committed.
+        let state_after = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance: failure must occur before any INSERT"
+        );
+    }
+
+    // Oracle: Message/set create to a group chat with zero members must return
+    // notCreated/serverFail and leave no message row in the DB.
+    //
+    // The empty-outbox guard fires after get_members returns [] and before
+    // insert_outbound_message is called — no INSERT occurs.
+    //
+    // Independent oracle: the message state counter must be unchanged, proving
+    // no message row was committed.
+    #[tokio::test]
+    async fn test_group_chat_no_members_returns_server_fail() {
+        let store = make_store();
+        let chat_id = "group-chat-no-members";
+
+        {
+            let guard = store.lock().unwrap();
+            // Group chat with no members at all.
+            guard.chats().create(chat_id, "group", None, 1000).unwrap();
+            // No add_member calls — chat_members is empty.
+        }
+
+        let state_before = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+
+        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let result = handler
+            .call(
+                "Message/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": {
+                        "m0": {
+                            "chatId": chat_id,
+                            "body": "hello nobody",
+                        }
+                    }
+                }),
+            )
+            .await
+            .expect("handler must not return Err; errors go in notCreated");
+
+        // Oracle: must appear in notCreated with serverFail.
+        let not_created = result["notCreated"]
+            .as_object()
+            .expect("notCreated must be an object");
+        assert!(
+            not_created.contains_key("m0"),
+            "send to memberless group must be notCreated; got: {result:?}"
+        );
+        assert_eq!(
+            not_created["m0"]["type"], "serverFail",
+            "error type must be serverFail; got: {:?}",
+            not_created["m0"]
+        );
+
+        // Oracle: state counter must be unchanged — the empty-outbox guard fires
+        // before insert_outbound_message is called, so no message row is committed.
+        let state_after = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance: empty-members guard must fire before any INSERT"
         );
     }
 }
