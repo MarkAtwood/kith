@@ -167,29 +167,30 @@ The `accountCapabilities.role` field is our extension and is one of `owner` (the
 
 All data types inherit JMAP conventions: string ids, opaque to the client; `created`, `updated`, `destroyed` in `/set` responses; `/changes` returns added/updated/destroyed id lists since a state token.
 
-#### `Contact`
+#### `ChatContact`
 
 A remote identity this mailbox knows about. Populated on first inbound contact (auto-created when a permitted peer first delivers) or manually by the owner.
 
 ```
-id:              String (server-assigned)
-tailscaleUserId: String       // stable id from the Tailscale identity provider
-login:           String       // email-shaped login, e.g. "bob@example.com"
-mailboxHost:     String       // MagicDNS name, e.g. "bob-kith.tail-yyyyy.ts.net"
-displayName:     String|null  // user-editable; falls back to login
-firstSeenAt:     UTCDate
-lastSeenAt:      UTCDate
-blocked:         Boolean
+id:          String       // the stable userId from the authentication layer;
+                          //   equals senderUserId in Peer/deliver; opaque, never parse
+login:       String       // email-shaped login, e.g. "bob@example.com"
+displayName: String|null  // user-editable; falls back to login
+firstSeenAt: UTCDate
+lastSeenAt:  UTCDate
+blocked:     Boolean
 ```
+
+Note: `mailboxHost` is a delivery-routing detail stored in the DB layer but **not** exposed in the `ChatContact` JMAP type.
 
 #### `Chat`
 
-A conversation. Deterministic id: lowercase hex of SHA-256 of sorted participant `tailscaleUserId`s joined by null bytes. Both sides compute the same id independently, so chats "match up" without negotiation.
+A conversation. The `id` is a server-assigned ULID, created when the chat is first opened (by `Chat/set create` on the owner side, or implicitly on the first `Peer/deliver` from a given contact).
 
 ```
 id:           String
 kind:         String         // "direct" | "group"
-participants: String[]       // Contact ids; includes self for groups, excludes self for direct
+contactId:    String|null    // peer userId for 1:1 chats; omitted for group chats
 createdAt:    UTCDate
 lastMessageAt:UTCDate|null
 unreadCount:  Number         // computed server-side from read cursor
@@ -198,9 +199,11 @@ unreadCount:  Number         // computed server-side from read cursor
 #### `Message`
 
 ```
-id:            String                  // ULID, time-sortable
+id:            String                  // ULID, assigned by the receiving mailbox
+senderMsgId:   String                  // ULID assigned by the sending mailbox;
+                                       //   equals id for owner-composed messages
 chatId:        String                  // references Chat
-senderId:      String                  // Contact id; "self" for outgoing
+senderId:      String                  // ChatContact id; "self" for outgoing
 body:          String                  // UTF-8, bounded by maxBodyBytes
 bodyType:      String                  // "text/plain" | "text/markdown"
 attachments:   Attachment[]            // embedded; blobIds resolved via downloadUrl
@@ -233,7 +236,7 @@ Owner role can call everything. Peer role can call only the two `Peer/*` methods
 **Owner methods** (standard JMAP shape):
 
 ```
-Contact/get          Contact/set          Contact/changes      Contact/query
+ChatContact/get      ChatContact/set      ChatContact/changes  ChatContact/query
 Chat/get             Chat/set             Chat/changes         Chat/query
 Message/get          Message/set          Message/changes      Message/query
 Message/queryChanges
@@ -272,15 +275,20 @@ Peer/receipt
 }, "0"]
 ```
 
+The `message.id` field is the **sender's own ULID** for this message (`senderMsgId` in the data model). The receiving mailbox assigns a fresh ULID as its own `id` for the stored row, enabling idempotent re-delivery detection: if the same `(chatId, message.id)` pair arrives twice, the second delivery is a no-op and returns the already-stored `id` and `receivedAt`.
+
 Response:
 
 ```json
 ["Peer/deliver", {
   "accountId": "a-self",
   "accepted": true,
+  "id": "01HREC...",
   "receivedAt": "2026-04-18T20:14:00.238Z"
 }, "0"]
 ```
+
+`id` is the receiver-assigned ULID for the stored message. The sender uses this to correlate receipts sent back via `Peer/receipt`.
 
 Authorization: the calling peer's `whois` identity must equal `senderUserId`. You cannot deliver a message claiming to be from someone else; the transport and the claim must match. This is the whole anti-spoof mechanism.
 
@@ -372,13 +380,19 @@ CREATE TABLE contacts (
   blocked           INTEGER NOT NULL DEFAULT 0
 );
 
--- Chats (1:1 for v1; groups come later)
+-- Chats (direct or group)
 CREATE TABLE chats (
-  id                TEXT PRIMARY KEY,  -- deterministic: hash of sorted participant ids
+  id                TEXT PRIMARY KEY,  -- ULID, server-assigned
   kind              TEXT NOT NULL,     -- 'direct' | 'group'
-  created_at        INTEGER NOT NULL
+  contact_id        TEXT,              -- peer userId for direct chats; NULL for groups
+  created_at        INTEGER NOT NULL,
+  last_message_at   INTEGER
 );
 
+-- Unique index prevents duplicate direct chats with the same contact.
+CREATE UNIQUE INDEX chats_direct_contact ON chats(contact_id) WHERE kind = 'direct';
+
+-- Group-chat membership (also used to drive fanout for group messages).
 CREATE TABLE chat_members (
   chat_id           TEXT NOT NULL REFERENCES chats(id),
   peer_user_id      TEXT NOT NULL,
@@ -387,44 +401,46 @@ CREATE TABLE chat_members (
 
 -- Messages (both sent and received, single table)
 CREATE TABLE messages (
-  id                TEXT PRIMARY KEY,  -- ULID
-  chat_id           TEXT NOT NULL REFERENCES chats(id),
-  sender_user_id    TEXT NOT NULL,
-  body              TEXT NOT NULL,
-  created_at        INTEGER NOT NULL,
-  -- Delivery state for outgoing:
-  delivery_state    TEXT NOT NULL,     -- 'pending' | 'delivered' | 'failed'
-  delivered_at      INTEGER,
-  -- Read state:
-  read_at           INTEGER,
-  -- Reply threading:
-  reply_to          TEXT REFERENCES messages(id)
+  id               TEXT PRIMARY KEY,  -- ULID, receiver-assigned
+  sender_msg_id    TEXT,              -- sender's own ULID; enables idempotent re-delivery
+  chat_id          TEXT NOT NULL REFERENCES chats(id),
+  sender_user_id   TEXT NOT NULL,
+  body             TEXT NOT NULL,
+  body_type        TEXT NOT NULL DEFAULT 'text/plain',
+  sent_at_peer     TEXT,              -- sender's clock (RFC 3339); not trusted for ordering
+  created_at       INTEGER NOT NULL,  -- this mailbox's clock; used for ordering
+  delivery_state   TEXT NOT NULL,     -- 'pending' | 'delivered' | 'failed' | 'received'
+  delivered_at     INTEGER,
+  read_at          INTEGER,
+  reply_to         TEXT REFERENCES messages(id)
 );
 
 CREATE INDEX messages_chat_time ON messages(chat_id, created_at);
-CREATE INDEX messages_pending ON messages(delivery_state) WHERE delivery_state = 'pending';
+CREATE INDEX messages_sender_msg_id ON messages(chat_id, sender_msg_id);
 
--- Outbox (pending deliveries to peers; retried on backoff)
+-- Outbox (pending deliveries to peers; retried with exponential backoff)
 CREATE TABLE outbox (
-  message_id        TEXT PRIMARY KEY REFERENCES messages(id),
+  message_id        TEXT NOT NULL REFERENCES messages(id),
   peer_user_id      TEXT NOT NULL,
   peer_mailbox_host TEXT NOT NULL,
+  kind              TEXT NOT NULL DEFAULT 'message', -- 'message' | 'receipt'
+  read_at_unix      INTEGER,              -- set for kind='receipt'
   next_attempt_at   INTEGER NOT NULL,
   attempt_count     INTEGER NOT NULL DEFAULT 0,
-  last_error        TEXT
+  last_error        TEXT,
+  PRIMARY KEY (message_id, peer_user_id, kind)
 );
 
 CREATE INDEX outbox_next ON outbox(next_attempt_at);
 
--- Attachments (stored as files on disk; this table is metadata)
+-- Attachments (stored as files on disk; this table is metadata only)
 CREATE TABLE attachments (
   id                TEXT PRIMARY KEY,
-  message_id        TEXT REFERENCES messages(id),
+  message_id        TEXT NOT NULL REFERENCES messages(id),
   filename          TEXT NOT NULL,
   content_type      TEXT NOT NULL,
   size_bytes        INTEGER NOT NULL,
   sha256            TEXT NOT NULL,
-  path              TEXT NOT NULL,     -- on-disk path
   created_at        INTEGER NOT NULL
 );
 ```
@@ -439,7 +455,7 @@ CREATE TABLE attachments (
     /kith-core               shared types (JMAP envelope, data types, errors)
     /kith-store              SQLite access (sqlx or rusqlite)
     /kith-jmap               JMAP envelope, method dispatch, ResultReference resolver
-    /kith-chat               Chat capability: Contact/Chat/Message/Peer methods
+    /kith-chat               Chat capability: ChatContact/Chat/Message/Peer methods
     /kith-peer               kithd-to-kithd delivery, outbox retry loop
     /kith-tslocal            Tailscale LocalAPI client (WhoIs, Status over Unix socket)
     /kith-events             EventSource push for owner clients
@@ -623,7 +639,7 @@ Named explicitly to avoid confusion:
 - Depends on host `tailscaled` via LocalAPI Unix socket.
 - 1:1 text chat between two users in the same tailnet.
 - JMAP core envelope with ResultReference resolver.
-- Chat capability: `Contact/*`, `Chat/*`, `Message/*` owner methods; `Peer/deliver`, `Peer/receipt` peer methods.
+- Chat capability: `ChatContact/*`, `Chat/*`, `Message/*` owner methods; `Peer/deliver`, `Peer/receipt` peer methods.
 - SQLite storage, outbox retry, read receipts.
 - EventSource push.
 - Minimal web client served by the daemon (uses the same JMAP endpoints).
@@ -663,11 +679,11 @@ This is small. Ballpark 3000–4000 lines of Rust plus a minimal web client. (Ru
 
 > Build a mailbox daemon in Rust (`axum` + `tokio` + `rusqlite` + `serde`). Each user runs one daemon on a Tailscale node they own. The daemon requires `tailscaled` running on the host and talks to it via the LocalAPI Unix socket (default `/var/run/tailscale/tailscaled.sock`), specifically the `/localapi/v0/whois` endpoint for per-request peer identity and `/localapi/v0/status` for the local node's tailnet IPs. `kithd` binds its HTTPS listener only to the tailnet IPs returned by `status`; it must not listen on any public interface.
 >
-> The daemon exposes a JMAP API (RFC 8620 core) with a custom `urn:ietf:params:jmap:chat` capability defining `Contact`, `Chat`, `Message`, and `Attachment` data types and methods. Standard JMAP conventions: `/get`, `/set`, `/changes`, `/query` shape; ResultReferences for batching (implement per RFC 8620 §3.7); EventSource for push. Two peer methods `Peer/deliver` and `Peer/receipt` handle kithd-to-kithd message exchange with the same envelope and same authorization mechanism.
+> The daemon exposes a JMAP API (RFC 8620 core) with a custom `urn:ietf:params:jmap:chat` capability defining `ChatContact`, `Chat`, `Message`, and `Attachment` data types and methods. Standard JMAP conventions: `/get`, `/set`, `/changes`, `/query` shape; ResultReferences for batching (implement per RFC 8620 §3.7); EventSource for push. Two peer methods `Peer/deliver` and `Peer/receipt` handle kithd-to-kithd message exchange with the same envelope and same authorization mechanism.
 >
 > Authentication on every request: extract the peer socket address, call `WhoIs` on the LocalAPI, classify the caller as `Owner` (identity matches mailbox owner from config) or `Peer` (identity is in the contacts table), restrict method access accordingly, reject otherwise. The `senderUserId` field in `Peer/deliver` must equal the caller's verified identity (anti-spoof, structural, no signing needed).
 >
-> Storage is SQLite via `rusqlite` with the `bundled` feature. Outgoing messages to peer mailboxes that are unreachable are queued in an outbox table and retried with exponential backoff via `Peer/deliver` calls to the recipient's JMAP API URL (discovered from the contact's mailbox host). Chat ids are deterministic: `chatId = hex(sha256(sorted_participant_tailscale_user_ids.join("\x00")))`, so both sides derive the same id without negotiation.
+> Storage is SQLite via `rusqlite` with the `bundled` feature. Outgoing messages to peer mailboxes that are unreachable are queued in an outbox table and retried with exponential backoff via `Peer/deliver` calls to the recipient's JMAP API URL (discovered from the contact's mailbox host). Chat ids are server-assigned ULIDs; direct chats are indexed by `contact_id` to prevent duplicates.
 >
 > Ship a minimal web client served by the daemon at `/` that speaks JMAP to its own mailbox. Plain HTML + a small amount of JavaScript is fine; no SPA framework required for Phase 1.
 >
