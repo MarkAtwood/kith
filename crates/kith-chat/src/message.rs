@@ -102,9 +102,9 @@ fn parse_attachments(obj: &serde_json::Map<String, Value>) -> Result<Vec<ParsedA
         let size = att.get("size").and_then(|v| v.as_u64()).ok_or_else(|| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].size must be a non-negative integer")})
         })?;
-        if size > MAX_ATTACHMENT_BYTES {
+        if size == 0 || size > MAX_ATTACHMENT_BYTES {
             return Err(
-                json!({"type": "invalidArguments", "description": format!("attachments[{i}].size exceeds maximum of {MAX_ATTACHMENT_BYTES} bytes")}),
+                json!({"type": "invalidArguments", "description": format!("attachments[{i}].size must be between 1 and {MAX_ATTACHMENT_BYTES} bytes")}),
             );
         }
         let sha256 = att.get("sha256").and_then(|v| v.as_str()).ok_or_else(|| {
@@ -2178,6 +2178,42 @@ mod tests {
         assert!(
             result["notCreated"].get("m0").is_some(),
             "notCreated.m0 must be set for contentType without '/'"
+        );
+        assert_eq!(get_message_count(&store), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_attachment_zero_size() {
+        let store = make_store();
+        let chat_id = "chat-att-zero-sz";
+        setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
+
+        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": "body",
+                    "attachments": [{
+                        "blobId": "a".repeat(64),
+                        "filename": "empty.bin",
+                        "contentType": "application/octet-stream",
+                        "size": 0u64,
+                        "sha256": "a".repeat(64)
+                    }]
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("handler must not return Err");
+
+        assert!(
+            result["notCreated"].get("m0").is_some(),
+            "notCreated.m0 must be set when size is zero"
         );
         assert_eq!(get_message_count(&store), 0);
     }
