@@ -243,6 +243,19 @@ UPDATE contacts SET changed_at_counter = (
 );
 ";
 
+// V9: add changed_at_counter to chats for per-row state tracking.
+// Mirrors the V8 migration for contacts.  Enables Chat/changes to compute a
+// correct newState when maxChanges truncation occurs (RFC 8620 §5.6 paging).
+// Existing rows are stamped with the current chat state counter so they appear
+// in any diff from sinceState < current; new rows record the counter at create
+// / update_last_message_at time.
+const SCHEMA_V9: &str = "
+ALTER TABLE chats ADD COLUMN changed_at_counter INTEGER NOT NULL DEFAULT 0;
+UPDATE chats SET changed_at_counter = (
+    SELECT counter FROM state_counters WHERE type_name = 'chat'
+);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -257,6 +270,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (6, SCHEMA_V6),
     (7, SCHEMA_V7),
     (8, SCHEMA_V8),
+    (9, SCHEMA_V9),
 ];
 
 impl Store {
@@ -704,8 +718,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has eight entries (versions 1-8), so user_version must be 8 after open.
-        assert_eq!(version, 8);
+        // MIGRATIONS has nine entries (versions 1-9), so user_version must be 9 after open.
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -741,7 +755,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 8, "migration 8 must be applied");
+        assert_eq!(v1, 9, "migration 9 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -828,7 +842,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 8, "migration v8 must set user_version to 8");
+        assert_eq!(v, 9, "migration v9 must set user_version to 9");
     }
 
     #[test]

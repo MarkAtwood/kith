@@ -579,6 +579,48 @@ impl<'a> MessageStore<'a> {
         })
     }
 
+    /// Return `(id, state_version)` pairs for messages created or updated after
+    /// `since_state`, ordered by `state_version ASC` (oldest change first).
+    ///
+    /// This is the ordered form of `get_changes_since`, suitable for `maxChanges`
+    /// truncation: callers can take the first N items, use the last item's
+    /// `state_version` to compute `newState = "s-{version}"`, and page forward
+    /// correctly without skipping intermediate changes.
+    pub fn get_changes_since_ordered(
+        &self,
+        since_state: &str,
+    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+        let since_version = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Jmap(JmapError::cannot_calculate_changes()))?;
+
+        let current_state = self.get_state()?;
+        let current_version: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        if since_version >= current_version {
+            return Ok((vec![], current_state));
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, state_version FROM messages                  WHERE state_version > ?1 ORDER BY state_version",
+            )
+            .map_err(db_err)?;
+
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_version], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok((rows, current_state))
+    }
+
     /// Return IDs of messages in a specific chat created or updated since the given state token.
     ///
     /// Scoped to a single `chat_id`. Returns only the added IDs; messages cannot be

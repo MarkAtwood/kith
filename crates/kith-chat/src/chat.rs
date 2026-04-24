@@ -388,32 +388,72 @@ impl JmapHandler for ChatChangesHandler {
                 return Err(JmapError::not_found());
             }
 
-            // Step 3: Acquire store lock.
+            // Step 3: Parse maxChanges — RFC 8620 §5.6: maxChanges=0 must be invalidArguments.
+            let max_changes: Option<usize> = match args.get("maxChanges") {
+                None => None,
+                Some(v) => {
+                    let n = v.as_u64().ok_or_else(|| {
+                        JmapError::invalid_arguments("maxChanges must be a positive integer")
+                    })?;
+                    if n == 0 {
+                        return Err(JmapError::invalid_arguments(
+                            "maxChanges must not be 0 (RFC 8620 §5.6)",
+                        ));
+                    }
+                    Some(n as usize)
+                }
+            };
+
+            // Step 4: Acquire store lock.
             let guard = store
                 .lock()
                 .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-            // Step 4: Get changes since the given state.
-            let result = guard.chats().get_changes_since(&since_state).map_err(|e| {
-                use kith_core::KithError;
-                match e {
-                    KithError::Validation(_) => JmapError::state_mismatch(),
-                    _ => JmapError::server_fail("store error"),
-                }
-            })?;
+            // Step 5: Get changes since the given state.
+            let (rows, current_state) = guard
+                .chats()
+                .get_changes_since_ordered(&since_state)
+                .map_err(|e| {
+                    use kith_core::KithError;
+                    match e {
+                        KithError::Validation(_) => JmapError::state_mismatch(),
+                        _ => JmapError::server_fail("store error"),
+                    }
+                })?;
 
-            // Step 5: Drop lock.
+            // Step 6: Drop lock.
             drop(guard);
 
-            // Step 6: Return response.
+            // Step 7: Apply maxChanges limit (RFC 8620 §5.6).
+            let total = rows.len();
+            let (items, has_more, new_state) = if let Some(max) = max_changes {
+                if total > max {
+                    let truncated = &rows[..max];
+                    let new_state = truncated.last().map(|(_, c)| format!("s-{c}")).expect(
+                        "truncated slice is non-empty: max>=1 invariant established at parse time",
+                    );
+                    (truncated.to_vec(), true, new_state)
+                } else {
+                    (rows, false, current_state)
+                }
+            } else {
+                (rows, false, current_state)
+            };
+
+            let created: Vec<serde_json::Value> = items
+                .into_iter()
+                .map(|(id, _)| serde_json::Value::String(id))
+                .collect();
+
+            // Step 8: Return response.
             Ok(json!({
                 "accountId": "a-self",
                 "oldState": since_state,
-                "newState": result.new_state,
-                "hasMoreChanges": false,
-                "created": result.added,
-                "updated": result.updated,
-                "destroyed": result.destroyed,
+                "newState": new_state,
+                "hasMoreChanges": has_more,
+                "created": created,
+                "updated": [],
+                "destroyed": [],
             }))
         })
     }
@@ -821,6 +861,135 @@ mod tests {
         assert_eq!(
             err.error_type, "stateMismatch",
             "error type must be stateMismatch for invalid state token"
+        );
+    }
+
+    // Oracle: RFC 8620 §5.6 — maxChanges=0 must return invalidArguments.
+    #[tokio::test]
+    async fn test_chat_changes_max_changes_zero_returns_invalid_arguments() {
+        let store = make_store();
+        upsert_contact(&store, "uid-mc0");
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-mc0", "direct", Some("uid-mc0"), 1_000_000)
+                .unwrap();
+        }
+        let handler = ChatChangesHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Chat/changes".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "sinceState": "s-0", "maxChanges": 0}),
+            )
+            .await;
+        assert!(
+            result.is_err(),
+            "maxChanges=0 must return Err(invalidArguments); got Ok: {:?}",
+            result
+        );
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "invalidArguments",
+            "error type must be invalidArguments; got: {:?}",
+            err
+        );
+    }
+
+    // Oracle: RFC 8620 §5.6 — maxChanges truncation: newState must be the last returned
+    // item's changed_at_counter, not the current store state.
+    #[tokio::test]
+    async fn test_chat_changes_max_changes_truncation() {
+        let store = make_store();
+        upsert_contact(&store, "uid-ct1");
+        upsert_contact(&store, "uid-ct2");
+        upsert_contact(&store, "uid-ct3");
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-ct1", "direct", Some("uid-ct1"), 1_000_000)
+                .unwrap();
+            guard
+                .chats()
+                .create("chat-ct2", "direct", Some("uid-ct2"), 1_000_000)
+                .unwrap();
+            guard
+                .chats()
+                .create("chat-ct3", "direct", Some("uid-ct3"), 1_000_000)
+                .unwrap();
+        }
+        let handler = ChatChangesHandler::new(Arc::clone(&store));
+
+        // Page 1: maxChanges=1 from s-0 → 1 chat, hasMoreChanges=true.
+        let r1 = handler
+            .call(
+                "Chat/changes".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "sinceState": "s-0", "maxChanges": 1}),
+            )
+            .await
+            .expect("page 1 must succeed");
+        assert_eq!(
+            r1["hasMoreChanges"], true,
+            "page 1 hasMoreChanges must be true; got: {r1}"
+        );
+        let c1 = r1["created"].as_array().expect("created must be array");
+        assert_eq!(c1.len(), 1, "page 1 must return exactly 1 chat; got: {r1}");
+        let state1 = r1["newState"]
+            .as_str()
+            .expect("newState must be string")
+            .to_string();
+
+        // Page 2: from state1 → 1 more, hasMoreChanges=true.
+        let r2 = handler
+            .call(
+                "Chat/changes".to_string(),
+                "c1".to_string(),
+                json!({"accountId": "a-self", "sinceState": state1, "maxChanges": 1}),
+            )
+            .await
+            .expect("page 2 must succeed");
+        assert_eq!(
+            r2["hasMoreChanges"], true,
+            "page 2 hasMoreChanges must be true; got: {r2}"
+        );
+        let c2 = r2["created"].as_array().expect("created must be array");
+        assert_eq!(c2.len(), 1, "page 2 must return exactly 1 chat; got: {r2}");
+        let state2 = r2["newState"]
+            .as_str()
+            .expect("newState must be string")
+            .to_string();
+
+        // Page 3: from state2 → last chat, hasMoreChanges=false.
+        let r3 = handler
+            .call(
+                "Chat/changes".to_string(),
+                "c2".to_string(),
+                json!({"accountId": "a-self", "sinceState": state2, "maxChanges": 1}),
+            )
+            .await
+            .expect("page 3 must succeed");
+        assert_eq!(
+            r3["hasMoreChanges"], false,
+            "page 3 hasMoreChanges must be false; got: {r3}"
+        );
+        let c3 = r3["created"].as_array().expect("created must be array");
+        assert_eq!(c3.len(), 1, "page 3 must return exactly 1 chat; got: {r3}");
+
+        // All 3 chats must be covered across the 3 pages.
+        let all_ids: Vec<String> = [&c1[..], &c2[..], &c3[..]]
+            .concat()
+            .iter()
+            .map(|v| v.as_str().expect("id must be string").to_string())
+            .collect();
+        let mut sorted = all_ids.clone();
+        sorted.sort();
+        assert_eq!(
+            sorted,
+            ["chat-ct1", "chat-ct2", "chat-ct3"],
+            "all 3 chats must appear across pages; got: {all_ids:?}"
         );
     }
 

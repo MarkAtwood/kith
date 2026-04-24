@@ -507,10 +507,9 @@ impl JmapHandler for ChatContactChangesHandler {
                     // max=0 is rejected at parse time (RFC 8620 §5.6 invalidArguments),
                     // so the slice index is always non-zero here.
                     let truncated = &added_with_counter[..max];
-                    let new_state = truncated
-                        .last()
-                        .map(|(_, c)| format!("s-{c}"))
-                        .unwrap_or_else(|| since_state.clone());
+                    let new_state = truncated.last().map(|(_, c)| format!("s-{c}")).expect(
+                        "truncated slice is non-empty: max>=1 invariant established at parse time",
+                    );
                     (truncated.to_vec(), true, new_state)
                 } else {
                     (added_with_counter, false, current_state)

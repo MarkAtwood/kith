@@ -57,6 +57,16 @@ impl<'a> ChatStore<'a> {
 
         if affected > 0 {
             let new_state = self.advance_state()?;
+            let counter: i64 = new_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse().ok())
+                .expect("advance_state always returns s-<integer>");
+            self.conn
+                .execute(
+                    "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+                    params![counter, chat_id],
+                )
+                .map_err(db_err)?;
             self.emit(new_state);
         }
 
@@ -306,6 +316,16 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let new_state = self.advance_state()?;
+            let counter: i64 = new_state
+                .strip_prefix("s-")
+                .and_then(|n| n.parse().ok())
+                .expect("advance_state always returns s-<integer>");
+            self.conn
+                .execute(
+                    "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+                    params![counter, chat_id],
+                )
+                .map_err(db_err)?;
             self.emit(new_state);
         }
         Ok(())
@@ -357,23 +377,22 @@ impl<'a> ChatStore<'a> {
         self.get_state()
     }
 
-    /// Return IDs of all chats if the state has advanced since `since_state`.
+    /// Return IDs of chats that were created or updated after `since_state`.
     ///
-    /// Phase 1: no per-row state tracking for chats.  Any change after
-    /// `since_state` triggers a full re-sync: all chat IDs are returned as
-    /// `added`.  If `since_state` is already the current state, the result
-    /// is empty.
+    /// Uses per-row `changed_at_counter` (added in V9 migration) to return only
+    /// chats that were actually modified after the given state — not a full re-sync.
+    /// Results are ordered by `changed_at_counter ASC` (oldest change first).
+    ///
+    /// `new_state` in the result is always the current store state.
+    ///
+    /// **⚠ Do not use this method when `maxChanges` pagination is required.**
+    /// When the caller must truncate the result and compute `newState` from the
+    /// last returned item's counter, use [`get_changes_since_ordered`] instead.
+    ///
+    /// [`get_changes_since_ordered`]: ChatStore::get_changes_since_ordered
     pub fn get_changes_since(&self, since_state: &str) -> Result<ChangesResult, KithError> {
-        let since_counter = since_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
-
-        let current_state = self.get_state()?;
-        let current_counter: i64 = current_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .expect("get_state always returns s-<integer>");
+        let (since_counter, current_counter, current_state) =
+            self.resolve_since_counters(since_state)?;
 
         if since_counter >= current_counter {
             return Ok(ChangesResult {
@@ -386,10 +405,12 @@ impl<'a> ChatStore<'a> {
 
         let mut stmt = self
             .conn
-            .prepare_cached("SELECT id FROM chats ORDER BY created_at")
+            .prepare_cached(
+                "SELECT id FROM chats                  WHERE changed_at_counter > ?1                  ORDER BY changed_at_counter ASC",
+            )
             .map_err(db_err)?;
         let ids: Vec<String> = stmt
-            .query_map([], |row| row.get(0))
+            .query_map(params![since_counter], |row| row.get(0))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
@@ -400,6 +421,55 @@ impl<'a> ChatStore<'a> {
             destroyed: vec![],
             new_state: current_state,
         })
+    }
+
+    /// Return `(id, changed_at_counter)` pairs for chats created or updated after
+    /// `since_state`, ordered by `changed_at_counter ASC` (oldest change first).
+    ///
+    /// This is the ordered form of `get_changes_since`, suitable for `maxChanges`
+    /// truncation: callers can take the first N items, use the last item's
+    /// `changed_at_counter` to compute `newState = "s-{counter}"`, and page
+    /// forward correctly without skipping intermediate changes.
+    pub fn get_changes_since_ordered(
+        &self,
+        since_state: &str,
+    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+        let (since_counter, current_counter, current_state) =
+            self.resolve_since_counters(since_state)?;
+
+        if since_counter >= current_counter {
+            return Ok((vec![], current_state));
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, changed_at_counter FROM chats                  WHERE changed_at_counter > ?1                  ORDER BY changed_at_counter ASC",
+            )
+            .map_err(db_err)?;
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok((rows, current_state))
+    }
+
+    /// Parse `since_state` and return `(since_counter, current_counter, current_state)`.
+    fn resolve_since_counters(&self, since_state: &str) -> Result<(i64, i64, String), KithError> {
+        let since_counter = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
+
+        let current_state = self.get_state()?;
+        let current_counter: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        Ok((since_counter, current_counter, current_state))
     }
 }
 
