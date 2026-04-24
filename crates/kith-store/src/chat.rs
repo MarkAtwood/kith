@@ -406,7 +406,7 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id FROM chats                  WHERE changed_at_counter > ?1                  ORDER BY changed_at_counter ASC",
+                "SELECT id FROM chats WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
         let ids: Vec<String> = stmt
@@ -444,7 +444,7 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id, changed_at_counter FROM chats                  WHERE changed_at_counter > ?1                  ORDER BY changed_at_counter ASC",
+                "SELECT id, changed_at_counter FROM chats WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
         let rows: Vec<(String, i64)> = stmt

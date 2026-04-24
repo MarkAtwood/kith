@@ -608,7 +608,7 @@ impl<'a> MessageStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id, state_version FROM messages                  WHERE state_version > ?1 ORDER BY state_version",
+                "SELECT id, state_version FROM messages WHERE state_version > ?1 ORDER BY state_version",
             )
             .map_err(db_err)?;
 
