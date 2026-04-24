@@ -377,6 +377,12 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                         break;
                     }
                 } else if live_tx.is_closed() {
+                    // Belt-and-suspenders: if select! picked the rx.recv() arm while
+                    // live_tx.closed() was simultaneously ready (pseudorandom selection),
+                    // the batch is filtered to empty here.  is_closed() catches that case.
+                    // In the single-threaded test runtime this path is unreachable because
+                    // closed() always fires on the next tick; in production both branches
+                    // can fire.
                     break;
                 }
                 // close_after_first=false + empty batch: no event to send, but check
@@ -1654,14 +1660,20 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // events_coalescing_task_exits_on_disconnect_before_any_broadcast
-    // Oracle: when live_rx is dropped (client disconnect) and a Chat broadcast
-    //         is sent (which the ChatContact filter drops), the coalescing task
-    //         receives the broadcast, finds the batch empty, then calls
-    //         is_closed() in the empty-batch path and breaks.  The select!
-    //         closed() arm does NOT fire in this test — the task is woken by
-    //         the Chat broadcast, not by a closed() resolution.
+    // Oracle: when live_rx is dropped (client disconnect), live_tx.closed()
+    //         becomes ready immediately.  On the first yield_now() the tokio
+    //         scheduler runs the coalescing task; the select! live_tx.closed()
+    //         arm fires → task breaks.  The Chat broadcast sent afterwards
+    //         arrives at an empty channel (receiver_count = 0 already) and is
+    //         discarded.
     //         We observe task exit by watching the broadcast receiver_count()
     //         drop from 1 (task running) to 0 (task exited).
+    //
+    // Note: this test exercises the same select! closed() arm as
+    // events_coalescing_task_exits_via_select_closed_arm. The Chat broadcast
+    // sent after drop(resp) arrives at an empty channel (task already exited)
+    // and is discarded. It is kept as a belt-and-suspenders regression for the
+    // is_closed() empty-batch path in case future scheduler changes alter timing.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn events_coalescing_task_exits_on_disconnect_before_any_broadcast() {
