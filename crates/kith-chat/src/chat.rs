@@ -416,7 +416,7 @@ impl JmapHandler for ChatChangesHandler {
                 .map_err(|e| {
                     use kith_core::KithError;
                     match e {
-                        KithError::Validation(_) => JmapError::state_mismatch(),
+                        KithError::Jmap(je) => je,
                         _ => JmapError::server_fail("store error"),
                     }
                 })?;
@@ -841,9 +841,9 @@ mod tests {
         );
     }
 
-    // Oracle: A malformed state token (no s- prefix) must return a stateMismatch error.
-    // The store's get_changes_since returns KithError::Validation for invalid tokens,
-    // which the handler must map to JmapError::state_mismatch().
+    // Oracle: RFC 8620 §5.5 — a malformed state token must return cannotCalculateChanges.
+    // (stateMismatch is for /set ifInState checks; /changes uses cannotCalculateChanges
+    // so the client knows to fall back to a full re-sync.)
     #[tokio::test]
     async fn test_chat_changes_malformed_state() {
         let store = make_store();
@@ -859,8 +859,8 @@ mod tests {
         assert!(result.is_err(), "expected Err for malformed state");
         let err = result.unwrap_err();
         assert_eq!(
-            err.error_type, "stateMismatch",
-            "error type must be stateMismatch for invalid state token"
+            err.error_type, "cannotCalculateChanges",
+            "error type must be cannotCalculateChanges for invalid state token"
         );
     }
 

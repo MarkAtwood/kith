@@ -4325,11 +4325,25 @@ mod tests {
         );
     }
 
+    // In test-utils builds, is_valid_mailbox_host() accepts loopback so the
+    // integration test harness can bind listeners to 127.0.0.1:0.  The
+    // non-test-utils assertion is therefore gated to builds where the
+    // loopback bypass is absent.
+    #[cfg(not(feature = "test-utils"))]
     #[test]
     fn mailbox_host_loopback_rejected() {
         assert!(
             !is_valid_mailbox_host("127.0.0.1"),
             "127.0.0.1 (loopback) must be rejected"
+        );
+    }
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn mailbox_host_loopback_accepted_in_test_utils() {
+        assert!(
+            is_valid_mailbox_host("127.0.0.1"),
+            "127.0.0.1 (loopback) must be accepted when test-utils is enabled"
         );
     }
 

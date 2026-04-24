@@ -1,6 +1,6 @@
 use crate::db_err;
 use crate::message::ChangesResult;
-use kith_core::{ChatContact, KithError, StateChange};
+use kith_core::{ChatContact, JmapError, KithError, StateChange};
 use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
@@ -350,7 +350,7 @@ impl<'a> ContactStore<'a> {
         let since_counter = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
-            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
+            .ok_or_else(|| KithError::Jmap(JmapError::cannot_calculate_changes()))?;
 
         let current_state = self.get_state()?;
         let current_counter: i64 = current_state
@@ -640,15 +640,15 @@ mod tests {
 
     #[test]
     fn contact_changes_malformed_state() {
-        // Oracle: a non-"s-N" token must return KithError::Validation.
+        // Oracle: a non-"s-N" token must return cannotCalculateChanges (RFC 8620 §5.2).
         let store = open();
         let cs = store.contacts();
         let result = cs.get_changes_since("garbage");
         match result {
-            Err(KithError::Validation(msg)) => {
-                assert_eq!(msg, "invalid state token");
+            Err(KithError::Jmap(e)) => {
+                assert_eq!(e.error_type, "cannotCalculateChanges");
             }
-            other => panic!("expected KithError::Validation, got {:?}", other),
+            other => panic!("expected cannotCalculateChanges, got {:?}", other),
         }
     }
 

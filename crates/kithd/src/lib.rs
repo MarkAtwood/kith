@@ -90,7 +90,10 @@ pub fn combined_state(store: &Store) -> String {
             let parts: Vec<&str> = states.iter().map(|(_, s)| s.as_str()).collect();
             parts.join("-")
         }
-        Err(_) => "s-0-s-0-s-0".to_string(),
+        Err(e) => {
+            tracing::error!("get_all_states failed — state will appear as s-0: {e}");
+            "s-0-s-0-s-0".to_string()
+        }
     }
 }
 
@@ -101,7 +104,10 @@ pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
 ) -> impl axum::response::IntoResponse {
     let state_str = match app.store.lock() {
         Ok(guard) => combined_state(&guard),
-        Err(_) => "s-0-s-0-s-0".to_string(),
+        Err(e) => {
+            tracing::error!("store mutex poisoned in session_handler: {e}");
+            "s-0-s-0-s-0".to_string()
+        }
     };
 
     let session = build_session(

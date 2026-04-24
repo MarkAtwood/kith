@@ -279,6 +279,13 @@ const SCHEMA_V11: &str = "
 CREATE INDEX IF NOT EXISTS idx_chats_changed_at_counter ON chats(changed_at_counter);
 ";
 
+// V12: index on contacts(changed_at_counter) — same optimization as V11 for chats.
+// ChatContact/changes queries `WHERE changed_at_counter > ?1 ORDER BY changed_at_counter`;
+// without this index the query does a full table scan of the contacts table.
+const SCHEMA_V12: &str = "
+CREATE INDEX IF NOT EXISTS idx_contacts_changed_at_counter ON contacts(changed_at_counter);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -296,6 +303,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (9, SCHEMA_V9),
     (10, SCHEMA_V10),
     (11, SCHEMA_V11),
+    (12, SCHEMA_V12),
 ];
 
 impl Store {
@@ -743,8 +751,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has eleven entries (versions 1-11), so user_version must be 11 after open.
-        assert_eq!(version, 11);
+        // MIGRATIONS has twelve entries (versions 1-12), so user_version must be 12 after open.
+        assert_eq!(version, 12);
     }
 
     #[test]
@@ -780,7 +788,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 11, "migration 11 must be applied");
+        assert_eq!(v1, 12, "migration 12 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -867,7 +875,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 11, "migration v11 must set user_version to 11");
+        assert_eq!(v, 12, "migration v12 must set user_version to 12");
     }
 
     #[test]

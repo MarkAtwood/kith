@@ -846,10 +846,10 @@ async fn test_contact_changes_malformed_state() {
         .await;
     let (method_name, args, _) = &resp.method_responses[0];
     assert_eq!(method_name, "ChatContact/changes");
-    // Oracle: ChatContactChangesHandler maps KithError::Validation → stateMismatch.
+    // Oracle: RFC 8620 §5.5 — malformed sinceState must return cannotCalculateChanges.
     assert_eq!(
-        args["type"], "stateMismatch",
-        "ChatContact/changes with malformed sinceState must return stateMismatch; got: {args}"
+        args["type"], "cannotCalculateChanges",
+        "ChatContact/changes with malformed sinceState must return cannotCalculateChanges; got: {args}"
     );
 }
 

@@ -489,7 +489,7 @@ impl JmapHandler for ChatContactChangesHandler {
                 .contacts()
                 .get_changes_since_ordered(&since_state)
                 .map_err(|e| match e {
-                    KithError::Validation(_) => JmapError::state_mismatch(),
+                    KithError::Jmap(je) => je,
                     _ => JmapError::server_fail("store error"),
                 })?;
 
@@ -969,8 +969,9 @@ mod tests {
         );
     }
 
-    // Oracle: RFC 8620 §5.6 — sinceState that is not a valid state token (non-"s-N")
-    // must return a method-level error with type "stateMismatch".
+    // Oracle: RFC 8620 §5.5 — sinceState that is not a valid state token (non-"s-N")
+    // must return cannotCalculateChanges so the client knows to fall back to a full
+    // re-sync.  (stateMismatch is for /set ifInState checks, not /changes.)
     #[tokio::test]
     async fn test_contact_changes_malformed_state() {
         let store = make_store();
@@ -982,8 +983,8 @@ mod tests {
             .expect_err("should return Err for malformed state");
 
         assert_eq!(
-            err.error_type, "stateMismatch",
-            "expected stateMismatch error; got: {:?}",
+            err.error_type, "cannotCalculateChanges",
+            "expected cannotCalculateChanges error; got: {:?}",
             err
         );
     }
