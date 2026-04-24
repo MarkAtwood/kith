@@ -283,6 +283,15 @@ impl<'a> ChatStore<'a> {
         Ok(ids)
     }
 
+    /// Return the total number of chats as a `u64`.
+    pub fn count(&self) -> Result<u64, KithError> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM chats", [], |row| row.get(0))
+            .map_err(db_err)?;
+        Ok(n.max(0) as u64)
+    }
+
     /// Update the last_message_at timestamp for a chat and advance the chat state counter.
     ///
     /// Only advances the state counter if the chat actually exists (UPDATE matched a row).

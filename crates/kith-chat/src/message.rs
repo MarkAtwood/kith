@@ -856,7 +856,7 @@ impl JmapHandler for MessageQueryChangesHandler {
             // lock 2 so that newQueryState and index values always come from the same
             // consistent snapshot (no intervening write can shift positions while
             // newQueryState still reflects a pre-write state).
-            let (chat_added, destroyed) = {
+            let chat_added = {
                 let guard = store
                     .lock()
                     .map_err(|_| JmapError::server_fail("store poisoned"))?;
@@ -884,12 +884,12 @@ impl JmapHandler for MessageQueryChangesHandler {
                 }
 
                 // Fetch only the changed IDs that belong to this chat in a single query.
-                let chat_changes = guard
+                let chat_added = guard
                     .messages()
                     .get_changes_since_for_chat(&since_query_state, &chat_id)
                     .map_err(kith_to_jmap)?;
 
-                (chat_changes.added, chat_changes.destroyed)
+                chat_added
                 // lock released here
             };
 
@@ -923,7 +923,7 @@ impl JmapHandler for MessageQueryChangesHandler {
                 "accountId": "a-self",
                 "oldQueryState": since_query_state,
                 "newQueryState": new_state,
-                "removed": destroyed,
+                "removed": Vec::<String>::new(),
                 "added": added_with_index,
             }))
         })

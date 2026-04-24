@@ -78,7 +78,7 @@ impl TypeFilter {
         let mut bits: u8 = 0;
         for token in s.split(',').map(str::trim) {
             match token {
-                "Contact" => bits |= Self::CONTACT,
+                "ChatContact" => bits |= Self::CONTACT,
                 "Chat" => bits |= Self::CHAT,
                 "Message" => bits |= Self::MESSAGE,
                 _ => return Err(()),
@@ -93,7 +93,7 @@ impl TypeFilter {
 
     fn allows(self, type_name: &str) -> bool {
         match type_name {
-            "Contact" => self.0 & Self::CONTACT != 0,
+            "ChatContact" => self.0 & Self::CONTACT != 0,
             "Chat" => self.0 & Self::CHAT != 0,
             "Message" => self.0 & Self::MESSAGE != 0,
             _ => false,
@@ -239,8 +239,16 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 // "s-3" != "s-5" but the client is *ahead* of the server, so
                 // replaying would send stale data.  Numeric comparison is the
                 // correct guard.
-                let server_n = parse_state_counter(&current_state);
-                let lei_n = parse_state_counter(lei);
+                //
+                // unwrap_or semantics: server state always has valid "s-N"
+                // format (produced by format!("s-{counter}")), so 0 is a safe
+                // fallback that causes replay to proceed rather than silently
+                // suppressing it.  LEI is validated to "s-\d+" on entry but we
+                // treat a malformed value as i64::MAX (far ahead) to skip
+                // replay safely — consistent with the silent-ignore policy for
+                // bad LEI values.
+                let server_n = parse_state_counter(&current_state).unwrap_or(0);
+                let lei_n = parse_state_counter(lei).unwrap_or(i64::MAX);
                 if server_n <= lei_n {
                     return None;
                 }
@@ -354,7 +362,9 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             // arrives when all broadcasts are type-filtered.
             if batch.is_empty() {
                 if close_after_first {
-                    let _ = live_tx.send(None).await;
+                    if live_tx.send(None).await.is_err() {
+                        break;
+                    }
                 }
                 continue;
             }
@@ -895,7 +905,7 @@ mod tests {
         tokio::spawn(async move {
             tokio::task::yield_now().await;
             let _ = tx.send(StateChange {
-                type_name: "Contact".to_string(),
+                type_name: "ChatContact".to_string(),
                 new_state: "s-1".to_string(),
             });
         });
@@ -911,14 +921,14 @@ mod tests {
         let body_bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
         let body = std::str::from_utf8(&body_bytes).unwrap();
 
-        // Exactly one event: the live Contact event, not a spurious replay.
+        // Exactly one event: the live ChatContact event, not a spurious replay.
         let event_count = body.lines().filter(|l| *l == "event: state").count();
         assert_eq!(
             event_count, 1,
             "no replay when state matches LEI, got body: {body:?}"
         );
         assert!(
-            body.contains("Contact"),
+            body.contains("ChatContact"),
             "the live event must appear, body: {body:?}"
         );
     }
@@ -1391,7 +1401,7 @@ mod tests {
             // The task's recv().await picks up the first, then try_recv()
             // captures the remaining two before any async yield — one batch.
             let _ = tx.send(StateChange {
-                type_name: "Contact".to_string(),
+                type_name: "ChatContact".to_string(),
                 new_state: "s-1".to_string(),
             });
             let _ = tx.send(StateChange {
@@ -1423,8 +1433,8 @@ mod tests {
 
         // All three type names must appear in the single coalesced data field.
         assert!(
-            body.contains("Contact"),
-            "coalesced frame must include Contact, body: {body:?}"
+            body.contains("ChatContact"),
+            "coalesced frame must include ChatContact, body: {body:?}"
         );
         assert!(
             body.contains("Chat"),

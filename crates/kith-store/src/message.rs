@@ -581,15 +581,14 @@ impl<'a> MessageStore<'a> {
 
     /// Return IDs of messages in a specific chat created or updated since the given state token.
     ///
-    /// Identical to `get_changes_since` but scoped to a single `chat_id`.
-    /// The `new_state` comes from `get_state()`, not from the filtered query,
-    /// so it always reflects the global message state counter.
-    /// Messages cannot be deleted, so `destroyed` is always empty.
+    /// Scoped to a single `chat_id`. Returns only the added IDs; messages cannot be
+    /// deleted so there is no destroyed list. The caller is responsible for reading
+    /// the current state separately if needed.
     pub fn get_changes_since_for_chat(
         &self,
         since_state: &str,
         chat_id: &str,
-    ) -> Result<ChangesResult, KithError> {
+    ) -> Result<Vec<String>, KithError> {
         let since_version = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
@@ -610,14 +609,7 @@ impl<'a> MessageStore<'a> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
-        let new_state = self.get_state()?;
-
-        Ok(ChangesResult {
-            added: ids,
-            updated: vec![],
-            destroyed: vec![],
-            new_state,
-        })
+        Ok(ids)
     }
 
     /// Return the current state token for messages.

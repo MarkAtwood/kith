@@ -227,15 +227,14 @@ use crate::discovery::TailnetCertVerifier;
 // HTTPS client builder
 // ---------------------------------------------------------------------------
 
-/// Build a Hyper HTTPS client that accepts any TLS certificate from a
-/// tailnet peer.
+/// Percent-encode a string using the RFC 3986 unreserved character set.
 ///
-/// Percent-encode a string for use as a URL path segment (RFC 3986).
+/// Encodes all characters except RFC 3986 unreserved characters
+/// (A–Z, a–z, 0–9, `-`, `.`, `_`, `~`). Everything else, including
+/// `#`, `?`, `/`, and space, is encoded as `%XX` using uppercase hex digits.
 ///
-/// Only unreserved characters (A–Z, a–z, 0–9, `-`, `.`, `_`, `~`) are left
-/// unencoded. Everything else, including `#`, `?`, `/`, and space, is encoded
-/// as `%XX` using uppercase hex digits.
-fn percent_encode_path_segment(s: &str) -> String {
+/// Suitable for both URL path segments and query parameter values.
+fn percent_encode_unreserved(s: &str) -> String {
     let mut encoded = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
@@ -365,10 +364,10 @@ pub(crate) async fn fetch_peer_blob(
     // unreserved character set.  A naive replace of only '/' and '+' leaves
     // '&', '=', '#', and other characters that would corrupt the query string
     // or enable SSRF if a malicious peer supplies a crafted content_type.
-    let ct_encoded = percent_encode_path_segment(content_type);
+    let ct_encoded = percent_encode_unreserved(content_type);
     // Percent-encode the filename path segment: characters like '#' or '?' would
     // truncate or corrupt the URL path before it reaches the server.
-    let filename_encoded = percent_encode_path_segment(filename);
+    let filename_encoded = percent_encode_unreserved(filename);
     let url = format!(
         "https://{mailbox_host}/jmap/download/a-self/{blob_id}/{filename_encoded}?accept={ct_encoded}"
     );

@@ -498,9 +498,8 @@ impl JmapHandler for ChatQueryHandler {
             let total = if calculate_total {
                 guard
                     .chats()
-                    .list_ids()
+                    .count()
                     .map_err(|e| JmapError::server_fail(e.to_string()))?
-                    .len()
             } else {
                 0
             };
