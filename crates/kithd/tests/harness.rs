@@ -205,7 +205,7 @@ mod inner {
 
         // ---- alice's AppState ----
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
-        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store), ALICE_OWNER_ID));
+        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store)));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),
             store: Arc::clone(&alice_store),
@@ -230,7 +230,7 @@ mod inner {
 
         // ---- bob's AppState for the TCP listener ----
         let (bob_events_tx, _bob_events_rx) = make_channel(64);
-        let bob_dispatcher = Arc::new(build_dispatcher(Arc::clone(&bob_store), BOB_OWNER_ID));
+        let bob_dispatcher = Arc::new(build_dispatcher(Arc::clone(&bob_store)));
         let bob_tcp_state = AppState {
             ts: Arc::new(bob_tcp_whois),
             store: Arc::clone(&bob_store),

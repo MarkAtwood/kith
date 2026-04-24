@@ -130,19 +130,17 @@ fn parse_attachments(obj: &serde_json::Map<String, Value>) -> Result<Vec<ParsedA
 
 pub struct MessageSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
-    owner_id: String,
 }
 
 impl MessageSetHandler {
-    pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_id: String) -> Self {
-        Self { store, owner_id }
+    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
+        Self { store }
     }
 }
 
 impl JmapHandler for MessageSetHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
-        let owner_id = self.owner_id.clone();
 
         Box::pin(async move {
             let obj = args
@@ -196,7 +194,6 @@ impl JmapHandler for MessageSetHandler {
                         client_id,
                         value,
                         now_unix,
-                        &owner_id,
                         &mut old_state_cell,
                     ) {
                         Ok(msg_value) => {
@@ -275,7 +272,6 @@ fn process_create(
     _client_id: &str,
     value: &Value,
     now_unix: i64,
-    _owner_id: &str,
     old_state_out: &mut Option<String>,
 ) -> Result<Value, Value> {
     let obj = value.as_object().ok_or_else(
@@ -992,7 +988,7 @@ mod tests {
         let chat_id = "chat-abc";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1028,7 +1024,7 @@ mod tests {
         let chat_id = "chat-big";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let oversized = "x".repeat(65537);
         let args = json!({
             "accountId": "a-self",
@@ -1065,7 +1061,7 @@ mod tests {
     async fn test_message_set_create_unknown_chat() {
         let store = make_store();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1120,7 +1116,7 @@ mod tests {
             msg_in_chat1 = "msg-in-chat1";
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1244,7 +1240,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1297,7 +1293,7 @@ mod tests {
         }
 
         // Submit a readAt that is clearly in the far future (year 2099).
-        let set_handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let set_handler = MessageSetHandler::new(Arc::clone(&store));
         let set_args = json!({
             "accountId": "a-self",
             "update": {
@@ -1369,7 +1365,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1880,7 +1876,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1945,7 +1941,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -2054,7 +2050,7 @@ mod tests {
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
         let blob_id = "a".repeat(64);
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2084,7 +2080,7 @@ mod tests {
         let chat_id = "chat-att-bad-blob";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2120,7 +2116,7 @@ mod tests {
         let chat_id = "chat-att-bad-fn";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2156,7 +2152,7 @@ mod tests {
         let chat_id = "chat-att-bad-ct";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2192,7 +2188,7 @@ mod tests {
         let chat_id = "chat-att-oversize";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2228,7 +2224,7 @@ mod tests {
         let chat_id = "chat-att-bad-sha";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2279,7 +2275,7 @@ mod tests {
             })
             .collect();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2338,7 +2334,7 @@ mod tests {
             "sha256": "b".repeat(64)
         });
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2422,7 +2418,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2617,7 +2613,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2691,7 +2687,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), "owner-uid".to_string());
+        let handler = MessageSetHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
             "update": {

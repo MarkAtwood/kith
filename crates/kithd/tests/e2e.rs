@@ -44,7 +44,7 @@ fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, blob_dir) = make_blob_store();
     let state = AppState {
         ts: Arc::new(whois),
@@ -161,7 +161,7 @@ fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, blob_dir) = make_blob_store();
 
     let state = AppState {
@@ -195,7 +195,7 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, blob_dir) = make_blob_store();
     let state = AppState {
         ts: Arc::new(whois),
@@ -1153,7 +1153,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
         )
         .expect("upsert must succeed for a correctly-opened in-memory store");
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, _blob_dir) = make_blob_store();
     let state = AppState {
         ts: Arc::new(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN)))),

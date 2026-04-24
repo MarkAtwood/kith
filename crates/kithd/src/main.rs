@@ -174,7 +174,7 @@ async fn main() {
     // -----------------------------------------------------------------------
     // 9. Build JMAP dispatcher and AppState
     // -----------------------------------------------------------------------
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), &owner_id));
+    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
 
     let state = AppState {
         ts: Arc::clone(&ts),
