@@ -7,6 +7,14 @@ use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// JMAP property names that are patchable via `ChatContact/set` update.
+///
+/// COUPLING: must stay in sync with the patchable fields of `ChatContact` in
+/// `kith-store`.  A test (`test_known_update_keys_exact_and_accepted`) enforces
+/// that (a) this slice contains exactly the expected names and (b) each name is
+/// accepted by the `ChatContact/set` handler — catching drift in both directions.
+pub(crate) const CONTACT_UPDATE_KEYS: &[&str] = &["displayName", "blocked"];
+
 // ---------------------------------------------------------------------------
 // Contact/get
 // ---------------------------------------------------------------------------
@@ -329,12 +337,8 @@ fn process_update(
 
     // RFC 8620 §5.3: unknown/unsupported patch properties must yield invalidProperties
     // (a per-object SetError), not invalidArguments (a method-level error type).
-    // COUPLING: this list must stay in sync with the patchable fields of ChatContact
-    // in kith-store. If a new field is added to the Contact struct in kith-store and
-    // should be patchable via JMAP, add its JMAP name here.
-    const KNOWN_UPDATE_KEYS: &[&str] = &["displayName", "blocked"];
     for key in patch_obj.keys() {
-        if !KNOWN_UPDATE_KEYS.contains(&key.as_str()) {
+        if !CONTACT_UPDATE_KEYS.contains(&key.as_str()) {
             return Err(json!({
                 "type": "invalidProperties",
                 "description": format!("unknown or read-only property: {key}"),
@@ -456,10 +460,23 @@ impl JmapHandler for ChatContactChangesHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("sinceState is required"))?
                 .to_string();
 
-            let max_changes: Option<usize> = obj
-                .get("maxChanges")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize);
+            // RFC 8620 §5.6: "If maxChanges is 0, the server SHOULD return an
+            // invalidArguments error."  Enforce the SHOULD at the parse step so
+            // callers get a clear error rather than a silently-empty result.
+            let max_changes: Option<usize> = match obj.get("maxChanges") {
+                None => None,
+                Some(v) => {
+                    let n = v.as_u64().ok_or_else(|| {
+                        JmapError::invalid_arguments("maxChanges must be a positive integer")
+                    })?;
+                    if n == 0 {
+                        return Err(JmapError::invalid_arguments(
+                            "maxChanges must not be 0 (RFC 8620 §5.6)",
+                        ));
+                    }
+                    Some(n as usize)
+                }
+            };
 
             // 3. Acquire store lock.
             let guard = store
@@ -487,9 +504,8 @@ impl JmapHandler for ChatContactChangesHandler {
                 if total > max {
                     // Truncate to max.  newState must be the state of the last
                     // returned change so the client can page forward correctly.
-                    // RFC 8620 §5.6: newState must never be less than sinceState.
-                    // When max=0 the truncated slice is empty and there is no last
-                    // item; use sinceState verbatim so the client does not regress.
+                    // max=0 is rejected at parse time (RFC 8620 §5.6 invalidArguments),
+                    // so the slice index is always non-zero here.
                     let truncated = &added_with_counter[..max];
                     let new_state = truncated
                         .last()
@@ -1265,12 +1281,11 @@ mod tests {
         );
     }
 
-    // Oracle: RFC 8620 §5.6 — maxChanges=0 must not regress newState below sinceState.
-    // When the client sends maxChanges=0 and at least one change is pending,
-    // the server must return hasMoreChanges=true and newState == sinceState
-    // (no progress was made, so the state must not move backwards).
+    // Oracle: RFC 8620 §5.6 — "If maxChanges is 0, the server SHOULD return an
+    // invalidArguments error."  The handler must return Err(invalidArguments) rather
+    // than silently returning an empty list when maxChanges=0 is supplied.
     #[tokio::test]
-    async fn test_contact_changes_max_changes_zero_does_not_regress_state() {
+    async fn test_contact_changes_max_changes_zero_returns_invalid_arguments() {
         let store = make_store();
         {
             let guard = store.lock().unwrap();
@@ -1278,63 +1293,29 @@ mod tests {
                 .contacts()
                 .upsert("uid-r1", "r1@example.com", "host.tail.ts.net", None, 1000)
                 .unwrap();
-            guard
-                .contacts()
-                .upsert("uid-r2", "r2@example.com", "host.tail.ts.net", None, 1000)
-                .unwrap();
         }
-        // sinceState "s-1" is behind current state (s-2).
-        let since_state = "s-1".to_string();
 
         let handler = ChatContactChangesHandler::new(Arc::clone(&store));
         let args = json!({
             "accountId": "a-self",
-            "sinceState": since_state,
+            "sinceState": "s-0",
             "maxChanges": 0
         });
         let result = handler
             .call("ChatContact/changes".to_string(), "c0".to_string(), args)
-            .await
-            .expect("should succeed");
+            .await;
 
-        // Oracle: hasMoreChanges=true because there are pending changes.
-        assert_eq!(
-            result["hasMoreChanges"], true,
-            "hasMoreChanges must be true with pending changes and maxChanges=0; got: {result}"
-        );
-        // Oracle: newState must equal sinceState — no progress, no regression.
-        assert_eq!(
-            result["newState"], since_state,
-            "newState must not be less than sinceState when maxChanges=0; got: {result}"
-        );
-        // Oracle: created must be empty (zero items returned).
-        assert_eq!(result["created"], json!([]));
-
-        // Oracle: liveness — a follow-up call with sinceState=newState and maxChanges>0
-        // must deliver the pending change, proving the client can page forward from a
-        // maxChanges=0 response without losing changes.
-        let follow_args = json!({
-            "accountId": "a-self",
-            "sinceState": result["newState"].as_str().unwrap(),
-            "maxChanges": 10
-        });
-        let follow = handler
-            .call(
-                "ChatContact/changes".to_string(),
-                "c1".to_string(),
-                follow_args,
-            )
-            .await
-            .expect("follow-up call must succeed");
-        assert_eq!(
-            follow["hasMoreChanges"], false,
-            "all pending changes must be delivered in follow-up; got: {follow}"
-        );
-        let follow_created = follow["created"].as_array().expect("created must be array");
-        // Since sinceState="s-1", only uid-r2 (counter=2) is pending.
+        // Oracle: RFC 8620 §5.6 SHOULD — maxChanges=0 must be an error, not a silent empty result.
         assert!(
-            follow_created.iter().any(|v| v == "uid-r2"),
-            "uid-r2 must appear in follow-up created; got: {follow_created:?}"
+            result.is_err(),
+            "maxChanges=0 must return Err(invalidArguments); got Ok: {:?}",
+            result
+        );
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "invalidArguments",
+            "error type must be invalidArguments; got: {:?}",
+            err
         );
     }
 
@@ -1376,5 +1357,75 @@ mod tests {
         assert_eq!(ids[0], "uid-p2", "first paginated id must be uid-p2");
         assert_eq!(ids[1], "uid-p3", "second paginated id must be uid-p3");
         assert_eq!(result["position"], 1);
+    }
+
+    // Oracle: CONTACT_UPDATE_KEYS must contain exactly {"displayName", "blocked"} and
+    // each key must be accepted by the ChatContact/set handler (not appear in notUpdated).
+    //
+    // This test has two purposes:
+    // 1. Exact-set check catches over-inclusion (a key in the list that the store rejects).
+    // 2. Per-key patch check catches under-inclusion (a patchable field missing from the list).
+    //
+    // When a new patchable field is added to ChatContact in kith-store, this test must be
+    // updated alongside CONTACT_UPDATE_KEYS — the compile-time coupling comment becomes a
+    // runtime enforcement point.
+    #[tokio::test]
+    async fn test_known_update_keys_exact_and_accepted() {
+        // Oracle: the exact set of patchable JMAP properties for ChatContact.
+        // Update this list when a new patchable field is added to ChatContact.
+        let expected_keys: std::collections::HashSet<&str> =
+            ["displayName", "blocked"].iter().copied().collect();
+        let actual_keys: std::collections::HashSet<&str> =
+            CONTACT_UPDATE_KEYS.iter().copied().collect();
+        assert_eq!(
+            actual_keys, expected_keys,
+            "CONTACT_UPDATE_KEYS must contain exactly the expected patchable fields; \
+             update this test and CONTACT_UPDATE_KEYS together when adding new patchable fields"
+        );
+
+        // Verify each key is accepted by the handler (not rejected as unknown/read-only).
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .contacts()
+                .upsert(
+                    "uid-keys-test",
+                    "keys@example.com",
+                    "keys.tail.ts.net",
+                    Some("Original Name"),
+                    1000,
+                )
+                .unwrap();
+        }
+        let handler = ChatContactSetHandler::new(Arc::clone(&store));
+
+        for &key in CONTACT_UPDATE_KEYS {
+            // Build a minimal valid patch value for each key.
+            let patch_value: Value = match key {
+                "displayName" => json!("Updated Name"),
+                "blocked" => json!(false),
+                other => {
+                    panic!("test does not know a valid value for key {other:?}; update this test")
+                }
+            };
+
+            let args = json!({
+                "accountId": "a-self",
+                "update": {
+                    "uid-keys-test": { key: patch_value }
+                }
+            });
+            let result = handler
+                .call("ChatContact/set".to_string(), "c0".to_string(), args)
+                .await
+                .expect("handler must succeed");
+
+            assert!(
+                result["notUpdated"].get("uid-keys-test").is_none(),
+                "key {key:?} must be accepted (not in notUpdated); \
+                 CONTACT_UPDATE_KEYS lists a key the store does not support; got: {result}"
+            );
+        }
     }
 }

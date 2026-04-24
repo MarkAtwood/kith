@@ -265,25 +265,23 @@ impl<'a> ContactStore<'a> {
     ///
     /// Uses per-row `changed_at_counter` to return only contacts that were
     /// actually modified after the given state — not a full re-sync.  Results
-    /// are ordered by `changed_at_counter ASC` so that callers applying
-    /// `maxChanges` truncation always see the oldest changes first.
+    /// are ordered by `changed_at_counter ASC`.
     ///
-    /// `new_state` in the result is always the current store state.  When the
-    /// caller applies `maxChanges` truncation it must use the last returned
-    /// item's counter to compute the correct `newState` for the response
-    /// (see `get_changes_since_ordered` for a form that surfaces per-item
-    /// counters directly).
+    /// `new_state` in the result is always the current store state, regardless
+    /// of how many items are returned.
+    ///
+    /// **⚠ Do not use this method when `maxChanges` pagination is required.**
+    /// When the caller must truncate the result and compute `newState` from the
+    /// last returned item's counter, use [`get_changes_since_ordered`] instead —
+    /// it surfaces per-row counters so the caller can derive the correct `newState`
+    /// without a second query.  Using this method with truncation produces a
+    /// `newState` that equals the current store state rather than the last
+    /// returned item, which causes the client to skip over intermediate changes.
+    ///
+    /// [`get_changes_since_ordered`]: ContactStore::get_changes_since_ordered
     pub fn get_changes_since(&self, since_state: &str) -> Result<ChangesResult, KithError> {
-        let since_counter = since_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
-
-        let current_state = self.get_state()?;
-        let current_counter: i64 = current_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .expect("get_state always returns s-<integer>");
+        let (since_counter, current_counter, current_state) =
+            self.resolve_since_counters(since_state)?;
 
         if since_counter >= current_counter {
             return Ok(ChangesResult {
@@ -326,16 +324,8 @@ impl<'a> ContactStore<'a> {
         &self,
         since_state: &str,
     ) -> Result<(Vec<(String, i64)>, String), KithError> {
-        let since_counter = since_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
-
-        let current_state = self.get_state()?;
-        let current_counter: i64 = current_state
-            .strip_prefix("s-")
-            .and_then(|n| n.parse::<i64>().ok())
-            .expect("get_state always returns s-<integer>");
+        let (since_counter, current_counter, current_state) =
+            self.resolve_since_counters(since_state)?;
 
         if since_counter >= current_counter {
             return Ok((vec![], current_state));
@@ -356,6 +346,25 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
 
         Ok((rows, current_state))
+    }
+
+    /// Parse `since_state` and return `(since_counter, current_counter, current_state)`.
+    ///
+    /// Factored out of `get_changes_since` and `get_changes_since_ordered` to
+    /// eliminate the duplicated token-parse + state-read logic.
+    fn resolve_since_counters(&self, since_state: &str) -> Result<(i64, i64, String), KithError> {
+        let since_counter = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Validation("invalid state token".to_string()))?;
+
+        let current_state = self.get_state()?;
+        let current_counter: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        Ok((since_counter, current_counter, current_state))
     }
 }
 
