@@ -189,13 +189,7 @@ impl JmapHandler for MessageSetHandler {
             // Process creates.
             if let Some(creates) = create_map {
                 for (client_id, value) in creates {
-                    match process_create(
-                        &store,
-                        client_id,
-                        value,
-                        now_unix,
-                        &mut old_state_cell,
-                    ) {
+                    match process_create(&store, client_id, value, now_unix, &mut old_state_cell) {
                         Ok(msg_value) => {
                             created.insert(client_id.clone(), msg_value);
                         }

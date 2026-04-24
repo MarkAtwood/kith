@@ -83,7 +83,9 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> Dispatcher {
     );
     d.register(
         "Message/set",
-        Box::new(kith_chat::message::MessageSetHandler::new(Arc::clone(&store))),
+        Box::new(kith_chat::message::MessageSetHandler::new(Arc::clone(
+            &store,
+        ))),
     );
     d.register(
         "Message/changes",
