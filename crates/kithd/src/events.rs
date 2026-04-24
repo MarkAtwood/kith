@@ -1651,4 +1651,72 @@ mod tests {
             "ping=999 must be clamped to 300, got: {parsed}"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // events_coalescing_task_exits_on_disconnect_before_any_broadcast
+    // Oracle: when live_rx is dropped (client disconnect) and the coalescing
+    //         task is blocking at rx.recv() with no matching broadcasts, it
+    //         must exit via the live_tx.closed() arm of the select!.
+    //         We observe task exit by watching the broadcast receiver_count()
+    //         drop from 1 (task running) to 0 (task exited).
+    //
+    //         Without the select! fix, the task would block forever on
+    //         rx.recv() even after the client disconnects, leaking a receiver
+    //         slot indefinitely.
+    // -----------------------------------------------------------------------
+    #[tokio::test]
+    async fn events_coalescing_task_exits_on_disconnect_before_any_broadcast() {
+        let state = make_state(
+            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            "uid-owner",
+        );
+        let tx = state.events_tx.clone();
+        let app = make_app(state);
+
+        assert_eq!(tx.receiver_count(), 0, "no receivers before subscription");
+
+        // Subscribe with a type filter that will never match our broadcasts.
+        let req = Request::builder()
+            .uri("/jmap/events?types=ChatContact")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Yield to let the coalescing task start and subscribe to the broadcast channel.
+        tokio::task::yield_now().await;
+        assert_eq!(
+            tx.receiver_count(),
+            1,
+            "coalescing task holds one receiver slot"
+        );
+
+        // Drop the response — this drops the response body, which drops live_rx,
+        // which makes live_tx.closed() resolve in the coalescing task.
+        drop(resp);
+
+        // Yield to let the select! branch fire and the task exit.
+        // Two yields: one for the closed() future to resolve, one for the task to exit.
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        // The coalescing task may still be blocked at rx.recv() rather than having
+        // seen closed() yet — send a broadcast to wake it up.
+        let _ = tx.send(StateChange {
+            type_name: "Chat".to_string(),
+            new_state: "s-1".to_string(),
+        });
+
+        // Yield again so the task can process the recv(), see the filtered-empty
+        // batch, call is_closed(), and break.
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(
+            tx.receiver_count(),
+            0,
+            "coalescing task must have exited after client disconnect"
+        );
+    }
 }
