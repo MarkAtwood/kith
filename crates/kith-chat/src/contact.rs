@@ -1309,6 +1309,33 @@ mod tests {
         );
         // Oracle: created must be empty (zero items returned).
         assert_eq!(result["created"], json!([]));
+
+        // Oracle: liveness — a follow-up call with sinceState=newState and maxChanges>0
+        // must deliver the pending change, proving the client can page forward from a
+        // maxChanges=0 response without losing changes.
+        let follow_args = json!({
+            "accountId": "a-self",
+            "sinceState": result["newState"].as_str().unwrap(),
+            "maxChanges": 10
+        });
+        let follow = handler
+            .call(
+                "ChatContact/changes".to_string(),
+                "c1".to_string(),
+                follow_args,
+            )
+            .await
+            .expect("follow-up call must succeed");
+        assert_eq!(
+            follow["hasMoreChanges"], false,
+            "all pending changes must be delivered in follow-up; got: {follow}"
+        );
+        let follow_created = follow["created"].as_array().expect("created must be array");
+        // Since sinceState="s-1", only uid-r2 (counter=2) is pending.
+        assert!(
+            follow_created.iter().any(|v| v == "uid-r2"),
+            "uid-r2 must appear in follow-up created; got: {follow_created:?}"
+        );
     }
 
     // Oracle: RFC 8620 Contact/query pagination — position=1, limit=2 on a 3-contact

@@ -544,4 +544,21 @@ mod tests {
             "https://[fd7a::1]:4430/.well-known/jmap"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // probe_url_malformed_unclosed_bracket_passes_through
+    // Oracle: A malformed input "[fd7a::1" (starts with '[', contains ':',
+    // but has no closing ']') must NOT be double-bracketed.  The
+    // `!ip.starts_with('[')` guard fires the else branch, producing an
+    // invalid URL that probe_peer rejects gracefully (returns None).
+    // This test locks in the output to catch any future refactor that
+    // accidentally double-brackets or panics on this input.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn probe_url_malformed_unclosed_bracket_passes_through() {
+        assert_eq!(
+            probe_url("[fd7a::1", 4430),
+            "https://[fd7a::1:4430/.well-known/jmap"
+        );
+    }
 }
