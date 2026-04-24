@@ -188,8 +188,8 @@ impl<'a> MessageStore<'a> {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)",
             params![
                 id,
                 chat_id,
@@ -579,17 +579,22 @@ impl<'a> MessageStore<'a> {
         })
     }
 
-    /// Return `(id, state_version)` pairs for messages created or updated after
-    /// `since_state`, ordered by `state_version ASC` (oldest change first).
+    /// Return classified change rows for messages created or updated after `since_state`.
     ///
-    /// This is the ordered form of `get_changes_since`, suitable for `maxChanges`
-    /// truncation: callers can take the first N items, use the last item's
-    /// `state_version` to compute `newState = "s-{version}"`, and page forward
-    /// correctly without skipping intermediate changes.
+    /// Each row is `(id, state_version, is_create)` where:
+    /// - `is_create = true`  → the message was first inserted after `since_state`
+    ///   (RFC 8620 §5.2 `created` list)
+    /// - `is_create = false` → the message existed before `since_state` and was
+    ///   subsequently modified (RFC 8620 §5.2 `updated` map)
+    ///
+    /// Rows are ordered by `state_version ASC` (oldest change first) so that
+    /// `maxChanges` truncation always produces a correct `newState`: the caller
+    /// takes the first N rows, uses the last row's `state_version` to compute
+    /// `newState = "s-{version}"`, and pages forward without skipping changes.
     pub fn get_changes_since_ordered(
         &self,
         since_state: &str,
-    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+    ) -> Result<(Vec<(String, i64, bool)>, String), KithError> {
         let since_version = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
@@ -608,12 +613,18 @@ impl<'a> MessageStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id, state_version FROM messages WHERE state_version > ?1 ORDER BY state_version",
+                "SELECT id, state_version, created_at_version \
+                 FROM messages WHERE state_version > ?1 ORDER BY state_version",
             )
             .map_err(db_err)?;
 
-        let rows: Vec<(String, i64)> = stmt
-            .query_map(params![since_version], |row| Ok((row.get(0)?, row.get(1)?)))
+        let rows: Vec<(String, i64, bool)> = stmt
+            .query_map(params![since_version], |row| {
+                let id: String = row.get(0)?;
+                let sv: i64 = row.get(1)?;
+                let cav: i64 = row.get(2)?;
+                Ok((id, sv, cav > since_version))
+            })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;

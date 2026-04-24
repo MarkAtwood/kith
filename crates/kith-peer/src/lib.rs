@@ -519,6 +519,21 @@ pub enum PeerDeliveryError {
     InvalidResponse,
 }
 
+/// Returns true if this delivery error is permanent — retrying will never succeed.
+///
+/// 4xx HTTP responses are client errors the peer controls; the peer has explicitly
+/// refused the request and will keep refusing it.  `PeerRejected` means the peer
+/// parsed the request and returned a JMAP-level error type — also permanent.
+///
+/// 5xx, network, and timeout errors are transient and should go through the normal
+/// exponential-backoff retry path.
+fn is_permanent_delivery_error(err: &PeerDeliveryError) -> bool {
+    matches!(
+        err,
+        PeerDeliveryError::PeerRejected(_) | PeerDeliveryError::HttpError(400..=499)
+    )
+}
+
 type HttpsClient = Client<
     hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
     Full<Bytes>,
@@ -1035,10 +1050,17 @@ fn is_valid_mailbox_host(host: &str) -> bool {
     }
 
     // Try to parse as an IP address.  If it parses, apply range checks.
-    // If it does not parse, treat it as a plain hostname and accept it.
+    // If it does not parse, treat it as a hostname and validate the suffix.
     let ip: IpAddr = match ip_part.parse() {
         Ok(addr) => addr,
-        Err(_) => return true, // plain hostname
+        Err(_) => {
+            // Accept only Tailscale MagicDNS FQDNs (*.ts.net).  Arbitrary public
+            // hostnames are rejected to prevent the outbox from reaching the public
+            // internet.  Headscale users must use Tailscale-range IP addresses.
+            // Note: "ts.net" itself (no subdomain) is not a valid node name and is
+            // rejected because ends_with(".ts.net") requires a preceding label.
+            return ip_part.ends_with(".ts.net");
+        }
     };
 
     match ip {
@@ -1135,14 +1157,24 @@ pub async fn outbox_tick<C: DeliverClient>(
             Ok(Some(c)) if !c.blocked => {
                 let _ = c;
             }
-            Ok(_) => {
-                // Not found or blocked — record failure and move on.
+            Ok(None) => {
+                // Contact row is gone (deleted by owner) — permanent, no point retrying.
+                tracing::warn!(msg_id = %entry.message_id, "outbox: contact not found, marking failed");
                 if let Ok(guard) = store.lock() {
-                    if let Err(e) = guard.outbox().record_failure(
-                        &entry,
-                        "contact not found or blocked",
-                        now_unix,
-                    ) {
+                    if let Err(e) = guard.outbox().mark_failed(&entry, "contact not found") {
+                        tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
+                    }
+                }
+                continue;
+            }
+            Ok(Some(_)) => {
+                // Contact exists but is blocked — reversible, use backoff retry.
+                if let Ok(guard) = store.lock() {
+                    if let Err(e) =
+                        guard
+                            .outbox()
+                            .record_failure(&entry, "contact blocked", now_unix)
+                    {
                         tracing::warn!(msg_id = %entry.message_id, "outbox: record_failure error: {e}");
                     }
                 }
@@ -1205,7 +1237,12 @@ pub async fn outbox_tick<C: DeliverClient>(
                 }
                 Err(err) => {
                     if let Ok(guard) = store.lock() {
-                        if let Err(e) =
+                        if is_permanent_delivery_error(&err) {
+                            // Permanent rejection (4xx or explicit JMAP error) — no point retrying.
+                            if let Err(e) = guard.outbox().mark_failed(&entry, &err.to_string()) {
+                                tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
+                            }
+                        } else if let Err(e) =
                             guard
                                 .outbox()
                                 .record_failure(&entry, &err.to_string(), now_unix)
@@ -1279,7 +1316,12 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
             Err(err) => {
                 if let Ok(guard) = store.lock() {
-                    if let Err(e) =
+                    if is_permanent_delivery_error(&err) {
+                        // Permanent rejection (4xx or explicit JMAP error) — no point retrying.
+                        if let Err(e) = guard.outbox().mark_failed(&entry, &err.to_string()) {
+                            tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
+                        }
+                    } else if let Err(e) =
                         guard
                             .outbox()
                             .record_failure(&entry, &err.to_string(), now_unix)
@@ -3724,6 +3766,202 @@ mod tests {
         );
     }
 
+    // Oracle: 4xx HTTP error → immediate mark_failed (permanent rejection, no retry).
+    // Spec: retrying a 401/403/422 will never succeed; burning 72 attempts wastes resources.
+    #[tokio::test]
+    async fn outbox_tick_http_4xx_marks_failed_immediately() {
+        let store = make_store();
+        let now: i64 = 1000;
+        let msg_id = "msg-ob-4xx";
+        add_contact_and_enqueue(&store, msg_id, now);
+
+        let client = MockClient::fails(PeerDeliveryError::HttpError(403));
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        assert_eq!(client.call_count(), 1, "deliver must be attempted once");
+        // Outbox row must be deleted (mark_failed removes it).
+        let entries = store
+            .lock()
+            .unwrap()
+            .outbox()
+            .get_by_message(msg_id)
+            .unwrap();
+        assert!(
+            entries.is_empty(),
+            "outbox row must be deleted after 4xx permanent rejection"
+        );
+        // Oracle: message delivery_state must be Failed.
+        let msg = store
+            .lock()
+            .unwrap()
+            .messages()
+            .get(msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Failed,
+            "delivery_state must be Failed after 4xx permanent rejection"
+        );
+    }
+
+    // Oracle: PeerRejected → immediate mark_failed (JMAP-level explicit rejection, permanent).
+    #[tokio::test]
+    async fn outbox_tick_peer_rejected_marks_failed_immediately() {
+        let store = make_store();
+        let now: i64 = 1000;
+        let msg_id = "msg-ob-rejected";
+        add_contact_and_enqueue(&store, msg_id, now);
+
+        let client = MockClient::fails(PeerDeliveryError::PeerRejected("invalidArguments".into()));
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        assert_eq!(client.call_count(), 1, "deliver must be attempted once");
+        let entries = store
+            .lock()
+            .unwrap()
+            .outbox()
+            .get_by_message(msg_id)
+            .unwrap();
+        assert!(
+            entries.is_empty(),
+            "outbox row must be deleted after PeerRejected permanent error"
+        );
+        let msg = store
+            .lock()
+            .unwrap()
+            .messages()
+            .get(msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Failed,
+            "delivery_state must be Failed after PeerRejected"
+        );
+    }
+
+    // Oracle: contact not found → immediate mark_failed; deliver not called.
+    // Spec: if the contact row is gone (never existed or deleted externally),
+    // no future tick can resolve it — it is a permanent failure.
+    // Setup: enqueue an outbox entry for a peer_user_id with no contact row.
+    #[tokio::test]
+    async fn outbox_tick_contact_not_found_marks_failed_immediately() {
+        let store = make_store();
+        let now: i64 = 1000;
+        let msg_id = "msg-ob-nofound";
+
+        // Create a chat and message, then enqueue for a peer_user_id with no contact row.
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-nofound", "direct", Some("uid-ghost"), now)
+                .unwrap();
+            guard
+                .messages()
+                .insert(
+                    msg_id,
+                    "chat-nofound",
+                    "self",
+                    "hello",
+                    "text/plain",
+                    None,
+                    now,
+                    &DeliveryState::Pending,
+                    None,
+                    msg_id,
+                )
+                .unwrap();
+            // Enqueue without a contact row for uid-ghost.
+            guard
+                .outbox()
+                .enqueue(msg_id, "uid-ghost", "100.64.0.1", now)
+                .unwrap();
+        }
+
+        let client = MockClient::succeeds();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        assert_eq!(
+            client.call_count(),
+            0,
+            "deliver must NOT be called when contact is not found"
+        );
+        // Outbox row must be deleted (mark_failed removes it).
+        let entries = store
+            .lock()
+            .unwrap()
+            .outbox()
+            .get_by_message(msg_id)
+            .unwrap();
+        assert!(
+            entries.is_empty(),
+            "outbox row must be deleted after contact-not-found permanent failure"
+        );
+        // Oracle: message delivery_state must be Failed.
+        let msg = store
+            .lock()
+            .unwrap()
+            .messages()
+            .get(msg_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Failed,
+            "delivery_state must be Failed after contact not found"
+        );
+    }
+
+    // Oracle: blocked contact → record_failure (reversible), NOT mark_failed.
+    // Spec: owner can unblock later; burning the retry budget would be wrong.
+    // (Covered by existing outbox_tick_blocked_contact_records_failure_no_deliver;
+    //  this test verifies the row survives with attempt_count=1 and state is not Failed.)
+    #[tokio::test]
+    async fn outbox_tick_blocked_contact_uses_record_failure_not_mark_failed() {
+        let store = make_store();
+        let now: i64 = 1000;
+        let msg_id = "msg-ob-blocked2";
+        add_contact_and_enqueue(&store, msg_id, now);
+
+        store
+            .lock()
+            .unwrap()
+            .contacts()
+            .set_blocked("uid-bob", true)
+            .unwrap();
+
+        let client = MockClient::succeeds();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        // Row must still exist (record_failure, not mark_failed).
+        let entries = store
+            .lock()
+            .unwrap()
+            .outbox()
+            .get_by_message(msg_id)
+            .unwrap();
+        assert!(
+            !entries.is_empty(),
+            "outbox row must survive blocked-contact failure (reversible)"
+        );
+        assert_eq!(entries[0].attempt_count, 1);
+        // delivery_state must still be pending (not Failed).
+        let msg = store
+            .lock()
+            .unwrap()
+            .messages()
+            .get(msg_id)
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            msg.delivery_state,
+            DeliveryState::Failed,
+            "delivery_state must NOT be Failed for a blocked (reversible) contact"
+        );
+    }
+
     // Oracle: outbox_tick with no due entries makes no deliver calls.
     #[tokio::test]
     async fn outbox_tick_no_due_entries_no_deliver() {
@@ -4087,14 +4325,38 @@ mod tests {
     }
 
     #[test]
-    fn mailbox_host_plain_hostname_accepted() {
+    fn mailbox_host_tailscale_fqdn_accepted() {
         assert!(
             is_valid_mailbox_host("alice.ts.net"),
-            "plain hostname must be accepted"
+            "alice.ts.net (Tailscale MagicDNS) must be accepted"
         );
         assert!(
             is_valid_mailbox_host("alice.ts.net:8443"),
-            "hostname with port must be accepted"
+            "alice.ts.net:8443 (with port) must be accepted"
+        );
+        assert!(
+            is_valid_mailbox_host("alice.tail12345.ts.net"),
+            "alice.tail12345.ts.net (FQDN with tailnet name) must be accepted"
+        );
+    }
+
+    #[test]
+    fn mailbox_host_public_hostname_rejected() {
+        assert!(
+            !is_valid_mailbox_host("evil.example.com"),
+            "evil.example.com (public internet) must be rejected"
+        );
+        assert!(
+            !is_valid_mailbox_host("alice.company.internal"),
+            "corporate internal hostname must be rejected (not .ts.net)"
+        );
+        assert!(
+            !is_valid_mailbox_host("ts.net"),
+            "ts.net itself (no subdomain) must be rejected"
+        );
+        assert!(
+            !is_valid_mailbox_host("evil.ts.net.example.com"),
+            "hostname that contains but doesn't end with .ts.net must be rejected"
         );
     }
 }

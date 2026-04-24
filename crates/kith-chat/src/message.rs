@@ -709,7 +709,7 @@ impl JmapHandler for MessageChangesHandler {
             let (items, has_more, new_state) = if let Some(max) = max_changes {
                 if total > max {
                     let truncated = &rows[..max];
-                    let new_state = truncated.last().map(|(_, v)| format!("s-{v}")).expect(
+                    let new_state = truncated.last().map(|(_, v, _)| format!("s-{v}")).expect(
                         "truncated slice is non-empty: max>=1 invariant established at parse time",
                     );
                     (truncated.to_vec(), true, new_state)
@@ -720,7 +720,18 @@ impl JmapHandler for MessageChangesHandler {
                 (rows, false, current_state)
             };
 
-            let created: Vec<Value> = items.into_iter().map(|(id, _)| Value::String(id)).collect();
+            // RFC 8620 §5.2: separate created IDs from updated IDs.
+            // is_create=true  → message was inserted after sinceState → "created" list
+            // is_create=false → message existed before sinceState → "updated" map (null patch)
+            let mut created: Vec<Value> = Vec::new();
+            let mut updated: serde_json::Map<String, Value> = serde_json::Map::new();
+            for (id, _, is_create) in items {
+                if is_create {
+                    created.push(Value::String(id));
+                } else {
+                    updated.insert(id, Value::Null);
+                }
+            }
 
             Ok(json!({
                 "accountId": "a-self",
@@ -728,7 +739,7 @@ impl JmapHandler for MessageChangesHandler {
                 "newState": new_state,
                 "hasMoreChanges": has_more,
                 "created": created,
-                "updated": [],
+                "updated": updated,
                 "destroyed": [],
             }))
         })
@@ -1411,8 +1422,11 @@ mod tests {
 
         let created = result["created"].as_array().expect("created must be array");
         assert!(created.is_empty(), "no changes at current state");
-        let updated = result["updated"].as_array().expect("updated must be array");
-        assert!(updated.is_empty());
+        // updated is RFC 8620 §5.2 map (id → null patch), not an array.
+        let updated = result["updated"]
+            .as_object()
+            .expect("updated must be object");
+        assert!(updated.is_empty(), "no updates at current state");
         let destroyed = result["destroyed"]
             .as_array()
             .expect("destroyed must be array");
@@ -1458,6 +1472,67 @@ mod tests {
             created.iter().any(|v| v.as_str() == Some("msg-ch")),
             "msg-ch must be in created; got: {:?}",
             created
+        );
+    }
+
+    // Oracle: RFC 8620 §5.2 — an updated message (readAt set after creation) must appear
+    // in "updated" (not "created") when sinceState is before the update but after creation.
+    #[tokio::test]
+    async fn test_message_changes_updated_not_created_on_read_at_change() {
+        let store = make_store();
+        let state_after_insert = {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-rfc52", "direct", None, 1000)
+                .unwrap();
+            guard
+                .messages()
+                .insert(
+                    "msg-rfc52",
+                    "chat-rfc52",
+                    "self",
+                    "body",
+                    "text/plain",
+                    None,
+                    1000,
+                    &DeliveryState::Pending,
+                    None,
+                    "msg-rfc52",
+                )
+                .unwrap();
+            guard.messages().get_state().unwrap()
+        };
+
+        // Now update the message's readAt.
+        {
+            let guard = store.lock().unwrap();
+            guard.messages().update_read_at("msg-rfc52", 2000).unwrap();
+        }
+
+        // Message/changes from the state AFTER insert but BEFORE update:
+        // the message was created before sinceState, so it must be in "updated".
+        let handler = MessageChangesHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "sinceState": state_after_insert,
+        });
+        let result = handler
+            .call("Message/changes".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        let created = result["created"].as_array().expect("created must be array");
+        assert!(
+            !created.iter().any(|v| v.as_str() == Some("msg-rfc52")),
+            "msg-rfc52 must NOT be in created (it existed before sinceState); got: {result:?}"
+        );
+        let updated = result["updated"]
+            .as_object()
+            .expect("updated must be object");
+        assert!(
+            updated.contains_key("msg-rfc52"),
+            "msg-rfc52 must be in updated (it was modified after sinceState); got: {result:?}"
         );
     }
 

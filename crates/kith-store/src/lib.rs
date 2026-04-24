@@ -252,8 +252,25 @@ UPDATE contacts SET changed_at_counter = (
 const SCHEMA_V9: &str = "
 ALTER TABLE chats ADD COLUMN changed_at_counter INTEGER NOT NULL DEFAULT 0;
 UPDATE chats SET changed_at_counter = (
-    SELECT counter FROM state_counters WHERE type_name = 'chat'
+    SELECT COALESCE(counter, 0) FROM state_counters WHERE type_name = 'chat'
 );
+";
+
+// V10: Add created_at_version to messages to distinguish RFC 8620 §5.2 created vs updated.
+//
+// created_at_version = state_version at the time of INSERT (never changes).
+// state_version      = state_version at the time of last modification.
+//
+// A message where state_version > since AND created_at_version > since → "created".
+// A message where state_version > since AND created_at_version <= since → "updated".
+//
+// Backfill: existing rows set created_at_version = state_version.  This is
+// conservative — old messages may appear in "created" after upgrade if they were
+// updated since insert, but no message is permanently lost from the change feed.
+const SCHEMA_V10: &str = "
+ALTER TABLE messages ADD COLUMN created_at_version INTEGER NOT NULL DEFAULT 0;
+UPDATE messages SET created_at_version = state_version;
+CREATE INDEX IF NOT EXISTS messages_created_at_version ON messages(created_at_version);
 ";
 
 // MIGRATIONS must be sorted in ascending order by version number.
@@ -271,6 +288,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (7, SCHEMA_V7),
     (8, SCHEMA_V8),
     (9, SCHEMA_V9),
+    (10, SCHEMA_V10),
 ];
 
 impl Store {
@@ -450,8 +468,8 @@ impl Store {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)",
             rusqlite::params![
                 id,
                 chat_id,
@@ -538,8 +556,8 @@ impl Store {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, 'self', ?3, ?4, ?5, ?6, ?7, 'pending', ?8, ?1)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
+             VALUES (?1, ?2, 'self', ?3, ?4, ?5, ?6, ?7, ?7, 'pending', ?8, ?1)",
             rusqlite::params![
                 id,
                 chat_id,
@@ -718,8 +736,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has nine entries (versions 1-9), so user_version must be 9 after open.
-        assert_eq!(version, 9);
+        // MIGRATIONS has ten entries (versions 1-10), so user_version must be 10 after open.
+        assert_eq!(version, 10);
     }
 
     #[test]
@@ -755,7 +773,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 9, "migration 9 must be applied");
+        assert_eq!(v1, 10, "migration 10 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -842,7 +860,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 9, "migration v9 must set user_version to 9");
+        assert_eq!(v, 10, "migration v10 must set user_version to 10");
     }
 
     #[test]
