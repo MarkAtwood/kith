@@ -4,7 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use tokio::sync::broadcast;
 
-/// Row from `get_changes_since_ordered`: (message_id, state_version, is_destroyed).
+/// Row from `get_changes_since_ordered`: (message_id, state_version, is_create).
 type ChangeRow = (String, i64, bool);
 
 /// Row from `get_querychanges_since_for_chat`: (message_id, sort_position).
