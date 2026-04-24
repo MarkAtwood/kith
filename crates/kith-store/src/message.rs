@@ -582,8 +582,14 @@ impl<'a> MessageStore<'a> {
     /// Return IDs of messages in a specific chat created or updated since the given state token.
     ///
     /// Scoped to a single `chat_id`. Returns only the added IDs; messages cannot be
-    /// deleted so there is no destroyed list. The caller is responsible for reading
-    /// the current state separately if needed.
+    /// deleted so there is no destroyed list.
+    ///
+    /// **TOCTOU warning**: if the caller needs `new_state` to accompany these IDs,
+    /// both this call and `get_state()` must be made within the *same* lock
+    /// acquisition on the parent `Store`.  Calling `get_state()` in a separate
+    /// lock scope after this method returns creates a window where newly-arrived
+    /// messages advance the state counter but are absent from the returned IDs,
+    /// making them permanently invisible to the caller.
     pub fn get_changes_since_for_chat(
         &self,
         since_state: &str,

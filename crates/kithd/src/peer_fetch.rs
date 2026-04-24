@@ -61,6 +61,10 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
         return false;
     }
 
+    if host.contains('@') {
+        return false;
+    }
+
     // Split host from optional port.
     //
     // Formats handled:
@@ -233,7 +237,8 @@ use crate::discovery::TailnetCertVerifier;
 /// (A–Z, a–z, 0–9, `-`, `.`, `_`, `~`). Everything else, including
 /// `#`, `?`, `/`, and space, is encoded as `%XX` using uppercase hex digits.
 ///
-/// Suitable for both URL path segments and query parameter values.
+/// Suitable for encoding single URL path segments (not full paths, since `/`
+/// is encoded) and single query parameter values.
 fn percent_encode_unreserved(s: &str) -> String {
     let mut encoded = String::with_capacity(s.len());
     for b in s.bytes() {
@@ -675,6 +680,13 @@ mod tests {
     #[test]
     fn arbitrary_hostname_with_port_rejected() {
         assert!(!is_valid_fetch_host("evil.attacker.com:8443"));
+    }
+
+    #[test]
+    fn test_is_valid_fetch_host_rejects_at_sign() {
+        assert!(!is_valid_fetch_host("attacker@100.64.0.1"));
+        assert!(!is_valid_fetch_host("attacker@node.ts.net"));
+        assert!(!is_valid_fetch_host("user@100.64.1.2:8080"));
     }
 
     #[test]

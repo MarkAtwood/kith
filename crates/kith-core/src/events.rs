@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// *that* a change occurred, not *what* changed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateChange {
-    /// JMAP object type name, e.g. "Contact", "Chat", "Message".
+    /// JMAP object type name, e.g. "ChatContact", "Chat", "Message".
     pub type_name: String,
     /// New opaque state token, e.g. "s-42".
     pub new_state: String,

@@ -851,58 +851,35 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .and_then(|n| n.parse::<i64>().ok())
                 .ok_or_else(JmapError::cannot_calculate_changes)?;
 
-            // Lock 1: validate chatId and fetch chat-scoped changes.  new_state is NOT
-            // captured here — it will be captured atomically with position lookups in
-            // lock 2 so that newQueryState and index values always come from the same
-            // consistent snapshot (no intervening write can shift positions while
-            // newQueryState still reflects a pre-write state).
-            let chat_added = {
-                let guard = store
-                    .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
-
-                // Validate chatId exists.
-                if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
-                    return Err(JmapError::invalid_arguments("unknown chatId"));
-                }
-
-                let current_state = guard.messages().get_state().map_err(kith_to_jmap)?;
-                let current_counter: i64 = current_state
-                    .strip_prefix("s-")
-                    .and_then(|n| n.parse::<i64>().ok())
-                    .unwrap_or(0);
-
-                // If no changes, return early (still inside the lock scope).
-                if since_counter >= current_counter {
-                    return Ok(json!({
-                        "accountId": "a-self",
-                        "oldQueryState": since_query_state,
-                        "newQueryState": current_state,
-                        "removed": [],
-                        "added": [],
-                    }));
-                }
-
-                // Fetch only the changed IDs that belong to this chat in a single query.
-                let chat_added = guard
-                    .messages()
-                    .get_changes_since_for_chat(&since_query_state, &chat_id)
-                    .map_err(kith_to_jmap)?;
-
-                chat_added
-                // lock released here
-            };
-
-            // Lock 2: compute position indexes and capture new_state atomically.
-            // new_state is read first so that newQueryState and all index values come
-            // from the same consistent snapshot — no write between the two can produce
-            // positions that disagree with newQueryState.
             let (added_with_index, new_state) = {
                 let guard = store
                     .lock()
                     .map_err(|_| JmapError::server_fail("store poisoned"))?;
 
+                if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
+                    return Err(JmapError::invalid_arguments("unknown chatId"));
+                }
+
                 let new_state = guard.messages().get_state().map_err(kith_to_jmap)?;
+                let current_counter: i64 = new_state
+                    .strip_prefix("s-")
+                    .and_then(|n| n.parse::<i64>().ok())
+                    .unwrap_or(0);
+
+                if since_counter >= current_counter {
+                    return Ok(json!({
+                        "accountId": "a-self",
+                        "oldQueryState": since_query_state,
+                        "newQueryState": new_state,
+                        "removed": [],
+                        "added": [],
+                    }));
+                }
+
+                let chat_added = guard
+                    .messages()
+                    .get_changes_since_for_chat(&since_query_state, &chat_id)
+                    .map_err(kith_to_jmap)?;
 
                 let added_with_index: Vec<Value> = chat_added
                     .iter()
@@ -923,7 +900,7 @@ impl JmapHandler for MessageQueryChangesHandler {
                 "accountId": "a-self",
                 "oldQueryState": since_query_state,
                 "newQueryState": new_state,
-                "removed": Vec::<String>::new(),
+                "removed": [],
                 "added": added_with_index,
             }))
         })

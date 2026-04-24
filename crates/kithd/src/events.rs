@@ -54,7 +54,7 @@ const PING_MAX_SECS: u64 = 300;
 
 /// Compact filter for the three JMAP object types Kith exposes.
 ///
-/// Bit layout: bit 0 = Contact, bit 1 = Chat, bit 2 = Message.
+/// Bit layout: bit 0 = ChatContact, bit 1 = Chat, bit 2 = Message.
 /// `None` means "no filter — allow all"; `Some(TypeFilter(bits))` means
 /// only allow types whose bit is set.  Stored as a `u8` so that the live
 /// stream closure captures a single `Copy` word instead of a heap-allocated
@@ -63,7 +63,7 @@ const PING_MAX_SECS: u64 = 300;
 struct TypeFilter(u8);
 
 impl TypeFilter {
-    const CONTACT: u8 = 0b001;
+    const CHAT_CONTACT: u8 = 0b001;
     const CHAT: u8 = 0b010;
     const MESSAGE: u8 = 0b100;
 
@@ -78,7 +78,7 @@ impl TypeFilter {
         let mut bits: u8 = 0;
         for token in s.split(',').map(str::trim) {
             match token {
-                "ChatContact" => bits |= Self::CONTACT,
+                "ChatContact" => bits |= Self::CHAT_CONTACT,
                 "Chat" => bits |= Self::CHAT,
                 "Message" => bits |= Self::MESSAGE,
                 _ => return Err(()),
@@ -93,9 +93,15 @@ impl TypeFilter {
 
     fn allows(self, type_name: &str) -> bool {
         match type_name {
-            "ChatContact" => self.0 & Self::CONTACT != 0,
+            "ChatContact" => self.0 & Self::CHAT_CONTACT != 0,
             "Chat" => self.0 & Self::CHAT != 0,
             "Message" => self.0 & Self::MESSAGE != 0,
+            // Unknown type names are silently dropped.  Note: TypeFilter::parse()
+            // rejects unknown names at the query parameter level, so this arm is
+            // only reachable via broadcast events.  A contributor adding a new
+            // broadcast type MUST add a corresponding arm here or all events of
+            // that type will be silently filtered out for clients using a type
+            // filter.
             _ => false,
         }
     }
@@ -242,11 +248,12 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 //
                 // unwrap_or semantics: server state always has valid "s-N"
                 // format (produced by format!("s-{counter}")), so 0 is a safe
-                // fallback that causes replay to proceed rather than silently
-                // suppressing it.  LEI is validated to "s-\d+" on entry but we
-                // treat a malformed value as i64::MAX (far ahead) to skip
-                // replay safely — consistent with the silent-ignore policy for
-                // bad LEI values.
+                // fallback.  A malformed server counter is treated as 0 (start
+                // of time), which means server_n <= lei_n for any non-negative
+                // LEI and replay is suppressed — the conservative safe default.
+                // LEI from an attacker-controlled header is treated as i64::MAX
+                // (far ahead) to skip replay safely when the header is
+                // malformed.
                 let server_n = parse_state_counter(&current_state).unwrap_or(0);
                 let lei_n = parse_state_counter(lei).unwrap_or(i64::MAX);
                 if server_n <= lei_n {
@@ -366,6 +373,11 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                         break;
                     }
                 }
+                // close_after_first=false + empty batch: do NOT break on
+                // receiver drop here.  Disconnection will be detected on the
+                // next non-empty batch when send(Some(...)).await.is_err().
+                // This is correct: we have nothing to send, so there is no
+                // meaningful point to check for disconnection right now.
                 continue;
             }
 

@@ -289,7 +289,7 @@ impl<'a> ChatStore<'a> {
             .conn
             .query_row("SELECT COUNT(*) FROM chats", [], |row| row.get(0))
             .map_err(db_err)?;
-        Ok(n.max(0) as u64)
+        Ok(n as u64)
     }
 
     /// Update the last_message_at timestamp for a chat and advance the chat state counter.
