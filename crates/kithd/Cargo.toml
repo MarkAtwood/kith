@@ -51,4 +51,5 @@ test-utils = ["kith-peer/test-utils"]
 [dev-dependencies]
 rusqlite.workspace = true
 serial_test = "3"
+tempfile = "3"
 tower.workspace = true

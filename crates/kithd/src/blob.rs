@@ -40,19 +40,25 @@ pub async fn blob_upload_handler<W: WhoIsProvider + Send + Sync + 'static>(
         return (StatusCode::BAD_REQUEST, "invalid account").into_response();
     }
 
-    // 3. Extract Content-Type header; cap length; default if absent.
+    // 3. Extract Content-Type header; validate format; cap length; default if absent.
     //
     // We must not truncate at a raw byte offset because Content-Type values
     // may contain non-ASCII characters (e.g. in parameter quoted-strings).
     // Slicing a &str at an arbitrary byte index panics if that index falls
     // inside a multi-byte UTF-8 sequence.  We find the char boundary at
     // MAX_CONTENT_TYPE_LEN instead.
-    let content_type = request
-        .headers()
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| {
-            if s.len() > MAX_CONTENT_TYPE_LEN {
+    //
+    // A supplied Content-Type must have the form "type/subtype" with both parts
+    // non-empty.  HeaderValue::to_str() already enforces visible ASCII, so only
+    // the structural check is needed here.  A missing header falls back to the
+    // safe default "application/octet-stream".
+    let content_type = {
+        let raw = request
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok());
+        if let Some(s) = raw {
+            let truncated = if s.len() > MAX_CONTENT_TYPE_LEN {
                 let cut = s
                     .char_indices()
                     .nth(MAX_CONTENT_TYPE_LEN)
@@ -60,9 +66,18 @@ pub async fn blob_upload_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 s[..cut].to_string()
             } else {
                 s.to_string()
+            };
+            // Require "type/subtype" format: slash present, neither part empty.
+            let slash = truncated.find('/');
+            if slash.is_none_or(|i| i == 0 || i + 1 >= truncated.len()) {
+                return (StatusCode::BAD_REQUEST, "Content-Type must be type/subtype")
+                    .into_response();
             }
-        })
-        .unwrap_or_else(|| "application/octet-stream".to_string());
+            truncated
+        } else {
+            "application/octet-stream".to_string()
+        }
+    };
 
     // 4. Buffer body with a hard size cap.  Read one byte over the limit so
     //    we can distinguish "exactly at limit" from "exceeded".
@@ -154,20 +169,20 @@ mod tests {
         }
     }
 
-    fn make_blob_store() -> Arc<BlobStore> {
-        let dir =
-            std::env::temp_dir().join(format!("kithd-blob-test-{}", BlobStore::generate_blob_id()));
-        let store = Arc::new(BlobStore::new(&dir));
+    fn make_blob_store() -> (Arc<BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("temp dir for blob store must be created");
+        let store = Arc::new(BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
-    fn make_app(owner_id: &str, whois: MockWhoIs) -> Router {
+    fn make_app(owner_id: &str, whois: MockWhoIs) -> (Router, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
         let (events_tx, _events_rx) = make_channel(64);
         let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), owner_id));
+        let (blob_store, blob_dir) = make_blob_store();
         let state = AppState {
             ts: Arc::new(whois),
             store,
@@ -176,9 +191,10 @@ mod tests {
             base_url: crate::DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher,
-            blob_store: make_blob_store(),
+            blob_store,
         };
-        build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))))
+        let app = build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
+        (app, blob_dir)
     }
 
     fn make_app_with_peer_contact(
@@ -186,7 +202,7 @@ mod tests {
         owner_whois: MockWhoIs,
         peer_id: &str,
         peer_login: &str,
-    ) -> Router {
+    ) -> (Router, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
@@ -204,6 +220,7 @@ mod tests {
             .expect("upsert must succeed");
         let (events_tx, _events_rx) = make_channel(64);
         let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), owner_id));
+        let (blob_store, blob_dir) = make_blob_store();
         let state = AppState {
             ts: Arc::new(owner_whois),
             store,
@@ -212,9 +229,10 @@ mod tests {
             base_url: crate::DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher,
-            blob_store: make_blob_store(),
+            blob_store,
         };
-        build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))))
+        let app = build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
+        (app, blob_dir)
     }
 
     // -----------------------------------------------------------------------
@@ -243,7 +261,7 @@ mod tests {
             format!("{:x}", h.finalize())
         };
 
-        let app = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
 
         let req = Request::builder()
             .method("POST")
@@ -274,7 +292,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-aself";
         const OWNER_LOGIN: &str = "owner@aself.example.com";
 
-        let app = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri("/jmap/upload/a-self")
@@ -290,7 +308,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-acct";
         const OWNER_LOGIN: &str = "owner@acct.example.com";
 
-        let app = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri("/jmap/upload/uid-somebody-else")
@@ -319,11 +337,13 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-cttrunc";
         const OWNER_LOGIN: &str = "owner@cttrunc.example.com";
 
-        // Build a Content-Type value of MAX_CONTENT_TYPE_LEN + 10 ASCII chars.
-        // HTTP headers only carry visible ASCII through to_str(), so we use
-        // ASCII 'x' repeated to MAX_CONTENT_TYPE_LEN, then append '!!!!!!!!!!'.
-        // The stored value must be exactly MAX_CONTENT_TYPE_LEN chars long.
-        let ct_value = format!("{}!!!!!!!!!!", "x".repeat(MAX_CONTENT_TYPE_LEN));
+        // Build a Content-Type value of MAX_CONTENT_TYPE_LEN + 10 ASCII chars
+        // in valid MIME "type/subtype" format: "application/xxxxx...!!!!!!!!!!".
+        // The slash must fall within the truncated portion so the truncated
+        // value is still a valid MIME type.
+        let type_part = "application";
+        let subtype_len = MAX_CONTENT_TYPE_LEN - type_part.len() - 1; // -1 for '/'
+        let ct_value = format!("{}/{}{}", type_part, "x".repeat(subtype_len), "!!!!!!!!!!");
         assert!(
             ct_value.len() > MAX_CONTENT_TYPE_LEN,
             "test setup: value must exceed MAX_CONTENT_TYPE_LEN bytes"
@@ -332,8 +352,11 @@ mod tests {
             ct_value.is_ascii(),
             "test setup: value must be ASCII (matches HTTP visible-ASCII constraint)"
         );
+        // The expected truncated value: "application/" + "x".repeat(subtype_len)
+        let expected_truncated = format!("{}/{}", type_part, "x".repeat(subtype_len));
+        assert_eq!(expected_truncated.len(), MAX_CONTENT_TYPE_LEN);
 
-        let app = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri(&format!("/jmap/upload/{OWNER_ID}"))
@@ -356,7 +379,7 @@ mod tests {
         );
         assert_eq!(
             stored_type,
-            "x".repeat(MAX_CONTENT_TYPE_LEN).as_str(),
+            expected_truncated.as_str(),
             "truncated Content-Type must equal the first MAX_CONTENT_TYPE_LEN chars"
         );
     }
@@ -367,7 +390,7 @@ mod tests {
         const PEER_ID: &str = "uid-peer-upload";
         const PEER_LOGIN: &str = "peer@upload.example.com";
 
-        let app = make_app_with_peer_contact(
+        let (app, _blob_dir) = make_app_with_peer_contact(
             OWNER_ID,
             MockWhoIs(make_whois(PEER_ID, PEER_LOGIN)),
             PEER_ID,

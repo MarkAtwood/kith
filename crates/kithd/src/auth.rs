@@ -27,8 +27,8 @@ impl WhoIsProvider for LocalApiClient {
 /// Classify a verified [`Identity`] as [`Role::Owner`] or [`Role::Peer`].
 ///
 /// This is the single authoritative source of the authorization decision rules.
-/// Both [`authorize`] and the axum [`crate::extractors::Caller`] extractor call
-/// this function so the rules live in exactly one place.
+/// The axum [`crate::extractors::Caller`] extractor calls this function so the
+/// rules live in exactly one place.
 ///
 /// # Rules
 /// - `identity.user_id == owner_id` → [`Role::Owner`]
@@ -55,118 +55,41 @@ pub(crate) fn classify(
     }
 }
 
-/// Resolve a peer socket address to an authorized [`Role`] and [`Identity`].
-///
-/// # Algorithm
-/// 1. Call `ts.whois(addr)` — any failure propagates as [`AuthError::WhoIsFailed`].
-/// 2. Build an [`Identity`] from the WhoIs result.
-/// 3. Delegate to [`classify`] for the authorization decision.
-///
-/// # Defensive rules
-/// - No PII (peer addr, user_id, login_name) appears in error messages returned here.
-/// - Store errors are mapped to `WhoIsFailed` so the HTTP layer returns 500, not 401.
-#[allow(dead_code)]
-pub async fn authorize<W: WhoIsProvider>(
-    addr: SocketAddr,
-    ts: &W,
-    contacts: &ContactStore<'_>,
-    owner_id: &str,
-) -> Result<(Role, Identity), AuthError> {
-    let who = ts.whois(addr).await?;
-    let identity = Identity {
-        user_id: who.user_profile.id,
-        login_name: who.user_profile.login_name,
-        display_name: who.user_profile.display_name,
-        node_name: who.node.name,
-    };
-    let role = classify(&identity, contacts, owner_id)?;
-    Ok((role, identity))
-}
-
-/// Validate that the sender claimed in a `Peer/deliver` request body matches
-/// the WhoIs-verified caller identity.
-///
-/// # Defensive rules
-/// - Comparison is exact string equality only — never normalize or parse.
-/// - Must be called before any database write.
-/// - Returns `AuthError::SenderMismatch`; the HTTP layer must map this to 401.
-#[allow(dead_code)]
-pub fn check_sender(identity: &Identity, claimed_sender_id: &str) -> Result<(), AuthError> {
-    if identity.user_id != claimed_sender_id {
-        return Err(AuthError::SenderMismatch);
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use kith_store::Store;
 
-    /// Test double: returns a fixed WhoIs result for any address.
-    ///
-    /// `Some(response)` → Ok(response); `None` → Err(WhoIsFailed("test")).
-    /// We cannot clone AuthError, so failures are represented as None and
-    /// reconstructed to a canonical WhoIsFailed in the provider impl.
-    struct MockWhoIs(Option<WhoIsResponse>);
-
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
-            &self,
-            _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
-            let result: Result<WhoIsResponse, AuthError> = match &self.0 {
-                Some(r) => Ok(r.clone()),
-                None => Err(AuthError::WhoIsFailed("test".into())),
-            };
-            async move { result }
+    fn make_identity(user_id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: user_id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: "test-node.tail12345.ts.net".into(),
         }
     }
 
-    fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        use kith_tslocal::{UserProfile, WhoIsNode};
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: "test-node".into(),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
-        }
-    }
-
-    fn any_addr() -> SocketAddr {
-        "127.0.0.1:1234".parse().unwrap()
-    }
-
     // -----------------------------------------------------------------------
-    // owner_path: WhoIs returns the owner's user_id → Role::Owner
-    // Oracle: authorize() returns Owner when user_id == owner_id.
+    // classify_owner: identity.user_id == owner_id → Role::Owner
+    // Oracle: classify() returns Owner when user_id matches owner_id exactly.
     // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn owner_path() {
+    #[test]
+    fn classify_owner() {
         let store = Store::open_in_memory().expect("in-memory store");
         let contacts = store.contacts();
-        let ts = MockWhoIs(Some(make_whois("uid-owner", "owner@example.com")));
+        let identity = make_identity("uid-owner", "owner@example.com");
 
-        let (role, identity) = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
-            .expect("owner must be authorized");
+        let role = classify(&identity, &contacts, "uid-owner").expect("owner must be classified");
 
         assert_eq!(role, Role::Owner);
-        assert_eq!(identity.user_id, "uid-owner");
-        assert_eq!(identity.login_name, "owner@example.com");
-        assert_eq!(identity.display_name, None);
     }
 
     // -----------------------------------------------------------------------
-    // peer_path: WhoIs returns uid-bob, contacts has uid-bob unblocked → Role::Peer
-    // Oracle: authorize() returns Peer when caller is in contacts and not blocked.
+    // classify_peer: identity in contacts and not blocked → Role::Peer
+    // Oracle: classify() returns Peer when caller is in contacts and not blocked.
     // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn peer_path() {
+    #[test]
+    fn classify_peer() {
         let store = Store::open_in_memory().expect("in-memory store");
         let contacts = store.contacts();
         contacts
@@ -178,22 +101,20 @@ mod tests {
                 1000,
             )
             .expect("upsert must succeed");
+        let identity = make_identity("uid-bob", "bob@example.com");
 
-        let ts = MockWhoIs(Some(make_whois("uid-bob", "bob@example.com")));
-        let (role, identity) = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
-            .expect("bob must be authorized as peer");
+        let role =
+            classify(&identity, &contacts, "uid-owner").expect("bob must be classified as peer");
 
         assert_eq!(role, Role::Peer);
-        assert_eq!(identity.user_id, "uid-bob");
     }
 
     // -----------------------------------------------------------------------
-    // peer_blocked_rejected: WhoIs returns uid-bob, contacts has uid-bob blocked
-    // Oracle: authorize() returns Err(Unauthorized) when caller is blocked.
+    // classify_blocked_rejected: blocked contact → Unauthorized
+    // Oracle: classify() returns Err(Unauthorized) when caller is blocked.
     // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn peer_blocked_rejected() {
+    #[test]
+    fn classify_blocked_rejected() {
         let store = Store::open_in_memory().expect("in-memory store");
         let contacts = store.contacts();
         contacts
@@ -208,31 +129,10 @@ mod tests {
         contacts
             .set_blocked("uid-bob", true)
             .expect("set_blocked must succeed");
+        let identity = make_identity("uid-bob", "bob@example.com");
 
-        let ts = MockWhoIs(Some(make_whois("uid-bob", "bob@example.com")));
-        let err = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
-            .expect_err("blocked peer must be rejected");
-
-        assert!(
-            matches!(err, AuthError::Unauthorized),
-            "expected Unauthorized, got {err:?}"
-        );
-    }
-
-    // -----------------------------------------------------------------------
-    // unknown_rejected: WhoIs returns uid-stranger, contacts is empty
-    // Oracle: authorize() returns Err(Unauthorized) for unknown callers.
-    // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn unknown_rejected() {
-        let store = Store::open_in_memory().expect("in-memory store");
-        let contacts = store.contacts();
-
-        let ts = MockWhoIs(Some(make_whois("uid-stranger", "stranger@example.com")));
-        let err = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
-            .expect_err("unknown peer must be rejected");
+        let err =
+            classify(&identity, &contacts, "uid-owner").expect_err("blocked peer must be rejected");
 
         assert!(
             matches!(err, AuthError::Unauthorized),
@@ -241,85 +141,42 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // whois_error_propagated: WhoIs fails → error propagates immediately
-    // Oracle: authorize() propagates WhoIsFailed without touching the store.
+    // classify_unknown_rejected: user_id not in contacts → Unauthorized
+    // Oracle: classify() returns Err(Unauthorized) for unknown callers.
     // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn whois_error_propagated() {
+    #[test]
+    fn classify_unknown_rejected() {
         let store = Store::open_in_memory().expect("in-memory store");
         let contacts = store.contacts();
+        let identity = make_identity("uid-stranger", "stranger@example.com");
 
-        let ts = MockWhoIs(None);
-        let err = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
-            .expect_err("WhoIs error must propagate");
+        let err = classify(&identity, &contacts, "uid-owner")
+            .expect_err("unknown caller must be rejected");
 
         assert!(
-            matches!(err, AuthError::WhoIsFailed(ref msg) if msg == "test"),
-            "expected WhoIsFailed(\"test\"), got {err:?}"
+            matches!(err, AuthError::Unauthorized),
+            "expected Unauthorized, got {err:?}"
         );
     }
 
     // -----------------------------------------------------------------------
-    // store_error_is_not_unauthorized: contacts returns Err → WhoIsFailed, not Unauthorized
-    // Oracle: authorize() fails closed (500-class) rather than silently denying.
+    // classify_store_error_fails_closed: store error → WhoIsFailed, not Unauthorized
+    // Oracle: classify() fails closed (500-class) rather than silently denying.
     // Uses a raw rusqlite connection without schema to force a store error.
     // -----------------------------------------------------------------------
-    #[tokio::test]
-    async fn store_error_is_not_unauthorized() {
-        // Open a raw connection with no schema applied. When is_permitted queries
-        // the contacts table it will hit a "no such table" rusqlite error.
+    #[test]
+    fn classify_store_error_fails_closed() {
         let raw_conn =
             rusqlite::Connection::open_in_memory().expect("raw in-memory connection must open");
         let contacts = ContactStore::new(&raw_conn, None);
+        let identity = make_identity("uid-stranger", "stranger@example.com");
 
-        let ts = MockWhoIs(Some(make_whois("uid-stranger", "stranger@example.com")));
-        let err = authorize(any_addr(), &ts, &contacts, "uid-owner")
-            .await
+        let err = classify(&identity, &contacts, "uid-owner")
             .expect_err("store error must yield an error");
 
         assert!(
             matches!(err, AuthError::WhoIsFailed(_)),
             "store error must map to WhoIsFailed (not Unauthorized), got {err:?}"
         );
-    }
-
-    // -----------------------------------------------------------------------
-    // check_sender tests — oracle: exact string equality per spec
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn check_sender_match_ok() {
-        let identity = Identity {
-            user_id: "uid-bob".into(),
-            login_name: "bob@example.com".into(),
-            display_name: None,
-            node_name: "bob-node.tail12345.ts.net".into(),
-        };
-        assert!(check_sender(&identity, "uid-bob").is_ok());
-    }
-
-    #[test]
-    fn check_sender_mismatch_err() {
-        let identity = Identity {
-            user_id: "uid-bob".into(),
-            login_name: "bob@example.com".into(),
-            display_name: None,
-            node_name: "bob-node.tail12345.ts.net".into(),
-        };
-        let err = check_sender(&identity, "uid-evil").expect_err("mismatch must fail");
-        assert!(matches!(err, AuthError::SenderMismatch));
-    }
-
-    #[test]
-    fn check_sender_empty_claimed_err() {
-        let identity = Identity {
-            user_id: "uid-bob".into(),
-            login_name: "bob@example.com".into(),
-            display_name: None,
-            node_name: "bob-node.tail12345.ts.net".into(),
-        };
-        let err = check_sender(&identity, "").expect_err("empty claimed id must fail");
-        assert!(matches!(err, AuthError::SenderMismatch));
     }
 }

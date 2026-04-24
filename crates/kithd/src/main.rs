@@ -204,20 +204,17 @@ async fn main() {
     // -----------------------------------------------------------------------
     // 11a. Spawn peer discovery task
     // -----------------------------------------------------------------------
-    let discovery_interval_secs = std::env::var("KITHD_DISCOVERY_INTERVAL_SECS")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
-        .unwrap_or(300)
-        .max(60);
-
     kithd::discovery::spawn_discovery_task(
         Arc::clone(&ts),
         Arc::clone(&store),
         config.port,
         owner_id.clone(),
-        discovery_interval_secs,
+        config.discovery_interval_secs,
     );
-    tracing::info!("discovery: background task started (interval={discovery_interval_secs}s)");
+    tracing::info!(
+        "discovery: background task started (interval={}s)",
+        config.discovery_interval_secs
+    );
 
     // -----------------------------------------------------------------------
     // 12. Try tailnet binding + TLS; fall back to plain HTTP for development

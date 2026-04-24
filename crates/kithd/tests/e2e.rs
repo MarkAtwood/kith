@@ -545,6 +545,64 @@ async fn peer_calls_owner_method_forbidden() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 5b: Peer calls ChatContact/queryChanges → forbiddenMethod
+//
+// Oracle: kith authorization model + RFC 8620 §7.1 — ChatContact/queryChanges
+// is an owner-only method; a Role::Peer caller must receive "forbiddenMethod".
+// This is a separate test from peer_calls_owner_method_forbidden to ensure
+// this specific method is covered by the peer-rejection matrix.
+// ---------------------------------------------------------------------------
+#[tokio::test]
+async fn peer_calls_chatcontact_querychanges_forbidden() {
+    const PEER_ID: &str = "uid-peer-qc";
+    const PEER_LOGIN: &str = "qc@peer.example.com";
+
+    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+    store
+        .lock()
+        .expect("store lock must not be poisoned in test setup")
+        .contacts()
+        .upsert(PEER_ID, PEER_LOGIN, "qc-kith.tail.ts.net", None, 1_000_000)
+        .expect("upsert must succeed");
+
+    let request_body = serde_json::json!({
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+        "methodCalls": [
+            ["ChatContact/queryChanges", {"accountId": "a-self", "sinceQueryState": "s-0"}, "qc0"]
+        ]
+    });
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/jmap/api")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_string(resp).await;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).expect("jmap response must be valid JSON");
+    let method_responses = json["methodResponses"]
+        .as_array()
+        .expect("methodResponses must be an array");
+    assert!(!method_responses.is_empty());
+    assert_eq!(
+        method_responses[0][0].as_str(),
+        Some("ChatContact/queryChanges"),
+        "error invocation must echo the method name; body: {body}"
+    );
+    assert_eq!(
+        method_responses[0][1]["type"].as_str(),
+        Some("forbiddenMethod"),
+        "peer calling ChatContact/queryChanges must get forbiddenMethod; body: {body}"
+    );
+    assert_eq!(method_responses[0][2].as_str(), Some("qc0"));
+}
+
+// ---------------------------------------------------------------------------
 // Test 6: Peer/deliver with senderUserId != WhoIs identity → rejected
 //
 // Oracle: kith authorization model §Defensive Input Handling —

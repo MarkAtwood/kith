@@ -196,8 +196,12 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // 4. Open blob file for streaming.  On a local miss, attempt a peer fetch
     //    before giving up.
     let path = state.blob_store.blob_path(&blob_id);
-    let (file, serve_content_type, serve_filename) = match tokio::fs::File::open(&path).await {
+    let (file, file_len, serve_content_type, serve_filename) = match tokio::fs::File::open(&path)
+        .await
+    {
         Ok(f) => {
+            // Stat to get file size for Content-Length before streaming.
+            let file_len: Option<u64> = f.metadata().await.ok().map(|m| m.len());
             // Local hit: look up content-type from the DB (stored at message
             // creation time under server control).  Never reflect the ?accept=
             // URL parameter as Content-Type — that path would let a peer deliver
@@ -225,7 +229,7 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | ';' | '/' | '\\'))
                 .take(255)
                 .collect();
-            (f, ct, sanitized)
+            (f, file_len, ct, sanitized)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             // Local miss: look up which peer owns this blob.
@@ -299,7 +303,8 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | ';' | '/' | '\\'))
                 .take(255)
                 .collect();
-            (f, info.content_type, sanitized_peer)
+            // Use the DB-recorded size as Content-Length for peer-fetched blobs.
+            (f, Some(info.size_bytes), info.content_type, sanitized_peer)
         }
         Err(e) => {
             tracing::error!("blob open failed for id={blob_id:?}: {e}");
@@ -312,12 +317,14 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    axum::response::Response::builder()
+    let mut builder = axum::response::Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, serve_content_type)
-        .header(header::CONTENT_DISPOSITION, content_disposition)
-        .body(body)
-        .unwrap()
+        .header(header::CONTENT_DISPOSITION, content_disposition);
+    if let Some(len) = file_len {
+        builder = builder.header(header::CONTENT_LENGTH, len);
+    }
+    builder.body(body).unwrap()
 }
 
 /// Build the JMAP method dispatcher with all 13 registered handlers.

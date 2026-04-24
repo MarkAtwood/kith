@@ -4,6 +4,12 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use tokio::sync::broadcast;
 
+/// Row from `get_changes_since_ordered`: (message_id, state_version, is_destroyed).
+type ChangeRow = (String, i64, bool);
+
+/// Row from `get_querychanges_since_for_chat`: (message_id, sort_position).
+type QueryChangeRow = (String, u64);
+
 pub struct MessageStore<'a> {
     conn: &'a Connection,
     events_tx: Option<&'a broadcast::Sender<StateChange>>,
@@ -594,7 +600,7 @@ impl<'a> MessageStore<'a> {
     pub fn get_changes_since_ordered(
         &self,
         since_state: &str,
-    ) -> Result<(Vec<(String, i64, bool)>, String), KithError> {
+    ) -> Result<(Vec<ChangeRow>, String), KithError> {
         let since_version = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
@@ -686,7 +692,7 @@ impl<'a> MessageStore<'a> {
         since_state: &str,
         chat_id: &str,
         max_changes: Option<usize>,
-    ) -> Result<(Vec<(String, u64)>, bool, String), KithError> {
+    ) -> Result<(Vec<QueryChangeRow>, bool, String), KithError> {
         let since_version = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())

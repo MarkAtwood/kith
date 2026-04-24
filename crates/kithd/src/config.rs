@@ -31,6 +31,11 @@ pub struct Config {
     /// Derived: `data_dir/kith.db`
     pub db_path: std::path::PathBuf,
 
+    /// `KITHD_DISCOVERY_INTERVAL_SECS` — how often the background discovery
+    /// task probes tailnet peers for running kithd instances.
+    /// Default: 300 seconds.  Minimum enforced: 60 seconds.
+    pub discovery_interval_secs: u64,
+
     /// Derived: `data_dir/kith.crt`
     pub cert_path: std::path::PathBuf,
 
@@ -60,6 +65,11 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
         let fallback_bind_addr = Self::resolve_fallback_bind_addr();
+        let discovery_interval_secs = std::env::var("KITHD_DISCOVERY_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(300)
+            .max(60);
 
         let db_path = data_dir.join("kith.db");
         let cert_path = data_dir.join("kith.crt");
@@ -72,6 +82,7 @@ impl Config {
             owner_id,
             base_url,
             fallback_bind_addr,
+            discovery_interval_secs,
             db_path,
             cert_path,
             key_path,

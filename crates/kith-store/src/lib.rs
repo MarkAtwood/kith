@@ -273,6 +273,12 @@ UPDATE messages SET created_at_version = state_version;
 CREATE INDEX IF NOT EXISTS messages_created_at_version ON messages(created_at_version);
 ";
 
+// V11: index on chats(changed_at_counter) so Chat/changes can use an index
+// scan instead of a full table scan on `WHERE changed_at_counter > ?1 ORDER BY changed_at_counter`.
+const SCHEMA_V11: &str = "
+CREATE INDEX IF NOT EXISTS idx_chats_changed_at_counter ON chats(changed_at_counter);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -289,6 +295,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (8, SCHEMA_V8),
     (9, SCHEMA_V9),
     (10, SCHEMA_V10),
+    (11, SCHEMA_V11),
 ];
 
 impl Store {
@@ -593,8 +600,8 @@ impl Store {
             tx.execute(
                 "INSERT INTO outbox \
                  (message_id, peer_user_id, peer_mailbox_host, next_attempt_at, attempt_count) \
-                 VALUES (?1, ?2, ?3, ?4, 0)",
-                rusqlite::params![id, peer_user_id, peer_mailbox_host, created_at_unix],
+                 VALUES (?1, ?2, ?3, 0, 0)",
+                rusqlite::params![id, peer_user_id, peer_mailbox_host],
             )
             .map_err(db_err)?;
         }
@@ -736,8 +743,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has ten entries (versions 1-10), so user_version must be 10 after open.
-        assert_eq!(version, 10);
+        // MIGRATIONS has eleven entries (versions 1-11), so user_version must be 11 after open.
+        assert_eq!(version, 11);
     }
 
     #[test]
@@ -773,7 +780,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 10, "migration 10 must be applied");
+        assert_eq!(v1, 11, "migration 11 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -860,7 +867,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 10, "migration v10 must set user_version to 10");
+        assert_eq!(v, 11, "migration v11 must set user_version to 11");
     }
 
     #[test]

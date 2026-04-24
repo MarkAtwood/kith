@@ -1063,6 +1063,13 @@ fn is_valid_mailbox_host(host: &str) -> bool {
         }
     };
 
+    // In test-utils builds the harness binds bob's listener to 127.0.0.1:0.
+    // Loopback is unreachable from any real peer, so this bypass is safe.
+    #[cfg(feature = "test-utils")]
+    if ip.is_loopback() {
+        return true;
+    }
+
     match ip {
         IpAddr::V4(v4) => {
             let o = v4.octets();
