@@ -194,14 +194,6 @@ impl JmapHandler for ChatSetHandler {
                 }
             };
 
-            // Step 3: Capture oldState before any mutations.
-            let old_state = store
-                .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?
-                .chats()
-                .get_state()
-                .map_err(|e| JmapError::server_fail(e.to_string()))?;
-
             // Step 4: Timestamp for created_at on new chats.
             let now_unix: i64 = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -210,90 +202,100 @@ impl JmapHandler for ChatSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            // Step 5: Process each create entry.
+            // Step 3+5: Acquire the store lock once, capture old_state atomically
+            // with the create batch.  Capturing old_state in a separate lock scope
+            // before this block would allow a concurrent write to slip in between,
+            // causing oldState to describe a state before that write — violating
+            // RFC 8620 §5.3.
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
 
-            if let Some(create_map) = create {
-                // Acquire the store lock once for the entire create batch.
+            let old_state = {
                 let guard = store
                     .lock()
                     .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
 
-                for (client_id, fields) in create_map {
-                    // Extract contactId (required).
-                    let contact_id = match fields.get("contactId").and_then(|v| v.as_str()) {
-                        Some(id) => id.to_string(),
-                        None => {
-                            not_created.insert(
-                                client_id,
-                                json!({"type": "invalidArguments", "description": "contactId is required"}),
-                            );
-                            continue;
-                        }
-                    };
+                let state = guard
+                    .chats()
+                    .get_state()
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
-                    // Step 4c: Look up contact (needed for blocked check).
-                    let _contact = match guard
-                        .contacts()
-                        .get_by_peer_user_id(&contact_id)
-                        .map_err(|e| JmapError::server_fail(e.to_string()))?
-                    {
-                        None => {
-                            not_created.insert(
-                                client_id,
-                                json!({"type": "notFound", "description": "contact not found"}),
-                            );
-                            continue;
-                        }
-                        Some(c) => c,
-                    };
+                if let Some(create_map) = create {
+                    for (client_id, fields) in create_map {
+                        // Extract contactId (required).
+                        let contact_id = match fields.get("contactId").and_then(|v| v.as_str()) {
+                            Some(id) => id.to_string(),
+                            None => {
+                                not_created.insert(
+                                    client_id,
+                                    json!({"type": "invalidArguments", "description": "contactId is required"}),
+                                );
+                                continue;
+                            }
+                        };
 
-                    // Step 4d: Check not blocked.
-                    let permitted = guard
-                        .contacts()
-                        .is_permitted(&contact_id)
-                        .map_err(|e| JmapError::server_fail(e.to_string()))?;
-
-                    if !permitted {
-                        not_created.insert(
-                            client_id,
-                            json!({"type": "forbidden", "description": "contact is blocked"}),
-                        );
-                        continue;
-                    }
-
-                    // Step 4e: Dedup — return existing direct chat if one exists.
-                    let existing = guard
-                        .chats()
-                        .find_direct_by_contact_id(&contact_id)
-                        .map_err(|e| JmapError::server_fail(e.to_string()))?;
-
-                    // Step 4f: Create or reuse.
-                    let chat = if let Some(existing_chat) = existing {
-                        // RFC 8620 §5.3: already exists → notCreated / alreadyExists.
-                        not_created.insert(
-                            client_id,
-                            json!({"type": "alreadyExists", "existingId": existing_chat.id}),
-                        );
-                        continue;
-                    } else {
-                        let chat_id = Ulid::new().to_string();
-                        guard
-                            .chats()
-                            .create(&chat_id, "direct", Some(&contact_id), now_unix)
+                        // Step 4c: Look up contact (needed for blocked check).
+                        let _contact = match guard
+                            .contacts()
+                            .get_by_peer_user_id(&contact_id)
                             .map_err(|e| JmapError::server_fail(e.to_string()))?
-                    };
+                        {
+                            None => {
+                                not_created.insert(
+                                    client_id,
+                                    json!({"type": "notFound", "description": "contact not found"}),
+                                );
+                                continue;
+                            }
+                            Some(c) => c,
+                        };
 
-                    // Step 4h: Record as created.
-                    let chat_value = serde_json::to_value(chat)
-                        .map_err(|e| JmapError::server_fail(e.to_string()))?;
-                    created.insert(client_id, chat_value);
+                        // Step 4d: Check not blocked.
+                        let permitted = guard
+                            .contacts()
+                            .is_permitted(&contact_id)
+                            .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                        if !permitted {
+                            not_created.insert(
+                                client_id,
+                                json!({"type": "forbidden", "description": "contact is blocked"}),
+                            );
+                            continue;
+                        }
+
+                        // Step 4e: Dedup — return existing direct chat if one exists.
+                        let existing = guard
+                            .chats()
+                            .find_direct_by_contact_id(&contact_id)
+                            .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                        // Step 4f: Create or reuse.
+                        let chat = if let Some(existing_chat) = existing {
+                            // RFC 8620 §5.3: already exists → notCreated / alreadyExists.
+                            not_created.insert(
+                                client_id,
+                                json!({"type": "alreadyExists", "existingId": existing_chat.id}),
+                            );
+                            continue;
+                        } else {
+                            let chat_id = Ulid::new().to_string();
+                            guard
+                                .chats()
+                                .create(&chat_id, "direct", Some(&contact_id), now_unix)
+                                .map_err(|e| JmapError::server_fail(e.to_string()))?
+                        };
+
+                        // Step 4h: Record as created.
+                        let chat_value = serde_json::to_value(chat)
+                            .map_err(|e| JmapError::server_fail(e.to_string()))?;
+                        created.insert(client_id, chat_value);
+                    }
                 }
 
-                // Step 5i: Drop lock after the entire batch is processed.
-                drop(guard);
-            }
+                // Guard drops here; state captured before any creates in this call.
+                state
+            };
 
             // Step 6: All updates are forbidden.
             let mut not_updated: Map<String, Value> = Map::new();

@@ -497,6 +497,13 @@ impl<'a> MessageStore<'a> {
 
     /// Mark a message as read at the given Unix timestamp, advancing the state counter.
     ///
+    /// # Monotonicity
+    /// The UPDATE is guarded with `AND (read_at IS NULL OR read_at < ?1)` so that a
+    /// second call with a smaller (or equal) timestamp does not overwrite a later
+    /// `read_at` that is already stored. If 0 rows are affected and the message exists,
+    /// the call is idempotent (returns `Ok(())`). If the message does not exist,
+    /// returns `Err`.
+    ///
     /// # Atomicity
     /// All three operations (UPDATE messages, counter advance, state_version stamp) are
     /// wrapped in a single transaction. A missing message ID causes the transaction to
@@ -511,13 +518,30 @@ impl<'a> MessageStore<'a> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let affected = tx
             .execute(
-                "UPDATE messages SET read_at = ?1 WHERE id = ?2",
+                "UPDATE messages SET read_at = ?1 \
+                 WHERE id = ?2 AND (read_at IS NULL OR read_at < ?1)",
                 params![read_at_unix, id],
             )
             .map_err(db_err)?;
         if affected == 0 {
+            // Either the message does not exist, or read_at is already >= ?1.
+            let existing: Option<Option<i64>> = tx
+                .query_row(
+                    "SELECT read_at FROM messages WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(db_err)?;
+
             // Transaction drops here, rolling back automatically.
-            return Err(KithError::Store(format!("message not found: {id}")));
+            return match existing {
+                None => Err(KithError::Store(format!("message not found: {id}"))),
+                Some(_) => {
+                    // Row exists but read_at is already >= read_at_unix — idempotent.
+                    Ok(())
+                }
+            };
         }
         let version = crate::advance_state_counter_in_tx(&tx, "message")?;
         tx.execute(
@@ -800,6 +824,7 @@ mod tests {
     #[test]
     fn update_read_at_sets_field() {
         // Oracle: after update_read_at, get returns a non-None read_at.
+        // A second call with an EARLIER timestamp must not overwrite the stored value.
         let store = Store::open_in_memory().expect("open");
         insert_chat(&store.conn, "chat-005");
 
@@ -830,6 +855,76 @@ mod tests {
         assert!(
             msg_after.read_at.is_some(),
             "read_at must be set after update_read_at"
+        );
+
+        // Capture the stored read_at string (independent oracle: it must equal the
+        // RFC 3339 representation of unix timestamp 5000).
+        let read_at_after_first = msg_after.read_at.clone().unwrap();
+
+        // Second call with an earlier timestamp must be idempotent (Ok) and must NOT
+        // overwrite the stored value with the smaller timestamp.
+        ms.update_read_at("msg-ra", 1000)
+            .expect("second call with earlier ts must return Ok");
+
+        let msg_final = ms.get("msg-ra").expect("get").expect("exists");
+        assert_eq!(
+            msg_final.read_at.as_deref(),
+            Some(read_at_after_first.as_str()),
+            "read_at must not regress: earlier timestamp must not overwrite a later one"
+        );
+    }
+
+    #[test]
+    fn update_read_at_does_not_regress() {
+        // Oracle: update_read_at is monotonic — a second call with a smaller timestamp
+        // must return Ok(()) but must not change the stored read_at.
+        // Independent oracle: the state counter must also not advance on the no-op call,
+        // since no row was actually changed.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rnd");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-rnd",
+            "chat-rnd",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-rnd",
+        )
+        .expect("insert");
+
+        // First call: sets read_at to timestamp 9000.
+        ms.update_read_at("msg-rnd", 9000).expect("first update");
+        let state_after_first = ms.get_state().expect("state after first update");
+        let msg_after_first = ms.get("msg-rnd").expect("get").expect("exists");
+        let read_at_first = msg_after_first.read_at.clone().unwrap();
+
+        // Second call with a smaller timestamp (3000 < 9000).
+        let result = ms.update_read_at("msg-rnd", 3000);
+        assert!(
+            result.is_ok(),
+            "second call with earlier timestamp must return Ok(()), got {:?}",
+            result
+        );
+
+        // read_at must be unchanged (still the value set by the first call).
+        let msg_final = ms.get("msg-rnd").expect("get").expect("exists");
+        assert_eq!(
+            msg_final.read_at.as_deref(),
+            Some(read_at_first.as_str()),
+            "read_at must not regress after second call with earlier timestamp"
+        );
+
+        // State counter must NOT have advanced — no row was changed.
+        let state_after_second = ms.get_state().expect("state after second update");
+        assert_eq!(
+            state_after_first, state_after_second,
+            "state counter must not advance when update_read_at is a no-op (earlier timestamp)"
         );
     }
 

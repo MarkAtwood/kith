@@ -261,8 +261,12 @@ impl<'a> OutboxStore<'a> {
         Ok(())
     }
 
-    /// Atomically advance the message state counter, update messages.delivery_state,
+    /// Atomically update messages.delivery_state, advance the message state counter,
     /// delete the outbox row, and emit the new state.
+    ///
+    /// The state counter is advanced ONLY if the UPDATE touches a row (rows > 0).
+    /// If the message row does not exist the counter is not advanced and the outbox
+    /// row is still deleted (orphaned outbox entry).
     ///
     /// `delivered_at` is `Some(unix_ts)` for the delivered path, `None` for the
     /// failed path (no `delivered_at` column to set).
@@ -273,22 +277,32 @@ impl<'a> OutboxStore<'a> {
         delivered_at: Option<i64>,
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
-        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
-        if let Some(at) = delivered_at {
+        let rows = if let Some(at) = delivered_at {
             tx.execute(
                 "UPDATE messages \
-                 SET delivery_state = ?1, delivered_at = ?2, state_version = ?3 \
-                 WHERE id = ?4",
-                params![final_state, at, version, entry.message_id],
+                 SET delivery_state = ?1, delivered_at = ?2 \
+                 WHERE id = ?3",
+                params![final_state, at, entry.message_id],
             )
-            .map_err(db_err)?;
+            .map_err(db_err)?
         } else {
             tx.execute(
-                "UPDATE messages SET delivery_state = ?1, state_version = ?2 WHERE id = ?3",
-                params![final_state, version, entry.message_id],
+                "UPDATE messages SET delivery_state = ?1 WHERE id = ?2",
+                params![final_state, entry.message_id],
+            )
+            .map_err(db_err)?
+        };
+        let version = if rows > 0 {
+            let v = crate::advance_state_counter_in_tx(&tx, "message")?;
+            tx.execute(
+                "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+                params![v, entry.message_id],
             )
             .map_err(db_err)?;
-        }
+            Some(v)
+        } else {
+            None
+        };
         tx.execute(
             "DELETE FROM outbox \
              WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",
@@ -296,7 +310,9 @@ impl<'a> OutboxStore<'a> {
         )
         .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
-        self.emit(format!("s-{version}"));
+        if let Some(v) = version {
+            self.emit(format!("s-{v}"));
+        }
         Ok(())
     }
 
@@ -711,6 +727,58 @@ mod tests {
             !changes.added.contains(&"msg-rcpt-cd".to_string()),
             "receipt complete_delivery must not advance state counter; added={:?}",
             changes.added
+        );
+    }
+
+    #[test]
+    fn complete_delivery_nonexistent_message_does_not_advance_counter() {
+        // Oracle: if the message row referenced by the outbox entry does not exist,
+        // complete_delivery must NOT advance the state counter.  It must still delete
+        // the outbox row (orphaned entry cleanup).
+        // Independent oracle: state counter read before and after must be equal.
+        //
+        // Setup: insert the outbox row with FK enforcement OFF so that no messages
+        // row is needed.  This simulates an orphaned outbox entry (e.g. the message
+        // row was hard-deleted outside normal application flow).
+        let store = Store::open_in_memory().unwrap();
+
+        store
+            .conn
+            .execute_batch("PRAGMA foreign_keys = OFF")
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO outbox \
+                 (message_id, peer_user_id, peer_mailbox_host, kind, next_attempt_at, attempt_count) \
+                 VALUES ('msg-no-row', 'user-b', 'host-b.example.ts.net', 'message', 1000, 0)",
+                [],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute_batch("PRAGMA foreign_keys = ON")
+            .unwrap();
+
+        let ms = crate::message::MessageStore::new(&store.conn, None);
+        let state_before = ms.get_state().unwrap();
+
+        let ob = store.outbox();
+        let entries = ob.get_by_message("msg-no-row").unwrap();
+        assert_eq!(entries.len(), 1, "orphaned outbox entry must be present");
+        ob.complete_delivery(&entries[0], 2000).unwrap();
+
+        // Outbox row must be gone (cleanup succeeded).
+        assert!(
+            ob.get_by_message("msg-no-row").unwrap().is_empty(),
+            "orphaned outbox row must be deleted by complete_delivery"
+        );
+
+        // State counter must NOT have advanced — the UPDATE found no message row.
+        let state_after = ms.get_state().unwrap();
+        assert_eq!(
+            state_before, state_after,
+            "state counter must not advance when complete_delivery finds no message row"
         );
     }
 

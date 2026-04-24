@@ -356,9 +356,17 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
 
     // Replay events are delivered first; the live stream follows.
     //
-    // We capture the replay count before the Vec is moved into the stream.
-    // This is needed to compute the correct take limit for closeafter=state.
-    let replay_count = replay_events.len();
+    // We track two counts before the Vec is moved into the stream:
+    //
+    //   ping_offset        — 1 if a ping event was prepended, else 0.
+    //   state_replay_count — number of actual state replay events (excluding
+    //                        the ping).
+    //
+    // The separation is required for correct closeafter=state behaviour: the
+    // ping event must not be counted as a "state replay" for the purpose of
+    // deciding whether a live event is still needed.
+    let ping_offset: usize = if ping_secs.is_some() { 1 } else { 0 };
+    let state_replay_count = replay_events.len() - ping_offset;
     let stream = tokio_stream::iter(replay_events).chain(live_stream);
 
     let keepalive_interval = Duration::from_secs(ping_secs.unwrap_or(KEEPALIVE_SECS));
@@ -367,18 +375,18 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // the base Chain stream), so we call .into_response() on each branch
     // rather than trying to unify them behind a box.
     if close_after_first {
-        // Deliver all pending replay events, then at most one live event.
+        // Deliver all pending replay events (ping + state), then at most one
+        // live event.
         //
-        // When replay_count > 0, the client already has pending state — send
-        // all replays and do NOT wait for a live event (live_limit = 0).
-        // When replay_count == 0, there is nothing to replay — take one live
-        // event as before (live_limit = 1).
+        // live_limit is based on state_replay_count only — a ping event must
+        // not suppress the wait for a live state event.
         //
-        // This fixes a bug where multiple JMAP types advancing since
-        // Last-Event-ID produced up to 3 replay events but take(1) only
-        // delivered the first one.
-        let live_limit = if replay_count > 0 { 0 } else { 1 };
-        Sse::new(stream.take(replay_count + live_limit))
+        // When state_replay_count > 0: pending state exists — deliver all
+        // replay events and close without waiting for a live event.
+        // When state_replay_count == 0: no state replays — deliver any ping
+        // first, then wait for exactly one live state event (live_limit = 1).
+        let live_limit = if state_replay_count > 0 { 0 } else { 1 };
+        Sse::new(stream.take(ping_offset + state_replay_count + live_limit))
             .keep_alive(KeepAlive::new().interval(keepalive_interval))
             .into_response()
     } else {
@@ -1414,10 +1422,9 @@ mod tests {
     // ping_event_is_first_on_stream
     // Oracle: RFC 8620 §7.3 — when ?ping=30, the first SSE event the client
     //         receives must be a "ping" event with data {"interval":30}.
-    //         We use closeafter=state so take(1) terminates the stream after
-    //         the first event.  Since the ping event is prepended to the
-    //         replay list before any state events, take(1) yields exactly
-    //         the ping event and the body must show event: ping.
+    //         We use closeafter=state; the stream delivers the ping first,
+    //         then waits for one live state event to close.  A background
+    //         task sends a Message state event to let the stream terminate.
     //         Independent oracle: interval value 30 was hardcoded in the URL.
     // -----------------------------------------------------------------------
     #[tokio::test]
@@ -1426,7 +1433,19 @@ mod tests {
             MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
+        let tx = state.events_tx.clone();
         let app = make_app(state);
+
+        // Send a live state event after the handler subscribes so the stream
+        // can terminate (closeafter=state waits for one live state event when
+        // there are no state replays).
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            let _ = tx.send(StateChange {
+                type_name: "Message".to_string(),
+                new_state: "s-1".to_string(),
+            });
+        });
 
         let req = Request::builder()
             .uri("/jmap/events?ping=30&closeafter=state")
@@ -1438,7 +1457,7 @@ mod tests {
         let body_bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
         let body = std::str::from_utf8(&body_bytes).unwrap();
 
-        // First (and only, due to take(1)) event must be a ping event.
+        // First event must be a ping event.
         let first_event_line = body
             .lines()
             .find(|l| l.starts_with("event:"))
@@ -1448,7 +1467,7 @@ mod tests {
             "first event must be 'ping', got body: {body:?}"
         );
 
-        // Data must be {"interval":30} — hardcoded oracle value.
+        // Ping data must be {"interval":30} — hardcoded oracle value.
         let data_line = body
             .lines()
             .find(|l| l.starts_with("data:"))
@@ -1513,8 +1532,8 @@ mod tests {
     //         show {"interval":300}, not {"interval":999}.
     //         Independent oracle: 300 is the PING_MAX_SECS constant; 999 is
     //         the value sent in the URL — neither is derived from the code
-    //         path under test.  We use closeafter=state so take(1) closes
-    //         after the ping event.
+    //         path under test.  We use closeafter=state; a live state event
+    //         is sent to allow the stream to terminate after the ping.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn ping_over_300_clamped() {
@@ -1522,7 +1541,19 @@ mod tests {
             MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
+        let tx = state.events_tx.clone();
         let app = make_app(state);
+
+        // Send a live state event after the handler subscribes so the stream
+        // can terminate (closeafter=state waits for one live state event when
+        // there are no state replays).
+        tokio::spawn(async move {
+            tokio::task::yield_now().await;
+            let _ = tx.send(StateChange {
+                type_name: "Message".to_string(),
+                new_state: "s-1".to_string(),
+            });
+        });
 
         let req = Request::builder()
             .uri("/jmap/events?ping=999&closeafter=state")

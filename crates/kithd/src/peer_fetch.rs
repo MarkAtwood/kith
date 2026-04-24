@@ -4,7 +4,9 @@
 //! daemon (e.g. fetching a peer's avatar or resource URL supplied in a
 //! JMAP request).  It rejects loopback, RFC 1918, link-local, and
 //! unspecified addresses so that a malicious peer cannot redirect the
-//! daemon to internal services.
+//! daemon to internal services.  Plain hostnames are rejected to prevent
+//! SSRF via DNS, with an explicit exception for Tailscale MagicDNS names
+//! (`.ts.net` and `.tailscale.net`).
 //!
 //! `build_tailnet_https_client` returns a Hyper client configured to
 //! accept self-signed TLS certificates from tailnet peers.  Tailscale
@@ -50,10 +52,10 @@ pub static ALLOW_LOOPBACK_FOR_TESTS: std::sync::atomic::AtomicBool =
 /// - Rejects an empty host.
 /// - If the host part parses as an [`IpAddr`], applies IP-range checks
 ///   (loopback, unspecified, RFC 1918, link-local).
-/// - If it does not parse as an IP, rejects it: plain hostnames are not
-///   accepted because a hostname could resolve to an RFC 1918 or loopback
-///   address at fetch time (SSRF via DNS).  All legitimate kithd instances
-///   are discovered and stored with their tailnet IP literal.
+/// - If it does not parse as an IP, allows Tailscale MagicDNS hostnames
+///   (`.ts.net` and `.tailscale.net` suffixes) as an explicit exception.
+///   All other plain hostnames are rejected: a hostname could resolve to an
+///   RFC 1918 or loopback address at fetch time (SSRF via DNS).
 pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
     if host.is_empty() {
         return false;
@@ -150,9 +152,11 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
     let ip: IpAddr = match ip_part.parse() {
         Ok(addr) => addr,
         Err(_) => {
-            // Reject plain hostnames: a hostname could resolve to an RFC 1918 or
-            // loopback address at fetch time (SSRF via DNS). All legitimate kithd
-            // instances are discovered and stored with their tailnet IP literal.
+            // Allow Tailscale MagicDNS hostnames; reject all other plain names
+            // to prevent SSRF via DNS resolution.
+            if ip_part.ends_with(".ts.net") || ip_part.ends_with(".tailscale.net") {
+                return true;
+            }
             return false;
         }
     };
@@ -625,22 +629,35 @@ mod tests {
         assert!(!is_valid_fetch_host("2600::1")); // public IPv6
     }
 
-    // Oracle: plain hostnames must be rejected to prevent SSRF via DNS.
-    // Legitimate kithd peers are always stored and fetched by tailnet IP literal.
+    // Oracle: Tailscale MagicDNS hostnames (.ts.net and .tailscale.net) must be
+    // accepted.  Contacts whose mailbox_host is a MagicDNS name (e.g.
+    // alice.tail-xxx.ts.net) must be reachable for blob fetch.
     #[test]
-    fn magicdns_hostname_rejected() {
-        assert!(!is_valid_fetch_host("alice-kith.tail-xxxxx.ts.net"));
+    fn magicdns_hostname_accepted() {
+        assert!(is_valid_fetch_host("alice-kith.tail-xxxxx.ts.net"));
+        assert!(is_valid_fetch_host("alice-node.tail12345.ts.net"));
+        assert!(is_valid_fetch_host("bob.devices.tailscale.net"));
     }
 
+    // Oracle: arbitrary non-Tailscale hostnames must be rejected to prevent SSRF
+    // via DNS resolution.  Only MagicDNS (.ts.net / .tailscale.net) exceptions apply.
     #[test]
     fn arbitrary_hostname_rejected() {
         assert!(!is_valid_fetch_host("evil.attacker.com"));
-        assert!(!is_valid_fetch_host("alice-node.tail12345.ts.net"));
+        assert!(!is_valid_fetch_host("internal.corp.example"));
     }
 
+    // Oracle: a MagicDNS hostname with a valid port must be accepted.
+    // kithd can listen on ports other than 443 in non-standard deployments.
     #[test]
-    fn hostname_with_port_rejected() {
-        assert!(!is_valid_fetch_host("alice.ts.net:8443"));
+    fn magicdns_hostname_with_port_accepted() {
+        assert!(is_valid_fetch_host("alice.ts.net:8443"));
+    }
+
+    // Oracle: an arbitrary non-Tailscale hostname with a port must be rejected.
+    #[test]
+    fn arbitrary_hostname_with_port_rejected() {
+        assert!(!is_valid_fetch_host("evil.attacker.com:8443"));
     }
 
     #[test]

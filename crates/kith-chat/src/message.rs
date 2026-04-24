@@ -808,76 +808,85 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .and_then(|n| n.parse::<i64>().ok())
                 .ok_or_else(JmapError::cannot_calculate_changes)?;
 
-            let guard = store
-                .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+            // Validate chatId, fetch changes, and get current state — then release the lock.
+            // Position lookups happen outside this critical section so the mutex is not
+            // held for an unbounded number of SQL queries.
+            let (chat_added, new_state, destroyed) = {
+                let guard = store
+                    .lock()
+                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
 
-            // Validate chatId exists.
-            if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
-                return Err(JmapError::invalid_arguments("unknown chatId"));
-            }
+                // Validate chatId exists.
+                if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
+                    return Err(JmapError::invalid_arguments("unknown chatId"));
+                }
 
-            let current_state = guard.messages().get_state().map_err(kith_to_jmap)?;
-            let current_counter: i64 = current_state
-                .strip_prefix("s-")
-                .and_then(|n| n.parse::<i64>().ok())
-                .unwrap_or(0);
+                let current_state = guard.messages().get_state().map_err(kith_to_jmap)?;
+                let current_counter: i64 = current_state
+                    .strip_prefix("s-")
+                    .and_then(|n| n.parse::<i64>().ok())
+                    .unwrap_or(0);
 
-            // If no changes, return early.
-            if since_counter >= current_counter {
-                drop(guard);
-                return Ok(json!({
-                    "accountId": "a-self",
-                    "oldQueryState": since_query_state,
-                    "newQueryState": current_state,
-                    "removed": [],
-                    "added": [],
-                }));
-            }
+                // If no changes, return early (still inside the lock scope).
+                if since_counter >= current_counter {
+                    return Ok(json!({
+                        "accountId": "a-self",
+                        "oldQueryState": since_query_state,
+                        "newQueryState": current_state,
+                        "removed": [],
+                        "added": [],
+                    }));
+                }
 
-            // Get the changes since sinceQueryState.  This returns IDs from
-            // ALL chats; filter to only those belonging to the requested chat.
-            let changes = guard
-                .messages()
-                .get_changes_since(&since_query_state)
-                .map_err(kith_to_jmap)?;
+                // Get the changes since sinceQueryState.  This returns IDs from
+                // ALL chats; filter to only those belonging to the requested chat.
+                let changes = guard
+                    .messages()
+                    .get_changes_since(&since_query_state)
+                    .map_err(kith_to_jmap)?;
 
-            // Filter: keep only added IDs whose chat_id matches the filter.
-            let chat_added: Vec<String> = changes
-                .added
-                .iter()
-                .filter(|id| {
-                    guard
-                        .messages()
-                        .get(id)
-                        .ok()
-                        .flatten()
-                        .map(|m| m.chat_id == chat_id)
-                        .unwrap_or(false)
-                })
-                .cloned()
-                .collect();
+                // Filter: keep only added IDs whose chat_id matches the filter.
+                let chat_added: Vec<String> = changes
+                    .added
+                    .iter()
+                    .filter(|id| {
+                        guard
+                            .messages()
+                            .get(id)
+                            .ok()
+                            .flatten()
+                            .map(|m| m.chat_id == chat_id)
+                            .unwrap_or(false)
+                    })
+                    .cloned()
+                    .collect();
 
-            let new_state = changes.new_state.clone();
+                (chat_added, changes.new_state, changes.destroyed)
+                // lock released here
+            };
 
-            // Build added list with SQL-computed indexes (O(1) per message via COUNT query).
+            // Build added list with SQL-computed indexes.  The lock is acquired briefly
+            // per message rather than held for the entire loop.
             let mut added_with_index: Vec<Value> = Vec::with_capacity(chat_added.len());
             for added_id in &chat_added {
-                let index = guard
-                    .messages()
-                    .get_position_in_chat(&chat_id, added_id)
-                    .map_err(kith_to_jmap)?
-                    .unwrap_or(0) as u64;
+                let index = {
+                    let guard = store
+                        .lock()
+                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                    guard
+                        .messages()
+                        .get_position_in_chat(&chat_id, added_id)
+                        .map_err(kith_to_jmap)?
+                        .unwrap_or(0) as u64
+                };
                 added_with_index.push(json!({"id": added_id, "index": index}));
             }
-
-            drop(guard);
 
             Ok(json!({
                 "accountId": "a-self",
                 "oldQueryState": since_query_state,
                 "newQueryState": new_state,
-                "removed": changes.destroyed,
+                "removed": destroyed,
                 "added": added_with_index,
             }))
         })
