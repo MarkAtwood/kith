@@ -12,7 +12,7 @@ use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, Server
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, Error as TlsError, SignatureScheme};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 /// Maximum response body accepted from a probe target (64 KiB).
@@ -125,8 +125,8 @@ impl ServerCertVerifier for TailnetCertVerifier {
 /// Build a shared HTTPS client for tailnet probes.
 ///
 /// The client uses `TailnetCertVerifier` to accept self-signed certificates
-/// from kithd instances.  Building once per discovery round and sharing via
-/// `Arc` avoids allocating a new `rustls::ClientConfig` per probe task.
+/// from kithd instances.  Building once and sharing via `Arc` avoids
+/// allocating a new `rustls::ClientConfig` per probe task.
 pub(crate) fn build_probe_client() -> Arc<
     Client<
         hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
@@ -144,6 +144,44 @@ pub(crate) fn build_probe_client() -> Arc<
         .enable_http1()
         .build();
     Arc::new(Client::builder(TokioExecutor::new()).build(connector))
+}
+
+/// Process-wide singleton HTTPS client for discovery probes.
+///
+/// `OnceLock` initialises the client exactly once and returns a cheap
+/// `Arc::clone` on every subsequent call, avoiding a new `rustls::ClientConfig`
+/// on every discovery round.
+static PROBE_CLIENT: OnceLock<
+    Arc<
+        Client<
+            hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+            Full<Bytes>,
+        >,
+    >,
+> = OnceLock::new();
+
+/// Return a reference-counted handle to the shared discovery probe client,
+/// building it on the first call.
+fn probe_https_client() -> Arc<
+    Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Full<Bytes>,
+    >,
+> {
+    Arc::clone(PROBE_CLIENT.get_or_init(build_probe_client))
+}
+
+/// Build the probe URL for a given IP and port.
+///
+/// IPv6 literal addresses are bracketed per RFC 3986 §3.2.2.
+/// An unbracketed IPv6 address like "fd7a::1" produces an invalid URL
+/// because the colons are ambiguous with the port separator.
+pub(crate) fn probe_url(ip: &str, port: u16) -> String {
+    if ip.contains(':') {
+        format!("https://[{}]:{}/.well-known/jmap", ip, port)
+    } else {
+        format!("https://{}:{}/.well-known/jmap", ip, port)
+    }
 }
 
 /// Probe a single tailnet IP:port for a running kithd instance.
@@ -166,14 +204,7 @@ pub async fn probe_peer(
     ip: &str,
     port: u16,
 ) -> Option<PeerSession> {
-    // IPv6 literal addresses must be bracketed in URLs (RFC 3986 §3.2.2).
-    // An unbracketed IPv6 address like "fd7a::1" produces an invalid URL
-    // because the colons are ambiguous with the port separator.
-    let url = if ip.contains(':') {
-        format!("https://[{}]:{}/.well-known/jmap", ip, port)
-    } else {
-        format!("https://{}:{}/.well-known/jmap", ip, port)
-    };
+    let url = probe_url(ip, port);
 
     let result = tokio::time::timeout(PROBE_TIMEOUT, async {
         let req = Request::builder()
@@ -324,9 +355,9 @@ async fn run_discovery_round(
         return;
     }
 
-    // Build one shared HTTPS client for this round.  Sharing across all probe
-    // tasks avoids constructing a new rustls::ClientConfig per probe.
-    let probe_client = build_probe_client();
+    // Obtain the shared HTTPS client singleton.  The client is built once for
+    // the process lifetime; subsequent rounds get a cheap Arc::clone.
+    let probe_client = probe_https_client();
 
     // Fan out probes concurrently — one task per peer, bounded by PROBE_CONCURRENCY.
     // Each task tries the peer's IPs in order and returns as soon as one responds.
@@ -480,14 +511,10 @@ mod tests {
     // -----------------------------------------------------------------------
     #[test]
     fn probe_peer_ipv6_url_is_bracketed() {
-        let ip = "fd7a::1";
-        let port: u16 = 4430;
-        let url = if ip.contains(':') {
-            format!("https://[{}]:{}/.well-known/jmap", ip, port)
-        } else {
-            format!("https://{}:{}/.well-known/jmap", ip, port)
-        };
-        assert_eq!(url, "https://[fd7a::1]:4430/.well-known/jmap");
+        assert_eq!(
+            probe_url("fd7a::1", 4430),
+            "https://[fd7a::1]:4430/.well-known/jmap"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -496,13 +523,9 @@ mod tests {
     // -----------------------------------------------------------------------
     #[test]
     fn probe_peer_ipv4_url_is_not_bracketed() {
-        let ip = "127.0.0.1";
-        let port: u16 = 4430;
-        let url = if ip.contains(':') {
-            format!("https://[{}]:{}/.well-known/jmap", ip, port)
-        } else {
-            format!("https://{}:{}/.well-known/jmap", ip, port)
-        };
-        assert_eq!(url, "https://127.0.0.1:4430/.well-known/jmap");
+        assert_eq!(
+            probe_url("127.0.0.1", 4430),
+            "https://127.0.0.1:4430/.well-known/jmap"
+        );
     }
 }

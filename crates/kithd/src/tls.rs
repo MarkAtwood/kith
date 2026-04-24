@@ -30,7 +30,30 @@ pub fn load_or_generate_cert(
     cert_path: &Path,
     key_path: &Path,
 ) -> Result<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>), TlsError> {
-    if cert_path.exists() && key_path.exists() {
+    let cert_exists = cert_path.exists();
+    let key_exists = key_path.exists();
+
+    if cert_exists != key_exists {
+        // One file is present and one is missing — regenerating would silently
+        // overwrite the surviving file and invalidate any peer trust.
+        // Require the operator to explicitly delete both and restart.
+        let (present, missing) = if cert_exists {
+            (cert_path, key_path)
+        } else {
+            (key_path, cert_path)
+        };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "TLS setup error: {:?} exists but {:?} does not. \
+                 Delete both files and restart to generate a new keypair.",
+                present, missing,
+            ),
+        )
+        .into());
+    }
+
+    if cert_exists && key_exists {
         let cert_der = std::fs::read(cert_path)?;
         let key_der = std::fs::read(key_path)?;
 
@@ -203,6 +226,31 @@ mod tests {
         assert_eq!(
             cert_bytes_first, cert_bytes_second,
             "cert must not change on second call (load path)"
+        );
+
+        let _ = std::fs::remove_file(&cert_path);
+        let _ = std::fs::remove_file(&key_path);
+    }
+
+    // Oracle: if only one of the two files is present, load_or_generate_cert
+    // must return an error rather than silently overwriting the surviving file.
+    #[test]
+    fn test_partial_presence_returns_error() {
+        let (cert_path, key_path) = tmp_paths("partial");
+
+        // Create only the cert file; leave the key absent.
+        std::fs::write(&cert_path, b"fake cert bytes").unwrap();
+
+        let result = load_or_generate_cert(&cert_path, &key_path);
+        assert!(
+            result.is_err(),
+            "expected Err when only cert exists, got Ok"
+        );
+        // The cert file must NOT have been overwritten.
+        assert_eq!(
+            std::fs::read(&cert_path).unwrap(),
+            b"fake cert bytes",
+            "surviving cert file must not be overwritten"
         );
 
         let _ = std::fs::remove_file(&cert_path);

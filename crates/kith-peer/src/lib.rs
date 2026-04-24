@@ -85,12 +85,11 @@ pub struct DeliverMessageArgs {
 /// 9. `contacts().upsert`.
 pub struct DeliverHandler {
     store: Arc<Mutex<kith_store::Store>>,
-    owner_id: String,
 }
 
 impl DeliverHandler {
-    pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_id: String) -> Self {
-        Self { store, owner_id }
+    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
+        Self { store }
     }
 }
 
@@ -103,7 +102,6 @@ impl PeerJmapHandler for DeliverHandler {
         identity: Identity,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
-        let _owner_id = self.owner_id.clone();
 
         Box::pin(async move {
             // Step 1: Parse the public Peer/deliver arguments.
@@ -1062,8 +1060,7 @@ fn is_valid_mailbox_host(host: &str) -> bool {
     }
 }
 
-/// Format a Unix timestamp (seconds since epoch) as an RFC 3339 UTC string.
-///
+// Format a Unix timestamp (seconds since epoch) as an RFC 3339 UTC string.
 use kith_core::unix_secs_to_rfc3339;
 
 // ---------------------------------------------------------------------------
@@ -1433,7 +1430,7 @@ mod tests {
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1476,7 +1473,7 @@ mod tests {
         let peer = make_identity("uid-bob");
         let msg_id = Ulid::new().to_string();
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1497,7 +1494,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_sender_mismatch_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         // Build args but override the senderUserId to a different value.
@@ -1515,7 +1511,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1541,7 +1537,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_empty_identity_user_id_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         // Construct an identity with an empty user_id — simulates a broken WhoIs result.
         let empty_identity = Identity {
             user_id: "".to_string(),
@@ -1562,7 +1557,7 @@ mod tests {
                 "sentAt": "2026-04-19T12:00:00Z",
             }
         });
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1587,7 +1582,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_chatid_sender_mismatch_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let bob = make_identity("uid-bob");
 
         // Pre-create a chat whose contact_id is uid-alice (not uid-bob).
@@ -1613,7 +1607,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1643,7 +1637,7 @@ mod tests {
         let oversized_body = "x".repeat(MAX_BODY_BYTES + 1);
         let msg_id = Ulid::new().to_string();
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1667,7 +1661,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_unsupported_body_type_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
@@ -1683,7 +1676,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1707,7 +1700,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_non_ulid_message_id_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         let args = json!({
@@ -1722,7 +1714,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1746,7 +1738,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_reply_to_nonexistent_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         let msg_id = Ulid::new().to_string();
@@ -1763,7 +1754,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -1788,7 +1779,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_reply_to_different_chat_returns_invalid_arguments() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
 
         // Insert a message in a different chat (alice→owner, not bob→owner).
@@ -1829,7 +1819,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2492,7 +2482,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_invalid_blob_id_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2504,7 +2493,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2526,7 +2515,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_empty_blob_id_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2538,7 +2526,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2560,7 +2548,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_unsafe_filename_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2572,7 +2559,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2594,7 +2581,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_empty_filename_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2606,7 +2592,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2632,7 +2618,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_double_dot_filename_accepted() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-dotdot";
         let msg_id = Ulid::new().to_string();
@@ -2644,7 +2629,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2662,7 +2647,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_bare_dotdot_filename_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-bare-dotdot";
         let msg_id = Ulid::new().to_string();
@@ -2674,7 +2658,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2691,7 +2675,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_bad_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2703,7 +2686,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2726,7 +2709,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_degenerate_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2738,7 +2720,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2761,7 +2743,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_empty_subtype_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2773,7 +2754,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2798,7 +2779,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_double_slash_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2810,7 +2790,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2840,7 +2820,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_crlf_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-crlf";
         let msg_id = Ulid::new().to_string();
@@ -2858,7 +2837,7 @@ mod tests {
             .get_state()
             .expect("get_state must succeed on a fresh in-memory store");
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2890,7 +2869,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_unicode_line_terminator_content_type_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-crlf2";
         let msg_id = Ulid::new().to_string();
@@ -2904,7 +2882,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2923,7 +2901,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_invalid_sent_at_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-sentat";
         let msg_id = Ulid::new().to_string();
@@ -2938,7 +2915,7 @@ mod tests {
                 "sentAt": "not-a-date",
             }
         });
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2961,7 +2938,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_oversized_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -2973,7 +2949,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -2995,7 +2971,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_zero_size_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -3007,7 +2982,7 @@ mod tests {
             "sha256": "f".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3030,7 +3005,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_bad_sha256_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -3042,7 +3016,7 @@ mod tests {
             "sha256": "A".repeat(64),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3064,7 +3038,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_attachment_bad_sha256_wrong_length_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -3076,7 +3049,7 @@ mod tests {
             "sha256": "a".repeat(32),
         });
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([bad_att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3098,7 +3071,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_too_many_attachments_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -3115,7 +3087,7 @@ mod tests {
             })
             .collect();
         let args = deliver_args_full(&peer, &chat_id, &msg_id, serde_json::Value::Array(atts));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3142,13 +3114,12 @@ mod tests {
     #[tokio::test]
     async fn deliver_with_attachment_stores_metadata() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let att = valid_attachment_json();
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3180,12 +3151,11 @@ mod tests {
     #[tokio::test]
     async fn deliver_with_zero_attachments_accepted() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3214,12 +3184,11 @@ mod tests {
     #[tokio::test]
     async fn deliver_new_chat_id_accepted_and_chat_created() {
         let store = make_store();
-        let owner_id = "uid:carol";
         let peer = make_identity("uid:alice");
         let chat_id = "01JX000000000000000000ALICE";
         let msg_id = Ulid::new().to_string();
         let args = deliver_args_full(&peer, chat_id, &msg_id, json!([]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3248,10 +3217,9 @@ mod tests {
     #[tokio::test]
     async fn deliver_same_chat_id_same_sender_accepted() {
         let store = make_store();
-        let owner_id = "uid:carol";
         let peer = make_identity("uid:alice");
         let chat_id = "01JX000000000000000000ALICE2";
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
 
         // First delivery creates the chat.
         let msg1 = Ulid::new().to_string();
@@ -3290,11 +3258,10 @@ mod tests {
     #[tokio::test]
     async fn deliver_stale_chat_id_adopts_existing_direct_chat() {
         let store = make_store();
-        let owner_id = "uid:owner";
         let peer = make_identity("uid:bob");
         let chat_id_first = "01JX0000000000000000FIRST0";
         let chat_id_stale = "01JX0000000000000000STALE0";
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
 
         // First delivery: unknown chatId → creates a new direct chat.
         let msg1 = Ulid::new().to_string();
@@ -3366,11 +3333,10 @@ mod tests {
     #[tokio::test]
     async fn deliver_retransmit_returns_original_id_and_no_duplicate_row() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-alice");
         let chat_id = "01JX000000000000000000IDEM1";
         let sender_msg_id = Ulid::new().to_string();
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
 
         // First delivery.
         let first = handler
@@ -3467,7 +3433,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_with_attachment_state_counter_advances() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let peer = make_identity("uid-bob");
         let chat_id = "test-direct-chat-07";
         let msg_id = Ulid::new().to_string();
@@ -3477,7 +3442,7 @@ mod tests {
         };
         let att = valid_attachment_json();
         let args = deliver_args_full(&peer, &chat_id, &msg_id, json!([att]));
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         handler
             .call(
                 "Peer/deliver".to_string(),
@@ -3954,7 +3919,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_group_chat_member_allowed() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let alice = make_identity("uid-alice");
         let group_chat_id = "group-chat-01";
 
@@ -3984,7 +3948,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let result = handler
             .call(
                 "Peer/deliver".to_string(),
@@ -4006,7 +3970,6 @@ mod tests {
     #[tokio::test]
     async fn deliver_group_chat_non_member_rejected() {
         let store = make_store();
-        let owner_id = "uid-owner";
         let alice = make_identity("uid-alice");
         let bob = make_identity("uid-bob");
         let group_chat_id = "group-chat-02";
@@ -4037,7 +4000,7 @@ mod tests {
             }
         });
 
-        let handler = DeliverHandler::new(Arc::clone(&store), owner_id.to_string());
+        let handler = DeliverHandler::new(Arc::clone(&store));
         let err = handler
             .call(
                 "Peer/deliver".to_string(),

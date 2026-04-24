@@ -393,10 +393,7 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, owner_id: &str) -> Dispatcher 
     // caller Identity as a typed parameter instead of injecting it into args.
     d.register_peer(
         "Peer/deliver",
-        Box::new(DeliverHandler::new(
-            Arc::clone(&store),
-            owner_id.to_string(),
-        )),
+        Box::new(DeliverHandler::new(Arc::clone(&store))),
     );
     d.register_peer(
         "Peer/receipt",

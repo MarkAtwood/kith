@@ -327,6 +327,17 @@ fn process_update(
         || json!({"type": "invalidArguments", "description": "update patch must be an object"}),
     )?;
 
+    // RFC 8620 §5.3: unknown/unsupported patch properties must yield invalidArguments.
+    const KNOWN_UPDATE_KEYS: &[&str] = &["displayName", "blocked"];
+    for key in patch_obj.keys() {
+        if !KNOWN_UPDATE_KEYS.contains(&key.as_str()) {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("unknown or read-only property: {key}")
+            }));
+        }
+    }
+
     let guard = store
         .lock()
         .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
@@ -440,7 +451,10 @@ impl JmapHandler for ChatContactChangesHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("sinceState is required"))?
                 .to_string();
 
-            // maxChanges is accepted but ignored in v1.
+            let max_changes: Option<usize> = obj
+                .get("maxChanges")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
 
             // 3. Acquire store lock.
             let guard = store
@@ -459,15 +473,40 @@ impl JmapHandler for ChatContactChangesHandler {
             // 5. Drop lock.
             drop(guard);
 
-            // 6. Return changes response.
+            // 6. Apply maxChanges limit (RFC 8620 §5.6).
+            let mut created = result.added;
+            let mut updated = result.updated;
+            let mut destroyed = result.destroyed;
+            let total = created.len() + updated.len() + destroyed.len();
+            let has_more = if let Some(max) = max_changes {
+                if total > max {
+                    // Truncate: fill from created, then updated, then destroyed.
+                    let mut remaining = max;
+                    let take_created = remaining.min(created.len());
+                    created.truncate(take_created);
+                    remaining -= take_created;
+                    let take_updated = remaining.min(updated.len());
+                    updated.truncate(take_updated);
+                    remaining -= take_updated;
+                    let take_destroyed = remaining.min(destroyed.len());
+                    destroyed.truncate(take_destroyed);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // 7. Return changes response.
             Ok(json!({
                 "accountId": "a-self",
                 "oldState": since_state,
                 "newState": result.new_state,
-                "hasMoreChanges": false,
-                "created": result.added,
-                "updated": result.updated,
-                "destroyed": result.destroyed,
+                "hasMoreChanges": has_more,
+                "created": created,
+                "updated": updated,
+                "destroyed": destroyed,
             }))
         })
     }
@@ -980,6 +1019,149 @@ mod tests {
             "uid-beta must be in ids; got: {id_strs:?}"
         );
         assert_eq!(result["queryState"], expected_state);
+    }
+
+    // Oracle: RFC 8620 §5.3 — update patch containing an unknown property ("login" is
+    // server-controlled/read-only) must return notUpdated with type=invalidArguments.
+    #[tokio::test]
+    async fn test_contact_set_update_unknown_field_rejected() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .contacts()
+                .upsert(
+                    "uid-dave",
+                    "dave@example.com",
+                    "dave-kith.tail.ts.net",
+                    None,
+                    1000,
+                )
+                .unwrap();
+        }
+
+        let handler = ChatContactSetHandler::new(Arc::clone(&store));
+        let args = json!({
+            "accountId": "a-self",
+            "update": {
+                "uid-dave": {
+                    "login": "attacker@evil.com"
+                }
+            }
+        });
+
+        let result = handler
+            .call("ChatContact/set".to_string(), "c1".to_string(), args)
+            .await
+            .expect("handler must succeed (errors go in notUpdated)");
+
+        // Oracle: RFC 8620 §5.3 — unknown/read-only property yields invalidArguments.
+        let not_updated = &result["notUpdated"];
+        assert!(
+            not_updated.get("uid-dave").is_some(),
+            "notUpdated[uid-dave] must be present; got: {result}"
+        );
+        assert_eq!(
+            not_updated["uid-dave"]["type"], "invalidArguments",
+            "error type must be invalidArguments; got: {not_updated}"
+        );
+        // Oracle: updated must be empty — the contact must not have been modified.
+        assert_eq!(result["updated"], json!({}));
+
+        // Verify the login was NOT changed in the store.
+        let guard = store.lock().unwrap();
+        let contact = guard
+            .contacts()
+            .get_by_peer_user_id("uid-dave")
+            .unwrap()
+            .expect("contact must still exist");
+        assert_eq!(
+            contact.login, "dave@example.com",
+            "login must be unchanged after rejected patch"
+        );
+    }
+
+    // Oracle: RFC 8620 §5.6 — when maxChanges is present and total changes exceed it,
+    // hasMoreChanges must be true and the returned lists must be truncated.
+    #[tokio::test]
+    async fn test_contact_changes_max_changes_truncation() {
+        let store = make_store();
+        // Insert 3 contacts so there are 3 "created" changes since "s-0".
+        {
+            let guard = store.lock().unwrap();
+            for (uid, login) in [
+                ("uid-x1", "x1@example.com"),
+                ("uid-x2", "x2@example.com"),
+                ("uid-x3", "x3@example.com"),
+            ] {
+                guard
+                    .contacts()
+                    .upsert(uid, login, "host.tail.ts.net", None, 1000)
+                    .unwrap();
+            }
+        }
+
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
+        // maxChanges=1 with 3 changes → must truncate and set hasMoreChanges=true.
+        let args = json!({
+            "accountId": "a-self",
+            "sinceState": "s-0",
+            "maxChanges": 1
+        });
+        let result = handler
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        // Oracle: RFC 8620 §5.6 — hasMoreChanges must be true.
+        assert_eq!(
+            result["hasMoreChanges"], true,
+            "hasMoreChanges must be true when changes exceed maxChanges; got: {result}"
+        );
+        // Oracle: total returned items must be <= maxChanges.
+        let created_len = result["created"].as_array().map(|a| a.len()).unwrap_or(0);
+        let updated_len = result["updated"].as_array().map(|a| a.len()).unwrap_or(0);
+        let destroyed_len = result["destroyed"].as_array().map(|a| a.len()).unwrap_or(0);
+        assert!(
+            created_len + updated_len + destroyed_len <= 1,
+            "total returned changes must be <= maxChanges=1; got created={created_len} updated={updated_len} destroyed={destroyed_len}"
+        );
+    }
+
+    // Oracle: RFC 8620 §5.6 — when maxChanges is present but changes are within the
+    // limit, hasMoreChanges must be false.
+    #[tokio::test]
+    async fn test_contact_changes_max_changes_within_limit() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .contacts()
+                .upsert("uid-y1", "y1@example.com", "host.tail.ts.net", None, 1000)
+                .unwrap();
+        }
+
+        let handler = ChatContactChangesHandler::new(Arc::clone(&store));
+        // maxChanges=10, only 1 change → hasMoreChanges must be false.
+        let args = json!({
+            "accountId": "a-self",
+            "sinceState": "s-0",
+            "maxChanges": 10
+        });
+        let result = handler
+            .call("ChatContact/changes".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        assert_eq!(
+            result["hasMoreChanges"], false,
+            "hasMoreChanges must be false when changes are within maxChanges; got: {result}"
+        );
+        let created = result["created"].as_array().expect("created must be array");
+        assert!(
+            created.iter().any(|v| v == "uid-y1"),
+            "uid-y1 must appear in created; got: {created:?}"
+        );
     }
 
     // Oracle: RFC 8620 Contact/query pagination — position=1, limit=2 on a 3-contact
