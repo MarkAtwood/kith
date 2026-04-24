@@ -1654,15 +1654,14 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // events_coalescing_task_exits_on_disconnect_before_any_broadcast
-    // Oracle: when live_rx is dropped (client disconnect) and the coalescing
-    //         task is blocking at rx.recv() with no matching broadcasts, it
-    //         must exit via the live_tx.closed() arm of the select!.
+    // Oracle: when live_rx is dropped (client disconnect) and a Chat broadcast
+    //         is sent (which the ChatContact filter drops), the coalescing task
+    //         receives the broadcast, finds the batch empty, then calls
+    //         is_closed() in the empty-batch path and breaks.  The select!
+    //         closed() arm does NOT fire in this test — the task is woken by
+    //         the Chat broadcast, not by a closed() resolution.
     //         We observe task exit by watching the broadcast receiver_count()
     //         drop from 1 (task running) to 0 (task exited).
-    //
-    //         Without the select! fix, the task would block forever on
-    //         rx.recv() even after the client disconnects, leaking a receiver
-    //         slot indefinitely.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn events_coalescing_task_exits_on_disconnect_before_any_broadcast() {
@@ -1683,32 +1682,39 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        // Yield to let the coalescing task start and subscribe to the broadcast channel.
-        tokio::task::yield_now().await;
-        assert_eq!(
-            tx.receiver_count(),
-            1,
-            "coalescing task holds one receiver slot"
-        );
+        // Wait for the coalescing task to subscribe — retry up to 10 yields.
+        let subscribed = {
+            let mut found = false;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+                if tx.receiver_count() == 1 {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        assert!(subscribed, "coalescing task must subscribe within 10 yields");
 
         // Drop the response — this drops the response body, which drops live_rx,
         // which makes live_tx.closed() resolve in the coalescing task.
         drop(resp);
 
-        // Yield to let the select! branch fire and the task exit.
-        // Two yields: one for the closed() future to resolve, one for the task to exit.
+        // Two yields to let any pending futures make progress.
         tokio::task::yield_now().await;
         tokio::task::yield_now().await;
 
-        // The coalescing task may still be blocked at rx.recv() rather than having
-        // seen closed() yet — send a broadcast to wake it up.
+        // The coalescing task is blocked at rx.recv() — send a Chat broadcast to
+        // wake it up.  The ChatContact filter drops this event, the batch is empty,
+        // and is_closed() in the empty-batch path detects the dropped receiver and
+        // breaks.
         let _ = tx.send(StateChange {
             type_name: "Chat".to_string(),
             new_state: "s-1".to_string(),
         });
 
-        // Yield again so the task can process the recv(), see the filtered-empty
-        // batch, call is_closed(), and break.
+        // Yield to let the task process the recv(), see the filtered-empty batch,
+        // call is_closed(), and break.
         for _ in 0..5 {
             tokio::task::yield_now().await;
         }
@@ -1717,6 +1723,64 @@ mod tests {
             tx.receiver_count(),
             0,
             "coalescing task must have exited after client disconnect"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // events_coalescing_task_exits_via_select_closed_arm
+    // Oracle: when the client disconnects and NO broadcasts are ever sent,
+    //         the coalescing task must exit via the live_tx.closed() arm in
+    //         the select! at the top of the loop, not via is_closed() in the
+    //         empty-batch path (which requires a broadcast to wake the task).
+    //
+    //         Without the select! fix, the task would block at rx.recv()
+    //         indefinitely because is_closed() is only checked after a
+    //         broadcast arrives — and no broadcast ever arrives in this test.
+    // -----------------------------------------------------------------------
+    #[tokio::test]
+    async fn events_coalescing_task_exits_via_select_closed_arm() {
+        let state = make_state(
+            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            "uid-owner",
+        );
+        let tx = state.events_tx.clone();
+        let app = make_app(state);
+
+        let req = Request::builder()
+            .uri("/jmap/events?types=ChatContact")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Wait for the coalescing task to subscribe — retry up to 10 yields.
+        let subscribed = {
+            let mut found = false;
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+                if tx.receiver_count() == 1 {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        assert!(subscribed, "coalescing task must subscribe within 10 yields");
+
+        // Simulate client disconnect: drop the response body.
+        // This drops live_rx, making live_tx.closed() resolve.
+        drop(resp);
+
+        // Yield several times to let the select! closed() arm fire.
+        // No broadcast is sent — the only way the task can exit is via select!.
+        for _ in 0..10 {
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(
+            tx.receiver_count(),
+            0,
+            "coalescing task must exit via select! closed() arm when no broadcasts arrive"
         );
     }
 }
