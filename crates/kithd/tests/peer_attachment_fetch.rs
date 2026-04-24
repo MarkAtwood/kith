@@ -110,14 +110,12 @@ mod inner {
         }
     }
 
-    fn make_blob_store(tag: &str) -> Arc<BlobStore> {
-        let dir = std::env::temp_dir().join(format!(
-            "kithd-paf-test-{tag}-{}",
-            BlobStore::generate_blob_id()
-        ));
-        let store = Arc::new(BlobStore::new(&dir));
+    fn make_blob_store(tag: &str) -> (Arc<BlobStore>, tempfile::TempDir) {
+        let _ = tag;
+        let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+        let store = Arc::new(BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
     // -----------------------------------------------------------------------
@@ -157,8 +155,8 @@ mod inner {
         ));
 
         // ---- Blob stores ----
-        let sender_blob_store = make_blob_store("sender");
-        let receiver_blob_store = make_blob_store("receiver");
+        let (sender_blob_store, _sender_blob_dir) = make_blob_store("sender");
+        let (receiver_blob_store, _receiver_blob_dir) = make_blob_store("receiver");
 
         // ---- Sender's TCP TLS listener ----
         //

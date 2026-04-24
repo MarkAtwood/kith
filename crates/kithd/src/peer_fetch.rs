@@ -712,12 +712,9 @@ mod tests {
     const TEST_SHA256: &str = "dccfe42873d40807d0da4be11f3a412e4914f1315288d3c6e8cf0a19a8928feb";
     const TEST_BLOB_ID: &str = "testblobid0000000000000000000001";
 
-    fn make_temp_blob_store() -> (kith_attach::BlobStore, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "kith-peer-fetch-test-{}",
-            kith_attach::BlobStore::generate_blob_id()
-        ));
-        let store = kith_attach::BlobStore::new(&dir);
+    fn make_temp_blob_store() -> (kith_attach::BlobStore, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+        let store = kith_attach::BlobStore::new(dir.path());
         store.init().expect("BlobStore::init failed");
         (store, dir)
     }

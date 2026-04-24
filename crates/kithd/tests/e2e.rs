@@ -39,13 +39,14 @@ use ulid::Ulid;
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "test-utils")]
-fn make_state_for_listener(whois: MockWhoIs) -> AppState<MockWhoIs> {
+fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
     let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
-    AppState {
+    let (blob_store, blob_dir) = make_blob_store();
+    let state = AppState {
         ts: Arc::new(whois),
         store,
         owner_id: OWNER_ID.to_string(),
@@ -53,8 +54,9 @@ fn make_state_for_listener(whois: MockWhoIs) -> AppState<MockWhoIs> {
         base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
-        blob_store: make_blob_store(),
-    }
+        blob_store,
+    };
+    (state, blob_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +75,8 @@ fn make_state_for_listener(whois: MockWhoIs) -> AppState<MockWhoIs> {
 #[cfg(feature = "test-utils")]
 #[tokio::test]
 async fn spawn_test_listener_binds_loopback_port() {
-    let state = make_state_for_listener(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (state, _blob_dir) =
+        make_state_for_listener(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
 
     let (addr, cert_der, handle) = kithd::spawn_test_listener(state)
         .await
@@ -143,25 +146,23 @@ fn make_whois_resp(id: &str, login: &str) -> WhoIsResponse {
 // peer socket address that the Caller extractor requires.
 // ---------------------------------------------------------------------------
 
-fn make_blob_store() -> std::sync::Arc<kith_attach::BlobStore> {
-    let dir = std::env::temp_dir().join(format!(
-        "kithd-test-blobs-{}",
-        kith_attach::BlobStore::generate_blob_id()
-    ));
-    let store = std::sync::Arc::new(kith_attach::BlobStore::new(&dir));
+fn make_blob_store() -> (std::sync::Arc<kith_attach::BlobStore>, tempfile::TempDir) {
+    let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+    let store = std::sync::Arc::new(kith_attach::BlobStore::new(dir.path()));
     store.init().expect("blob store init must succeed");
-    store
+    (store, dir)
 }
 
 const OWNER_ID: &str = "uid-owner-e2e";
 const OWNER_LOGIN: &str = "owner@e2e.example.com";
 
-fn make_full_app(whois: MockWhoIs) -> Router {
+fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
     let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let (blob_store, blob_dir) = make_blob_store();
 
     let state = AppState {
         ts: Arc::new(whois),
@@ -171,10 +172,13 @@ fn make_full_app(whois: MockWhoIs) -> Router {
         base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
-        blob_store: make_blob_store(),
+        blob_store,
     };
 
-    build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))))
+    (
+        build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999)))),
+        blob_dir,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -186,12 +190,13 @@ fn make_full_app(whois: MockWhoIs) -> Router {
 // existing test call sites.
 // ---------------------------------------------------------------------------
 
-fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>) {
+fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
     let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let (blob_store, blob_dir) = make_blob_store();
     let state = AppState {
         ts: Arc::new(whois),
         store: Arc::clone(&store),
@@ -200,10 +205,10 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>) {
         base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
-        blob_store: make_blob_store(),
+        blob_store,
     };
     let app = build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
-    (app, store)
+    (app, store, blob_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +231,7 @@ async fn body_string(resp: axum::response::Response) -> String {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_session_endpoint_returns_kith_capability() {
-    let app = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -285,7 +290,7 @@ async fn e2e_session_endpoint_returns_kith_capability() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_contact_get_returns_method_response() {
-    let app = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
 
     // Manually constructed request from the RFC 8620 §3.3 format spec.
     // Not derived from any implementation output.
@@ -350,7 +355,7 @@ async fn e2e_contact_get_returns_method_response() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_unknown_method_returns_unknownmethod_error() {
-    let app = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
@@ -422,7 +427,7 @@ async fn e2e_unauthorized_caller_gets_401() {
     // Stranger is not the owner and not in contacts → must be rejected.
     let stranger_id = "uid-stranger-unknown";
     let stranger_login = "stranger@unknown.example.com";
-    let app = make_full_app(MockWhoIs(Some(make_whois_resp(
+    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(
         stranger_id,
         stranger_login,
     ))));
@@ -472,7 +477,8 @@ async fn peer_calls_owner_method_forbidden() {
 
     // Build the app and obtain the store so we can add a contact before
     // the request is dispatched.
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+    let (app, store, _blob_dir) =
+        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
 
     // Register the peer as an unblocked contact so Role::Peer is assigned by the
     // extractor.  Without this the extractor returns 401 and the test never
@@ -557,7 +563,8 @@ async fn peer_calls_chatcontact_querychanges_forbidden() {
     const PEER_ID: &str = "uid-peer-qc";
     const PEER_LOGIN: &str = "qc@peer.example.com";
 
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+    let (app, store, _blob_dir) =
+        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
     store
         .lock()
         .expect("store lock must not be poisoned in test setup")
@@ -618,7 +625,8 @@ async fn peer_deliver_sender_mismatch_rejected() {
     const PEER_ID: &str = "uid-peer-carol";
     const PEER_LOGIN: &str = "carol@peer.example.com";
 
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+    let (app, store, _blob_dir) =
+        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
 
     // Register peer as a contact so the Caller extractor grants Role::Peer.
     // Without this the request gets a 401 before reaching DeliverHandler.
@@ -739,7 +747,7 @@ async fn peer_deliver_chatid_contact_mismatch_rejected() {
     const PEER_BOB_LOGIN: &str = "bob@peer.example.com";
 
     // App is configured to identify every incoming connection as Alice.
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+    let (app, store, _blob_dir) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
         PEER_ALICE_ID,
         PEER_ALICE_LOGIN,
     ))));
@@ -874,7 +882,7 @@ async fn peer_receipt_wrong_contact_returns_not_found() {
     const PEER_BOB_LOGIN: &str = "bob@receipt.example.com";
 
     // App identifies every incoming connection as Alice.
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+    let (app, store, _blob_dir) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
         PEER_ALICE_ID,
         PEER_ALICE_LOGIN,
     ))));
@@ -1020,7 +1028,8 @@ async fn peer_receipt_nonexistent_message_returns_not_found() {
     const PEER_ID: &str = "uid-peer-dana-receipt";
     const PEER_LOGIN: &str = "dana@receipt.example.com";
 
-    let (app, store) = make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+    let (app, store, _blob_dir) =
+        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
 
     // Register peer as a contact so the Caller extractor grants Role::Peer.
     store
@@ -1145,6 +1154,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
         .expect("upsert must succeed for a correctly-opened in-memory store");
     let (events_tx, _events_rx) = make_channel(64);
     let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store), OWNER_ID));
+    let (blob_store, _blob_dir) = make_blob_store();
     let state = AppState {
         ts: Arc::new(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN)))),
         store,
@@ -1153,7 +1163,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
         base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
-        blob_store: make_blob_store(),
+        blob_store,
     };
     let (addr, _cert_der, handle) = kithd::spawn_test_listener(state)
         .await

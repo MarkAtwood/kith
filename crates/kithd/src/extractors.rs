@@ -204,22 +204,20 @@ mod tests {
         }
     }
 
-    fn make_blob_store() -> Arc<kith_attach::BlobStore> {
-        let dir = std::env::temp_dir().join(format!(
-            "kithd-extractor-test-{}",
-            kith_attach::BlobStore::generate_blob_id()
-        ));
-        let store = Arc::new(kith_attach::BlobStore::new(&dir));
+    fn make_blob_store() -> (Arc<kith_attach::BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+        let store = Arc::new(kith_attach::BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
-    fn make_state(whois: MockWhoIs, owner_id: &str) -> AppState<MockWhoIs> {
+    fn make_state(whois: MockWhoIs, owner_id: &str) -> (AppState<MockWhoIs>, tempfile::TempDir) {
         let store = Arc::new(std::sync::Mutex::new(
             Store::open_in_memory().expect("in-memory store"),
         ));
         let (events_tx, _events_rx) = kith_events::make_channel(64);
-        AppState {
+        let (blob_store, blob_dir) = make_blob_store();
+        let state = AppState {
             ts: Arc::new(whois),
             store,
             owner_id: owner_id.to_string(),
@@ -227,22 +225,24 @@ mod tests {
             base_url: crate::DEFAULT_BASE_URL.to_string(),
             events_tx,
             dispatcher: Arc::new(kith_jmap::Dispatcher::new()),
-            blob_store: make_blob_store(),
-        }
+            blob_store,
+        };
+        (state, blob_dir)
     }
 
     /// Build a test router: one GET "/" that returns the caller's role as a
     /// plain text string.  Uses `AppState<MockWhoIs>` so no real tailscaled
     /// is needed.
-    fn make_app(whois: MockWhoIs, owner_id: &str) -> Router {
-        let state = make_state(whois, owner_id);
-        Router::new()
+    fn make_app(whois: MockWhoIs, owner_id: &str) -> (Router, tempfile::TempDir) {
+        let (state, blob_dir) = make_state(whois, owner_id);
+        let router = Router::new()
             .route(
                 "/",
                 get(|caller: Caller| async move { format!("{:?}", caller.role) }),
             )
             .with_state(state)
-            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))))
+            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
+        (router, blob_dir)
     }
 
     /// Add a contact to the store for tests that exercise the peer path.
@@ -262,7 +262,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_owner_returns_caller_with_owner_role() {
-        let app = make_app(
+        let (app, _blob_dir) = make_app(
             MockWhoIs(Some(make_whois("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
@@ -287,7 +287,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_peer_returns_caller_with_peer_role() {
-        let state = make_state(
+        let (state, _blob_dir) = make_state(
             MockWhoIs(Some(make_whois("uid-bob", "bob@example.com"))),
             "uid-owner",
         );
@@ -321,7 +321,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_unknown_returns_401() {
-        let app = make_app(
+        let (app, _blob_dir) = make_app(
             MockWhoIs(Some(make_whois("uid-stranger", "stranger@example.com"))),
             "uid-owner",
         );
@@ -350,7 +350,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_whois_fail_returns_500() {
-        let app = make_app(MockWhoIs(None), "uid-owner");
+        let (app, _blob_dir) = make_app(MockWhoIs(None), "uid-owner");
 
         let req = Request::builder().uri("/").body(Body::empty()).unwrap();
 
@@ -377,7 +377,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_blocked_returns_401() {
-        let state = make_state(
+        let (state, _blob_dir) = make_state(
             MockWhoIs(Some(make_whois("uid-bob", "bob@example.com"))),
             "uid-owner",
         );

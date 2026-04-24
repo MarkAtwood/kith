@@ -242,12 +242,9 @@ mod tests {
         assert!(BlobStore::validate_blob_id(&BlobStore::generate_blob_id()).is_ok());
     }
 
-    fn make_temp_store() -> (BlobStore, PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "kith-attach-test-{}",
-            BlobStore::generate_blob_id()
-        ));
-        let store = BlobStore::new(&dir);
+    fn make_temp_store() -> (BlobStore, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+        let store = BlobStore::new(dir.path());
         store.init().expect("init should create temp dir");
         (store, dir)
     }
