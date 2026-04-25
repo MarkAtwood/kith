@@ -362,9 +362,13 @@ async fn watch_once(
 
                 if event_type.as_deref() == Some("state") {
                     if let Some(ref json_str) = data {
-                        if let Ok(state_map) = serde_json::from_str::<serde_json::Value>(json_str) {
-                            if let Some(new_state) =
-                                state_map.get("Message").and_then(|v| v.as_str())
+                        if let Ok(state_val) = serde_json::from_str::<serde_json::Value>(json_str) {
+                            // SSE data shape: {"changed": {"a-self": {"Message": "s-N", ...}}}
+                            if let Some(new_state) = state_val
+                                .get("changed")
+                                .and_then(|c| c.get("a-self"))
+                                .and_then(|a| a.get("Message"))
+                                .and_then(|v| v.as_str())
                             {
                                 // Fetch new messages since last_message_state.
                                 let prev_state = last_message_state.clone();
