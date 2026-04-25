@@ -53,6 +53,16 @@ pub fn is_tailnet_ip(ip: std::net::IpAddr) -> bool {
 pub const MAX_BODY_BYTES: usize = 65_536;
 /// Maximum attachment size (bytes).
 pub const MAX_ATTACHMENT_BYTES: usize = 104_857_600;
+/// Maximum JMAP API request body size (bytes).
+///
+/// Advertised in the Session object as `maxSizeRequest` (RFC 8620 §2).
+/// The kithd HTTP layer enforces this via `DefaultBodyLimit`.
+pub const MAX_REQUEST_BYTES: usize = 10_485_760;
+/// Maximum number of object IDs in a single /get call (RFC 8620 §5.1).
+///
+/// Advertised in the Session object as `maxObjectsInGet`.
+/// /get handlers MUST return `tooLarge` when the `ids` array exceeds this.
+pub const MAX_OBJECTS_IN_GET: usize = 500;
 
 /// Format a Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) as an
 /// RFC 3339 UTC string (e.g., `"2020-09-13T12:26:40Z"`).

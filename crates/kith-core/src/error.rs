@@ -102,6 +102,17 @@ impl JmapError {
             description: None,
         }
     }
+
+    /// RFC 8620 §7.1: the request exceeds `maxObjectsInGet`, `maxObjectsInSet`,
+    /// or some other per-method size limit.  Distinct from `requestTooLarge`
+    /// (which is a request-level error); this is a method-level error returned
+    /// inside `methodResponses` with HTTP 200.
+    pub fn too_large() -> Self {
+        Self {
+            error_type: "tooLarge".into(),
+            description: None,
+        }
+    }
 }
 
 /// Top-level error type for the kith system.

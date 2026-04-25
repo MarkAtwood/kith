@@ -1,7 +1,7 @@
 // Contact/get, Contact/set, Contact/changes, Contact/query handlers
 
 use crate::kith_to_jmap;
-use kith_core::{JmapError, KithError};
+use kith_core::{JmapError, KithError, MAX_OBJECTS_IN_GET};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
@@ -70,6 +70,13 @@ impl JmapHandler for ChatContactGetHandler {
                     return Err(JmapError::invalid_arguments("ids must be null or an array"))
                 }
             };
+
+            // RFC 8620 §5.1: reject if more than maxObjectsInGet IDs are requested.
+            if let Some(ref id_list) = ids {
+                if id_list.len() > MAX_OBJECTS_IN_GET {
+                    return Err(JmapError::too_large());
+                }
+            }
 
             // 3. Acquire lock.
             let guard = store

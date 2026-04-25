@@ -4,7 +4,7 @@ use axum::{
 };
 use kith_core::{
     Identity, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, Role,
-    MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
+    MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, MAX_OBJECTS_IN_GET, MAX_REQUEST_BYTES,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -206,12 +206,12 @@ pub fn build_session(
     Session {
         capabilities: Capabilities {
             core: CoreCapability {
-                max_size_upload: 104_857_600,
+                max_size_upload: MAX_ATTACHMENT_BYTES as u64,
                 max_concurrent_upload: 4,
-                max_size_request: 10_485_760,
+                max_size_request: MAX_REQUEST_BYTES as u64,
                 max_concurrent_requests: 4,
-                max_calls_in_request: 16,
-                max_objects_in_get: 500,
+                max_calls_in_request: MAX_CALLS_IN_REQUEST as u32,
+                max_objects_in_get: MAX_OBJECTS_IN_GET as u32,
                 max_objects_in_set: 500,
                 collation_algorithms: vec!["i;unicode-casemap".to_string()],
             },
@@ -1755,6 +1755,89 @@ mod tests {
             resp.created_ids.is_none(),
             "createdIds must be absent when no objects were created; got: {:?}",
             resp.created_ids
+        );
+    }
+
+    // Test: panicking owner handler returns serverFail, not a task panic.
+    //
+    // Oracle: RFC 8620 §7.1 "serverFail" is the correct error type for
+    // internal server errors.  The panic isolation guarantee is that a handler
+    // panic must not propagate to the connection handler task.
+    #[tokio::test]
+    async fn test_dispatch_panicking_handler_returns_server_fail() {
+        struct PanicHandler;
+        impl JmapHandler for PanicHandler {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+            ) -> HandlerFuture {
+                Box::pin(async move { panic!("intentional test panic") })
+            }
+        }
+
+        let mut d = Dispatcher::new();
+        d.register("ChatContact/get", Box::new(PanicHandler));
+
+        let req = JmapRequest {
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
+            method_calls: vec![(
+                "ChatContact/get".to_string(),
+                serde_json::Value::Null,
+                "c0".to_string(),
+            )],
+        };
+
+        // Must not panic; must return serverFail in methodResponses.
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(resp.method_responses.len(), 1);
+        assert_eq!(
+            resp.method_responses[0].1["type"], "serverFail",
+            "panicking handler must produce serverFail, got: {:?}",
+            resp.method_responses[0].1
+        );
+    }
+
+    // Test: panicking peer handler returns serverFail, not a task panic.
+    #[tokio::test]
+    async fn test_dispatch_panicking_peer_handler_returns_server_fail() {
+        struct PanicPeerHandler;
+        impl PeerJmapHandler for PanicPeerHandler {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+                _caller: Identity,
+            ) -> HandlerFuture {
+                Box::pin(async move { panic!("intentional peer test panic") })
+            }
+        }
+
+        let mut d = Dispatcher::new();
+        d.register_peer("Peer/deliver", Box::new(PanicPeerHandler));
+
+        let req = JmapRequest {
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
+            method_calls: vec![(
+                "Peer/deliver".to_string(),
+                serde_json::Value::Null,
+                "c0".to_string(),
+            )],
+        };
+
+        // Must not panic; must return serverFail in methodResponses.
+        let resp = d
+            .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(resp.method_responses.len(), 1);
+        assert_eq!(
+            resp.method_responses[0].1["type"], "serverFail",
+            "panicking peer handler must produce serverFail, got: {:?}",
+            resp.method_responses[0].1
         );
     }
 }

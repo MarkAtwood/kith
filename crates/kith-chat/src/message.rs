@@ -4,7 +4,7 @@ use crate::kith_to_jmap;
 use kith_attach::BlobStore;
 use kith_core::{
     unix_secs_to_rfc3339, Attachment, DeliveryState, JmapError, Message, MAX_ATTACHMENT_BYTES,
-    MAX_BODY_BYTES,
+    MAX_BODY_BYTES, MAX_OBJECTS_IN_GET,
 };
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
@@ -793,6 +793,13 @@ impl JmapHandler for MessageGetHandler {
                     return Err(JmapError::invalid_arguments("ids must be an array or null"));
                 }
             };
+
+            // RFC 8620 §5.1: reject if more than maxObjectsInGet IDs are requested.
+            if let Some(ref id_list) = ids {
+                if id_list.len() > MAX_OBJECTS_IN_GET {
+                    return Err(JmapError::too_large());
+                }
+            }
 
             let guard = store
                 .lock()

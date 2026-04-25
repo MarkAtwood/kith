@@ -1,4 +1,4 @@
-use kith_core::JmapError;
+use kith_core::{JmapError, MAX_OBJECTS_IN_GET};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
@@ -60,6 +60,13 @@ impl JmapHandler for ChatGetHandler {
                 }
                 _ => return Err(JmapError::invalid_arguments("ids must be an array or null")),
             };
+
+            // RFC 8620 §5.1: reject if more than maxObjectsInGet IDs are requested.
+            if let Some(ref id_list) = ids {
+                if id_list.len() > MAX_OBJECTS_IN_GET {
+                    return Err(JmapError::too_large());
+                }
+            }
 
             // Step 3: Acquire store lock.
             let guard = store
