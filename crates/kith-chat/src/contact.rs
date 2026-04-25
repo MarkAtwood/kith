@@ -171,25 +171,23 @@ impl JmapHandler for ChatContactSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            // Capture old_state before any mutations so the client can detect
-            // concurrent changes (RFC 8620 §5.3).
-            let old_state = {
-                let guard = store
-                    .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
-                guard.contacts().get_state().map_err(kith_to_jmap)?
-            };
-
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
             let mut updated: Map<String, Value> = Map::new();
             let mut not_updated: Map<String, Value> = Map::new();
             let mut not_destroyed: Map<String, Value> = Map::new();
 
+            // old_state is captured lazily: the first process_create or process_update
+            // call captures it inside its own lock scope, before any DB write in that
+            // call.  This prevents a concurrent Peer/deliver from slipping in between
+            // a separate pre-loop lock scope and the first create, which would make
+            // oldState describe a state before that concurrent write (RFC 8620 §5.3).
+            let mut old_state_cell: Option<String> = None;
+
             // 4. Process create entries.
             if let Some(creates) = create_map {
                 for (client_id, value) in creates {
-                    match process_create(&store, client_id, value, now_unix) {
+                    match process_create(&store, client_id, value, now_unix, &mut old_state_cell) {
                         Ok(contact_value) => {
                             created.insert(client_id.clone(), contact_value);
                         }
@@ -203,7 +201,7 @@ impl JmapHandler for ChatContactSetHandler {
             // 5. Process update entries.
             if let Some(updates) = update_map {
                 for (server_id, patch) in updates {
-                    match process_update(&store, server_id, patch, now_unix) {
+                    match process_update(&store, server_id, patch, now_unix, &mut old_state_cell) {
                         Ok(()) => {
                             updated.insert(server_id.clone(), Value::Null);
                         }
@@ -226,6 +224,18 @@ impl JmapHandler for ChatContactSetHandler {
                     );
                 }
             }
+
+            // Resolve old_state: if at least one create/update ran, it was captured
+            // inside the first lock scope.  If no creates or updates ran, capture now.
+            let old_state = match old_state_cell {
+                Some(s) => s,
+                None => {
+                    let guard = store
+                        .lock()
+                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                    guard.contacts().get_state().map_err(kith_to_jmap)?
+                }
+            };
 
             // 7. Get new state.
             let new_state = {
@@ -260,6 +270,7 @@ fn process_create(
     _client_id: &str,
     value: &Value,
     now_unix: i64,
+    old_state_out: &mut Option<String>,
 ) -> Result<Value, Value> {
     let obj = value.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "create entry must be an object"}),
@@ -303,6 +314,16 @@ fn process_create(
         .lock()
         .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
 
+    // Capture old_state on the first call, inside the lock, before any DB write.
+    if old_state_out.is_none() {
+        *old_state_out = Some(
+            guard
+                .contacts()
+                .get_state()
+                .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+        );
+    }
+
     guard
         .contacts()
         .upsert(user_id, login, mailbox_host, display_name, now_unix)
@@ -339,6 +360,7 @@ fn process_update(
     server_id: &str,
     patch: &Value,
     now_unix: i64,
+    old_state_out: &mut Option<String>,
 ) -> Result<(), Value> {
     let patch_obj = patch.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "update patch must be an object"}),
@@ -359,6 +381,16 @@ fn process_update(
     let guard = store
         .lock()
         .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+
+    // Capture old_state on the first call, inside the lock, before any DB write.
+    if old_state_out.is_none() {
+        *old_state_out = Some(
+            guard
+                .contacts()
+                .get_state()
+                .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+        );
+    }
 
     // Load existing contact.
     let existing = guard

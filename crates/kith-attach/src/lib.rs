@@ -65,6 +65,16 @@ impl BlobStore {
         Self::validate_blob_id(id)
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;
 
+        if !self.base_dir.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "BlobStore base_dir does not exist: {:?}; was init() called?",
+                    self.base_dir
+                ),
+            ));
+        }
+
         let final_path = self.blob_path(id);
         // Unique nonce per write so concurrent writes for the same blob_id don't
         // share a temp path and corrupt each other.
@@ -109,6 +119,16 @@ impl BlobStore {
 
         Self::validate_blob_id(id)
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;
+
+        if !self.base_dir.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "BlobStore base_dir does not exist: {:?}; was init() called?",
+                    self.base_dir
+                ),
+            ));
+        }
 
         let final_path = self.blob_path(id);
         // Unique nonce per write so concurrent writes for the same blob_id don't
@@ -414,5 +434,38 @@ mod tests {
         let result = store.write_blob_streaming("../bad", body, 1024).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // Oracle: write_blob on a BlobStore whose base_dir was never created (or was
+    // dropped) must return Err(NotFound) rather than panicking or creating the
+    // directory implicitly.  The error tells the caller that init() was not called.
+    #[tokio::test]
+    async fn write_blob_without_init_returns_not_found() {
+        // Use a path guaranteed not to exist: a TempDir that has already been dropped.
+        let nonexistent = {
+            let dir = tempfile::TempDir::new().expect("TempDir::new should succeed");
+            dir.path().to_path_buf()
+            // dir dropped here — the directory is deleted
+        };
+        assert!(
+            !nonexistent.exists(),
+            "precondition: path must not exist after TempDir drop"
+        );
+
+        let store = BlobStore::new(&nonexistent);
+        // Deliberately skip store.init() — this is exactly the scenario under test.
+
+        let id = BlobStore::generate_blob_id();
+        let result = store.write_blob(&id, b"payload").await;
+
+        assert!(
+            result.is_err(),
+            "write_blob without init() must return Err; got Ok"
+        );
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::NotFound,
+            "error kind must be NotFound (base_dir missing)"
+        );
     }
 }

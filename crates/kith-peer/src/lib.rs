@@ -5,7 +5,7 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use kith_core::{unix_secs_to_rfc3339, DeliveryState, Identity, JmapError};
+use kith_core::{unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES};
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
@@ -17,9 +17,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use ulid::Ulid;
-
-/// Maximum body size accepted from a peer (bytes, matches KithChatCapability).
-const MAX_BODY_BYTES: usize = 65_536;
 
 /// Accepted body MIME types (matches KithChatCapability::supported_body_types).
 const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
@@ -405,6 +402,17 @@ impl PeerJmapHandler for ReceiptHandler {
                     "kind must be 'delivered' or 'read', got '{}'",
                     parsed.kind
                 )));
+            }
+
+            // Step c2: validate at is a well-formed RFC 3339 timestamp.
+            // The field is discarded in favour of the local clock, but accepting
+            // arbitrary strings is inconsistent with the defensive policy applied
+            // to sentAt in Peer/deliver, and leaves a landmine if discard is
+            // ever reconsidered.
+            if DateTime::parse_from_rfc3339(&parsed.at).is_err() {
+                return Err(JmapError::invalid_arguments(
+                    "at must be a valid RFC 3339 timestamp".to_string(),
+                ));
             }
 
             // Step d: validate messageId is non-empty.
@@ -894,7 +902,6 @@ fn validate_attachments(
     attachments: &[AttachmentArg],
 ) -> Result<Vec<kith_core::Attachment>, JmapError> {
     const MAX_ATTACHMENTS: usize = 20;
-    const MAX_ATTACHMENT_BYTES: u64 = 104_857_600; // 100 MiB
 
     if attachments.len() > MAX_ATTACHMENTS {
         return Err(JmapError::invalid_arguments("too many attachments"));
@@ -957,7 +964,7 @@ fn validate_attachments(
         }
 
         // Validate size: non-zero and within the per-attachment cap.
-        if a.size == 0 || a.size > MAX_ATTACHMENT_BYTES {
+        if a.size == 0 || a.size > MAX_ATTACHMENT_BYTES as u64 {
             return Err(JmapError::invalid_arguments("invalid attachment size"));
         }
 
@@ -2082,6 +2089,32 @@ mod tests {
             .await;
 
         let err = result.expect_err("should return invalidArguments");
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: malformed `at` field must return invalidArguments.
+    // Matches the sentAt validation in Peer/deliver (RFC 3339 required).
+    #[tokio::test]
+    async fn receipt_invalid_at_returns_invalid_arguments() {
+        let store = make_store();
+
+        let caller = make_identity("uid-bob");
+        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": "msg-r-at",
+                    "kind": "delivered",
+                    "at": "not-a-timestamp"
+                }),
+                caller,
+            )
+            .await;
+
+        let err = result.expect_err("malformed 'at' must return invalidArguments");
         assert_eq!(err.error_type, "invalidArguments");
     }
 

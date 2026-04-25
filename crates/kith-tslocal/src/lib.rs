@@ -125,12 +125,18 @@ impl StatusResponse {
     /// `user_id` matches `local_user_id`.
     ///
     /// A single Tailscale user may have multiple nodes (laptop, phone, …).
-    /// Only the first node seen per user ID is returned; the caller should not
-    /// rely on which node is chosen when a user has multiple.
+    /// Nodes are sorted by `dns_name` before deduplication so that the chosen
+    /// node is deterministic: when a user has multiple devices the one with the
+    /// lexicographically smallest `dns_name` is always selected.
     pub fn peer_nodes_excluding(&self, local_user_id: &str) -> Vec<&PeerNode> {
+        // Sort by dns_name first so that HashMap's non-deterministic iteration
+        // order does not affect which node is chosen for multi-device users.
+        let mut nodes: Vec<&PeerNode> = self.peers.values().collect();
+        nodes.sort_by(|a, b| a.dns_name.cmp(&b.dns_name));
+
         let mut seen = std::collections::HashSet::new();
-        self.peers
-            .values()
+        nodes
+            .into_iter()
             .filter(|p| {
                 !p.user_id.is_empty()
                     && p.user_id != local_user_id
@@ -532,6 +538,30 @@ mod tests {
         let peers = status.peer_nodes_excluding("1001");
         assert_eq!(peers.len(), 1); // user 2002 deduplicated to 1; user 1001 excluded
         assert_eq!(peers[0].user_id, "2002");
+    }
+
+    // -----------------------------------------------------------------------
+    // peer_nodes_excluding_multi_device_deterministic
+    // Oracle: when a user has multiple nodes, the one with the
+    // lexicographically smallest dns_name must always be selected.
+    // "bob-laptop.ts.net." < "bob-phone.ts.net." alphabetically.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn peer_nodes_excluding_multi_device_deterministic() {
+        let json = r#"{
+          "TailscaleIPs": ["100.64.0.1"],
+          "BackendState": "Running",
+          "Self": {"UserID": "1001"},
+          "Peer": {
+            "nodekey:abc": {"UserID": "2002", "DNSName": "bob-phone.ts.net.", "TailscaleIPs": ["100.64.0.2"]},
+            "nodekey:def": {"UserID": "2002", "DNSName": "bob-laptop.ts.net.", "TailscaleIPs": ["100.64.0.3"]}
+          }
+        }"#;
+        let status: StatusResponse = serde_json::from_str(json).unwrap();
+        let peers = status.peer_nodes_excluding("1001");
+        assert_eq!(peers.len(), 1);
+        // Oracle: "bob-laptop.ts.net" < "bob-phone.ts.net" (trailing dot stripped on parse) — laptop wins.
+        assert_eq!(peers[0].dns_name, "bob-laptop.ts.net");
     }
 
     #[test]

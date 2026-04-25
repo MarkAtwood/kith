@@ -65,11 +65,21 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty());
         let fallback_bind_addr = Self::resolve_fallback_bind_addr();
-        let discovery_interval_secs = std::env::var("KITHD_DISCOVERY_INTERVAL_SECS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(300)
-            .max(60);
+        let discovery_interval_secs = {
+            let raw = std::env::var("KITHD_DISCOVERY_INTERVAL_SECS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(300);
+            if raw < 60 {
+                eprintln!(
+                    "kithd: KITHD_DISCOVERY_INTERVAL_SECS={} is below the 60s minimum; clamping to 60",
+                    raw
+                );
+                60
+            } else {
+                raw
+            }
+        };
 
         let db_path = data_dir.join("kith.db");
         let cert_path = data_dir.join("kith.crt");
@@ -159,18 +169,52 @@ impl Config {
 
     /// Resolve fallback bind address from `KITHD_BIND_ADDR`, with deprecated
     /// fallback to `KITH_BIND_ADDR`.
+    ///
+    /// Only loopback addresses (127.x.x.x / ::1) are accepted.  Non-loopback
+    /// values are rejected with a fatal `eprintln!` and treated as absent so
+    /// that an operator mistake cannot accidentally expose the API on a
+    /// non-tailnet interface.
     fn resolve_fallback_bind_addr() -> Option<String> {
-        if let Ok(val) = std::env::var("KITHD_BIND_ADDR") {
-            return Some(val).filter(|s| !s.is_empty());
-        }
-        // KITH_BIND_ADDR is a deprecated alias retained for backwards compatibility.
-        // New deployments should use KITHD_BIND_ADDR. This fallback is intentionally
-        // non-fatal so existing setups continue to work with a visible warning.
-        if let Ok(val) = std::env::var("KITH_BIND_ADDR") {
+        let raw = if let Ok(val) = std::env::var("KITHD_BIND_ADDR") {
+            if val.is_empty() {
+                return None;
+            }
+            val
+        } else if let Ok(val) = std::env::var("KITH_BIND_ADDR") {
+            // KITH_BIND_ADDR is a deprecated alias retained for backwards compatibility.
+            // New deployments should use KITHD_BIND_ADDR.
             eprintln!("kithd: KITH_BIND_ADDR is deprecated, use KITHD_BIND_ADDR");
-            return Some(val).filter(|s| !s.is_empty());
+            if val.is_empty() {
+                return None;
+            }
+            val
+        } else {
+            return None;
+        };
+
+        // Reject non-loopback addresses.  KITHD_BIND_ADDR is for dev/test only;
+        // allowing non-loopback exposes an unauthenticated plain-HTTP API to
+        // non-tailnet networks, which violates the threat model.
+        match raw.parse::<std::net::SocketAddr>() {
+            Ok(addr) if addr.ip().is_loopback() => Some(raw),
+            Ok(_) => {
+                eprintln!(
+                    "kithd: KITHD_BIND_ADDR '{}' is not a loopback address; \
+                     only 127.x.x.x / [::1] are permitted. \
+                     Setting ignored — binding on non-tailnet interfaces exposes \
+                     the API without Tailscale identity authentication.",
+                    raw
+                );
+                None
+            }
+            Err(_) => {
+                eprintln!(
+                    "kithd: KITHD_BIND_ADDR '{}' is not a valid socket address; ignoring",
+                    raw
+                );
+                None
+            }
         }
-        None
     }
 
     /// Compute the default data directory.
@@ -371,6 +415,81 @@ mod tests {
         let cfg = Config::from_env();
         assert_eq!(cfg.fallback_bind_addr, Some("127.0.0.1:7070".to_string()));
 
+        restore_vars(saved);
+    }
+
+    // -----------------------------------------------------------------------
+    // KITH-o9x1.53: discovery interval clamp warning
+    // Oracle: default is 300s; values ≥60 pass through; values <60 clamp to 60.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[serial]
+    fn discovery_interval_below_minimum_clamps_to_60() {
+        let saved = take_vars(&["KITHD_DISCOVERY_INTERVAL_SECS"]);
+        unsafe { std::env::set_var("KITHD_DISCOVERY_INTERVAL_SECS", "5") };
+        let cfg = Config::from_env();
+        assert_eq!(cfg.discovery_interval_secs, 60, "value below 60 must clamp to 60");
+        restore_vars(saved);
+    }
+
+    #[test]
+    #[serial]
+    fn discovery_interval_at_minimum_is_accepted() {
+        let saved = take_vars(&["KITHD_DISCOVERY_INTERVAL_SECS"]);
+        unsafe { std::env::set_var("KITHD_DISCOVERY_INTERVAL_SECS", "60") };
+        let cfg = Config::from_env();
+        assert_eq!(cfg.discovery_interval_secs, 60);
+        restore_vars(saved);
+    }
+
+    #[test]
+    #[serial]
+    fn discovery_interval_above_minimum_is_accepted() {
+        let saved = take_vars(&["KITHD_DISCOVERY_INTERVAL_SECS"]);
+        unsafe { std::env::set_var("KITHD_DISCOVERY_INTERVAL_SECS", "120") };
+        let cfg = Config::from_env();
+        assert_eq!(cfg.discovery_interval_secs, 120);
+        restore_vars(saved);
+    }
+
+    // -----------------------------------------------------------------------
+    // KITH-o9x1.55: non-loopback KITHD_BIND_ADDR rejected
+    // Oracle: only 127.x.x.x / ::1 loopback addresses are accepted;
+    // non-loopback is rejected (returns None) to protect the threat model.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    #[serial]
+    fn fallback_bind_addr_non_loopback_is_rejected() {
+        let saved = take_vars(&["KITHD_BIND_ADDR", "KITH_BIND_ADDR"]);
+        unsafe { std::env::set_var("KITHD_BIND_ADDR", "0.0.0.0:8080") };
+        let cfg = Config::from_env();
+        assert_eq!(
+            cfg.fallback_bind_addr, None,
+            "non-loopback KITHD_BIND_ADDR must be rejected; got {:?}",
+            cfg.fallback_bind_addr
+        );
+        restore_vars(saved);
+    }
+
+    #[test]
+    #[serial]
+    fn fallback_bind_addr_public_ip_is_rejected() {
+        let saved = take_vars(&["KITHD_BIND_ADDR", "KITH_BIND_ADDR"]);
+        unsafe { std::env::set_var("KITHD_BIND_ADDR", "1.2.3.4:9000") };
+        let cfg = Config::from_env();
+        assert_eq!(cfg.fallback_bind_addr, None, "public IP must be rejected");
+        restore_vars(saved);
+    }
+
+    #[test]
+    #[serial]
+    fn fallback_bind_addr_invalid_socket_addr_is_ignored() {
+        let saved = take_vars(&["KITHD_BIND_ADDR", "KITH_BIND_ADDR"]);
+        unsafe { std::env::set_var("KITHD_BIND_ADDR", "not-an-address") };
+        let cfg = Config::from_env();
+        assert_eq!(cfg.fallback_bind_addr, None, "unparseable address must be ignored");
         restore_vars(saved);
     }
 

@@ -296,6 +296,19 @@ ALTER TABLE contacts ADD COLUMN created_at_counter INTEGER NOT NULL DEFAULT 0;
 UPDATE contacts SET created_at_counter = changed_at_counter WHERE changed_at_counter > 0;
 ";
 
+// V14: Enforce singleton invariant on the 'self' table via a BEFORE INSERT trigger.
+// The table may already have exactly one row (normal state), zero rows (fresh DB),
+// or erroneously more than one row.  The trigger fires on any attempt to add a
+// second row and raises an error.
+const SCHEMA_V14: &str = "
+CREATE TRIGGER IF NOT EXISTS self_singleton
+    BEFORE INSERT ON self
+    WHEN (SELECT COUNT(*) FROM self) > 0
+BEGIN
+    SELECT RAISE(ABORT, 'self table must contain exactly one row');
+END;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -315,6 +328,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (11, SCHEMA_V11),
     (12, SCHEMA_V12),
     (13, SCHEMA_V13),
+    (14, SCHEMA_V14),
 ];
 
 impl Store {
@@ -712,6 +726,27 @@ pub(crate) fn advance_state_counter_in_tx(
     tx: &rusqlite::Transaction<'_>,
     type_name: &str,
 ) -> Result<i64, KithError> {
+    let current: i64 = tx
+        .query_row(
+            "SELECT counter FROM state_counters WHERE type_name = ?1",
+            rusqlite::params![type_name],
+            |row| row.get(0),
+        )
+        .map_err(|e| {
+            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
+                KithError::Store(format!(
+                    "advance_state_counter: unknown type_name '{type_name}'"
+                ))
+            } else {
+                db_err(e)
+            }
+        })?;
+    // Guard against i64 overflow on the state counter. At 2^63-1 increments
+    // a personal mailbox has sent more messages than atoms in the universe —
+    // this is defence-in-depth, not a practical concern.
+    if current >= i64::MAX - 1 {
+        return Err(KithError::Store("state counter overflow".to_string()));
+    }
     let rows = tx
         .execute(
             "UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1",
@@ -723,14 +758,7 @@ pub(crate) fn advance_state_counter_in_tx(
             "advance_state_counter: unknown type_name '{type_name}'"
         )));
     }
-    let version: i64 = tx
-        .query_row(
-            "SELECT counter FROM state_counters WHERE type_name = ?1",
-            rusqlite::params![type_name],
-            |row| row.get(0),
-        )
-        .map_err(db_err)?;
-    Ok(version)
+    Ok(current + 1)
 }
 
 #[cfg(test)]
@@ -771,8 +799,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has thirteen entries (versions 1-13), so user_version must be 13 after open.
-        assert_eq!(version, 13);
+        // MIGRATIONS has fourteen entries (versions 1-14), so user_version must be 14 after open.
+        assert_eq!(version, 14);
     }
 
     #[test]
@@ -808,7 +836,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 13, "migration 13 must be applied");
+        assert_eq!(v1, 14, "migration 14 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -895,7 +923,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 13, "migration v13 must set user_version to 13");
+        assert_eq!(v, 14, "migration v14 must set user_version to 14");
     }
 
     #[test]
@@ -1396,6 +1424,120 @@ mod tests {
             err_msg.contains("sender_msg_id must not be NULL"),
             "error must identify the invariant; got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn advance_state_counter_overflow_guard() {
+        // Oracle: the guard must fire at i64::MAX - 1, before any increment
+        // would wrap to a negative value or silently overflow.
+        // We set the counter to i64::MAX - 1 directly in SQL, then verify that
+        // advance_state_counter_in_tx returns Err rather than incrementing.
+        let store = Store::open_in_memory().expect("open");
+        store
+            .conn
+            .execute(
+                "UPDATE state_counters SET counter = ?1 WHERE type_name = 'message'",
+                rusqlite::params![i64::MAX - 1],
+            )
+            .expect("set counter to MAX-1");
+
+        let tx = store
+            .conn
+            .unchecked_transaction()
+            .expect("open transaction");
+        let result = advance_state_counter_in_tx(&tx, "message");
+        assert!(
+            result.is_err(),
+            "advance_state_counter_in_tx must return Err when counter is at i64::MAX-1"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("state counter overflow"),
+            "error must mention overflow; got: {err_msg}"
+        );
+        // Counter must not have been modified.
+        let _ = tx.rollback();
+        let counter_after: i64 = store
+            .conn
+            .query_row(
+                "SELECT counter FROM state_counters WHERE type_name = 'message'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read counter");
+        assert_eq!(
+            counter_after,
+            i64::MAX - 1,
+            "counter must be unchanged after overflow guard fires"
+        );
+    }
+
+    #[test]
+    fn advance_state_counter_overflow_guard_at_max() {
+        // Oracle: a counter already at i64::MAX must also be rejected.
+        let store = Store::open_in_memory().expect("open");
+        store
+            .conn
+            .execute(
+                "UPDATE state_counters SET counter = ?1 WHERE type_name = 'message'",
+                rusqlite::params![i64::MAX],
+            )
+            .expect("set counter to MAX");
+
+        let tx = store
+            .conn
+            .unchecked_transaction()
+            .expect("open transaction");
+        let result = advance_state_counter_in_tx(&tx, "message");
+        assert!(
+            result.is_err(),
+            "advance_state_counter_in_tx must return Err when counter is at i64::MAX"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("state counter overflow"),
+            "error must mention overflow; got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn v14_trigger_rejects_second_self_row() {
+        // Oracle: the V14 self_singleton trigger must reject any INSERT that
+        // would produce a second row in the self table.
+        let store = Store::open_in_memory().expect("open");
+
+        // Insert the first (and only) allowed row.
+        store
+            .conn
+            .execute(
+                "INSERT INTO self (tailscale_user_id, tailscale_login, created_at) \
+                 VALUES ('uid-alice', 'alice@example.com', 1000)",
+                [],
+            )
+            .expect("first INSERT into self must succeed");
+
+        // A second INSERT must be rejected by the trigger.
+        let result = store.conn.execute(
+            "INSERT INTO self (tailscale_user_id, tailscale_login, created_at) \
+             VALUES ('uid-bob', 'bob@example.com', 2000)",
+            [],
+        );
+        assert!(
+            result.is_err(),
+            "self_singleton trigger must reject a second INSERT into self"
+        );
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("self table must contain exactly one row"),
+            "error must identify the violated invariant; got: {err_msg}"
+        );
+
+        // Oracle: exactly one row remains.
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM self", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "self table must contain exactly one row after rejected INSERT");
     }
 
     #[test]

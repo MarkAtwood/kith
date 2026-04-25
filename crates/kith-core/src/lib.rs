@@ -17,6 +17,11 @@ pub use jmap::{Id, Invocation, JmapRequest, JmapResponse, UTCDate};
 pub use message::{Attachment, DeliveryState, Message};
 pub use resultref::{Argument, ResultReference};
 
+/// Maximum body size for a chat message (bytes).
+pub const MAX_BODY_BYTES: usize = 65_536;
+/// Maximum attachment size (bytes).
+pub const MAX_ATTACHMENT_BYTES: usize = 104_857_600;
+
 /// Format a Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) as an
 /// RFC 3339 UTC string (e.g., `"2020-09-13T12:26:40Z"`).
 ///
@@ -25,6 +30,7 @@ pub use resultref::{Argument, ResultReference};
 ///
 /// Single canonical implementation shared by `kith-store` and `kith-peer`.
 pub fn unix_secs_to_rfc3339(secs: i64) -> String {
+    assert!(secs >= 0, "unix_secs_to_rfc3339: secs must be non-negative, got {secs}");
     let secs_in_day: i64 = 86400;
     let days = secs.div_euclid(secs_in_day);
     let time_secs = secs.rem_euclid(secs_in_day);
@@ -52,6 +58,12 @@ pub fn unix_secs_to_rfc3339(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[should_panic(expected = "unix_secs_to_rfc3339: secs must be non-negative")]
+    fn unix_secs_to_rfc3339_rejects_negative() {
+        unix_secs_to_rfc3339(-1);
+    }
 
     #[test]
     fn unix_secs_to_rfc3339_known_values() {

@@ -319,6 +319,13 @@ fn process_create(
         .map(|s| s.to_string());
 
     // Validate body length BEFORE acquiring the store lock.
+    if body.is_empty() {
+        return Err(json!({
+            "type": "invalidProperties",
+            "description": "body must not be empty",
+            "properties": ["body"]
+        }));
+    }
     if body.len() > MAX_BODY_BYTES {
         return Err(json!({"type": "invalidArguments", "description": "body too long"}));
     }
@@ -1092,6 +1099,56 @@ mod tests {
             get_message_count(&store),
             0,
             "no message must be inserted on oversized body"
+        );
+    }
+
+    // Oracle: RFC 8620 §5.3 — empty body is rejected before any DB write.
+    // The error type is invalidProperties (per-object SetError) with properties=["body"].
+    #[tokio::test]
+    async fn test_message_set_create_empty_body() {
+        let store = make_store();
+        let chat_id = "chat-empty-body";
+        setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
+
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": "",
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("handler should not Err; empty body → notCreated");
+
+        let not_created = &result["notCreated"];
+        assert!(
+            not_created.get("m0").is_some(),
+            "notCreated.m0 must be present; got: {result}"
+        );
+        // Oracle: error type must be invalidProperties (per-object SetError).
+        assert_eq!(
+            not_created["m0"]["type"], "invalidProperties",
+            "empty body must yield invalidProperties; got: {not_created}"
+        );
+        // Oracle: properties list must call out "body".
+        let props = not_created["m0"]["properties"]
+            .as_array()
+            .expect("properties must be an array");
+        assert!(
+            props.iter().any(|v| v == "body"),
+            "properties must include \"body\"; got: {props:?}"
+        );
+        // Oracle: no DB write occurred.
+        assert_eq!(
+            get_message_count(&store),
+            0,
+            "no message must be inserted on empty body"
         );
     }
 

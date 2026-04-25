@@ -4,6 +4,7 @@ use axum::{
 };
 use kith_core::{
     Identity, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, Role,
+    MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -203,8 +204,8 @@ pub fn build_session(
                 collation_algorithms: vec!["i;unicode-casemap".to_string()],
             },
             kith_chat: KithChatCapability {
-                max_body_bytes: 65_536,
-                max_attachment_bytes: 104_857_600,
+                max_body_bytes: MAX_BODY_BYTES as u64,
+                max_attachment_bytes: MAX_ATTACHMENT_BYTES as u64,
                 supported_body_types: vec!["text/plain".to_string(), "text/markdown".to_string()],
             },
         },
@@ -536,6 +537,13 @@ pub fn resolve_args(
                 rr.path, rr.result_of
             ))
         })?;
+
+        if obj.contains_key(&plain_key) {
+            return Err(JmapError::invalid_arguments(format!(
+                "argument key conflict: '{}' and '#{0}' both present in method call",
+                plain_key
+            )));
+        }
 
         obj.insert(plain_key, resolved.clone());
     }
@@ -1564,6 +1572,35 @@ mod tests {
         assert_eq!(
             err.error_type, "invalidArguments",
             "RFC 8620 §9 requires invalidArguments for name mismatch; got: {}",
+            err.error_type
+        );
+    }
+
+    // Test: both plain key and #-prefixed key present → invalidArguments (key conflict).
+    //
+    // Oracle: conflict is undefined behavior in RFC 8620 §9; Kith rejects it with
+    // invalidArguments rather than silently overwriting the plain key.
+    #[test]
+    fn test_resolve_args_key_conflict_returns_invalid_arguments() {
+        let prior_result = json!({"list": [{"id": "chat-abc"}]});
+        let prior = vec![("c0".to_string(), "Chat/get".to_string(), prior_result)];
+
+        // Both "chatId" (plain) and "#chatId" (ref) are present in args.
+        let mut args = json!({
+            "chatId": "existing-value",
+            "#chatId": {
+                "resultOf": "c0",
+                "name": "Chat/get",
+                "path": "/list/0/id"
+            }
+        });
+
+        let result = resolve_args(&mut args, &prior);
+        assert!(result.is_err(), "expected Err for key conflict, got Ok");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "invalidArguments",
+            "key conflict must return invalidArguments; got: {}",
             err.error_type
         );
     }
