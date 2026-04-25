@@ -2,7 +2,10 @@
 
 use crate::kith_to_jmap;
 use kith_attach::BlobStore;
-use kith_core::{Attachment, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES};
+use kith_core::{
+    unix_secs_to_rfc3339, Attachment, DeliveryState, JmapError, Message, MAX_ATTACHMENT_BYTES,
+    MAX_BODY_BYTES,
+};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
 use serde_json::{json, Map, Value};
@@ -552,15 +555,6 @@ async fn process_create(
         tracing::warn!("update_last_message_at failed: {e}");
     }
 
-    // Fetch the created message for the response.
-    let msg = guard
-        .messages()
-        .get(&msg_id)
-        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?
-        .ok_or_else(
-            || json!({"type": "serverFail", "description": "message not found after insert"}),
-        )?;
-
     // Capture new_state after the write, still inside the lock, so it reflects
     // exactly this create's effect and no concurrent change can slip in.
     *new_state_out = Some(
@@ -571,6 +565,28 @@ async fn process_create(
     );
 
     drop(guard);
+
+    // Build the response directly from known local variables — do NOT read back
+    // from the DB.  The message was atomically committed by insert_outbound_message;
+    // a post-commit read failure would incorrectly return notCreated while the
+    // message is already stored, causing the client to retry and create a duplicate.
+    let received_at = unix_secs_to_rfc3339(now_unix.max(0) as u64);
+    let sent_at_val = sent_at.unwrap_or_else(|| received_at.clone());
+    let msg = Message {
+        id: msg_id.clone(),
+        sender_msg_id: msg_id,
+        chat_id,
+        sender_id: "self".to_string(),
+        body,
+        body_type,
+        attachments: core_attachments,
+        reply_to,
+        sent_at: sent_at_val,
+        received_at,
+        delivery_state: DeliveryState::Pending,
+        delivered_at: None,
+        read_at: None,
+    };
 
     serde_json::to_value(&msg).map_err(
         |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),
@@ -1090,7 +1106,6 @@ impl JmapHandler for MessageQueryChangesHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kith_core::DeliveryState;
     use kith_store::Store;
     use serde_json::json;
 

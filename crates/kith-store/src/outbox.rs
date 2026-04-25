@@ -526,11 +526,14 @@ mod tests {
         assert_eq!(delivered_at, Some(2000));
 
         // State counter must have advanced so get_changes_since returns this message.
+        // The message existed before state_before (it was inserted first), so it
+        // must appear in updated[] per RFC 8620 §5.2, not added[].
         let changes = ms.get_changes_since(&state_before).unwrap();
         assert!(
-            changes.added.contains(&"msg-cd".to_string()),
-            "complete_delivery must advance state_version; added={:?}",
-            changes.added
+            changes.updated.contains(&"msg-cd".to_string()),
+            "complete_delivery must advance state_version so the message appears \
+             in updated[] (RFC 8620 §5.2); updated={:?}",
+            changes.updated
         );
     }
 
@@ -590,7 +593,9 @@ mod tests {
     #[test]
     fn mark_failed_advances_message_state_counter() {
         // Oracle: after mark_failed, get_changes_since(state_before) must include the
-        // message in `added`.  This verifies that mark_failed advances state_version
+        // message in `updated` (not `added`).  The message was inserted before state_before
+        // was captured, so it existed before sinceState — RFC 8620 §5.2 requires it in
+        // updated[], not created[].  This verifies that mark_failed advances state_version
         // on the messages row so the JMAP polling path is not blind to permanent failures.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-mf");
@@ -607,10 +612,10 @@ mod tests {
 
         let changes = ms.get_changes_since(&state_before).unwrap();
         assert!(
-            changes.added.contains(&"msg-mf".to_string()),
-            "mark_failed must advance message state_version so get_changes_since returns it; \
-             added={:?}",
-            changes.added
+            changes.updated.contains(&"msg-mf".to_string()),
+            "mark_failed must advance message state_version so get_changes_since returns it \
+             in updated[] (RFC 8620 §5.2); updated={:?}",
+            changes.updated
         );
     }
 

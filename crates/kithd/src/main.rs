@@ -93,10 +93,11 @@ async fn main() {
     let owner_login: String = match &early_status {
         Ok(status) if !status.tailscale_ips.is_empty() => {
             let ip_str = &status.tailscale_ips[0];
+            let port = config.port;
             let addr_str = if ip_str.contains(':') {
-                format!("[{ip_str}]:443")
+                format!("[{ip_str}]:{port}")
             } else {
-                format!("{ip_str}:443")
+                format!("{ip_str}:{port}")
             };
             match addr_str.parse::<SocketAddr>() {
                 Ok(addr) => match ts.whois(addr).await {

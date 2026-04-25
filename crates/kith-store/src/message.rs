@@ -614,34 +614,63 @@ impl<'a> MessageStore<'a> {
 
     /// Return IDs of messages created or updated since the given state token.
     ///
-    /// Phase 1: all changes are reported as `added`; no distinction between
-    /// creates and updates, and no destroy tracking.
+    /// Splits results into `added` (new messages) and `updated` (modified existing
+    /// messages) per RFC 8620 §5.2. Uses `created_at_version` to distinguish the two.
     pub fn get_changes_since(&self, since_state: &str) -> Result<ChangesResult, KithError> {
         let since_version = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
             .ok_or_else(|| KithError::Jmap(JmapError::cannot_calculate_changes()))?;
 
+        let current_state = self.get_state()?;
+        let current_version: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        if since_version > current_version {
+            return Err(KithError::Jmap(JmapError::cannot_calculate_changes()));
+        }
+
+        if since_version == current_version {
+            return Ok(ChangesResult {
+                added: vec![],
+                updated: vec![],
+                destroyed: vec![],
+                new_state: current_state,
+            });
+        }
+
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id FROM messages WHERE state_version > ?1 ORDER BY state_version",
+                "SELECT id, created_at_version FROM messages \
+                 WHERE state_version > ?1 ORDER BY state_version",
             )
             .map_err(db_err)?;
 
-        let ids: Vec<String> = stmt
-            .query_map(params![since_version], |row| row.get(0))
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_version], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
-        let new_state = self.get_state()?;
+        let mut added = Vec::new();
+        let mut updated = Vec::new();
+        for (id, created_at) in rows {
+            // is_create: message was first inserted after sinceState (RFC 8620 §5.2 created[]).
+            if created_at > since_version {
+                added.push(id);
+            } else {
+                updated.push(id);
+            }
+        }
 
         Ok(ChangesResult {
-            added: ids,
-            updated: vec![],
+            added,
+            updated,
             destroyed: vec![],
-            new_state,
+            new_state: current_state,
         })
     }
 
@@ -1173,10 +1202,10 @@ mod tests {
 
     #[test]
     fn update_delivery_state_appears_in_get_changes_since() {
-        // Oracle: after update_delivery_state, get_changes_since(state_before_update)
-        // must include the message ID in `added`.  This tests the end-to-end contract:
-        // update_delivery_state must write the new state_version to the row so that
-        // the JMAP polling path (get_changes_since) surfaces the change to clients.
+        // Oracle: after update_delivery_state, get_changes_since(state_after_insert)
+        // must include the message ID in `updated` (not `added`) — the message existed
+        // before sinceState, so RFC 8620 §5.2 requires it in updated[], not created[].
+        // The state_version is advanced so clients learn about the delivery state change.
         let store = Store::open_in_memory().expect("open");
         insert_chat(&store.conn, "chat-us1");
 
@@ -1205,18 +1234,25 @@ mod tests {
             .get_changes_since(&state_after_insert)
             .expect("changes after update");
         assert!(
-            changes.added.contains(&"msg-us1".to_string()),
-            "update_delivery_state must advance state_version so the message appears \
-             in get_changes_since; added={:?}",
+            !changes.added.contains(&"msg-us1".to_string()),
+            "update_delivery_state must NOT put message in added[] — it existed before sinceState; \
+             added={:?}",
             changes.added
+        );
+        assert!(
+            changes.updated.contains(&"msg-us1".to_string()),
+            "update_delivery_state must advance state_version so the message appears \
+             in updated[] (RFC 8620 §5.2); updated={:?}",
+            changes.updated
         );
     }
 
     #[test]
     fn update_read_at_appears_in_get_changes_since() {
-        // Oracle: after update_read_at, get_changes_since(state_before_update) must
-        // include the message ID in `added`.  Verifies state_version is written on
-        // the messages row when read receipt is recorded.
+        // Oracle: after update_read_at, get_changes_since(state_after_insert) must
+        // include the message ID in `updated` (not `added`) — the message existed
+        // before sinceState, so RFC 8620 §5.2 requires it in updated[], not created[].
+        // Verifies state_version is written on the messages row when read receipt is recorded.
         let store = Store::open_in_memory().expect("open");
         insert_chat(&store.conn, "chat-us2");
 
@@ -1243,10 +1279,16 @@ mod tests {
             .get_changes_since(&state_after_insert)
             .expect("changes after read-at update");
         assert!(
-            changes.added.contains(&"msg-us2".to_string()),
-            "update_read_at must advance state_version so the message appears \
-             in get_changes_since; added={:?}",
+            !changes.added.contains(&"msg-us2".to_string()),
+            "update_read_at must NOT put message in added[] — it existed before sinceState; \
+             added={:?}",
             changes.added
+        );
+        assert!(
+            changes.updated.contains(&"msg-us2".to_string()),
+            "update_read_at must advance state_version so the message appears \
+             in updated[] (RFC 8620 §5.2); updated={:?}",
+            changes.updated
         );
     }
 
@@ -1644,6 +1686,54 @@ mod tests {
             msg.attachments.is_empty(),
             "message with no attachments must return empty vec, got {:?}",
             msg.attachments
+        );
+    }
+
+    #[test]
+    fn message_changes_update_goes_to_updated_not_added() {
+        // Oracle: a message that existed before sinceState and was then modified must
+        // appear in updated[], NOT added[].  get_changes_since previously put all
+        // IDs in added[] regardless of create/update status (KITH-s8kd.21).
+        //
+        // Sequence:
+        //   1. Insert msg-upd → state s-1
+        //   2. Record s-1 as sinceState
+        //   3. Call update_delivery_state (modifies the message) → state s-2
+        //   4. get_changes_since("s-1") must have msg-upd in updated[], NOT added[].
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-mu");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-upd",
+            "chat-mu",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Pending,
+            None,
+            "msg-upd",
+        )
+        .expect("insert");
+
+        let since = ms.get_state().expect("state after insert");
+
+        // Touch the message so it appears in the next changes window.
+        ms.update_delivery_state("msg-upd", &DeliveryState::Delivered, Some(2000))
+            .expect("update delivery state");
+
+        let result = ms.get_changes_since(&since).expect("get_changes_since");
+        assert!(
+            !result.added.contains(&"msg-upd".to_string()),
+            "updated message must NOT appear in added[]; added={:?}",
+            result.added
+        );
+        assert!(
+            result.updated.contains(&"msg-upd".to_string()),
+            "updated message must appear in updated[]; updated={:?}",
+            result.updated
         );
     }
 }

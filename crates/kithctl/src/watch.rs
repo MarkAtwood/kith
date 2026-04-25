@@ -19,6 +19,18 @@ use kith_tslocal::LocalApiClient;
 /// Maximum JMAP response body size accepted from kithd (bytes).
 const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 
+/// Maximum SSE frame size accumulated between blank-line separators (bytes).
+///
+/// Prevents unbounded memory growth if a misbehaving server sends an
+/// indefinitely long sequence of lines without a blank-line terminator.
+const MAX_SSE_FRAME_BYTES: usize = 64 * 1024;
+
+/// Maximum length of a single HTTP header line (bytes).
+///
+/// Prevents a misbehaving server from growing a read buffer without bound
+/// during the HTTP/1.1 header-skipping phase.
+const MAX_HEADER_LINE_BYTES: usize = 8 * 1024;
+
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
 /// Truncate `body` to at most `max_chars` Unicode scalar values.
@@ -319,6 +331,9 @@ async fn watch_once(
         if n == 0 {
             return Err("connection closed during headers".into());
         }
+        if header_line.len() > MAX_HEADER_LINE_BYTES {
+            return Err("HTTP header line too long (limit: 8 KiB)".into());
+        }
         if header_line == "\r\n" || header_line == "\n" {
             break;
         }
@@ -392,6 +407,10 @@ async fn watch_once(
             }
         } else {
             frame_lines.push(trimmed.to_owned());
+            let frame_total: usize = frame_lines.iter().map(|l| l.len() + 1).sum();
+            if frame_total > MAX_SSE_FRAME_BYTES {
+                return Err(format!("SSE frame exceeds {MAX_SSE_FRAME_BYTES} bytes").into());
+            }
         }
     }
 }
@@ -440,7 +459,14 @@ async fn fetch_and_notify(
                 .collect()
         })
         .unwrap_or_default();
-    let new_ids: Vec<String> = created_ids.into_iter().chain(updated_ids).collect();
+    // Only notify for created messages.  Updated IDs represent delivery/read
+    // state changes on existing messages (e.g. pending→delivered) and must not
+    // fire a "new message" desktop notification.
+    //
+    // We still collect updated_ids above so a future extension (e.g. update
+    // badge counts) has them available; they are deliberately NOT included here.
+    let _ = updated_ids; // intentionally unused for notifications
+    let new_ids: Vec<String> = created_ids;
 
     if new_ids.is_empty() {
         return Ok(());
@@ -546,6 +572,9 @@ async fn jmap_post(
         if n == 0 {
             break;
         }
+        if header.len() > MAX_HEADER_LINE_BYTES {
+            return Err("HTTP header line too long (limit: 8 KiB)".into());
+        }
         let h = header.trim();
         if h.is_empty() {
             break;
@@ -621,26 +650,27 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Message/get", {"accountId": "me", "ids": []}, "b0"]]
     });
-    let initial_state = match jmap_post(
+    // Bootstrap the message state baseline.  Falling back to "s-0" would cause
+    // kithctl to replay ALL historical messages as new-message notifications on
+    // the next SSE event — not acceptable.  Fail fast so the operator knows
+    // kithd is unreachable rather than silently spamming notifications.
+    let initial_state = jmap_post(
         config,
         &tailnet_ip,
         &connector,
         &serde_json::to_string(&bootstrap_req).expect("static json"),
     )
     .await
-    {
-        Ok(resp) => resp
-            .get("methodResponses")
-            .and_then(|r| r.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|r| r.as_array())
-            .and_then(|r| r.get(1))
-            .and_then(|args| args.get("state"))
-            .and_then(|v| v.as_str())
-            .map(str::to_owned)
-            .unwrap_or_else(|| String::from("s-0")),
-        Err(_) => String::from("s-0"),
-    };
+    .map_err(|e| format!("bootstrap failed (is kithd running?): {e}"))?
+    .get("methodResponses")
+    .and_then(|r| r.as_array())
+    .and_then(|arr| arr.first())
+    .and_then(|r| r.as_array())
+    .and_then(|r| r.get(1))
+    .and_then(|args| args.get("state"))
+    .and_then(|v| v.as_str())
+    .map(str::to_owned)
+    .ok_or("bootstrap: Message/get response did not include a state field")?;
 
     // 4. SSE reconnect loop.
     let mut last_event_id: Option<String> = None;

@@ -1117,7 +1117,20 @@ fn is_valid_mailbox_host(host: &str) -> bool {
             // internet.  Headscale users must use Tailscale-range IP addresses.
             // Note: "ts.net" itself (no subdomain) is not a valid node name and is
             // rejected because ends_with(".ts.net") requires a preceding label.
-            return ip_part.ends_with(".ts.net");
+            if !ip_part.ends_with(".ts.net") {
+                return false;
+            }
+            // Validate each DNS label: non-empty (rejects consecutive dots and
+            // leading/trailing dots), at most 63 bytes each, total ≤ 253 bytes.
+            if ip_part.len() > 253 {
+                return false;
+            }
+            for label in ip_part.split('.') {
+                if label.is_empty() || label.len() > 63 {
+                    return false;
+                }
+            }
+            return true;
         }
     };
 
@@ -4583,6 +4596,23 @@ mod tests {
         assert!(
             !is_valid_mailbox_host("evil.ts.net.example.com"),
             "hostname that contains but doesn't end with .ts.net must be rejected"
+        );
+    }
+
+    #[test]
+    fn mailbox_host_label_validation() {
+        assert!(
+            !is_valid_mailbox_host(".ts.net"),
+            "leading dot (empty first label) must be rejected"
+        );
+        assert!(
+            !is_valid_mailbox_host("a..b.ts.net"),
+            "consecutive dots (empty label) must be rejected"
+        );
+        let long_label = "a".repeat(64);
+        assert!(
+            !is_valid_mailbox_host(&format!("{long_label}.ts.net")),
+            "label longer than 63 bytes must be rejected"
         );
     }
 }

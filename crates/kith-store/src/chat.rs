@@ -339,7 +339,7 @@ impl<'a> ChatStore<'a> {
     /// Update the last_message_at timestamp for a chat and advance the chat state counter.
     ///
     /// Only advances the state counter if the chat actually exists (UPDATE matched a row).
-    /// Returns `Ok(())` silently if `chat_id` is not found.
+    /// Returns `Err(KithError::Store)` if `chat_id` does not exist.
     pub fn update_last_message_at(&self, chat_id: &str, ts: i64) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let affected = tx
@@ -359,6 +359,7 @@ impl<'a> ChatStore<'a> {
             self.emit(format!("s-{counter}"));
         } else {
             tx.commit().map_err(db_err)?;
+            return Err(KithError::Store("chat not found".into()));
         }
         Ok(())
     }
@@ -444,18 +445,31 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id FROM chats WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
+                "SELECT id, created_at_counter FROM chats \
+                 WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
-        let ids: Vec<String> = stmt
-            .query_map(params![since_counter], |row| row.get(0))
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
+        let mut added = Vec::new();
+        let mut updated = Vec::new();
+        for (id, created_at) in rows {
+            // is_create: row was first inserted after sinceState (RFC 8620 §5.2 created[]).
+            // created_at_counter == 0 is the pre-classification sentinel — treat as updated.
+            if created_at > since_counter && created_at > 0 {
+                added.push(id);
+            } else {
+                updated.push(id);
+            }
+        }
+
         Ok(ChangesResult {
-            added: ids,
-            updated: vec![],
+            added,
+            updated,
             destroyed: vec![],
             new_state: current_state,
         })
@@ -826,5 +840,36 @@ mod tests {
             }
             other => panic!("expected cannotCalculateChanges, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn chat_changes_update_goes_to_updated_not_added() {
+        // Oracle: a chat that existed before sinceState and was then modified must
+        // appear in updated[], NOT added[].  get_changes_since previously put all
+        // IDs in added[] regardless of create/update status (KITH-s8kd.4).
+        //
+        // Sequence:
+        //   1. Create chat-upd → state s-1
+        //   2. Record s-1 as sinceState
+        //   3. Call update_last_message_at (modifies the chat) → state s-2
+        //   4. get_changes_since("s-1") must have chat-upd in updated[], NOT added[].
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+        cs.create("chat-upd", "direct", Some("uid:alice"), 1_000_000)
+            .unwrap();
+        let since = cs.get_state().unwrap();
+        // Touch the chat so it appears in the next changes window.
+        cs.update_last_message_at("chat-upd", 2_000_000).unwrap();
+        let result = cs.get_changes_since(&since).unwrap();
+        assert!(
+            !result.added.contains(&"chat-upd".to_string()),
+            "updated chat must NOT appear in added[]; added={:?}",
+            result.added
+        );
+        assert!(
+            result.updated.contains(&"chat-upd".to_string()),
+            "updated chat must appear in updated[]; updated={:?}",
+            result.updated
+        );
     }
 }

@@ -52,9 +52,15 @@ impl BlobStore {
     }
 
     pub fn blob_path(&self, id: &str) -> PathBuf {
-        debug_assert!(
+        // Validate in all build configurations, not just debug.  Every public
+        // method in BlobStore calls validate_blob_id() before calling this, so
+        // this fires only if a caller bypasses that contract.  The validation
+        // ensures id is lowercase hex only (no '/', no '..') so base_dir.join(id)
+        // cannot traverse outside base_dir — but we make that invariant explicit
+        // here as a defence-in-depth safety net for future callers.
+        assert!(
             Self::validate_blob_id(id).is_ok(),
-            "blob_path called with invalid id: {id:?} — callers must validate first"
+            "BlobStore::blob_path called with invalid id: {id:?} — call validate_blob_id first"
         );
         self.base_dir.join(id)
     }
