@@ -299,9 +299,11 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     //
     // Bounded channel: a stalled SSE consumer (slow/disconnected client) must
     // not cause unbounded memory growth.  Capacity 256 is well above the burst
-    // of any realistic JMAP workload (3 types × burst factor).  When the
-    // channel is full the coalescing task blocks until the consumer drains it,
-    // providing natural back-pressure; the task will not allocate further.
+    // of any realistic JMAP workload (3 types × burst factor).  The coalescing
+    // task uses try_send; if the channel is full the connection is dropped and
+    // the client can reconnect.  Blocking here would stall the broadcast
+    // receiver, causing other clients to see Lagged errors as the ring buffer
+    // fills.
     //
     // Channel item is `Option<Result<Event, Infallible>>`:
     //   Some(event) — a real SSE event to forward to the client.
@@ -388,7 +390,7 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             // arrives when all broadcasts are type-filtered.
             if batch.is_empty() {
                 if close_after_first {
-                    if live_tx.send(None).await.is_err() {
+                    if live_tx.try_send(None).is_err() {
                         break;
                     }
                 } else if live_tx.is_closed() {
@@ -423,9 +425,11 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
 
             let event = Event::default().event("state").data(data).id(event_id);
 
-            // If the receiver end of the mpsc is gone (client disconnected),
-            // send() returns Err — stop the task.
-            if live_tx.send(Some(Ok(event))).await.is_err() {
+            // try_send: if the channel is full (stalled consumer) or closed
+            // (disconnected client), drop the connection immediately.  A stalled
+            // consumer must not block the coalescing task, which holds the
+            // broadcast::Receiver; blocking here would starve all other sends.
+            if live_tx.try_send(Some(Ok(event))).is_err() {
                 break;
             }
         }
