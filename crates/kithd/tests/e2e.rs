@@ -469,11 +469,11 @@ async fn e2e_unauthorized_caller_gets_401() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5: Peer calls an owner-only method → forbiddenMethod error in response
+// Test 5: Peer calls an owner-only method → "forbidden" error in response
 //
 // Oracle: kith authorization model + RFC 8620 §7.1 —
 // a caller with Role::Peer who invokes an owner-only method (e.g. Contact/get)
-// MUST receive a method-level error with type "forbiddenMethod".
+// MUST receive a method-level error with type "forbidden".
 // HTTP status is still 200 (errors live in methodResponses per RFC 8620 §3).
 // The peer must first be admitted (i.e. in contacts, not blocked); if not,
 // the test would hit 401 and never reach the dispatcher — that is a different
@@ -501,7 +501,7 @@ async fn peer_calls_owner_method_forbidden() {
         .expect("upsert must succeed for a correctly-opened in-memory store");
 
     // Contact/get requires Role::Owner.  A Role::Peer caller must receive
-    // forbiddenMethod, not a 401 (auth already passed).
+    // "forbidden", not a 401 (auth already passed).
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
@@ -522,7 +522,7 @@ async fn peer_calls_owner_method_forbidden() {
     assert_eq!(
         resp.status(),
         StatusCode::OK,
-        "method-level forbiddenMethod must still produce HTTP 200"
+        "method-level forbidden must still produce HTTP 200"
     );
 
     let body = body_string(resp).await;
@@ -544,11 +544,11 @@ async fn peer_calls_owner_method_forbidden() {
         "error invocation must echo the original method name; body: {body}"
     );
 
-    // Oracle: dispatcher role check produces "forbiddenMethod" for peer→owner call.
+    // Oracle: dispatcher role check produces "forbidden" for peer→owner call.
     assert_eq!(
         method_responses[0][1]["type"].as_str(),
-        Some("forbiddenMethod"),
-        "error type must be 'forbiddenMethod' for a peer calling an owner method; body: {body}"
+        Some("forbidden"),
+        "error type must be 'forbidden' for a peer calling an owner method; body: {body}"
     );
 
     // RFC 8620 §3.3: call ID must be echoed verbatim.
@@ -560,10 +560,10 @@ async fn peer_calls_owner_method_forbidden() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 5b: Peer calls ChatContact/queryChanges → forbiddenMethod
+// Test 5b: Peer calls ChatContact/queryChanges → "forbidden"
 //
 // Oracle: kith authorization model + RFC 8620 §7.1 — ChatContact/queryChanges
-// is an owner-only method; a Role::Peer caller must receive "forbiddenMethod".
+// is an owner-only method; a Role::Peer caller must receive "forbidden".
 // This is a separate test from peer_calls_owner_method_forbidden to ensure
 // this specific method is covered by the peer-rejection matrix.
 // ---------------------------------------------------------------------------
@@ -612,8 +612,8 @@ async fn peer_calls_chatcontact_querychanges_forbidden() {
     );
     assert_eq!(
         method_responses[0][1]["type"].as_str(),
-        Some("forbiddenMethod"),
-        "peer calling ChatContact/queryChanges must get forbiddenMethod; body: {body}"
+        Some("forbidden"),
+        "peer calling ChatContact/queryChanges must get forbidden; body: {body}"
     );
     assert_eq!(method_responses[0][2].as_str(), Some("qc0"));
 }

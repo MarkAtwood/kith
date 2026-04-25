@@ -87,8 +87,18 @@ impl<'a> ContactStore<'a> {
                 )
                 .map_err(db_err)?;
             if created_at == 0 {
+                // Fresh insert: stamp both counters so the contact appears in created[].
                 tx.execute(
                     "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
+                     WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            } else if created_at < 0 {
+                // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
+                // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
                      WHERE peer_user_id = ?2",
                     params![counter, peer_user_id],
                 )
@@ -165,8 +175,18 @@ impl<'a> ContactStore<'a> {
                 )
                 .map_err(db_err)?;
             if created_at == 0 {
+                // Fresh insert: stamp both counters so the contact appears in created[].
                 tx.execute(
                     "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
+                     WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            } else if created_at < 0 {
+                // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
+                // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
                      WHERE peer_user_id = ?2",
                     params![counter, peer_user_id],
                 )
@@ -271,7 +291,7 @@ impl<'a> ContactStore<'a> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let affected = tx
             .execute(
-                "UPDATE contacts SET blocked = ?1 WHERE peer_user_id = ?2",
+                "UPDATE contacts SET blocked = ?1 WHERE peer_user_id = ?2 AND blocked IS NOT ?1",
                 params![blocked as i64, peer_user_id],
             )
             .map_err(db_err)?;
@@ -451,9 +471,20 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
         id: peer_user_id,
         login: peer_login,
         display_name,
-        // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
-        first_seen_at: crate::util::unix_secs_to_rfc3339(first_seen_at as u64),
-        last_seen_at: crate::util::unix_secs_to_rfc3339(last_seen_at as u64),
+        first_seen_at: {
+            debug_assert!(
+                first_seen_at >= 0,
+                "timestamp must be non-negative Unix seconds, got {first_seen_at}"
+            );
+            crate::util::unix_secs_to_rfc3339(first_seen_at.max(0) as u64)
+        },
+        last_seen_at: {
+            debug_assert!(
+                last_seen_at >= 0,
+                "timestamp must be non-negative Unix seconds, got {last_seen_at}"
+            );
+            crate::util::unix_secs_to_rfc3339(last_seen_at.max(0) as u64)
+        },
         blocked: blocked != 0,
     })
 }
@@ -941,6 +972,66 @@ mod tests {
         assert!(
             c.blocked,
             "upsert_discovered_contact must not clear the blocked flag"
+        );
+    }
+
+    #[test]
+    fn pre_v8_contact_upsert_classified_as_updated() {
+        // Oracle: contacts migrated from before V8 have created_at_counter = 0 after V13,
+        // which V17 changes to -1. The first upsert() on such a row must classify it as
+        // "updated" (not "created") in get_changes_since_ordered. An is_create = true
+        // result for a pre-existing contact is a protocol violation (RFC 8620 \u00a75.2).
+        //
+        // The test manually sets created_at_counter = -1 to simulate the V17 migration
+        // state, then verifies the returned is_create flag using get_changes_since_ordered
+        // independent of the upsert code path that determines the flag.
+        use rusqlite::params;
+        let store = open();
+        let cs = store.contacts();
+
+        // Insert a contact normally (creates a fresh row with created_at_counter = N).
+        cs.upsert(
+            "uid-pre-v8",
+            "oldpeer@example.com",
+            "oldpeer-kith.tail.ts.net",
+            None,
+            1000,
+        )
+        .unwrap();
+
+        // Simulate V18 migration state: set created_at_counter = -1 to mimic a pre-V8
+        // row that V13 left at 0 and V17 re-stamped as -1.
+        store
+            .conn
+            .execute(
+                "UPDATE contacts SET created_at_counter = -1 WHERE peer_user_id = ?1",
+                params!["uid-pre-v8"],
+            )
+            .expect("manual sentinel set must succeed");
+
+        // Record state before the upsert so we can use it as sinceState.
+        let since = cs.get_state().unwrap();
+
+        // Touch the contact (last_seen_at changes) to trigger the sentinel path.
+        cs.upsert(
+            "uid-pre-v8",
+            "oldpeer@example.com",
+            "oldpeer-kith.tail.ts.net",
+            None,
+            9999,
+        )
+        .unwrap();
+
+        // get_changes_since_ordered must classify this contact as updated (is_create = false).
+        let (rows, _new_state) = cs.get_changes_since_ordered(&since).unwrap();
+        let entry = rows
+            .iter()
+            .find(|(id, _, _)| id == "uid-pre-v8")
+            .expect("uid-pre-v8 must appear in changes after upsert");
+        let is_create = entry.2;
+        assert!(
+            !is_create,
+            "pre-V8 contact touched by upsert must appear as updated (is_create=false), not created"
         );
     }
 }

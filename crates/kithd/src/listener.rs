@@ -51,6 +51,14 @@ pub async fn bind_to_ips(ips: &[String], port: u16) -> Result<Vec<TcpListener>, 
                 tracing::warn!("skipping unparseable tailnet IP '{}': {}", ip_str, e);
             }
             Ok(ip) => {
+                if ip.is_unspecified() {
+                    tracing::error!(
+                        %ip,
+                        "refusing to bind to unspecified address (would expose kithd on all \
+                         interfaces); check tailscaled /status output"
+                    );
+                    continue;
+                }
                 let addr = SocketAddr::new(ip, port);
                 match TcpListener::bind(addr).await {
                     Ok(listener) => {

@@ -510,14 +510,14 @@ async fn test_full_message_workflow() {
 // GROUP B — Auth rejection tests (non-self-certifying)
 // ---------------------------------------------------------------------------
 
-// Oracle: RFC 8620 §7.1 — forbiddenMethod is returned when the caller's
+// Oracle: RFC 8620 §7.1 — "forbidden" is returned when the caller's
 // role does not satisfy the method's required role.
 // These tests use the Dispatcher directly (not the handlers) so they test
 // the actual role gate, not a bypass.
 //
 // All 10 owner methods must reject when called with Role::Peer.
 // The dispatcher emits the error in the method_responses tuple —
-// HTTP 200 body with type="forbiddenMethod" (RFC 8620 §3.4).
+// HTTP 200 body with type="forbidden" (RFC 8620 §3.4).
 #[tokio::test]
 async fn test_peer_cannot_call_owner_methods() {
     let store = make_store();
@@ -552,10 +552,10 @@ async fn test_peer_cannot_call_owner_methods() {
         );
         let (_, args, call_id) = &resp.method_responses[0];
         assert_eq!(call_id, "c0", "call_id must be echoed for method {method}");
-        // Oracle: RFC 8620 §7.1 — type must be "forbiddenMethod".
+        // Oracle: RFC 8620 §7.1 — type must be "forbidden".
         assert_eq!(
-            args["type"], "forbiddenMethod",
-            "Role::Peer calling {method} must return forbiddenMethod; got: {args}"
+            args["type"], "forbidden",
+            "Role::Peer calling {method} must return forbidden; got: {args}"
         );
     }
 }
@@ -580,7 +580,7 @@ async fn test_owner_cannot_call_unknown_method() {
     );
 }
 
-// Oracle: Role::Owner calling a Peer-only method must return forbiddenMethod.
+// Oracle: Role::Owner calling a Peer-only method must return "forbidden".
 // Peer/deliver and Peer/receipt are in METHOD_ROLES as Role::Peer.
 #[tokio::test]
 async fn test_owner_cannot_call_peer_methods() {
@@ -594,8 +594,8 @@ async fn test_owner_cannot_call_peer_methods() {
             .await;
         let (_, args, _) = &resp.method_responses[0];
         assert_eq!(
-            args["type"], "forbiddenMethod",
-            "Role::Owner calling {method} must return forbiddenMethod; got: {args}"
+            args["type"], "forbidden",
+            "Role::Owner calling {method} must return forbidden; got: {args}"
         );
     }
 }

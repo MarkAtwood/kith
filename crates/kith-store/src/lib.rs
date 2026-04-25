@@ -361,6 +361,33 @@ END;
 PRAGMA foreign_keys = ON;
 ";
 
+// V17: Fix the created_at_counter sentinel for pre-V8 contacts.
+//
+// V13 backfilled created_at_counter = changed_at_counter WHERE changed_at_counter > 0.
+// Contacts that existed before V8 (when changed_at_counter was added with DEFAULT 0)
+// were left with created_at_counter = 0 after V13.  The upsert code uses 0 as the
+// sentinel for "row was just inserted by this call", so the first upsert on such a
+// contact incorrectly set created_at_counter = N and returned is_create = true,
+// yielding a spurious Contact/changes created[] entry for an already-existing contact.
+//
+// Fix: mark those rows -1 ("pre-V8 uninitialized").  Upsert detects created_at < 0
+// and sets created_at_counter = 0 (meaning "existed at or before state counter 0"),
+// making is_create = (0 > sinceState) always false for any sinceState >= 0.
+const SCHEMA_V17: &str = "
+UPDATE contacts SET created_at_counter = -1 WHERE created_at_counter = 0;
+";
+
+// V18: add created_at_counter to chats so Chat/changes can distinguish newly-created
+// chats from chats that were updated (e.g. last_message_at changed).  Without this
+// column, get_changes_since_ordered cannot compute is_create and every chat change
+// (including last_message_at updates) is incorrectly placed in created[] by
+// ChatChangesHandler.  Backfill: rows that have a non-zero changed_at_counter
+// already existed, so their created_at_counter = changed_at_counter is correct.
+const SCHEMA_V18: &str = "
+ALTER TABLE chats ADD COLUMN created_at_counter INTEGER NOT NULL DEFAULT 0;
+UPDATE chats SET created_at_counter = changed_at_counter WHERE changed_at_counter > 0;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -383,6 +410,8 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (14, SCHEMA_V14),
     (15, SCHEMA_V15),
     (16, SCHEMA_V16),
+    (17, SCHEMA_V17),
+    (18, SCHEMA_V18),
 ];
 
 impl Store {
@@ -862,8 +891,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has sixteen entries (versions 1-16), so user_version must be 16 after open.
-        assert_eq!(version, 16);
+        // MIGRATIONS has eighteen entries (versions 1-18), so user_version must be 18 after open.
+        assert_eq!(version, 18);
     }
 
     #[test]
@@ -927,7 +956,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 16, "migration 16 must be applied");
+        assert_eq!(v1, 18, "migration 18 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1014,7 +1043,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 16, "migration v16 must set user_version to 16");
+        assert_eq!(v, 18, "migration v18 must set user_version to 18");
     }
 
     #[test]

@@ -4,6 +4,10 @@ use kith_core::{Chat, JmapError, KithError, StateChange};
 use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
+/// Row type returned by [`ChatStore::get_changes_since_ordered`].
+/// Fields: (chat_id, changed_at_counter, is_create).
+pub type ChatChangeRow = (String, i64, bool);
+
 pub struct ChatStore<'a> {
     conn: &'a Connection,
     events_tx: Option<&'a broadcast::Sender<StateChange>>,
@@ -56,10 +60,12 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
 
         if affected > 0 {
-            // Atomic: advance state counter and write changed_at_counter in one transaction.
+            // Atomic: advance state counter and write both counters in one transaction.
+            // created_at_counter is stamped once at creation so Chat/changes can
+            // distinguish new chats (is_create=true) from updated chats (is_create=false).
             let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
             tx.execute(
-                "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+                "UPDATE chats SET changed_at_counter = ?1, created_at_counter = ?1 WHERE id = ?2",
                 params![counter, chat_id],
             )
             .map_err(db_err)?;
@@ -150,10 +156,20 @@ impl<'a> ChatStore<'a> {
             id,
             kind,
             contact_id: contact_id_val,
-            // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
-            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
-            last_message_at: last_message_at_secs
-                .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
+            created_at: {
+                debug_assert!(
+                    created_at_secs >= 0,
+                    "timestamp must be non-negative Unix seconds, got {created_at_secs}"
+                );
+                crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
+            },
+            last_message_at: last_message_at_secs.map(|s| {
+                debug_assert!(
+                    s >= 0,
+                    "timestamp must be non-negative Unix seconds, got {s}"
+                );
+                crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
+            }),
             unread_count,
         }))
     }
@@ -193,10 +209,20 @@ impl<'a> ChatStore<'a> {
             id,
             kind,
             contact_id,
-            // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
-            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
-            last_message_at: last_message_at_secs
-                .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
+            created_at: {
+                debug_assert!(
+                    created_at_secs >= 0,
+                    "timestamp must be non-negative Unix seconds, got {created_at_secs}"
+                );
+                crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
+            },
+            last_message_at: last_message_at_secs.map(|s| {
+                debug_assert!(
+                    s >= 0,
+                    "timestamp must be non-negative Unix seconds, got {s}"
+                );
+                crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
+            }),
             unread_count,
         }))
     }
@@ -236,14 +262,18 @@ impl<'a> ChatStore<'a> {
             .into_iter()
             .map(
                 |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
-                    // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
                     Chat {
                         id,
                         kind,
                         contact_id,
-                        created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
-                        last_message_at: last_message_at_secs
-                            .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
+                        created_at: {
+                            debug_assert!(created_at_secs >= 0, "timestamp must be non-negative Unix seconds, got {created_at_secs}");
+                            crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
+                        },
+                        last_message_at: last_message_at_secs.map(|s| {
+                            debug_assert!(s >= 0, "timestamp must be non-negative Unix seconds, got {s}");
+                            crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
+                        }),
                         unread_count,
                     }
                 },
@@ -435,7 +465,7 @@ impl<'a> ChatStore<'a> {
     pub fn get_changes_since_ordered(
         &self,
         since_state: &str,
-    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+    ) -> Result<(Vec<ChatChangeRow>, String), KithError> {
         let (since_counter, current_counter, current_state) =
             self.resolve_since_counters(since_state)?;
 
@@ -446,11 +476,17 @@ impl<'a> ChatStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT id, changed_at_counter FROM chats WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
+                "SELECT id, changed_at_counter, created_at_counter \
+                 FROM chats WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
-        let rows: Vec<(String, i64)> = stmt
-            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
+        let rows: Vec<(String, i64, bool)> = stmt
+            .query_map(params![since_counter], |row| {
+                let id: String = row.get(0)?;
+                let changed: i64 = row.get(1)?;
+                let created: i64 = row.get(2)?;
+                Ok((id, changed, created > since_counter))
+            })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;

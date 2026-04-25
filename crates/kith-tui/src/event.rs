@@ -980,6 +980,7 @@ pub async fn run(
                 if loaded.is_error {
                     state.connection_status =
                         crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+                    // Do NOT advance prev_selected on error — next tick retries the load.
                 } else {
                     state.messages = loaded.display_lines;
                     state.message_ids = loaded.message_ids;
@@ -988,9 +989,9 @@ pub async fn run(
                         unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
                     flush_unread_receipts(&http_client, &api_url, state).await;
                     state.scroll_offset = 0;
+                    prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
                 }
             }
-            prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
         }
 
         terminal.draw(|f| {

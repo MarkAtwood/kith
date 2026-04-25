@@ -420,6 +420,7 @@ impl LocalApiClient {
         // Ignore a poisoned cache — missing a cache write is safe (next request will
         // call the real LocalAPI again). Never held across an `.await`.
         if let Ok(mut cache) = self.whois_cache.lock() {
+            cache.retain(|_, (cached_at, _)| cached_at.elapsed() < WHOIS_CACHE_TTL);
             cache.insert(addr, (std::time::Instant::now(), result.clone()));
         }
 

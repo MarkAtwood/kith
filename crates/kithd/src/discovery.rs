@@ -462,7 +462,7 @@ async fn run_discovery_round(
                 ),
                 Err(_) => {
                     tracing::error!("discovery: store lock poisoned");
-                    return;
+                    continue;
                 }
             }
         };

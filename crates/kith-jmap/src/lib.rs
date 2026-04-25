@@ -54,7 +54,7 @@ pub fn error_invocation(method_name: &str, call_id: &str, err: JmapError) -> Inv
 pub fn error_status(err: &JmapError) -> StatusCode {
     match err.error_type.as_str() {
         "unknownCapability" | "invalidArguments" | "requestTooLarge" => StatusCode::BAD_REQUEST,
-        "forbiddenMethod" => StatusCode::FORBIDDEN,
+        "forbidden" => StatusCode::FORBIDDEN,
         "accountNotFound" | "notFound" => StatusCode::NOT_FOUND,
         "serverFail" => StatusCode::INTERNAL_SERVER_ERROR,
         // Unknown error types are server-side bugs, not client mistakes.
@@ -334,7 +334,7 @@ impl Dispatcher {
     ///
     /// For each method call:
     /// - Unknown method name → `unknownMethod` error invocation
-    /// - Role mismatch → `forbiddenMethod` error invocation
+    /// - Role mismatch → `forbidden` error invocation
     /// - Method known but no handler registered → `unknownMethod` error invocation
     /// - Handler returns `Err` → error invocation with that error
     /// - Handler returns `Ok` → success invocation
@@ -961,7 +961,7 @@ mod tests {
         assert_eq!(args["type"], "unknownMethod"); // RFC 8620 §7.1
     }
 
-    // Test: owner calls peer-only method → forbiddenMethod (RFC 8620 §7.1)
+    // Test: owner calls peer-only method → "forbidden" (RFC 8620 §7.1)
     #[tokio::test]
     async fn test_dispatch_owner_calls_peer_method() {
         let d = Dispatcher::new();
@@ -976,10 +976,10 @@ mod tests {
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
-        assert_eq!(resp.method_responses[0].1["type"], "forbiddenMethod"); // RFC 8620 §7.1
+        assert_eq!(resp.method_responses[0].1["type"], "forbidden"); // RFC 8620 §7.1
     }
 
-    // Test: peer calls owner-only method → forbiddenMethod (RFC 8620 §7.1)
+    // Test: peer calls owner-only method → "forbidden" (RFC 8620 §7.1)
     #[tokio::test]
     async fn test_dispatch_peer_calls_owner_method() {
         let d = Dispatcher::new();
@@ -994,7 +994,7 @@ mod tests {
         let resp = d
             .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
             .await;
-        assert_eq!(resp.method_responses[0].1["type"], "forbiddenMethod");
+        assert_eq!(resp.method_responses[0].1["type"], "forbidden");
     }
 
     // Test: known method, correct role, handler registered → success
@@ -1078,8 +1078,8 @@ mod tests {
         assert!(resp.method_responses[0].1.get("type").is_none());
         // c1: unknownMethod
         assert_eq!(resp.method_responses[1].1["type"], "unknownMethod");
-        // c2: forbiddenMethod (peer-only method called by owner)
-        assert_eq!(resp.method_responses[2].1["type"], "forbiddenMethod");
+        // c2: forbidden (peer-only method called by owner)
+        assert_eq!(resp.method_responses[2].1["type"], "forbidden");
     }
 
     // Test: known method, correct role, but no handler registered → unknownMethod

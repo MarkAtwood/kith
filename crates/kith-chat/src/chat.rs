@@ -332,8 +332,8 @@ impl JmapHandler for ChatSetHandler {
                 "oldState": old_state,
                 "newState": new_state,
                 "created": created,
-                "updated": null,
-                "destroyed": null,
+                "updated": {},
+                "destroyed": [],
                 "notCreated": not_created,
                 "notUpdated": not_updated,
                 "notDestroyed": not_destroyed,
@@ -429,7 +429,7 @@ impl JmapHandler for ChatChangesHandler {
             let (items, has_more, new_state) = if let Some(max) = max_changes {
                 if total > max {
                     let truncated = &rows[..max];
-                    let new_state = truncated.last().map(|(_, c)| format!("s-{c}")).expect(
+                    let new_state = truncated.last().map(|(_, c, _)| format!("s-{c}")).expect(
                         "truncated slice is non-empty: max>=1 invariant established at parse time",
                     );
                     (truncated.to_vec(), true, new_state)
@@ -440,10 +440,16 @@ impl JmapHandler for ChatChangesHandler {
                 (rows, false, current_state)
             };
 
-            let created: Vec<serde_json::Value> = items
-                .into_iter()
-                .map(|(id, _)| serde_json::Value::String(id))
-                .collect();
+            // Split into created[] and updated[] per RFC 8620 §5.6.
+            let mut created: Vec<serde_json::Value> = Vec::new();
+            let mut updated: Vec<serde_json::Value> = Vec::new();
+            for (id, _, is_create) in items {
+                if is_create {
+                    created.push(serde_json::Value::String(id));
+                } else {
+                    updated.push(serde_json::Value::String(id));
+                }
+            }
 
             // Step 8: Return response.
             Ok(json!({
@@ -452,7 +458,7 @@ impl JmapHandler for ChatChangesHandler {
                 "newState": new_state,
                 "hasMoreChanges": has_more,
                 "created": created,
-                "updated": [],
+                "updated": updated,
                 "destroyed": [],
             }))
         })

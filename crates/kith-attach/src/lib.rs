@@ -136,6 +136,13 @@ impl BlobStore {
         Self::validate_blob_id(id)
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;
 
+        if max_bytes > MAX_BLOB_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("max_bytes {max_bytes} exceeds hard limit {MAX_BLOB_BYTES}"),
+            ));
+        }
+
         if !self.base_dir.exists() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,

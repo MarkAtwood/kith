@@ -76,11 +76,26 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let delivery_state = parse_delivery_state(&delivery_state_raw).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(e))
     })?;
-    // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
-    let received_at = crate::util::unix_secs_to_rfc3339(created_at as u64);
+    debug_assert!(
+        created_at >= 0,
+        "timestamp must be non-negative Unix seconds, got {created_at}"
+    );
+    let received_at = crate::util::unix_secs_to_rfc3339(created_at.max(0) as u64);
     let sent_at = sent_at_peer.unwrap_or_else(|| received_at.clone());
-    let delivered_at = delivered_at_unix.map(|s| crate::util::unix_secs_to_rfc3339(s as u64));
-    let read_at = read_at_unix.map(|s| crate::util::unix_secs_to_rfc3339(s as u64));
+    let delivered_at = delivered_at_unix.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
+    });
+    let read_at = read_at_unix.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
+    });
     let sender_msg_id = sender_msg_id.unwrap_or_else(|| id.clone());
 
     Ok(Message {
@@ -757,17 +772,23 @@ impl<'a> MessageStore<'a> {
             .map_err(db_err)?;
 
         let has_more = max_changes.map(|n| rows.len() > n).unwrap_or(false);
-        if has_more {
-            rows.truncate(max_changes.expect("has_more implies max_changes is Some"));
-        }
-
+        // Compute new_state from the last RETURNED row (index max_changes-1) before
+        // truncating, so the client can resume from the right position.  For
+        // max_changes=0 there is no returned row; fall back to current_state so the
+        // client's next request is a no-op (RFC 8620 §5.6 prohibits max_changes=0,
+        // so this branch is unreachable in practice — it's a robustness guard only).
         let new_state = if has_more {
-            rows.last()
+            max_changes
+                .filter(|&n| n > 0)
+                .and_then(|n| rows.get(n - 1))
                 .map(|(_, _, sv)| format!("s-{sv}"))
-                .expect("rows is non-empty when has_more is true")
+                .unwrap_or_else(|| current_state.clone())
         } else {
             current_state
         };
+        if has_more {
+            rows.truncate(max_changes.expect("has_more implies max_changes is Some"));
+        }
 
         let result: Vec<(String, u64)> = rows.into_iter().map(|(id, idx, _)| (id, idx)).collect();
         Ok((result, has_more, new_state))

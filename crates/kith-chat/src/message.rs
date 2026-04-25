@@ -506,7 +506,7 @@ fn process_update(
     for key in patch_obj.keys() {
         if key != "readAt" {
             return Err(
-                json!({"type": "invalidProperties", "description": "only readAt is patchable"}),
+                json!({"type": "invalidProperties", "description": "only readAt is patchable", "properties": [key]}),
             );
         }
     }

@@ -219,6 +219,13 @@ impl PeerJmapHandler for DeliverHandler {
                         adopted.id
                     } else {
                         // Case (c): no existing direct chat — create one.
+                        // If replyTo is set, it cannot reference a message in a
+                        // not-yet-existing chat: reject before creating an orphaned row.
+                        if msg.reply_to.is_some() {
+                            return Err(JmapError::invalid_arguments(
+                                "replyTo references a nonexistent message",
+                            ));
+                        }
                         guard
                             .chats()
                             .create(
@@ -1259,8 +1266,11 @@ pub async fn outbox_tick<C: DeliverClient>(
                     continue;
                 }
             };
-            // read_at_unix is a Unix timestamp stored in the DB; guaranteed non-negative.
-            let at_str = unix_secs_to_rfc3339(read_at_unix as u64);
+            debug_assert!(
+                read_at_unix >= 0,
+                "timestamp must be non-negative Unix seconds, got {read_at_unix}"
+            );
+            let at_str = unix_secs_to_rfc3339(read_at_unix.max(0) as u64);
             let jmap_request = build_peer_receipt_request(&entry.message_id, "read", &at_str);
             match client.deliver_msg(&url, jmap_request).await {
                 Ok(()) => {

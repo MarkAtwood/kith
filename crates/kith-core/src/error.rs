@@ -41,7 +41,7 @@ impl JmapError {
 
     pub fn forbidden_method() -> Self {
         Self {
-            error_type: "forbiddenMethod".into(),
+            error_type: "forbidden".into(),
             description: None,
         }
     }
@@ -145,7 +145,7 @@ mod tests {
     fn jmap_error_forbidden_method_omits_description() {
         let e = JmapError::forbidden_method();
         let json_str = serde_json::to_string(&e).unwrap();
-        assert!(json_str.contains("\"forbiddenMethod\""));
+        assert!(json_str.contains("\"forbidden\""));
         assert!(
             !json_str.contains("\"description\""),
             "None description must be omitted from JSON"
