@@ -46,7 +46,7 @@ impl JmapHandler for ChatContactGetHandler {
 
             // 2. Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             // ids: null or absent means "all"; present array means specific IDs.
@@ -150,7 +150,7 @@ impl JmapHandler for ChatContactSetHandler {
 
             // 2. Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let create_map: Option<&Map<String, Value>> =
@@ -451,7 +451,7 @@ impl JmapHandler for ChatContactChangesHandler {
 
             // 2. Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let since_state = obj
@@ -565,7 +565,7 @@ impl JmapHandler for ChatContactQueryHandler {
 
             // 2. Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             // filter, sort are accepted but ignored in v1.
@@ -648,7 +648,7 @@ impl JmapHandler for ChatContactQueryChangesHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let since_query_state = obj
@@ -690,26 +690,23 @@ impl JmapHandler for ChatContactQueryChangesHandler {
                 .get_changes_since(&since_query_state)
                 .map_err(kith_to_jmap)?;
 
-            // Get the current full ordered list to compute insertion indices.
-            let full_list = guard.contacts().list().map_err(kith_to_jmap)?;
-
-            drop(guard);
-
-            let new_state = changes.new_state.clone();
-
-            // Build added list with indices (position in the current query result).
+            // Compute insertion indices via SQL COUNT rather than loading the full list.
             let added_with_index: Vec<Value> = changes
                 .added
                 .iter()
                 .map(|added_id| {
-                    let index = full_list
-                        .iter()
-                        .position(|c| &c.id == added_id)
-                        .map(|p| p as u64)
+                    let index = guard
+                        .contacts()
+                        .query_index(added_id)
+                        .map_err(kith_to_jmap)?
                         .unwrap_or(0);
-                    json!({"id": added_id, "index": index})
+                    Ok(json!({"id": added_id, "index": index}))
                 })
-                .collect();
+                .collect::<Result<Vec<_>, JmapError>>()?;
+
+            drop(guard);
+
+            let new_state = changes.new_state.clone();
 
             Ok(json!({
                 "accountId": "a-self",

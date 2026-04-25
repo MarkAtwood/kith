@@ -1,4 +1,4 @@
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -33,8 +33,17 @@ pub fn run(config: &Config, dest: Option<PathBuf>) -> Result<(), Box<dyn std::er
                 rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
                     | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?;
+            // Pre-create the file with mode 0o600 before SQLite opens it.
+            // Connection::open would create the file with the process umask (typically
+            // 0o644), leaving a TOCTOU window where the backup DB is world-readable.
+            // Creating the file first (with create_new so we detect races) ensures
+            // SQLite inherits the restricted permissions.
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&dest_path)?;
             let mut dst = rusqlite::Connection::open(&dest_path)?;
-            std::fs::set_permissions(&dest_path, std::fs::Permissions::from_mode(0o600))?;
             let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
             const PAGES_PER_STEP: i32 = 100;
             const PAUSE: Duration = Duration::from_millis(250);

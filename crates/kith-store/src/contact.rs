@@ -1,7 +1,7 @@
 use crate::db_err;
 use crate::message::ChangesResult;
 use kith_core::{ChatContact, JmapError, KithError, StateChange};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
 pub struct ContactStore<'a> {
@@ -194,6 +194,31 @@ impl<'a> ContactStore<'a> {
             contacts.push(row.map_err(db_err)?);
         }
         Ok(contacts)
+    }
+
+    /// Return the 0-based position of `peer_user_id` in the `ORDER BY peer_login` list.
+    ///
+    /// Counts contacts whose `peer_login` sorts strictly before the given contact's
+    /// `peer_login`.  Returns `None` if `peer_user_id` is not in the table.
+    ///
+    /// Used by `Contact/queryChanges` to report insertion indices without loading the
+    /// full contact list into memory.
+    pub fn query_index(&self, peer_user_id: &str) -> Result<Option<u64>, KithError> {
+        // Outer FROM anchors on the target contact so the query returns no rows
+        // (→ None via .optional()) when peer_user_id is not in the table, rather
+        // than returning 0 like a plain COUNT(*) would when the subquery returns NULL.
+        let n: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM contacts c2 WHERE c2.peer_login < c1.peer_login) \
+                 FROM contacts c1 \
+                 WHERE c1.peer_user_id = ?1",
+                params![peer_user_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_err)?;
+        Ok(n.map(|n| n as u64))
     }
 
     /// Set the blocked flag for a contact.
@@ -820,6 +845,33 @@ mod tests {
         assert_eq!(
             state_after_first, state_after_second,
             "upsert_discovered_contact with identical values must not advance the state counter"
+        );
+    }
+
+    #[test]
+    fn query_index_returns_position_in_sorted_order() {
+        // Oracle: contacts are sorted by peer_login ASC.
+        // Insert alice (aaa@), bob (bbb@), carol (ccc@) in that order.
+        // alice → index 0 (0 contacts before "aaa@")
+        // bob   → index 1 (1 contact before "bbb@": alice)
+        // carol → index 2 (2 contacts before "ccc@": alice, bob)
+        // uid-nobody → None (not in table)
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-alice", "aaa@example.com", "alice.ts.net", None, 1000)
+            .unwrap();
+        cs.upsert("uid-bob", "bbb@example.com", "bob.ts.net", None, 1000)
+            .unwrap();
+        cs.upsert("uid-carol", "ccc@example.com", "carol.ts.net", None, 1000)
+            .unwrap();
+
+        assert_eq!(cs.query_index("uid-alice").unwrap(), Some(0));
+        assert_eq!(cs.query_index("uid-bob").unwrap(), Some(1));
+        assert_eq!(cs.query_index("uid-carol").unwrap(), Some(2));
+        assert_eq!(
+            cs.query_index("uid-nobody").unwrap(),
+            None,
+            "non-existent contact must return None"
         );
     }
 

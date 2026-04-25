@@ -153,7 +153,7 @@ impl JmapHandler for MessageSetHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let create_map: Option<&Map<String, Value>> =
@@ -586,7 +586,7 @@ impl JmapHandler for MessageGetHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             // ids is required in v1; null or absent → invalidArguments.
@@ -659,7 +659,7 @@ impl JmapHandler for MessageChangesHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let since_state = obj
@@ -765,7 +765,7 @@ impl JmapHandler for MessageQueryHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let filter = obj.get("filter");
@@ -863,7 +863,7 @@ impl JmapHandler for MessageQueryChangesHandler {
                 .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?;
 
             if account_id != "a-self" {
-                return Err(JmapError::invalid_arguments("unknown accountId"));
+                return Err(JmapError::account_not_found());
             }
 
             let since_query_state = obj

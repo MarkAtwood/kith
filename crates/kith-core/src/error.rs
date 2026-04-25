@@ -53,6 +53,14 @@ impl JmapError {
         }
     }
 
+    /// RFC 8620 §5.1: the accountId does not correspond to a valid account.
+    pub fn account_not_found() -> Self {
+        Self {
+            error_type: "accountNotFound".into(),
+            description: None,
+        }
+    }
+
     pub fn server_fail(desc: impl Into<String>) -> Self {
         Self {
             error_type: "serverFail".into(),
@@ -149,6 +157,18 @@ mod tests {
         let e = JmapError::not_found();
         let json_str = serde_json::to_string(&e).unwrap();
         assert!(json_str.contains("\"notFound\""));
+    }
+
+    #[test]
+    fn jmap_error_account_not_found() {
+        // Oracle: RFC 8620 §5.1 specifies the exact type string "accountNotFound".
+        let e = JmapError::account_not_found();
+        let json_str = serde_json::to_string(&e).unwrap();
+        assert!(json_str.contains("\"accountNotFound\""));
+        assert!(
+            !json_str.contains("\"description\""),
+            "None description must be omitted from JSON"
+        );
     }
 
     #[test]

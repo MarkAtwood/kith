@@ -100,12 +100,20 @@ fn row_to_attachment(row: &rusqlite::Row<'_>) -> rusqlite::Result<Attachment> {
     let filename: String = row.get(1)?;
     let content_type: String = row.get(2)?;
     let size_bytes: i64 = row.get(3)?;
+    // Negative means DB corruption; reject rather than clamp.
+    if size_bytes < 0 {
+        return Err(rusqlite::Error::InvalidColumnType(
+            3,
+            "size_bytes".to_string(),
+            rusqlite::types::Type::Integer,
+        ));
+    }
     let sha256: String = row.get(4)?;
     Ok(Attachment {
         blob_id,
         filename,
         content_type,
-        size: size_bytes.max(0) as u64,
+        size: size_bytes as u64,
         sha256,
     })
 }

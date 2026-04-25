@@ -132,7 +132,18 @@ fn load_attachments_for_messages(
                     blob_id: row.get(0)?,
                     filename: row.get(2)?,
                     content_type: row.get(3)?,
-                    size: row.get::<_, i64>(4)?.max(0) as u64,
+                    size: {
+                        let s: i64 = row.get(4)?;
+                        // Negative means DB corruption; reject rather than clamp.
+                        if s < 0 {
+                            return Err(rusqlite::Error::InvalidColumnType(
+                                4,
+                                "size_bytes".to_string(),
+                                rusqlite::types::Type::Integer,
+                            ));
+                        }
+                        s as u64
+                    },
                     sha256: row.get(5)?,
                 },
             ))

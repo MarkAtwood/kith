@@ -41,7 +41,7 @@ impl JmapHandler for ChatGetHandler {
 
             // Step 2: Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::not_found());
+                return Err(JmapError::account_not_found());
             }
 
             // ids is optional: None means "return all".
@@ -149,7 +149,7 @@ impl JmapHandler for ChatSetHandler {
 
             // Step 2: Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::not_found());
+                return Err(JmapError::account_not_found());
             }
 
             let create: Option<Map<String, Value>> = match args.get("create") {
@@ -385,7 +385,7 @@ impl JmapHandler for ChatChangesHandler {
 
             // Step 2: Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::not_found());
+                return Err(JmapError::account_not_found());
             }
 
             // Step 3: Parse maxChanges — RFC 8620 §5.6: maxChanges=0 must be invalidArguments.
@@ -518,7 +518,7 @@ impl JmapHandler for ChatQueryHandler {
 
             // Step 2: Verify accountId.
             if account_id != "a-self" {
-                return Err(JmapError::not_found());
+                return Err(JmapError::account_not_found());
             }
 
             // Step 3: Acquire store lock.

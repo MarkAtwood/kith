@@ -426,12 +426,21 @@ impl Store {
                 rusqlite::params![blob_id],
                 |row| {
                     let size_bytes_i64: i64 = row.get(4)?;
+                    // size_bytes is always non-negative at write time; a negative
+                    // value means DB corruption — reject rather than silently clamp.
+                    if size_bytes_i64 < 0 {
+                        return Err(rusqlite::Error::InvalidColumnType(
+                            4,
+                            "size_bytes".to_string(),
+                            rusqlite::types::Type::Integer,
+                        ));
+                    }
                     Ok(PeerBlobInfo {
                         mailbox_host: row.get(0)?,
                         filename: row.get(1)?,
                         content_type: row.get(2)?,
                         sha256: row.get(3)?,
-                        size_bytes: size_bytes_i64.max(0) as u64,
+                        size_bytes: size_bytes_i64 as u64,
                     })
                 },
             )

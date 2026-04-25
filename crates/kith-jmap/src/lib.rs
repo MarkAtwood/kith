@@ -56,7 +56,8 @@ pub fn error_status(err: &JmapError) -> StatusCode {
         "forbiddenMethod" => StatusCode::FORBIDDEN,
         "accountNotFound" | "notFound" => StatusCode::NOT_FOUND,
         "serverFail" => StatusCode::INTERNAL_SERVER_ERROR,
-        _ => StatusCode::BAD_REQUEST,
+        // Unknown error types are server-side bugs, not client mistakes.
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 

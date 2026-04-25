@@ -242,11 +242,11 @@ fn fire_notification(sender: &str, preview: &str) {
 async fn watch_once(
     config: &Config,
     tailnet_ip: &str,
-    cert_der: &[u8],
+    connector: &TlsConnector,
     last_event_id: &mut Option<String>,
     last_message_state: &mut String,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let connector = build_tls_connector(cert_der.to_vec())?;
+    let connector = connector.clone();
     let server_name = ServerName::try_from("kith.local")
         .map_err(|e| format!("invalid server name: {e}"))?
         .to_owned();
@@ -357,7 +357,7 @@ async fn watch_once(
                                 if let Err(e) = fetch_and_notify(
                                     config,
                                     tailnet_ip,
-                                    cert_der,
+                                    &connector,
                                     &prev_state,
                                     &new_state,
                                 )
@@ -389,7 +389,7 @@ async fn watch_once(
 async fn fetch_and_notify(
     config: &Config,
     tailnet_ip: &str,
-    cert_der: &[u8],
+    connector: &TlsConnector,
     since_state: &str,
     _new_state: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -402,7 +402,7 @@ async fn fetch_and_notify(
     });
 
     let changes_body = serde_json::to_string(&changes_request)?;
-    let changes_response = jmap_post(config, tailnet_ip, cert_der, &changes_body).await?;
+    let changes_response = jmap_post(config, tailnet_ip, connector, &changes_body).await?;
 
     let new_ids: Vec<String> = changes_response
         .get("methodResponses")
@@ -436,7 +436,7 @@ async fn fetch_and_notify(
     });
 
     let get_body = serde_json::to_string(&get_request)?;
-    let get_response = jmap_post(config, tailnet_ip, cert_der, &get_body).await?;
+    let get_response = jmap_post(config, tailnet_ip, connector, &get_body).await?;
 
     let messages = get_response
         .get("methodResponses")
@@ -463,15 +463,15 @@ async fn fetch_and_notify(
 
 /// Send a single JMAP POST request and return the parsed JSON response.
 ///
-/// Opens a fresh TLS connection for each call.  This is not optimal but is
-/// simple and correct for the low-frequency notification use-case.
+/// Opens a fresh TLS connection for each call (TCP connect + TLS handshake).
+/// The `TlsConnector` (and its underlying `ClientConfig`) is shared across calls.
 async fn jmap_post(
     config: &Config,
     tailnet_ip: &str,
-    cert_der: &[u8],
+    connector: &TlsConnector,
     body: &str,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let connector = build_tls_connector(cert_der.to_vec())?;
+    let connector = connector.clone();
     let server_name = ServerName::try_from("kith.local")
         .map_err(|e| format!("invalid server name: {e}"))?
         .to_owned();
@@ -581,6 +581,8 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
     }
     let cert_der =
         std::fs::read(&cert_path).map_err(|e| format!("failed to read cert {cert_path:?}: {e}"))?;
+    // Build once; TlsConnector is Clone and wraps an Arc<ClientConfig> — cheap to clone.
+    let connector = build_tls_connector(cert_der)?;
 
     // 3. SSE reconnect loop.
     let mut last_event_id: Option<String> = None;
@@ -590,7 +592,7 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
         match watch_once(
             config,
             &tailnet_ip,
-            &cert_der,
+            &connector,
             &mut last_event_id,
             &mut last_message_state,
         )

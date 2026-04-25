@@ -328,7 +328,7 @@ pub(crate) async fn load_messages_for_chat(
         ],
         method_calls: vec![(
             "Message/query".into(),
-            json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 50}),
+            json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 500}),
             "mq0".into(),
         )],
     };
@@ -341,9 +341,8 @@ pub(crate) async fn load_messages_for_chat(
         }
     };
 
-    let ids: Vec<String> = query_resp
-        .method_responses
-        .first()
+    let first_query = query_resp.method_responses.first();
+    let ids: Vec<String> = first_query
         .and_then(|(_, args, _)| args.get("ids"))
         .and_then(Value::as_array)
         .map(|arr| {
@@ -352,6 +351,11 @@ pub(crate) async fn load_messages_for_chat(
                 .collect()
         })
         .unwrap_or_default();
+    // total is the server-side count before the limit was applied.
+    let total_on_server: u64 = first_query
+        .and_then(|(_, args, _)| args.get("total"))
+        .and_then(Value::as_u64)
+        .unwrap_or(ids.len() as u64);
 
     if ids.is_empty() {
         return LoadedMessages::default();
@@ -425,6 +429,21 @@ pub(crate) async fn load_messages_for_chat(
         loaded.message_ids.push_back(e.msg_id);
         loaded.sender_ids.push_back(e.sender_id);
     }
+
+    // If the server has more messages than the limit returned, prepend a notice
+    // so the user knows history is truncated rather than silently missing.
+    if total_on_server as usize > ids.len() {
+        let hidden = total_on_server as usize - ids.len();
+        loaded.display_lines.push_front(format!(
+            "[-- {} older message{} not shown --]",
+            hidden,
+            if hidden == 1 { "" } else { "s" }
+        ));
+        // Empty id/sender so unread-receipt logic skips this synthetic entry.
+        loaded.message_ids.push_front(String::new());
+        loaded.sender_ids.push_front(String::new());
+    }
+
     loaded
 }
 
@@ -1159,6 +1178,85 @@ mod tests {
         // Verify the mock was called exactly once (no second Message/get call)
         // wiremock verifies unused mocks by default, so not mounting a Message/get mock
         // proves no second call was made.
+    }
+
+    /// Oracle: when server reports total=3 but returns only 1 ID (limit reached),
+    /// the first display line must be a truncation notice mentioning 2 hidden messages.
+    #[tokio::test]
+    async fn load_messages_prepends_truncation_notice_when_server_has_more() {
+        use std::collections::HashMap;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        // Message/query: total=3, but only 1 ID returned (simulates limit hit).
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "methodResponses": [[
+                    "Message/query",
+                    {"accountId":"a-self","queryState":"s-1","ids":["m-3"],"position":2,"total":3},
+                    "mq0"
+                ]],
+                "sessionState": "s-1"
+            })))
+            .up_to_n_times(1)
+            .mount(&mock_server)
+            .await;
+
+        // Message/get: return the one visible message.
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "methodResponses": [[
+                    "Message/get",
+                    {"accountId":"a-self","list":[
+                        {"id":"m-3","chatId":"chat-t","senderId":"self","body":"Latest","bodyType":"text/plain","attachments":[],"sentAt":"2026-04-20T10:00:00Z","receivedAt":"2026-04-20T10:00:00Z","deliveryState":"received"}
+                    ],"state":"s-1"},
+                    "mg0"
+                ]],
+                "sessionState": "s-1"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let api_url = format!("{}/jmap/api", mock_server.uri());
+        let http_client = reqwest::Client::new();
+        let contacts = HashMap::new();
+
+        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-t", &contacts).await;
+
+        // Oracle: 2 lines total — synthetic notice first, then the real message.
+        assert_eq!(
+            loaded.display_lines.len(),
+            2,
+            "must have notice + 1 message"
+        );
+        assert_eq!(loaded.message_ids.len(), 2, "deques must stay in sync");
+        assert_eq!(loaded.sender_ids.len(), 2, "deques must stay in sync");
+
+        // The first line must be the truncation notice describing 2 hidden messages.
+        let notice = &loaded.display_lines[0];
+        assert!(
+            notice.contains("2") && notice.contains("older message"),
+            "notice must mention 2 older messages, got: {notice:?}"
+        );
+        // The synthetic entry must have empty id/sender so receipts skip it.
+        assert!(
+            loaded.message_ids[0].is_empty(),
+            "synthetic id must be empty"
+        );
+        assert!(
+            loaded.sender_ids[0].is_empty(),
+            "synthetic sender must be empty"
+        );
+
+        // The real message follows.
+        assert!(
+            loaded.display_lines[1].contains("Latest"),
+            "second line must be the real message"
+        );
     }
 
     #[tokio::test]

@@ -5,7 +5,6 @@ use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
 /// Maximum number of delivery attempts before an outbox entry is marked failed.
-/// The condition `attempt >= MAX_DELIVERY_ATTEMPTS - 1` triggers on the 72nd call.
 const MAX_DELIVERY_ATTEMPTS: i64 = 72;
 
 #[derive(Debug)]
@@ -147,7 +146,9 @@ impl<'a> OutboxStore<'a> {
     ) -> Result<(), KithError> {
         let attempt: i64 = entry.attempt_count as i64;
 
-        if attempt >= MAX_DELIVERY_ATTEMPTS - 1 {
+        // attempt is 0-indexed: completing this call would be attempt+1 total.
+        // Once that equals MAX_DELIVERY_ATTEMPTS, the budget is exhausted.
+        if attempt + 1 >= MAX_DELIVERY_ATTEMPTS {
             return self.mark_failed(entry, last_error);
         }
 
