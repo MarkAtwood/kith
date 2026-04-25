@@ -1007,7 +1007,11 @@ fn validate_attachments(
             return Err(JmapError::invalid_arguments("invalid attachment size"));
         }
 
-        // Validate sha256: exactly 64 lowercase hex characters.
+        // Validate sha256: exactly 64 lowercase hex characters (format only).
+        // Phase 1 gap: the actual blob bytes are NOT fetched to verify the hash.
+        // The sender could supply a valid-looking but incorrect sha256.  This
+        // must be addressed before any integrity-critical feature (dedup, E2EE
+        // verification) relies on this field.
         if a.sha256.len() != 64 || !a.sha256.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f')) {
             return Err(JmapError::invalid_arguments("invalid attachment sha256"));
         }

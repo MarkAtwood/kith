@@ -314,6 +314,10 @@ impl<'a> MessageStore<'a> {
                  WHERE chat_id = ?1 \
                  ORDER BY created_at DESC, id DESC \
                  LIMIT ?2",
+                // id DESC is a correct tie-break because message IDs are ULIDs:
+                // Ulid::new().to_string() always produces uppercase Crockford
+                // Base32, so lexicographic order equals time order for equal
+                // created_at values.
             )
             .map_err(db_err)?;
 
@@ -360,6 +364,8 @@ impl<'a> MessageStore<'a> {
                  WHERE chat_id = ?1 \
                  ORDER BY created_at DESC, id DESC \
                  LIMIT ?2 OFFSET ?3",
+                // id DESC tie-break is correct because ULID strings are always
+                // uppercase Crockford Base32, so text order equals time order.
             )
             .map_err(db_err)?;
 
