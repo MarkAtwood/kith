@@ -951,6 +951,15 @@ pub async fn run(
     // to reload on every tick instead of only on actual selection changes.
     let mut prev_selected = state.selected_chat;
 
+    // Holds an SSE state-change that arrived during the select! but whose
+    // async handling has not yet run.  The await is intentionally deferred
+    // outside the select! body: running a long await *inside* a select! arm
+    // prevents all other arms (keyboard, tick, SSE status) from firing during
+    // that await, making the TUI unresponsive.  Processing it after select!
+    // returns means at most one extra loop iteration of latency before the
+    // next keyboard event is handled.
+    let mut pending_sc: Option<StateChange> = None;
+
     loop {
         tokio::select! {
             maybe_event = events.next() => {
@@ -974,11 +983,8 @@ pub async fn run(
             maybe_sc = sse_rx.recv() => {
                 match maybe_sc {
                     Some(sc) => {
-                        handle_state_change(&http_client, &api_url, &sc, state).await;
-                        // A "Chat" state change calls load_startup_data which may
-                        // clamp selected_chat.  Sync prev_selected so the
-                        // post-select reload check does not fire spuriously.
-                        prev_selected = state.selected_chat;
+                        // Store for dispatch AFTER select! — see comment above pending_sc.
+                        pending_sc = Some(sc);
                     }
                     None => {
                         // SSE task exited entirely (receiver dropped). Treat as quit.
@@ -1014,6 +1020,15 @@ pub async fn run(
             _ = tick.tick() => {
                 state.clear_stale_error();
             }
+        }
+
+        // Dispatch deferred SSE state change (see comment above pending_sc).
+        if let Some(sc) = pending_sc.take() {
+            handle_state_change(&http_client, &api_url, &sc, state).await;
+            // A "Chat" state change calls load_startup_data which may
+            // clamp selected_chat.  Sync prev_selected so the
+            // post-select reload check does not fire spuriously.
+            prev_selected = state.selected_chat;
         }
 
         // Dispatch async send when Enter was pressed in handle_key().
