@@ -390,8 +390,13 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             // arrives when all broadcasts are type-filtered.
             if batch.is_empty() {
                 if close_after_first {
-                    if live_tx.try_send(None).is_err() {
-                        break;
+                    match live_tx.try_send(None) {
+                        Ok(()) => {}
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            tracing::warn!("SSE client channel full; dropping stalled connection");
+                            break;
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
                     }
                 } else if live_tx.is_closed() {
                     // Belt-and-suspenders: if select! picked the rx.recv() arm while
