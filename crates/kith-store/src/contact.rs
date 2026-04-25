@@ -199,6 +199,39 @@ impl<'a> ContactStore<'a> {
         Ok(contacts)
     }
 
+    /// Return a page of contact IDs (peer_user_id), sorted by (peer_login, peer_user_id).
+    ///
+    /// Used by `Contact/query` to avoid loading the full contact list into memory.
+    pub fn list_ids_paged(&self, offset: u32, limit: u32) -> Result<Vec<String>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT peer_user_id FROM contacts \
+                 ORDER BY peer_login, peer_user_id \
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(rusqlite::params![limit, offset], |row| row.get(0))
+            .map_err(db_err)?;
+        let mut ids = Vec::new();
+        for row in rows {
+            ids.push(row.map_err(db_err)?);
+        }
+        Ok(ids)
+    }
+
+    /// Return total number of contacts.
+    ///
+    /// Used by `Contact/query` when `calculateTotal` is true.
+    pub fn count(&self) -> Result<u64, KithError> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM contacts", [], |row| row.get(0))
+            .map_err(db_err)?;
+        Ok(n as u64)
+    }
+
     /// Return the 0-based position of `peer_user_id` in the `ORDER BY peer_login, peer_user_id` list.
     ///
     /// Counts contacts that sort strictly before the given contact using the same

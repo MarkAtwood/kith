@@ -173,7 +173,7 @@ impl<'a> OutboxStore<'a> {
         // ±20% jitter: randomise within [base - base/5, base + base/5].
         // Clamped to at least 1 second to avoid scheduling in the past.
         let jitter_range = base_delay / 5;
-        let jitter: i64 = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
+        let jitter: i64 = rand::rng().random_range(-jitter_range..=jitter_range);
         let delay_secs: i64 = (base_delay + jitter).max(1);
 
         let next = now_unix + delay_secs;

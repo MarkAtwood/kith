@@ -710,34 +710,36 @@ impl JmapHandler for ChatContactQueryHandler {
                 .lock()
                 .map_err(|_| JmapError::server_fail("internal error"))?;
 
-            // 4. List all contacts.
-            let contacts = guard.contacts().list().map_err(kith_to_jmap)?;
+            let offset = position.unwrap_or(0);
+            // RFC 8620 §5.5: when limit is absent, return all remaining items.
+            // Use u32::MAX as the SQL LIMIT so a missing limit is a single query path.
+            let sql_limit = limit.unwrap_or(u32::MAX);
 
-            // 5. Extract ids.
-            let ids: Vec<String> = contacts.into_iter().map(|c| c.id).collect();
+            // 4. Paginate at the SQL level — avoids loading the full contact list.
+            let page = guard
+                .contacts()
+                .list_ids_paged(offset, sql_limit)
+                .map_err(kith_to_jmap)?;
 
-            // 6. Total before pagination.
-            let total = ids.len();
+            // 5. Count only when the caller asked for it.
+            let total = if calculate_total {
+                guard.contacts().count().map_err(kith_to_jmap)? as usize
+            } else {
+                0 // unused when calculate_total is false
+            };
 
-            // 7. Apply pagination.
-            let page: Vec<String> = ids
-                .into_iter()
-                .skip(position.unwrap_or(0) as usize)
-                .take(limit.unwrap_or(u32::MAX) as usize)
-                .collect();
-
-            // 8. Get current state for queryState.
+            // 6. Get current state for queryState.
             let query_state = guard.contacts().get_state().map_err(kith_to_jmap)?;
 
-            // 9. Drop lock.
+            // 7. Drop lock.
             drop(guard);
 
-            // 10. Return query response.
+            // 8. Return query response.
             Ok(json!({
                 "accountId": "a-self",
                 "queryState": query_state,
                 "canCalculateChanges": true,
-                "position": position.unwrap_or(0),
+                "position": offset,
                 "ids": page,
                 "total": if calculate_total { json!(total) } else { Value::Null },
             }))

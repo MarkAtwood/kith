@@ -26,7 +26,7 @@ impl BlobStore {
     }
 
     pub fn generate_blob_id() -> String {
-        let bytes: [u8; 32] = rand::thread_rng().gen();
+        let bytes: [u8; 32] = rand::rng().random();
         hex_encode(&bytes)
     }
 
@@ -104,7 +104,7 @@ impl BlobStore {
         let final_path = self.blob_path(id);
         // Unique nonce per write so concurrent writes for the same blob_id don't
         // share a temp path and corrupt each other.
-        let nonce: u32 = rand::thread_rng().gen();
+        let nonce: u32 = rand::rng().random();
         let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
         // Use mode 0o600 so the tmp file is only readable by the daemon process,
@@ -182,7 +182,7 @@ impl BlobStore {
         let final_path = self.blob_path(id);
         // Unique nonce per write so concurrent writes for the same blob_id don't
         // share a temp path and corrupt each other.
-        let nonce: u32 = rand::thread_rng().gen();
+        let nonce: u32 = rand::rng().random();
         let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
         // Use mode 0o600 so the tmp file is only readable by the daemon process.
