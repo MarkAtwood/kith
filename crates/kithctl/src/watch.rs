@@ -488,7 +488,7 @@ async fn fetch_and_notify(
             ["Message/get", {
                 "accountId": "a-self",
                 "ids": new_ids,
-                "properties": ["sender", "body"]
+                "properties": ["senderId", "body"]
             }, "c1"]
         ]
     });
@@ -509,7 +509,7 @@ async fn fetch_and_notify(
 
     for msg in &messages {
         let sender = msg
-            .get("sender")
+            .get("senderId")
             .and_then(|v| v.as_str())
             .unwrap_or("(unknown)");
         let body = msg.get("body").and_then(|v| v.as_str()).unwrap_or("");
@@ -772,5 +772,26 @@ mod tests {
             .and_then(|a| a.get("Message"))
             .and_then(|s| s.as_str());
         assert_eq!(got, None);
+    }
+
+    /// Regression guard: Message/get returns "senderId", not "sender".
+    /// If this test fails, the sender field name has regressed and notifications
+    /// will show "(unknown)" for all received messages.
+    #[test]
+    fn message_get_response_sender_field_is_sender_id() {
+        // Oracle: kith-core serialises the Message struct with senderId (camelCase).
+        // kith-core/src/message.rs asserts this in its own tests.
+        let msg = serde_json::json!({
+            "id": "m-1",
+            "senderId": "uid-alice",
+            "body": "hello"
+        });
+        // Correct parse
+        assert_eq!(
+            msg.get("senderId").and_then(|v| v.as_str()),
+            Some("uid-alice")
+        );
+        // Wrong parse (old bug) always returns None
+        assert_eq!(msg.get("sender").and_then(|v| v.as_str()), None);
     }
 }
