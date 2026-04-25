@@ -182,6 +182,18 @@ fn build_tls_connector(
     Ok(TlsConnector::from(Arc::new(config)))
 }
 
+/// Read the pinned cert from disk and build a `TlsConnector`.
+///
+/// Called at startup and again whenever kithd rotates its cert (detected when
+/// TLS handshake fails with "does not match pinned certificate").
+fn load_connector(
+    cert_path: &std::path::Path,
+) -> Result<TlsConnector, Box<dyn std::error::Error>> {
+    let cert_der = std::fs::read(cert_path)
+        .map_err(|e| format!("failed to read cert {cert_path:?}: {e}"))?;
+    build_tls_connector(cert_der)
+}
+
 // ── Desktop notifications ─────────────────────────────────────────────────────
 
 /// Send a desktop notification with the given sender and message preview.
@@ -646,10 +658,8 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
     if !cert_path.exists() {
         return Err(format!("TLS cert not found at {cert_path:?}; is kithd running?").into());
     }
-    let cert_der =
-        std::fs::read(&cert_path).map_err(|e| format!("failed to read cert {cert_path:?}: {e}"))?;
-    // Build once; TlsConnector is Clone and wraps an Arc<ClientConfig> — cheap to clone.
-    let connector = build_tls_connector(cert_der)?;
+    // `connector` is mut so it can be refreshed when kithd rotates its cert.
+    let mut connector = load_connector(&cert_path)?;
 
     // 3. Bootstrap the message state baseline so we don't fire desktop notifications
     //    for messages that existed before kithctl started.  Message/get(ids=[]) returns
@@ -696,10 +706,27 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
         {
             Ok(()) => break, // clean shutdown (e.g. 403)
             Err(e) => {
-                eprintln!("watch: connection lost ({e}), reconnecting in 2s...");
-                // last_event_id is updated from the SSE stream's id: field inside
-                // watch_once and is used as-is on reconnect for resumption.
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let e_str = e.to_string();
+                if e_str.contains("does not match pinned certificate") {
+                    // kithd rotated its self-signed cert (e.g. it restarted).
+                    // Re-read the cert from disk and rebuild the connector.
+                    eprintln!("watch: kithd cert changed — reloading from {cert_path:?}");
+                    match load_connector(&cert_path) {
+                        Ok(new_connector) => {
+                            connector = new_connector;
+                            eprintln!("watch: cert reloaded, reconnecting...");
+                        }
+                        Err(load_err) => {
+                            eprintln!("watch: failed to reload cert: {load_err}; retrying in 2s...");
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
+                    }
+                } else {
+                    eprintln!("watch: connection lost ({e}), reconnecting in 2s...");
+                    // last_event_id is updated from the SSE stream's id: field inside
+                    // watch_once and is used as-is on reconnect for resumption.
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                }
             }
         }
     }

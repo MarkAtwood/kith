@@ -1265,10 +1265,15 @@ pub async fn outbox_tick<C: DeliverClient>(
         };
 
         if !is_valid_mailbox_host(&entry.peer_mailbox_host) {
+            // mailbox_host is always derived from the WhoIs-verified peer IP, so
+            // this rejection means the peer's IP is outside the accepted ranges
+            // (100.64.0.0/10 CGNAT or fc00::/7 ULA).  On Headscale deployments,
+            // this can happen if the operator configured a custom IP range other
+            // than the default 100.64.0.0/10.  See kith-architecture.md §Headscale.
             tracing::warn!(
                 peer_user_id = %entry.peer_user_id,
                 mailbox_host = ?entry.peer_mailbox_host,
-                "outbox: rejecting invalid mailbox_host"
+                "outbox: mailbox_host IP is outside accepted tailnet ranges                  (100.64.0.0/10 CGNAT or fc00::/7 ULA); if using Headscale,                  ensure the node IP pool uses the default 100.64.0.0/10 range"
             );
             if let Ok(guard) = store.lock() {
                 if let Err(e) =

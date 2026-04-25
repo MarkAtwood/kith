@@ -373,7 +373,7 @@ CREATE TABLE self (
 CREATE TABLE contacts (
   peer_user_id      TEXT PRIMARY KEY,
   peer_login        TEXT NOT NULL,
-  peer_mailbox_host TEXT NOT NULL,  -- MagicDNS name of their mailbox
+  peer_mailbox_host TEXT NOT NULL,  -- IP:port of their mailbox (always derived from WhoIs-verified IP)
   display_name      TEXT,
   first_seen_at     INTEGER NOT NULL,
   last_seen_at      INTEGER NOT NULL,
@@ -543,6 +543,8 @@ The "single static binary" property is preserved for `kithd` itself. The "embedd
 - **DERP:** Headscale supports custom DERP maps. Operators can run their own DERP servers or point at a curated non-Tailscale-Inc set. This is the only deployment that closes the "Tailscale Inc. in the trust graph" gap end-to-end.
 
 - **Tailnet Lock:** not available on Headscale at time of writing. Operator control of the Headscale server is the equivalent trust anchor.
+
+- **IP address pool:** `kithd` accepts outbound delivery only to peers with IP addresses in the CGNAT range (`100.64.0.0/10`) or the ULA IPv6 range (`fc00::/7`). Headscale's default pool (`100.64.0.0/10`) satisfies this. **If you configure a custom Headscale IP pool outside these ranges, outbox delivery will fail.** Use the default CGNAT pool, or a ULA IPv6 prefix (`fd00::/8` is a common choice and is within `fc00::/7`). The `kithd` log will say "mailbox_host IP is outside accepted tailnet ranges" if this is the problem.
 
 - **Version churn:** Headscale's user model has been migrating terminology ("namespaces" → "users") and occasionally changes id formats between versions. Pin a supported Headscale version range in the `kithd` README and integration-test against it.
 
