@@ -167,58 +167,20 @@ pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
 
     // --- IP range checks ---
 
+    // Loopback and unspecified are rejected unconditionally before the range
+    // check so that the test-utils loopback bypass in kith-peer does not
+    // accidentally carry over to this SSRF guard.
     if ip.is_loopback() {
         return false;
     }
-
     if ip.is_unspecified() {
         return false;
     }
 
-    match ip {
-        IpAddr::V4(v4) => {
-            let octets = v4.octets();
-
-            // RFC 1918: 10.0.0.0/8
-            if octets[0] == 10 {
-                return false;
-            }
-
-            // RFC 1918: 172.16.0.0/12 (172.16.0.0 – 172.31.255.255)
-            if octets[0] == 172 && (16..=31).contains(&octets[1]) {
-                return false;
-            }
-
-            // RFC 1918: 192.168.0.0/16
-            if octets[0] == 192 && octets[1] == 168 {
-                return false;
-            }
-
-            // Link-local: 169.254.0.0/16
-            if octets[0] == 169 && octets[1] == 254 {
-                return false;
-            }
-
-            // Accept only the Tailscale CGNAT range 100.64.0.0/10.
-            // This covers all Tailscale IPv4 peer addresses and prevents
-            // SSRF to arbitrary public internet IPs if a mailbox_host value
-            // ever ends up pointing outside the tailnet.
-            octets[0] == 100 && (64..=127).contains(&octets[1])
-        }
-        IpAddr::V6(v6) => {
-            // Link-local: fe80::/10
-            // First two bytes: 0xfe80..0xfebf (top 10 bits = 1111 1110 10)
-            let segs = v6.segments();
-            if (segs[0] & 0xffc0) == 0xfe80 {
-                return false;
-            }
-
-            // Accept only ULA addresses (fc00::/7), which covers Tailscale's
-            // IPv6 range (fd7a:115c:a1e0::/48).  Reject all public IPv6
-            // addresses to prevent SSRF to the public internet.
-            (segs[0] & 0xfe00) == 0xfc00
-        }
-    }
+    // IP-range logic is centralised in kith_core::is_tailnet_ip so that
+    // kith-peer's is_valid_mailbox_host uses the same definition; any change
+    // to the allowed ranges must be made there.
+    kith_core::is_tailnet_ip(ip)
 }
 
 // ---------------------------------------------------------------------------

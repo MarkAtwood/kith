@@ -76,28 +76,12 @@ pub fn sanitize_sender(sender: &str) -> String {
 ///
 /// Field format per [SSE spec](https://html.spec.whatwg.org/multipage/server-sent-events.html):
 /// `<field>: <value>` — anything else is silently ignored.
+///
+/// Delegates to [`kith_core::parse_sse_frame`] so the field extraction logic
+/// is shared with `kith-tui` and maintained in one place.
 pub fn parse_sse_frame(frame: &str) -> (Option<String>, Option<String>, Option<String>) {
-    let mut event_type: Option<String> = None;
-    let mut data_parts: Vec<&str> = Vec::new();
-    let mut id: Option<String> = None;
-
-    for line in frame.lines() {
-        if let Some(value) = line.strip_prefix("event:") {
-            event_type = Some(value.trim().to_owned());
-        } else if let Some(value) = line.strip_prefix("data:") {
-            data_parts.push(value.trim());
-        } else if let Some(value) = line.strip_prefix("id:") {
-            id = Some(value.trim().to_owned());
-        }
-    }
-
-    let data = if data_parts.is_empty() {
-        None
-    } else {
-        Some(data_parts.join("\n"))
-    };
-
-    (event_type, data, id)
+    let f = kith_core::parse_sse_frame(frame);
+    (f.event_type, f.data, f.id)
 }
 
 /// Return `true` when `s` is a valid `Last-Event-ID` value.

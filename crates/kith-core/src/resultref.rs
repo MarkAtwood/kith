@@ -1,5 +1,21 @@
 use serde::{Deserialize, Serialize};
 
+/// Sealed marker for types that are safe to use with [`Argument<T>`].
+///
+/// `serde_json::Value` intentionally does NOT implement this trait — see
+/// [`Argument`] for the reason. If you need to use `Argument<T>` with a new
+/// concrete type, add `impl sealed::Sealed for YourType {}` inside this module.
+/// Do **not** add it for `serde_json::Value`.
+mod sealed {
+    pub trait Sealed {}
+
+    impl Sealed for String {}
+    impl Sealed for Vec<String> {}
+    impl Sealed for u32 {}
+    impl Sealed for u64 {}
+    impl Sealed for bool {}
+}
+
 /// A reference to the result of a previous invocation in the same JMAP request batch.
 /// Used in method arguments with a "#" prefix on the JSON key (RFC 8620 §9).
 ///
@@ -31,16 +47,16 @@ pub struct ResultReference {
 /// If T and ResultReference share field names, T is preferred.
 /// Callers must handle the `#` key prefix before deserializing.
 ///
-/// **Do not parameterize this type with `serde_json::Value` for deserialization.**
-/// `Value` accepts any JSON, so the `Ref` variant can never be reached via serde
-/// when `T = Value`.  The current dispatch path in kith-jmap strips `#`-prefixed
-/// keys and deserializes `ResultReference` directly, so the existing code is not
-/// affected — but future handlers that use `Argument<Value>` for deserialization
-/// will silently discard all `Ref` variants.  Use a concrete strongly-typed struct
-/// as `T`, or strip the `#`-key prefix before deserializing this type.
+/// # Type safety
+/// `T` is constrained to [`sealed::Sealed`] types. `serde_json::Value` does NOT
+/// implement `Sealed` — `Argument<Value>` therefore fails to compile. This
+/// prevents a silent bug: `Value` accepts any JSON, so with `T = Value` the
+/// `Ref` variant can never be reached via serde; every ResultReference JSON
+/// would deserialize as `Argument::Value(json_object)` and the reference would
+/// be silently ignored.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum Argument<T> {
+pub enum Argument<T: sealed::Sealed> {
     Value(T),
     Ref(ResultReference),
 }

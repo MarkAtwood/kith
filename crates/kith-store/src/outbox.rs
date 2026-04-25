@@ -7,6 +7,15 @@ use tokio::sync::broadcast;
 /// Maximum number of delivery attempts before an outbox entry is marked failed.
 const MAX_DELIVERY_ATTEMPTS: i64 = 72;
 
+/// Base retry delay in seconds (attempt 0). Must be ≥ 5 so that
+/// `jitter_range = base_delay / 5` (integer division) produces at least 1 second
+/// of jitter. A value below 5 silently yields zero jitter for early retries.
+const BASE_RETRY_DELAY_SECS: i64 = 30;
+const _: () = assert!(
+    BASE_RETRY_DELAY_SECS >= 5,
+    "BASE_RETRY_DELAY_SECS must be >= 5: jitter_range = base/5 rounds to 0 below this threshold"
+);
+
 #[derive(Debug)]
 pub struct OutboxEntry {
     pub message_id: String,
@@ -159,7 +168,7 @@ impl<'a> OutboxStore<'a> {
         // Clamp the shift to 30 to prevent overflow: 30 * 2^30 would be
         // capped by min(_, 3600) anyway, but the shift itself must not overflow.
         let shift = attempt.min(30);
-        let base_delay: i64 = std::cmp::min(30 * (1i64 << shift), 3600);
+        let base_delay: i64 = std::cmp::min(BASE_RETRY_DELAY_SECS * (1i64 << shift), 3600);
 
         // ±20% jitter: randomise within [base - base/5, base + base/5].
         // Clamped to at least 1 second to avoid scheduling in the past.

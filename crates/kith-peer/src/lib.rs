@@ -1145,23 +1145,10 @@ fn is_valid_mailbox_host(host: &str) -> bool {
         return true;
     }
 
-    match ip {
-        IpAddr::V4(v4) => {
-            let o = v4.octets();
-            // Accept only the Tailscale CGNAT range 100.64.0.0/10.
-            // First octet must be 100; second octet must be 64–127.
-            o[0] == 100 && (64..=127).contains(&o[1])
-        }
-        IpAddr::V6(v6) => {
-            let segs = v6.segments();
-            // Reject link-local: fe80::/10
-            if (segs[0] & 0xffc0) == 0xfe80 {
-                return false;
-            }
-            // Accept only ULA: fc00::/7 (first byte 0xfc or 0xfd).
-            (segs[0] & 0xfe00) == 0xfc00
-        }
-    }
+    // IP-range logic is centralised in kith_core::is_tailnet_ip so that
+    // kithd's is_valid_fetch_host uses the same definition; any change to the
+    // allowed ranges must be made there.
+    kith_core::is_tailnet_ip(ip)
 }
 
 // ---------------------------------------------------------------------------

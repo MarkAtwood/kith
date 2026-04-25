@@ -141,23 +141,15 @@ pub async fn call_jmap(
 /// This function is `pub` so the test suite in KITH-ecbt.3 can call it directly
 /// without an HTTP connection.
 pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
-    let mut event_type = "";
-    let mut data_parts: Vec<&str> = Vec::new();
+    // Field extraction is shared with kithctl via kith_core::parse_sse_frame
+    // so both clients parse the same wire format.
+    let frame = kith_core::parse_sse_frame(block);
 
-    for line in block.lines() {
-        if let Some(rest) = line.strip_prefix("event:") {
-            event_type = rest.trim();
-        } else if let Some(rest) = line.strip_prefix("data:") {
-            data_parts.push(rest.trim());
-        }
-        // "id:" is handled by extract_sse_id; comment lines and anything else ignored.
-    }
-
-    if event_type != "state" {
+    if frame.event_type.as_deref() != Some("state") {
         return Vec::new();
     }
 
-    let data = data_parts.join("\n");
+    let data = frame.data.unwrap_or_default();
     let sse: SseData = match serde_json::from_str(&data) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
@@ -179,10 +171,11 @@ pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
 ///
 /// Returns `Some(id)` if the block contains an `id:` line, `None` otherwise.
 /// Used to track the `Last-Event-ID` for reconnect resumption per the SSE spec.
+///
+/// Delegates to [`kith_core::parse_sse_frame`] to share the field extraction
+/// logic with `parse_sse_event` and `kithctl`.
 fn extract_sse_id(block: &str) -> Option<String> {
-    block
-        .lines()
-        .find_map(|line| line.strip_prefix("id:").map(|v| v.trim().to_owned()))
+    kith_core::parse_sse_frame(block).id
 }
 
 // ── SSE background task ───────────────────────────────────────────────────────
