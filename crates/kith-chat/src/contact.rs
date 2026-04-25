@@ -1555,4 +1555,67 @@ mod tests {
             );
         }
     }
+
+    // Oracle: RFC 8620 §5.1 — ids=[] (empty array) must return empty list
+    // and empty notFound without any database lookups.  The loop over the
+    // empty id_list does zero iterations; both found and missing remain empty.
+    // This boundary case is correct but was previously untested.
+    #[tokio::test]
+    async fn contact_get_empty_ids_array_returns_empty_list() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .contacts()
+                .upsert("uid-exists", "e@example.com", "n", None, 1000)
+                .unwrap();
+        }
+
+        let handler = ChatContactGetHandler::new(Arc::clone(&store));
+        let args = json!({"accountId": "a-self", "ids": []});
+        let result = handler
+            .call(
+                "ChatContact/get".to_string(),
+                "c0".to_string(),
+                args,
+            )
+            .await
+            .expect("ids=[] must succeed");
+
+        // RFC 8620 §5.1: empty ids → empty list, empty notFound.
+        assert_eq!(
+            result["list"],
+            json!([]),
+            "ids=[] must return empty list, not any contacts"
+        );
+        assert_eq!(
+            result["notFound"],
+            json!([]),
+            "ids=[] must return empty notFound"
+        );
+        assert!(result["state"].is_string(), "state must be present");
+    }
+
+    // Oracle: RFC 8620 §5.1 + kith session maxObjectsInGet=500.
+    // Requesting more than MAX_OBJECTS_IN_GET IDs must return tooLarge.
+    #[tokio::test]
+    async fn contact_get_too_many_ids_returns_too_large() {
+        let store = make_store();
+        let handler = ChatContactGetHandler::new(Arc::clone(&store));
+        let ids: Vec<String> = (0..=500).map(|i| format!("uid-{i}")).collect();
+        let args = json!({"accountId": "a-self", "ids": ids});
+        let result = handler
+            .call(
+                "ChatContact/get".to_string(),
+                "c0".to_string(),
+                args,
+            )
+            .await;
+        assert!(result.is_err(), "501 ids must return Err(tooLarge)");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "tooLarge",
+            "RFC 8620 §5.1: >maxObjectsInGet ids must return tooLarge; got: {err:?}"
+        );
+    }
 }

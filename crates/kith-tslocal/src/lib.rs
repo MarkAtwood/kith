@@ -630,6 +630,25 @@ mod tests {
         assert_eq!(peers[0].dns_name, "bob-laptop.ts.net");
     }
 
+    // Oracle: Tailscale LocalAPI may send `"DisplayName": null` for accounts
+    // without a display name (e.g. Headscale without OIDC).  serde must parse
+    // explicit JSON null as None, not as Some("null") or a parse error.
+    // Distinct from whois_missing_optional_display_name_is_none which tests
+    // a missing key; this tests an explicit null value.
+    #[test]
+    fn whois_explicit_null_display_name_is_none() {
+        let json = r#"{
+            "Node": {"Name": "n"},
+            "UserProfile": {"ID": "99", "LoginName": "bob@example.com", "DisplayName": null},
+            "CapMap": {}
+        }"#;
+        let resp: WhoIsResponse = serde_json::from_str(json).expect("parse failed");
+        assert_eq!(
+            resp.user_profile.display_name, None,
+            "explicit null DisplayName must deserialize to None, not Some"
+        );
+    }
+
     #[test]
     fn whois_extra_unknown_fields_are_ignored() {
         // Tailscale adds fields over time; forward-compat requires we tolerate them.

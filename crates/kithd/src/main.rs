@@ -192,7 +192,10 @@ async fn main() {
         store: Arc::clone(&store),
         owner_id: owner_id.clone(),
         owner_login: owner_login.clone(),
-        base_url: kithd::resolve_base_url(),
+        base_url: kithd::resolve_base_url().unwrap_or_else(|e| {
+            eprintln!("fatal: {e}");
+            std::process::exit(1);
+        }),
         events_tx,
         dispatcher,
         blob_store,

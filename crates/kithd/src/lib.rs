@@ -59,23 +59,29 @@ pub const DEFAULT_BASE_URL: &str = "https://kith.local";
 /// Reads `KITHD_BASE_URL` first; falls back to the deprecated `KITH_BASE_URL`
 /// (with a one-time warning), then to `DEFAULT_BASE_URL`.  Must be called
 /// once at startup and stored in `AppState` — do not call per request.
-pub fn resolve_base_url() -> String {
+///
+/// Returns `Err` with an actionable message if the variable is set but does
+/// not start with `https://`.  The caller should treat this as a fatal startup
+/// error — the JMAP Session `downloadUrl` template will be wrong with any
+/// non-HTTPS base, and serving unencrypted URLs would break clients.
+pub fn resolve_base_url() -> Result<String, String> {
     let raw = if let Ok(v) = std::env::var("KITHD_BASE_URL") {
         v
     } else if let Ok(v) = std::env::var("KITH_BASE_URL") {
         tracing::warn!("KITH_BASE_URL is deprecated; use KITHD_BASE_URL instead");
         v
     } else {
-        return DEFAULT_BASE_URL.to_string();
+        return Ok(DEFAULT_BASE_URL.to_string());
     };
     if raw.starts_with("https://") {
-        raw
+        Ok(raw)
     } else {
-        tracing::warn!(
-            "KITHD_BASE_URL {:?} does not start with https://, using default",
-            raw
-        );
-        DEFAULT_BASE_URL.to_string()
+        Err(format!(
+            "KITHD_BASE_URL {:?} does not start with https:// — \
+             kithd only serves JMAP over HTTPS; fix the URL or unset KITHD_BASE_URL \
+             to use the default ({})",
+            raw, DEFAULT_BASE_URL
+        ))
     }
 }
 
@@ -530,6 +536,89 @@ where
     });
 
     Ok((local_addr, cert_der, handle))
+}
+
+// -----------------------------------------------------------------------
+// resolve_base_url tests
+// -----------------------------------------------------------------------
+// Each test sets and clears env vars within the test.  These tests must not
+// be run in parallel with other tests that read KITHD_BASE_URL or
+// KITH_BASE_URL — Rust's test runner uses one thread by default, so this
+// is safe with the default settings.
+#[cfg(test)]
+mod resolve_base_url_tests {
+    use super::*;
+
+    struct EnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+    impl EnvGuard {
+        fn set(key: &'static str, val: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            unsafe { std::env::set_var(key, val) };
+            Self { key, prior }
+        }
+        fn remove(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            unsafe { std::env::remove_var(key) };
+            Self { key, prior }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.prior {
+                Some(v) => unsafe { std::env::set_var(self.key, v) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_base_url_neither_var_returns_default() {
+        // Oracle: DEFAULT_BASE_URL constant — no env var set.
+        let _g1 = EnvGuard::remove("KITHD_BASE_URL");
+        let _g2 = EnvGuard::remove("KITH_BASE_URL");
+        let result = resolve_base_url();
+        assert_eq!(result.unwrap(), DEFAULT_BASE_URL);
+    }
+
+    #[test]
+    fn resolve_base_url_valid_https_accepted() {
+        // Oracle: a valid https:// URL is returned unchanged.
+        let _g1 = EnvGuard::set("KITHD_BASE_URL", "https://alice-kith.tail.ts.net");
+        let _g2 = EnvGuard::remove("KITH_BASE_URL");
+        let result = resolve_base_url();
+        assert_eq!(result.unwrap(), "https://alice-kith.tail.ts.net");
+    }
+
+    #[test]
+    fn resolve_base_url_non_https_returns_err() {
+        // Oracle: a non-https URL is a fatal config error, not a silent fallback.
+        let _g1 = EnvGuard::set("KITHD_BASE_URL", "http://alice-kith.tail.ts.net");
+        let _g2 = EnvGuard::remove("KITH_BASE_URL");
+        let result = resolve_base_url();
+        assert!(
+            result.is_err(),
+            "non-https KITHD_BASE_URL must return Err, not Ok"
+        );
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("does not start with https://"),
+            "error message must mention https://; got: {msg}"
+        );
+    }
+
+    #[test]
+    fn resolve_base_url_http_scheme_returns_err() {
+        // Oracle: http:// (no S) must be rejected — identical check as non-https.
+        let _g1 = EnvGuard::set("KITHD_BASE_URL", "http://example.com");
+        let _g2 = EnvGuard::remove("KITH_BASE_URL");
+        assert!(
+            resolve_base_url().is_err(),
+            "http:// must be rejected as non-https"
+        );
+    }
 }
 
 #[cfg(test)]
