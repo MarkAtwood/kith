@@ -429,8 +429,13 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             // (disconnected client), drop the connection immediately.  A stalled
             // consumer must not block the coalescing task, which holds the
             // broadcast::Receiver; blocking here would starve all other sends.
-            if live_tx.try_send(Some(Ok(event))).is_err() {
-                break;
+            match live_tx.try_send(Some(Ok(event))) {
+                Ok(()) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                    tracing::warn!("SSE client channel full; dropping stalled connection");
+                    break;
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
             }
         }
     });
