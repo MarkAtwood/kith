@@ -89,6 +89,7 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> (Dispatcher, tempfil
         Box::new(kith_chat::message::MessageSetHandler::new(
             Arc::clone(&store),
             Arc::clone(&blob_store),
+            "uid-test-owner".to_string(),
         )),
     );
     d.register(

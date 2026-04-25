@@ -30,6 +30,13 @@ pub struct PeerBlobInfo {
 pub struct OutboundMessageParams<'a> {
     pub id: &'a str,
     pub chat_id: &'a str,
+    /// Verified Tailscale user ID of the owner sending this message.
+    ///
+    /// Stored as `sender_user_id` in the messages table.  Must be the real
+    /// owner user ID — never the literal string `"self"`.  Using the actual
+    /// ID prevents ambiguity when a Headscale deployment happens to assign
+    /// `"self"` as a user ID.
+    pub sender_user_id: &'a str,
     pub body: &'a str,
     pub body_type: &'a str,
     pub sent_at_peer: Option<&'a str>,
@@ -689,9 +696,8 @@ impl Store {
     /// is rolled back — no Pending message with missing outbox entries will be
     /// left in the database.
     ///
-    /// For outbound messages `sender_user_id` is always `"self"` and
-    /// `sender_msg_id` is always equal to `id` — both are baked in here rather
-    /// than threaded through as parameters.
+    /// `sender_msg_id` is always equal to `id` — baked in here rather
+    /// than threaded through as a parameter.
     pub fn insert_outbound_message(
         &self,
         params: &OutboundMessageParams<'_>,
@@ -699,6 +705,7 @@ impl Store {
         let OutboundMessageParams {
             id,
             chat_id,
+            sender_user_id,
             body,
             body_type,
             sent_at_peer,
@@ -724,10 +731,11 @@ impl Store {
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
               created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, 'self', ?3, ?4, ?5, ?6, ?7, ?7, 'pending', ?8, ?1)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'pending', ?9, ?1)",
             rusqlite::params![
                 id,
                 chat_id,
+                sender_user_id,
                 body,
                 body_type,
                 sent_at_peer,
@@ -1732,6 +1740,7 @@ mod tests {
         let result = store.insert_outbound_message(&OutboundMessageParams {
             id: "msg-ep",
             chat_id: "chat-ep",
+            sender_user_id: "uid-owner",
             body: "hello",
             body_type: "text/plain",
             sent_at_peer: None,

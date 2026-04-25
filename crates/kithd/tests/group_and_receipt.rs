@@ -343,6 +343,7 @@ mod inner {
         let alice_peer_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&pair.alice_store),
             Arc::clone(&alice_peer_blob_store),
+            ALICE_OWNER_ID.to_string(),
         ));
         let alice_peer_state = AppState {
             ts: Arc::new(alice_peer_whois),
@@ -487,6 +488,7 @@ mod inner {
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),
             Arc::clone(&alice_blob_store),
+            ALICE_OWNER_ID.to_string(),
         ));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),

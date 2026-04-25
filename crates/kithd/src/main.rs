@@ -185,6 +185,7 @@ async fn main() {
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        owner_id.clone(),
     ));
 
     let state = AppState {

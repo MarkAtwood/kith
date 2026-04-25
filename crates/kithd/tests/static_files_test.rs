@@ -95,6 +95,7 @@ fn make_app() -> (Router, tempfile::TempDir) {
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        OWNER_ID.to_string(),
     ));
     let state = AppState {
         ts: Arc::new(make_owner_whois()),

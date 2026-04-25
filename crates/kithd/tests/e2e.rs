@@ -48,6 +48,7 @@ fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        OWNER_ID.to_string(),
     ));
     let state = AppState {
         ts: Arc::new(whois),
@@ -168,6 +169,7 @@ fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        OWNER_ID.to_string(),
     ));
 
     let state = AppState {
@@ -205,6 +207,7 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        OWNER_ID.to_string(),
     ));
     let state = AppState {
         ts: Arc::new(whois),
@@ -942,6 +945,7 @@ async fn peer_receipt_wrong_contact_returns_not_found() {
             .insert_outbound_message(&kith_store::OutboundMessageParams {
                 id: &msg_id,
                 chat_id: bob_chat_id,
+                sender_user_id: OWNER_ID,
                 body: "hello bob",
                 body_type: "text/plain",
                 sent_at_peer: None,
@@ -1166,6 +1170,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
         Arc::clone(&blob_store),
+        OWNER_ID.to_string(),
     ));
     let state = AppState {
         ts: Arc::new(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN)))),

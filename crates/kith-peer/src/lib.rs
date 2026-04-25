@@ -393,15 +393,16 @@ pub struct PeerReceiptArgs {
 ///
 /// A remote peer calls this to report that a message this user sent has been
 /// delivered to or read by the peer.  Only messages this daemon originated
-/// (sender_id == "self") may be updated; all other IDs return `notFound` to
-/// avoid leaking information about inbound messages.
+/// (sender_user_id == owner_user_id) may be updated; all other IDs return
+/// `notFound` to avoid leaking information about inbound messages.
 pub struct ReceiptHandler {
     store: Arc<Mutex<kith_store::Store>>,
+    owner_user_id: String,
 }
 
 impl ReceiptHandler {
-    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_user_id: String) -> Self {
+        Self { store, owner_user_id }
     }
 }
 
@@ -414,6 +415,7 @@ impl PeerJmapHandler for ReceiptHandler {
         identity: Identity,
     ) -> HandlerFuture {
         let store = Arc::clone(&self.store);
+        let owner_user_id = self.owner_user_id.clone();
 
         Box::pin(async move {
             // Step a: parse args.
@@ -487,8 +489,9 @@ impl PeerJmapHandler for ReceiptHandler {
             let msg = msg.ok_or_else(JmapError::not_found)?;
 
             // Step g: ownership check -- only messages we sent may be updated.
+            // Compare against the real owner user ID (never the literal "self").
             // Return not_found (not forbidden) to avoid distinguishing owned vs not-owned.
-            if msg.sender_id != "self" {
+            if msg.sender_id != owner_user_id {
                 return Err(JmapError::not_found());
             }
 
@@ -1972,10 +1975,10 @@ mod tests {
         let store = make_store();
         // contact_id must match the caller identity below.
         insert_chat_with_contact(&store, "chat-r1", "uid-bob");
-        insert_msg(&store, "msg-r1", "chat-r1", "self", &DeliveryState::Pending);
+        insert_msg(&store, "msg-r1", "chat-r1", "uid-test-owner", &DeliveryState::Pending);
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2010,12 +2013,12 @@ mod tests {
             &store,
             "msg-r2",
             "chat-r2",
-            "self",
+            "uid-test-owner",
             &DeliveryState::Delivered,
         );
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2040,7 +2043,7 @@ mod tests {
         );
     }
 
-    // Oracle: a receipt for a message whose sender_id != "self" must return notFound.
+    // Oracle: a receipt for a message whose sender_id != owner_user_id must return notFound.
     #[tokio::test]
     async fn receipt_for_inbound_message_returns_not_found() {
         let store = make_store();
@@ -2054,7 +2057,7 @@ mod tests {
         );
 
         let caller = make_identity("uid-peer");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2079,7 +2082,7 @@ mod tests {
         let store = make_store();
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2103,10 +2106,10 @@ mod tests {
     async fn receipt_invalid_kind_returns_invalid_arguments() {
         let store = make_store();
         insert_chat_with_contact(&store, "chat-r4", "uid-bob");
-        insert_msg(&store, "msg-r4", "chat-r4", "self", &DeliveryState::Pending);
+        insert_msg(&store, "msg-r4", "chat-r4", "uid-test-owner", &DeliveryState::Pending);
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2131,7 +2134,7 @@ mod tests {
         let store = make_store();
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2157,7 +2160,7 @@ mod tests {
         let store = make_store();
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2176,7 +2179,7 @@ mod tests {
         assert_eq!(err.error_type, "invalidArguments");
     }
 
-    // Oracle: sender_id == "self" but delivery_state == Received must return notFound.
+    // Oracle: sender_id == owner_user_id but delivery_state == Received must return notFound.
     #[tokio::test]
     async fn receipt_self_sender_but_received_state_returns_not_found() {
         let store = make_store();
@@ -2185,12 +2188,12 @@ mod tests {
             &store,
             "msg-r5",
             "chat-r5",
-            "self",
+            "uid-test-owner",
             &DeliveryState::Received,
         );
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2214,7 +2217,7 @@ mod tests {
     async fn receipt_malformed_args_returns_invalid_arguments() {
         let store = make_store();
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2239,19 +2242,19 @@ mod tests {
     #[tokio::test]
     async fn receipt_wrong_contact_returns_not_found() {
         let store = make_store();
-        // Chat belongs to uid-bob; message was sent by "self" to uid-bob.
+        // Chat belongs to uid-bob; message was sent by owner to uid-bob.
         insert_chat_with_contact(&store, "chat-rwc", "uid-bob");
         insert_msg(
             &store,
             "msg-rwc",
             "chat-rwc",
-            "self",
+            "uid-test-owner",
             &DeliveryState::Pending,
         );
 
         // uid-eve is a valid contact but NOT the recipient of this message.
         let eve = make_identity("uid-eve");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
         let result = handler
             .call(
                 "Peer/receipt".to_string(),
@@ -2297,12 +2300,12 @@ mod tests {
             &store,
             "msg-rtd",
             "chat-rtd",
-            "self",
+            "uid-test-owner",
             &DeliveryState::Pending,
         );
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
 
         let state_before = store
             .lock()
@@ -2423,12 +2426,12 @@ mod tests {
             &store,
             "msg-rclamp",
             "chat-rclamp",
-            "self",
+            "uid-test-owner",
             &DeliveryState::Delivered,
         );
 
         let caller = make_identity("uid-bob");
-        let handler = ReceiptHandler::new(Arc::clone(&store));
+        let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
 
         // Capture now before calling the handler so we can bound the result.
         let before_unix: i64 = SystemTime::now()

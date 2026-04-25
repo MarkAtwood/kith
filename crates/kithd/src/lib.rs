@@ -345,7 +345,11 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
 }
 
 /// Build the JMAP method dispatcher with all 13 registered handlers.
-pub fn build_dispatcher(store: Arc<Mutex<Store>>, blob_store: Arc<BlobStore>) -> Dispatcher {
+pub fn build_dispatcher(
+    store: Arc<Mutex<Store>>,
+    blob_store: Arc<BlobStore>,
+    owner_id: String,
+) -> Dispatcher {
     let mut d = Dispatcher::new();
 
     // Contact methods (owner-only)
@@ -398,6 +402,7 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, blob_store: Arc<BlobStore>) ->
         Box::new(MessageSetHandler::new(
             Arc::clone(&store),
             Arc::clone(&blob_store),
+            owner_id.clone(),
         )),
     );
     d.register(
@@ -421,7 +426,7 @@ pub fn build_dispatcher(store: Arc<Mutex<Store>>, blob_store: Arc<BlobStore>) ->
     );
     d.register_peer(
         "Peer/receipt",
-        Box::new(ReceiptHandler::new(Arc::clone(&store))),
+        Box::new(ReceiptHandler::new(Arc::clone(&store), owner_id.clone())),
     );
 
     d
@@ -690,6 +695,7 @@ mod tests {
         let dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&store),
             Arc::clone(&blob_store),
+            owner_id.to_string(),
         ));
         let state = AppState {
             ts: Arc::new(whois),
@@ -719,7 +725,7 @@ mod tests {
     async fn build_dispatcher_registers_all_spec_methods() {
         let store = Store::open_in_memory().unwrap();
         let (blob_store, _blob_dir) = make_blob_store_for_test();
-        let dispatcher = build_dispatcher(Arc::new(Mutex::new(store)), blob_store);
+        let dispatcher = build_dispatcher(Arc::new(Mutex::new(store)), blob_store, "uid-test-owner".to_string());
 
         // (method_name, role_required_by_spec)
         let owner_methods = [

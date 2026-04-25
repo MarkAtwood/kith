@@ -209,6 +209,7 @@ mod inner {
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),
             Arc::clone(&alice_blob_store),
+            ALICE_OWNER_ID.to_string(),
         ));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),
@@ -238,6 +239,7 @@ mod inner {
         let bob_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&bob_store),
             Arc::clone(&bob_blob_store),
+            BOB_OWNER_ID.to_string(),
         ));
         let bob_tcp_state = AppState {
             ts: Arc::new(bob_tcp_whois),

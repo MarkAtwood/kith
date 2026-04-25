@@ -174,6 +174,7 @@ mod tests {
         let dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&store),
             Arc::clone(&blob_store),
+            owner_id.to_string(),
         ));
         let state = AppState {
             ts: Arc::new(whois),
@@ -215,6 +216,7 @@ mod tests {
         let dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&store),
             Arc::clone(&blob_store),
+            owner_id.to_string(),
         ));
         let state = AppState {
             ts: Arc::new(owner_whois),
