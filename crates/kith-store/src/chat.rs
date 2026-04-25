@@ -46,8 +46,8 @@ impl<'a> ChatStore<'a> {
         contact_id: Option<&str>,
         now_unix: i64,
     ) -> Result<Chat, KithError> {
-        let affected = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
             .execute(
                 "INSERT OR IGNORE INTO chats (id, kind, contact_id, created_at) \
                  VALUES (?1, ?2, ?3, ?4)",
@@ -57,7 +57,6 @@ impl<'a> ChatStore<'a> {
 
         if affected > 0 {
             // Atomic: advance state counter and write changed_at_counter in one transaction.
-            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
             let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
             tx.execute(
                 "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
@@ -66,6 +65,8 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
         }
 
         // Try by primary key first (covers PK conflict and the new-insert case).
@@ -305,15 +306,14 @@ impl<'a> ChatStore<'a> {
     /// Only advances the state counter if the chat actually exists (UPDATE matched a row).
     /// Returns `Ok(())` silently if `chat_id` is not found.
     pub fn update_last_message_at(&self, chat_id: &str, ts: i64) -> Result<(), KithError> {
-        let affected = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
             .execute(
                 "UPDATE chats SET last_message_at = ?1 WHERE id = ?2",
                 params![ts, chat_id],
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
             let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
             tx.execute(
                 "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
@@ -322,6 +322,8 @@ impl<'a> ChatStore<'a> {
             .map_err(db_err)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
         }
         Ok(())
     }

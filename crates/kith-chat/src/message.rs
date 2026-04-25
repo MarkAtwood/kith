@@ -499,7 +499,7 @@ fn process_update(
     for key in patch_obj.keys() {
         if key != "readAt" {
             return Err(
-                json!({"type": "invalidArguments", "description": "only readAt is patchable"}),
+                json!({"type": "invalidProperties", "description": "only readAt is patchable"}),
             );
         }
     }
@@ -544,6 +544,17 @@ fn process_update(
                 .get_state()
                 .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
         );
+    }
+
+    // Check the message exists before writing (RFC 8620 §5.3: notFound).
+    match guard.messages().get(server_id) {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            return Err(
+                json!({"type": "notFound", "description": format!("message {server_id} not found")}),
+            );
+        }
+        Err(e) => return Err(json!({"type": "serverFail", "description": e.to_string()})),
     }
 
     guard
@@ -732,12 +743,12 @@ impl JmapHandler for MessageChangesHandler {
             // is_create=true  → message was inserted after sinceState → "created" list
             // is_create=false → message existed before sinceState → "updated" map (null patch)
             let mut created: Vec<Value> = Vec::new();
-            let mut updated: serde_json::Map<String, Value> = serde_json::Map::new();
+            let mut updated: Vec<Value> = Vec::new();
             for (id, _, is_create) in items {
                 if is_create {
                     created.push(Value::String(id));
                 } else {
-                    updated.insert(id, Value::Null);
+                    updated.push(Value::String(id));
                 }
             }
 
@@ -1413,7 +1424,39 @@ mod tests {
             not_updated.get("msg-np").is_some(),
             "notUpdated[msg-np] must be present"
         );
-        assert_eq!(not_updated["msg-np"]["type"], "invalidArguments");
+        assert_eq!(not_updated["msg-np"]["type"], "invalidProperties");
+    }
+
+    // Oracle: Message/set update targeting a nonexistent message ID → notUpdated/notFound.
+    // RFC 8620 §5.3: unknown ID in update must yield notFound, not serverFail.
+    #[tokio::test]
+    async fn test_message_set_update_nonexistent_id_returns_not_found() {
+        let store = make_store();
+
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let args = json!({
+            "accountId": "a-self",
+            "update": {
+                "no-such-message": {
+                    "readAt": "2026-04-19T12:00:00Z"
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("handler should not Err; error goes in notUpdated");
+
+        let not_updated = &result["notUpdated"];
+        assert!(
+            not_updated.get("no-such-message").is_some(),
+            "notUpdated[no-such-message] must be present; got: {result:?}"
+        );
+        assert_eq!(
+            not_updated["no-such-message"]["type"], "notFound",
+            "nonexistent message must yield notFound; got: {result:?}"
+        );
     }
 
     // Oracle: Message/changes with current state → empty created/updated/destroyed.
@@ -1434,10 +1477,8 @@ mod tests {
 
         let created = result["created"].as_array().expect("created must be array");
         assert!(created.is_empty(), "no changes at current state");
-        // updated is RFC 8620 §5.2 map (id → null patch), not an array.
-        let updated = result["updated"]
-            .as_object()
-            .expect("updated must be object");
+        // updated is RFC 8620 §5.2 Id[] array.
+        let updated = result["updated"].as_array().expect("updated must be array");
         assert!(updated.is_empty(), "no updates at current state");
         let destroyed = result["destroyed"]
             .as_array()
@@ -1539,11 +1580,9 @@ mod tests {
             !created.iter().any(|v| v.as_str() == Some("msg-rfc52")),
             "msg-rfc52 must NOT be in created (it existed before sinceState); got: {result:?}"
         );
-        let updated = result["updated"]
-            .as_object()
-            .expect("updated must be object");
+        let updated = result["updated"].as_array().expect("updated must be array");
         assert!(
-            updated.contains_key("msg-rfc52"),
+            updated.iter().any(|v| v.as_str() == Some("msg-rfc52")),
             "msg-rfc52 must be in updated (it was modified after sinceState); got: {result:?}"
         );
     }

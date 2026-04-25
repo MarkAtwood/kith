@@ -196,13 +196,28 @@ async fn main() {
     let app = build_app(state).into_make_service_with_connect_info::<SocketAddr>();
 
     // -----------------------------------------------------------------------
-    // 11. Spawn outbox worker
+    // 11. Spawn outbox worker with supervision — restart on panic.
     // -----------------------------------------------------------------------
-    tokio::spawn(kith_peer::outbox_worker(
-        Arc::clone(&store),
-        kith_peer::PeerHttpClient::new(),
-        owner_id.clone(),
-    ));
+    let store_for_outbox = Arc::clone(&store);
+    let owner_id_for_outbox = owner_id.clone();
+    tokio::spawn(async move {
+        loop {
+            let h = tokio::spawn(kith_peer::outbox_worker(
+                Arc::clone(&store_for_outbox),
+                kith_peer::PeerHttpClient::new(),
+                owner_id_for_outbox.clone(),
+            ));
+            match h.await {
+                Ok(_) => {
+                    tracing::warn!("outbox_worker exited unexpectedly; restarting");
+                }
+                Err(e) => {
+                    tracing::error!("outbox_worker panicked: {e:?}; restarting in 5s");
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
+            }
+        }
+    });
 
     // -----------------------------------------------------------------------
     // 11a. Spawn peer discovery task

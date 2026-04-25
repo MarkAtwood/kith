@@ -17,6 +17,10 @@ pub type EventReceiver = broadcast::Receiver<StateChange>;
 /// Callers that fall behind will receive `RecvError::Lagged`; they should
 /// resync via `<Type>/changes` with their last known state token.
 pub fn make_channel(capacity: usize) -> (EventSender, EventReceiver) {
+    assert!(
+        capacity > 0,
+        "broadcast channel capacity must be greater than zero"
+    );
     broadcast::channel(capacity)
 }
 
@@ -136,5 +140,11 @@ mod tests {
         assert_eq!(events[0].type_name, "Message");
         assert_eq!(events[0].new_state, "s-3");
         // Key assertion: stream ended normally (collect returned) — no panic.
+    }
+
+    #[test]
+    #[should_panic(expected = "broadcast channel capacity must be greater than zero")]
+    fn test_make_channel_zero_capacity_panics() {
+        make_channel(0);
     }
 }

@@ -348,7 +348,11 @@ impl Dispatcher {
         session_state: String,
     ) -> JmapResponse {
         let mut responses: Vec<Invocation> = Vec::with_capacity(request.method_calls.len());
-        let mut prior: Vec<(String, serde_json::Value)> = Vec::new();
+        // Each entry is (call_id, method_name, result_value).
+        // The method_name is needed by ResultReference resolution (RFC 8620 §9 name check).
+        let mut prior: Vec<(String, String, serde_json::Value)> = Vec::new();
+        // Accumulate client-id → server-id mappings from /set created maps (RFC 8620 §3.4).
+        let mut created_ids: HashMap<String, String> = HashMap::new();
 
         for (method_name, mut args, call_id) in request.method_calls {
             let invocation = self
@@ -361,14 +365,31 @@ impl Dispatcher {
                     &prior,
                 )
                 .await;
-            // Record the result value for subsequent ResultReference lookups.
-            prior.push((call_id.clone(), invocation.1.clone()));
+
+            // Collect createdIds from /set responses: for each entry in `created`
+            // the key is the client-supplied creation ID and the value has an "id"
+            // field with the server-assigned ID (RFC 8620 §3.4, §5.3).
+            if let Some(created_map) = invocation.1.get("created").and_then(|v| v.as_object()) {
+                for (client_id, obj) in created_map {
+                    if let Some(server_id) = obj.get("id").and_then(|v| v.as_str()) {
+                        created_ids.insert(client_id.clone(), server_id.to_string());
+                    }
+                }
+            }
+
+            // Record the result for subsequent ResultReference lookups.
+            prior.push((call_id.clone(), method_name.clone(), invocation.1.clone()));
             responses.push(invocation);
         }
 
         JmapResponse {
             method_responses: responses,
             session_state,
+            created_ids: if created_ids.is_empty() {
+                None
+            } else {
+                Some(created_ids)
+            },
         }
     }
 
@@ -379,7 +400,7 @@ impl Dispatcher {
         args: &mut serde_json::Value,
         caller_role: Role,
         caller_identity: &Identity,
-        prior_responses: &[(String, serde_json::Value)],
+        prior_responses: &[(String, String, serde_json::Value)],
     ) -> Invocation {
         // Resolve any ResultReference arguments before role check or handler dispatch.
         if let Err(e) = resolve_args(args, prior_responses) {
@@ -459,14 +480,15 @@ impl Dispatcher {
 /// Modifies `args` in place.  For every key in `args` that starts with `#`:
 /// 1. Parse the value as a [`ResultReference`].
 /// 2. Look up the referenced call-id in `prior_responses` (must be a prior call).
-/// 3. Navigate the result with the RFC 6901 JSON Pointer path.
-/// 4. Replace the `#key` entry with `key` → resolved value.
+/// 3. Verify the `name` field matches the method name of the referenced call (RFC 8620 §9).
+/// 4. Navigate the result with the RFC 6901 JSON Pointer path.
+/// 5. Replace the `#key` entry with `key` → resolved value.
 ///
 /// Returns `Err(JmapError)` on any resolution failure so the caller can return
 /// an error Invocation without processing the method.
 pub fn resolve_args(
     args: &mut serde_json::Value,
-    prior_responses: &[(String, serde_json::Value)],
+    prior_responses: &[(String, String, serde_json::Value)],
 ) -> Result<(), JmapError> {
     let obj = match args.as_object_mut() {
         Some(o) => o,
@@ -485,17 +507,27 @@ pub fn resolve_args(
             JmapError::invalid_arguments(format!("invalid ResultReference for #{plain_key}: {e}"))
         })?;
 
-        // Find the prior result by call-id
-        let prior_result = prior_responses
+        // Find the prior result by call-id; also capture the method name for
+        // the name-field check required by RFC 8620 §9.
+        let (prior_method_name, prior_result) = prior_responses
             .iter()
-            .find(|(id, _)| id == &rr.result_of)
-            .map(|(_, val)| val)
+            .find(|(id, _, _)| id == &rr.result_of)
+            .map(|(_, name, val)| (name.as_str(), val))
             .ok_or_else(|| {
                 JmapError::invalid_arguments(format!(
                     "resultOf '{}' not found in prior responses",
                     rr.result_of
                 ))
             })?;
+
+        // RFC 8620 §9: if the name field does not match the method name of the
+        // referenced invocation, the server MUST return invalidArguments.
+        if rr.name != prior_method_name {
+            return Err(JmapError::invalid_arguments(format!(
+                "ResultReference name '{}' does not match method name '{}' of call '{}'",
+                rr.name, prior_method_name, rr.result_of
+            )));
+        }
 
         // Apply RFC 6901 JSON Pointer
         let resolved = prior_result.pointer(&rr.path).ok_or_else(|| {
@@ -1087,7 +1119,7 @@ mod tests {
     #[test]
     fn test_resolve_args_no_refs() {
         let mut args = json!({"ids": ["id-1", "id-2"], "accountId": "a-self"});
-        let prior: Vec<(String, serde_json::Value)> = vec![];
+        let prior: Vec<(String, String, serde_json::Value)> = vec![];
         let result = resolve_args(&mut args, &prior);
         assert!(result.is_ok());
         // args must be unchanged: both keys still present, no extra keys
@@ -1099,7 +1131,7 @@ mod tests {
     #[test]
     fn test_resolve_args_non_object() {
         let mut args = serde_json::Value::Null;
-        let prior: Vec<(String, serde_json::Value)> = vec![];
+        let prior: Vec<(String, String, serde_json::Value)> = vec![];
         let result = resolve_args(&mut args, &prior);
         assert!(result.is_ok());
     }
@@ -1111,7 +1143,7 @@ mod tests {
     #[test]
     fn test_resolve_args_valid_ref() {
         let prior_result = json!({"list": [{"id": "chat-abc"}]});
-        let prior = vec![("c0".to_string(), prior_result)];
+        let prior = vec![("c0".to_string(), "Chat/get".to_string(), prior_result)];
 
         let mut args = json!({
             "#chatId": {
@@ -1132,7 +1164,7 @@ mod tests {
     // Test: resultOf references a call-id not in prior_responses → invalidArguments
     #[test]
     fn test_resolve_args_unknown_result_of() {
-        let prior: Vec<(String, serde_json::Value)> = vec![];
+        let prior: Vec<(String, String, serde_json::Value)> = vec![];
 
         let mut args = json!({
             "#ids": {
@@ -1152,7 +1184,11 @@ mod tests {
     #[test]
     fn test_resolve_args_bad_path() {
         let prior_result = json!({"list": []});
-        let prior = vec![("c0".to_string(), prior_result)];
+        let prior = vec![(
+            "c0".to_string(),
+            "ChatContact/get".to_string(),
+            prior_result,
+        )];
 
         let mut args = json!({
             "#ids": {
@@ -1171,7 +1207,7 @@ mod tests {
     // Test: #-key value is not a valid ResultReference JSON object → invalidArguments
     #[test]
     fn test_resolve_args_invalid_ref_value() {
-        let prior: Vec<(String, serde_json::Value)> = vec![];
+        let prior: Vec<(String, String, serde_json::Value)> = vec![];
 
         // "#ids" value is a string, not a ResultReference object
         let mut args = json!({"#ids": "not-a-result-reference"});
@@ -1187,7 +1223,10 @@ mod tests {
     fn test_resolve_args_multiple_refs() {
         let prior_a = json!({"list": [{"id": "chat-1"}]});
         let prior_b = json!({"list": [{"id": "msg-9"}]});
-        let prior = vec![("c0".to_string(), prior_a), ("c1".to_string(), prior_b)];
+        let prior = vec![
+            ("c0".to_string(), "Chat/get".to_string(), prior_a),
+            ("c1".to_string(), "Message/get".to_string(), prior_b),
+        ];
 
         let mut args = json!({
             "accountId": "a-self",
@@ -1219,7 +1258,7 @@ mod tests {
     #[test]
     fn test_resolve_args_ref_into_error_result() {
         let error_result = json!({"type": "notFound"});
-        let prior = vec![("c0".to_string(), error_result)];
+        let prior = vec![("c0".to_string(), "Chat/get".to_string(), error_result)];
 
         let mut args = json!({
             "#errType": {
@@ -1314,6 +1353,7 @@ mod tests {
         // Oracle: RFC 8620 §9 example — /list/0/id on Contact/get result
         let prior = vec![(
             "c0".to_string(),
+            "ChatContact/get".to_string(),
             serde_json::json!({"list": [{"id": "c-001", "name": "Alice"}], "state": "s-1"}),
         )];
         let mut args = serde_json::json!({
@@ -1330,6 +1370,7 @@ mod tests {
         // Oracle: RFC 6901 §5 — path /ids on {"ids": ["a", "b"]} → ["a", "b"]
         let prior = vec![(
             "q0".to_string(),
+            "ChatContact/query".to_string(),
             serde_json::json!({"ids": ["c-001", "c-002"], "total": 2}),
         )];
         let mut args = serde_json::json!({
@@ -1344,6 +1385,7 @@ mod tests {
         // Oracle: RFC 6901 §5 — /foo/bar/0 navigates nested object then array
         let prior = vec![(
             "r0".to_string(),
+            "Foo/get".to_string(),
             serde_json::json!({"foo": {"bar": [10, 20, 30]}}),
         )];
         let mut args = serde_json::json!({
@@ -1358,6 +1400,7 @@ mod tests {
         // Path "/missing" doesn't exist in the prior result → Err(invalidArguments)
         let prior = vec![(
             "c0".to_string(),
+            "ChatContact/get".to_string(),
             serde_json::json!({"list": [{"id": "c-001"}]}),
         )];
         let mut args = serde_json::json!({
@@ -1373,6 +1416,7 @@ mod tests {
         // Path "/list/99" on 1-element array → None → Err(invalidArguments)
         let prior = vec![(
             "c0".to_string(),
+            "ChatContact/get".to_string(),
             serde_json::json!({"list": [{"id": "c-001"}]}),
         )];
         let mut args = serde_json::json!({
@@ -1386,7 +1430,7 @@ mod tests {
     #[test]
     fn test_resolve_args_non_object_args() {
         // Non-object args (e.g. null) have no refs — should return Ok without modifying
-        let prior: Vec<(String, serde_json::Value)> = vec![];
+        let prior: Vec<(String, String, serde_json::Value)> = vec![];
         let mut args = serde_json::Value::Null;
         resolve_args(&mut args, &prior).expect("should succeed on non-object args");
     }
@@ -1488,6 +1532,139 @@ mod tests {
         assert!(
             removed.is_empty(),
             "METHOD_ROLES is missing expected spec entries: {removed:?}",
+        );
+    }
+
+    // Test: ResultReference with mismatched name → invalidArguments (RFC 8620 §9)
+    //
+    // Oracle: RFC 8620 §9 — "If the name does not match the method name of the
+    // referenced invocation, the server MUST return an invalidArguments error."
+    // The expected error type "invalidArguments" is taken from RFC 8620 §7.1.
+    #[test]
+    fn test_resolve_args_name_mismatch_returns_invalid_arguments() {
+        // Prior call c0 was a "ChatContact/get" invocation.
+        let prior = vec![(
+            "c0".to_string(),
+            "ChatContact/get".to_string(),
+            json!({"list": [{"id": "c-001"}], "state": "s-1"}),
+        )];
+
+        // ResultReference claims c0 was a "Chat/get" — this is wrong.
+        let mut args = json!({
+            "#ids": {
+                "resultOf": "c0",
+                "name": "Chat/get",
+                "path": "/list/0/id"
+            }
+        });
+
+        let result = resolve_args(&mut args, &prior);
+        assert!(result.is_err(), "expected Err for name mismatch, got Ok");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "invalidArguments",
+            "RFC 8620 §9 requires invalidArguments for name mismatch; got: {}",
+            err.error_type
+        );
+    }
+
+    // Test: dispatch accumulates createdIds from /set responses (RFC 8620 §3.4).
+    //
+    // Oracle: RFC 8620 §3.4 — "If any methods in the batch create objects, the
+    // response object MUST contain a createdIds property which maps the client-
+    // provided creation ids to the server-assigned object ids."
+    // The mapping structure (client-id → server-id) is from RFC 8620 §3.4 and §5.3.
+    #[tokio::test]
+    async fn test_dispatch_collects_created_ids() {
+        // Handler returns a /set-style response with a "created" map.
+        // The created map has client-id "c0" → object with "id": "server-01".
+        struct SetHandler;
+        impl JmapHandler for SetHandler {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+            ) -> HandlerFuture {
+                Box::pin(async move {
+                    Ok(json!({
+                        "accountId": "a-self",
+                        "oldState": "s-0",
+                        "newState": "s-1",
+                        "created": {
+                            "new-chat": {"id": "server-01", "name": "Test"}
+                        },
+                        "updated": null,
+                        "destroyed": null,
+                        "notCreated": null
+                    }))
+                })
+            }
+        }
+
+        let mut d = Dispatcher::new();
+        d.register("Chat/set", Box::new(SetHandler));
+
+        let req = JmapRequest {
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
+            method_calls: vec![(
+                "Chat/set".to_string(),
+                json!({"accountId": "a-self", "create": {"new-chat": {"name": "Test"}}}),
+                "c0".to_string(),
+            )],
+        };
+
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-1".to_string())
+            .await;
+
+        // The method call must have succeeded.
+        assert!(
+            resp.method_responses[0].1.get("type").is_none(),
+            "Chat/set must succeed; got: {:?}",
+            resp.method_responses[0].1
+        );
+
+        // createdIds must be present and map "new-chat" → "server-01".
+        let created_ids = resp
+            .created_ids
+            .as_ref()
+            .expect("createdIds must be present when objects were created");
+        assert_eq!(
+            created_ids.get("new-chat").map(String::as_str),
+            Some("server-01"),
+            "createdIds must map 'new-chat' to 'server-01'; got: {created_ids:?}"
+        );
+    }
+
+    // Test: dispatch with no /set calls → createdIds is None (RFC 8620 §3.4).
+    //
+    // Oracle: RFC 8620 §3.4 — createdIds may be omitted when no objects were created.
+    #[tokio::test]
+    async fn test_dispatch_no_created_ids_when_no_set() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(json!({"list": [], "state": "s-0"}))),
+        );
+
+        let req = JmapRequest {
+            using: vec!["urn:ietf:params:jmap:chat".to_string()],
+            method_calls: vec![(
+                "ChatContact/get".to_string(),
+                json!({"accountId": "a-self"}),
+                "c0".to_string(),
+            )],
+        };
+
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+
+        assert!(
+            resp.created_ids.is_none(),
+            "createdIds must be absent when no objects were created; got: {:?}",
+            resp.created_ids
         );
     }
 }

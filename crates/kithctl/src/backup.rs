@@ -4,6 +4,33 @@ use std::time::Duration;
 
 use crate::Config;
 
+/// RAII guard that removes a file on drop unless disarmed.
+///
+/// Used to clean up the pre-created backup stub file if any step after
+/// `Connection::open` fails (e.g. `Backup::new` or `backup.step`).
+struct CleanupGuard<'a> {
+    path: &'a std::path::Path,
+    armed: bool,
+}
+
+impl<'a> CleanupGuard<'a> {
+    fn new(path: &'a std::path::Path) -> Self {
+        Self { path, armed: true }
+    }
+
+    fn disarm(mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for CleanupGuard<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = std::fs::remove_file(self.path);
+        }
+    }
+}
+
 fn backup_progress(p: rusqlite::backup::Progress) {
     eprint!(
         "\rBacking up... {}/{} pages",
@@ -43,12 +70,15 @@ pub fn run(config: &Config, dest: Option<PathBuf>) -> Result<(), Box<dyn std::er
                 .create_new(true)
                 .mode(0o600)
                 .open(&dest_path)?;
-            let mut dst = rusqlite::Connection::open(&dest_path)
-                .inspect_err(|_| {
-                    // Clean up the pre-created stub file so the user can retry without
-                    // hitting the "destination already exists" guard.
-                    let _ = std::fs::remove_file(&dest_path);
-                })?;
+            let mut dst = rusqlite::Connection::open(&dest_path).inspect_err(|_| {
+                // Clean up the pre-created stub file so the user can retry without
+                // hitting the "destination already exists" guard.
+                let _ = std::fs::remove_file(&dest_path);
+            })?;
+            // Guard covers failures from Backup::new and backup.step onwards.
+            // If any of those return Err via ?, the stub file is removed so
+            // the user can retry without hitting the "already exists" guard.
+            let cleanup = CleanupGuard::new(&dest_path);
             let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
             const PAGES_PER_STEP: i32 = 100;
             const PAUSE: Duration = Duration::from_millis(250);
@@ -56,7 +86,10 @@ pub fn run(config: &Config, dest: Option<PathBuf>) -> Result<(), Box<dyn std::er
             let mut busy_attempts: u32 = 0;
             loop {
                 match backup.step(PAGES_PER_STEP)? {
-                    rusqlite::backup::StepResult::Done => break,
+                    rusqlite::backup::StepResult::Done => {
+                        cleanup.disarm();
+                        break;
+                    }
                     rusqlite::backup::StepResult::More => {
                         backup_progress(backup.progress());
                         busy_attempts = 0;

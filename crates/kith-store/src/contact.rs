@@ -42,8 +42,8 @@ impl<'a> ContactStore<'a> {
         // The DO UPDATE WHERE clause ensures the statement changes 0 rows (and
         // therefore does NOT advance the state counter) when every column is already
         // at the supplied value — identical successive calls are idempotent.
-        let affected = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
             .execute(
                 "INSERT INTO contacts \
                     (peer_user_id, peer_login, peer_mailbox_host, display_name, \
@@ -71,7 +71,6 @@ impl<'a> ContactStore<'a> {
             // Atomic: advance state counter and write changed_at_counter in one transaction.
             // A crash after the counter advances but before the row update would leave
             // this contact invisible to ChatContact/changes forever.
-            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
             tx.execute(
                 "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
@@ -80,6 +79,8 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
         }
         Ok(())
     }
@@ -104,8 +105,8 @@ impl<'a> ContactStore<'a> {
         // The effective display_name after conflict resolution is either the existing
         // value (when non-NULL) or excluded.display_name (when NULL).  The WHERE
         // clause must mirror that CASE logic so the guard correctly detects no-ops.
-        let affected = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
             .execute(
                 "INSERT INTO contacts \
                     (peer_user_id, peer_login, peer_mailbox_host, display_name, \
@@ -132,7 +133,6 @@ impl<'a> ContactStore<'a> {
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
             tx.execute(
                 "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
@@ -141,6 +141,8 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
         }
         Ok(())
     }
@@ -227,15 +229,14 @@ impl<'a> ContactStore<'a> {
     /// actually matched a row). No-ops silently — without advancing state — when
     /// `peer_user_id` is not in the contacts table.
     pub fn set_blocked(&self, peer_user_id: &str, blocked: bool) -> Result<(), KithError> {
-        let affected = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
             .execute(
                 "UPDATE contacts SET blocked = ?1 WHERE peer_user_id = ?2",
                 params![blocked as i64, peer_user_id],
             )
             .map_err(db_err)?;
         if affected > 0 {
-            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
             tx.execute(
                 "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
@@ -244,6 +245,8 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
         }
         Ok(())
     }

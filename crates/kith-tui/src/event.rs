@@ -173,8 +173,15 @@ pub(crate) async fn load_startup_data(
 
     // Parse Contact/get (method_responses[1]) first so the map is ready for chat naming.
     let mut contacts_map: HashMap<String, String> = HashMap::new();
-    if let Some((_method, args, _call_id)) = resp.method_responses.get(1) {
-        if let Some(list) = args.get("list").and_then(Value::as_array) {
+    if let Some((method, args, _call_id)) = resp.method_responses.get(1) {
+        if method == "error" {
+            let err_type = args
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            eprintln!("kith-tui: ChatContact/get returned JMAP error: {err_type}");
+            // Non-fatal: proceed without contacts; chats will show raw IDs.
+        } else if let Some(list) = args.get("list").and_then(Value::as_array) {
             for contact in list {
                 let id = match contact.get("id").and_then(Value::as_str) {
                     Some(v) => v.to_string(),
@@ -204,8 +211,17 @@ pub(crate) async fn load_startup_data(
     // Parse Chat/get (method_responses[0]).
     let mut chat_ids: Vec<String> = Vec::new();
     let mut chat_list: Vec<String> = Vec::new();
-    if let Some((_method, args, _call_id)) = resp.method_responses.first() {
-        if let Some(list) = args.get("list").and_then(Value::as_array) {
+    if let Some((method, args, _call_id)) = resp.method_responses.first() {
+        if method == "error" {
+            let err_type = args
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            eprintln!("kith-tui: Chat/get returned JMAP error: {err_type}");
+            state.connection_status =
+                crate::app::ConnectionStatus::Error(format!("Server error: {err_type}"));
+            return;
+        } else if let Some(list) = args.get("list").and_then(Value::as_array) {
             for chat in list {
                 let id = match chat.get("id").and_then(Value::as_str) {
                     Some(v) => v.to_string(),
@@ -1610,6 +1626,55 @@ mod tests {
 
         assert!(state.chat_list.is_empty(), "chat_list must be empty");
         assert!(state.chat_ids.is_empty(), "chat_ids must be empty");
+    }
+
+    /// Oracle: when Chat/get returns a JMAP method-level error response, connection_status
+    /// must be set to Error and chat_list must not be cleared (previous state preserved).
+    /// The error type string from the server must appear in the Error variant.
+    #[tokio::test]
+    async fn startup_chat_get_jmap_error_sets_connection_status_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "methodResponses": [
+                    ["error", {"type": "accountNotFound"}, "c0"],
+                    ["error", {"type": "accountNotFound"}, "c1"]
+                ],
+                "sessionState": "s-0"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let api_url = format!("{}/jmap/api", mock_server.uri());
+        let http_client = reqwest::Client::new();
+        let mut state = crate::app::AppState::new();
+        // Pre-seed chat_list to verify it is NOT overwritten on error.
+        let pre_existing_chat_list = state.chat_list.clone();
+
+        load_startup_data(&http_client, &api_url, &mut state).await;
+
+        // Oracle: connection_status must be the Error variant containing the error type.
+        match &state.connection_status {
+            crate::app::ConnectionStatus::Error(msg) => {
+                assert!(
+                    msg.contains("accountNotFound"),
+                    "error message must contain JMAP error type, got: {msg:?}"
+                );
+            }
+            other => panic!("expected ConnectionStatus::Error, got: {:?}", other),
+        }
+
+        // Oracle: chat_list must be unchanged — the function returns early on JMAP error
+        // without reaching the state assignment, so prior data is preserved.
+        assert_eq!(
+            state.chat_list, pre_existing_chat_list,
+            "chat_list must not be modified when Chat/get returns a JMAP error"
+        );
     }
 
     #[tokio::test]

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// RFC 3339 UTC timestamp string, e.g. "2026-04-18T20:14:00Z".
 /// Used for all date/time fields in JMAP responses.
@@ -30,6 +31,11 @@ pub struct JmapResponse {
     /// Opaque server state token. Changes when any data type's state advances.
     #[serde(rename = "sessionState")]
     pub session_state: String,
+    /// Maps client-supplied creation IDs to server-assigned IDs, accumulated
+    /// across all /set calls in the batch (RFC 8620 §3.4).
+    /// Omitted when no objects were created in the batch.
+    #[serde(rename = "createdIds", skip_serializing_if = "Option::is_none")]
+    pub created_ids: Option<HashMap<String, String>>,
 }
 
 #[cfg(test)]
@@ -91,12 +97,48 @@ mod tests {
                 "0".into(),
             )],
             session_state: "s-42".into(),
+            created_ids: None,
         };
         let json_str = serde_json::to_string(&resp).unwrap();
         assert!(json_str.contains("\"methodResponses\""));
         assert!(json_str.contains("\"sessionState\""));
         let resp2: JmapResponse = serde_json::from_str(&json_str).unwrap();
         assert_eq!(resp.session_state, resp2.session_state);
+    }
+
+    // Oracle: RFC 8620 §3.4 — createdIds maps client-supplied IDs to server-assigned IDs.
+    // When objects are created in /set calls, the response MUST include createdIds.
+    // When no objects are created, the field MUST be omitted.
+    #[test]
+    fn jmap_response_created_ids_present_when_set() {
+        let mut ids = HashMap::new();
+        ids.insert("c0".to_string(), "server-id-1".to_string());
+        let resp = JmapResponse {
+            method_responses: vec![],
+            session_state: "s-1".into(),
+            created_ids: Some(ids),
+        };
+        let json_val = serde_json::to_value(&resp).unwrap();
+        // RFC 8620 §3.4: createdIds must appear in JSON when Some
+        let created_ids = json_val
+            .get("createdIds")
+            .expect("createdIds must be present");
+        assert_eq!(created_ids["c0"], "server-id-1");
+    }
+
+    #[test]
+    fn jmap_response_created_ids_absent_when_none() {
+        let resp = JmapResponse {
+            method_responses: vec![],
+            session_state: "s-1".into(),
+            created_ids: None,
+        };
+        let json_val = serde_json::to_value(&resp).unwrap();
+        // RFC 8620 §3.4: createdIds may be omitted when no objects were created
+        assert!(
+            json_val.get("createdIds").is_none(),
+            "createdIds must be absent when None; got: {json_val}"
+        );
     }
 
     #[test]

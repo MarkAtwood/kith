@@ -355,6 +355,21 @@ impl LocalApiClient {
             return Err(AuthError::WhoIsFailed("null byte in login_name".into()));
         }
 
+        // node.name becomes mailbox_host in the DB; reject null bytes for the same reason.
+        if result.node.name.contains('\0') {
+            return Err(AuthError::WhoIsFailed("null byte in node.name".into()));
+        }
+
+        // display_name is optional but still stored; reject null bytes when present.
+        if result
+            .user_profile
+            .display_name
+            .as_deref()
+            .is_some_and(|s| s.contains('\0'))
+        {
+            return Err(AuthError::WhoIsFailed("null byte in display_name".into()));
+        }
+
         Ok(result)
     }
 }
