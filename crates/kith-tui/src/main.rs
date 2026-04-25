@@ -65,6 +65,9 @@ async fn run_app(
     state.connection_status = ConnectionStatus::Connecting;
 
     let session = client::fetch_session(http_client, url).await?;
+    if session.owner_user_id.is_empty() {
+        return Err("server did not return ownerUserId in session response".into());
+    }
     state.owner_user_id = session.owner_user_id.clone();
     let (sse_rx, sse_status_rx, _sse_handle) =
         client::spawn_sse(http_client.clone(), session.event_source_url.clone());
