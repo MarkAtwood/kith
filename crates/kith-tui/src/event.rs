@@ -344,6 +344,11 @@ pub(crate) async fn load_messages_for_chat(
     owner_user_id: &str,
 ) -> LoadedMessages {
     // Step A — Message/query
+    //
+    // The server sorts results by created_at DESC, so position=0 is the most
+    // recent message. limit=500 fetches the newest 500; if there are more,
+    // a truncation notice is prepended by the caller. The TUI then re-sorts
+    // the returned IDs by receivedAt ASC for oldest-first display.
     let query_req = JmapRequest {
         using: vec![
             "urn:ietf:params:jmap:core".into(),
