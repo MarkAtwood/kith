@@ -721,8 +721,10 @@ impl JmapHandler for MessageGetHandler {
                 return Err(JmapError::account_not_found());
             }
 
-            // ids is required in v1; null or absent → invalidArguments.
-            let ids: Vec<String> = match obj.get("ids") {
+            // ids=null (or absent) means return all objects (RFC 8620 §5.1).
+            // ids=[] means return nothing.
+            let ids: Option<Vec<String>> = match obj.get("ids") {
+                None | Some(Value::Null) => None,
                 Some(Value::Array(arr)) => {
                     let mut v = Vec::with_capacity(arr.len());
                     for item in arr {
@@ -735,10 +737,12 @@ impl JmapHandler for MessageGetHandler {
                             }
                         }
                     }
-                    v
+                    Some(v)
                 }
                 _ => {
-                    return Err(JmapError::invalid_arguments("ids required"));
+                    return Err(JmapError::invalid_arguments(
+                        "ids must be an array or null",
+                    ));
                 }
             };
 
@@ -747,12 +751,20 @@ impl JmapHandler for MessageGetHandler {
                 .map_err(|_| JmapError::server_fail("internal error"))?;
 
             let mut messages = Vec::new();
-            let mut not_found = Vec::new();
+            let mut not_found: Vec<String> = Vec::new();
 
-            for id in &ids {
-                match guard.messages().get(id).map_err(kith_to_jmap)? {
-                    Some(msg) => messages.push(msg),
-                    None => not_found.push(id.clone()),
+            match ids {
+                None => {
+                    // ids=null: return all messages.
+                    messages = guard.messages().list().map_err(kith_to_jmap)?;
+                }
+                Some(id_list) => {
+                    for id in &id_list {
+                        match guard.messages().get(id).map_err(kith_to_jmap)? {
+                            Some(msg) => messages.push(msg),
+                            None => not_found.push(id.clone()),
+                        }
+                    }
                 }
             }
 
@@ -1403,17 +1415,22 @@ mod tests {
         assert_eq!(not_found[0], "does-not-exist");
     }
 
-    // Oracle: Message/get with ids=null → invalidArguments error (v1 requirement).
+    // Oracle: Message/get with ids=null → returns all messages (RFC 8620 §5.1).
+    // An empty store must return an empty list, not an error.
     #[tokio::test]
     async fn test_message_get_ids_none() {
         let store = make_store();
         let handler = MessageGetHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "ids": null});
-        let err = handler
+        let result = handler
             .call("Message/get".to_string(), "c0".to_string(), args)
             .await
-            .expect_err("ids=null should return invalidArguments");
-        assert_eq!(err.error_type, "invalidArguments");
+            .expect("ids=null must succeed per RFC 8620 §5.1");
+        let list = result["list"].as_array().expect("list must be array");
+        assert!(
+            list.is_empty(),
+            "empty store with ids=null must return empty list; got: {list:?}"
+        );
     }
 
     // Oracle: Message/set update readAt → updated map has the message id.
@@ -3169,6 +3186,94 @@ mod tests {
         assert!(
             !added_ids.contains(&"msg-xc-b"),
             "msg-xc-b (chat B) must NOT appear in chat A queryChanges; got: {added_ids:?}"
+        );
+    }
+
+    // Oracle: RFC 8620 §5.1 — ids=null means return ALL objects.
+    // Two messages are inserted; Message/get with ids=null must return both.
+    // Expected values are constructed from the inserted data, not derived by
+    // running Message/get and checking against itself.
+    #[tokio::test]
+    async fn message_get_with_null_ids_returns_all() {
+        let store = make_store();
+        let chat_id = "chat-null-ids";
+        setup_chat_and_contact(&store, chat_id, "peer-null", "peer-null.tail.ts.net");
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let set_handler = MessageSetHandler::new(Arc::clone(&store), Arc::clone(&blob_store));
+
+        // Insert message 1.
+        let r1 = set_handler
+            .call(
+                "Message/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": { "m1": { "chatId": chat_id, "body": "first" } }
+                }),
+            )
+            .await
+            .expect("Message/set create 1 must succeed");
+        let id1 = r1["created"]["m1"]["id"]
+            .as_str()
+            .expect("m1 must be in created")
+            .to_string();
+
+        // Insert message 2.
+        let r2 = set_handler
+            .call(
+                "Message/set".to_string(),
+                "c1".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "create": { "m2": { "chatId": chat_id, "body": "second" } }
+                }),
+            )
+            .await
+            .expect("Message/set create 2 must succeed");
+        let id2 = r2["created"]["m2"]["id"]
+            .as_str()
+            .expect("m2 must be in created")
+            .to_string();
+
+        // Call Message/get with ids=null — must return both messages.
+        let get_handler = MessageGetHandler::new(Arc::clone(&store));
+        let result = get_handler
+            .call(
+                "Message/get".to_string(),
+                "c2".to_string(),
+                json!({ "accountId": "a-self", "ids": null }),
+            )
+            .await
+            .expect("Message/get with ids=null must succeed");
+
+        assert_eq!(result["accountId"], "a-self");
+
+        let list = result["list"].as_array().expect("list must be an array");
+        assert_eq!(
+            list.len(),
+            2,
+            "ids=null must return all 2 messages; got: {list:?}"
+        );
+
+        let returned_ids: Vec<&str> = list
+            .iter()
+            .filter_map(|m| m.get("id").and_then(|v| v.as_str()))
+            .collect();
+        assert!(
+            returned_ids.contains(&id1.as_str()),
+            "message 1 ({id1}) must be in list; got: {returned_ids:?}"
+        );
+        assert!(
+            returned_ids.contains(&id2.as_str()),
+            "message 2 ({id2}) must be in list; got: {returned_ids:?}"
+        );
+
+        // notFound must be empty (RFC 8620 §5.1: when ids=null, notFound is not meaningful).
+        let not_found = result["notFound"].as_array().expect("notFound must be array");
+        assert!(
+            not_found.is_empty(),
+            "notFound must be empty when ids=null; got: {not_found:?}"
         );
     }
 }

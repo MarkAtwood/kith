@@ -74,8 +74,11 @@ pub fn read_cert_der(cert_path: &Path) -> Result<Vec<u8>, ClientError> {
 
 /// Build a reqwest `Client` that trusts the given DER-encoded certificate.
 ///
-/// The cert is pinned as an additional root; the client will refuse connections
-/// whose cert chain does not include it.  No cert bytes appear in any log output.
+/// The cert is added as a trusted CA root (`add_root_certificate`) with all
+/// system roots disabled (`tls_built_in_root_certs(false)`).  For kithd's
+/// self-signed certificate this is equivalent to leaf pinning: the cert is its
+/// own root, so only it can terminate a valid chain.  No cert bytes appear in
+/// any log output.
 pub fn build_client(cert_der: &[u8]) -> Result<reqwest::Client, ClientError> {
     let cert = reqwest::Certificate::from_der(cert_der).map_err(|_| ClientError::CertInvalid)?;
     reqwest::Client::builder()
@@ -281,8 +284,22 @@ async fn run_sse(
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
-        // Lossy UTF-8 decode: skip invalid sequences rather than crashing.
-        buf.push_str(&String::from_utf8_lossy(&bytes).replace("\r\n", "\n"));
+        // Append raw bytes first (lossy UTF-8; invalid sequences become U+FFFD).
+        // Do NOT normalize per-chunk: a TCP chunk may end with '\r' while the
+        // next chunk starts with '\n', splitting a CRLF across chunk boundaries.
+        // Normalizing per-chunk would leave a stray '\r' in the buffer that never
+        // gets paired with its '\n', breaking the blank-line frame boundary search.
+        buf.push_str(&String::from_utf8_lossy(&bytes));
+
+        // Normalize line endings in the full buffer now that we have appended.
+        // Replace CRLF first, then any remaining bare CR (both are valid SSE
+        // line terminators per the EventSource spec, §9.2).
+        // This is safe to do after every chunk: replace() scans the whole string,
+        // so a CRLF split across chunk boundaries is caught once the second
+        // chunk arrives and the '\r' and '\n' are adjacent in the buffer.
+        let normalized = buf.replace("\r\n", "\n").replace('\r', "\n");
+        buf.clear();
+        buf.push_str(&normalized);
 
         // Guard against unbounded buffer growth when the server sends bytes
         // but never emits a blank-line SSE frame boundary.
@@ -497,5 +514,54 @@ mod tests {
         assert_eq!(changes.len(), 1, "CRLF block must produce one StateChange");
         assert_eq!(changes[0].type_name, "Message");
         assert_eq!(changes[0].new_state, "s-7");
+    }
+
+    // Oracle: the run_sse buffer normalization must handle a CRLF split across
+    // two append operations (simulating TCP chunk boundaries).
+    //
+    // The bug: if CRLF is normalized per-chunk, a chunk ending with '\r' and
+    // the next chunk starting with '\n' produce a stray '\r' followed by '\n'
+    // in the buffer — they are never seen as a unit.  After the fix, we
+    // normalize the *full buffer* on every chunk arrival, so the '\r' and '\n'
+    // are adjacent by the time replace("\r\n", "\n") runs.
+    //
+    // This test exercises the normalization logic directly (without a live HTTP
+    // connection) by simulating two sequential appends and then applying the
+    // same replace chain that run_sse uses after each append.
+    #[test]
+    fn sse_crlf_split_across_chunks_is_normalized() {
+        // Simulate chunk 1 ending with '\r' and chunk 2 starting with '\n'.
+        // The full event (with '\n\n' frame terminator) is:
+        //   "event: state\r\ndata: {\"changed\":{\"a-self\":{\"Message\":\"s-9\"}}}\r\n\r\n"
+        // Split it at the boundary where '\r' ends chunk 1:
+        let chunk1 = b"event: state\r\ndata: {\"changed\":{\"a-self\":{\"Message\":\"s-9\"}}}\r";
+        let chunk2 = b"\n\r\n";
+
+        let mut buf = String::new();
+
+        // Apply the same logic as the fixed run_sse: append then normalize buffer.
+        buf.push_str(&String::from_utf8_lossy(chunk1));
+        let normalized = buf.replace("\r\n", "\n").replace('\r', "\n");
+        buf.clear();
+        buf.push_str(&normalized);
+
+        buf.push_str(&String::from_utf8_lossy(chunk2));
+        let normalized = buf.replace("\r\n", "\n").replace('\r', "\n");
+        buf.clear();
+        buf.push_str(&normalized);
+
+        // After both chunks, the buffer must contain a complete LF-only event
+        // terminated by "\n\n".  Extract the block and parse it.
+        let pos = buf.find("\n\n").expect("blank-line frame boundary must exist");
+        let block = &buf[..pos];
+
+        let changes = parse_sse_event(block);
+        assert_eq!(
+            changes.len(),
+            1,
+            "split-CRLF event must produce one StateChange after buffer normalization"
+        );
+        assert_eq!(changes[0].type_name, "Message");
+        assert_eq!(changes[0].new_state, "s-9");
     }
 }

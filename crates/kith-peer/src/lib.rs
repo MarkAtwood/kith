@@ -23,6 +23,14 @@ use ulid::Ulid;
 /// Accepted body MIME types (matches KithChatCapability::supported_body_types).
 const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
 
+/// Grace window for receipt `at` timestamps (5 minutes in seconds).
+///
+/// A peer-supplied `at` field may be slightly in the future due to clock skew.
+/// We allow up to this many seconds ahead of local time without clamping.
+/// Anything beyond this (e.g. year 9999) is clamped to `now + grace` to
+/// prevent misleading "read in the far future" UI state.
+const RECEIPT_GRACE_SECS: i64 = 300;
+
 // ---------------------------------------------------------------------------
 // Peer/deliver — inbound handler
 // ---------------------------------------------------------------------------
@@ -425,6 +433,20 @@ impl PeerJmapHandler for ReceiptHandler {
                     )
                 })?
                 .timestamp();
+
+            // Clamp at_unix to [1, now + RECEIPT_GRACE_SECS].
+            //
+            // A malicious peer can supply `at` set to year 9999 (or any far-future
+            // date), which would be stored verbatim and displayed in the UI as a
+            // read-receipt far in the future.  We allow up to RECEIPT_GRACE_SECS
+            // ahead of local time to tolerate clock skew; anything beyond that is
+            // clamped to `now + grace`.  We also clamp the lower bound to 1 because
+            // update_read_at / update_delivery_state reject zero and negative values.
+            let now_unix: i64 = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let at_unix = at_unix.max(1).min(now_unix + RECEIPT_GRACE_SECS);
 
             // Step d: validate messageId is non-empty.
             if parsed.message_id.is_empty() {
@@ -1068,9 +1090,16 @@ fn is_valid_mailbox_host(host: &str) -> bool {
         return false;
     }
 
-    // Character-set check for the host/name part (hostname chars only).
-    // This is applied before IP parsing so that anything with illegal
-    // characters is rejected outright (also covers injection characters).
+    // Character-set check for the host/name part.
+    //
+    // The ':' in the allowlist serves bare IPv6 addresses: when colon_count > 1
+    // (multiple colons, no leading '['), the entire `host` string is used as
+    // `ip_part` with all its IPv6 colons intact.  Port-stripping earlier ensures
+    // that for IPv4 or hostnames, `ip_part` never contains a ':'.  A hostname
+    // containing ':' would require exactly one colon (colon_count == 1), which
+    // means the port must parse as a valid u16 — the security gate is the port
+    // validation above, not the character allowlist.  The allowlist is a
+    // defence-in-depth catch for anything that slips through.
     if !ip_part
         .bytes()
         .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b':')
@@ -2353,6 +2382,85 @@ mod tests {
                 "read_at must not be cleared by subsequent 'delivered' receipt"
             );
         }
+    }
+
+    // Oracle: a receipt with `at` set to year 9999 must be clamped to
+    // approximately now (within RECEIPT_GRACE_SECS of the current time).
+    //
+    // Independent oracle: the clamping rule is RECEIPT_GRACE_SECS = 300 s.
+    // Year 9999 in RFC 3339 is "9999-12-31T23:59:59Z" = Unix 253402300799.
+    // After clamping, the stored read_at must parse to a Unix timestamp no
+    // greater than (now + 300) and no less than (now - 5) — the "-5" allows
+    // for up to 5 seconds of test execution time between the local `now` read
+    // and the handler's own `SystemTime::now()` call.
+    #[tokio::test]
+    async fn receipt_far_future_at_is_clamped() {
+        let store = make_store();
+        insert_chat_with_contact(&store, "chat-rclamp", "uid-bob");
+        insert_msg(
+            &store,
+            "msg-rclamp",
+            "chat-rclamp",
+            "self",
+            &DeliveryState::Delivered,
+        );
+
+        let caller = make_identity("uid-bob");
+        let handler = ReceiptHandler::new(Arc::clone(&store));
+
+        // Capture now before calling the handler so we can bound the result.
+        let before_unix: i64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let result = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                serde_json::json!({
+                    "accountId": "a-self",
+                    "messageId": "msg-rclamp",
+                    "kind": "read",
+                    "at": "9999-12-31T23:59:59Z"
+                }),
+                caller.clone(),
+            )
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "far-future receipt must still be accepted (clamped, not rejected): {:?}",
+            result
+        );
+
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get("msg-rclamp").unwrap().unwrap();
+        let read_at_str = msg.read_at.expect("read_at must be set");
+
+        // Parse the stored RFC 3339 string back to a Unix timestamp.
+        let stored_unix: i64 = DateTime::parse_from_rfc3339(&read_at_str)
+            .expect("stored read_at must be valid RFC 3339")
+            .timestamp();
+
+        let after_unix: i64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        // The clamped value must be at most now + RECEIPT_GRACE_SECS.
+        // We use `after_unix` (captured after the call) as the upper reference.
+        assert!(
+            stored_unix <= after_unix + RECEIPT_GRACE_SECS,
+            "clamped read_at ({stored_unix}) must be <= now + grace ({})",
+            after_unix + RECEIPT_GRACE_SECS,
+        );
+        // The clamped value must be recent — within a few seconds before now.
+        // This guards against the value being clamped to something absurdly small.
+        assert!(
+            stored_unix >= before_unix - 5,
+            "clamped read_at ({stored_unix}) must be close to now (before_unix={before_unix})",
+        );
     }
 
     // ---------------------------------------------------------------------------

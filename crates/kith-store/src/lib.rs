@@ -487,20 +487,38 @@ impl Store {
         // a previous open), so the stale snapshot never causes a skip.  The
         // single-writer guarantee means no concurrent writer can advance
         // user_version between iterations.
+        //
+        // Migrations listed here run without a wrapping transaction.  SQLite
+        // silently ignores `PRAGMA foreign_keys` changes made inside a
+        // multi-statement transaction (per SQLite docs), so any migration that
+        // needs to toggle foreign_keys must run outside one.
+        const RAW_MIGRATIONS: &[u32] = &[16];
+
         for &(version, sql) in MIGRATIONS {
             if current < version {
-                // Use an explicit transaction so the schema DDL and the
-                // PRAGMA user_version bump are atomic.  unchecked_transaction
-                // is safe here because Store is single-writer by design: each
-                // kithd instance opens exactly one Connection per mailbox file
-                // and no other writer ever holds the database open concurrently.
-                let tx = conn.unchecked_transaction().map_err(db_err)?;
-                tx.execute_batch(sql).map_err(db_err)?;
-                // PRAGMA does not accept bound parameters; version is a
-                // compile-time constant u32, so format! interpolation is safe.
-                tx.execute_batch(&format!("PRAGMA user_version = {version}"))
-                    .map_err(db_err)?;
-                tx.commit().map_err(db_err)?;
+                if RAW_MIGRATIONS.contains(&version) {
+                    // Run the SQL directly — no outer transaction.  The migration
+                    // SQL is responsible for its own atomicity (e.g. via the
+                    // implicit SQLite autocommit on each statement).
+                    // PRAGMA user_version is set separately, also outside a
+                    // transaction (PRAGMA writes are autocommitted).
+                    conn.execute_batch(sql).map_err(db_err)?;
+                    conn.execute_batch(&format!("PRAGMA user_version = {version}"))
+                        .map_err(db_err)?;
+                } else {
+                    // Use an explicit transaction so the schema DDL and the
+                    // PRAGMA user_version bump are atomic.  unchecked_transaction
+                    // is safe here because Store is single-writer by design: each
+                    // kithd instance opens exactly one Connection per mailbox file
+                    // and no other writer ever holds the database open concurrently.
+                    let tx = conn.unchecked_transaction().map_err(db_err)?;
+                    tx.execute_batch(sql).map_err(db_err)?;
+                    // PRAGMA does not accept bound parameters; version is a
+                    // compile-time constant u32, so format! interpolation is safe.
+                    tx.execute_batch(&format!("PRAGMA user_version = {version}"))
+                        .map_err(db_err)?;
+                    tx.commit().map_err(db_err)?;
+                }
             }
         }
         Ok(())

@@ -42,6 +42,10 @@ impl<'a> OutboxStore<'a> {
     }
 
     /// Enqueue a message for delivery. next_attempt_at = now_unix (immediate first attempt).
+    ///
+    /// Idempotent: if an outbox row already exists for (message_id, peer_user_id, 'message'),
+    /// the second call is a no-op (INSERT OR IGNORE).  This prevents a UNIQUE constraint
+    /// error when the caller retries after a partial failure.
     pub fn enqueue(
         &self,
         message_id: &str,
@@ -51,7 +55,7 @@ impl<'a> OutboxStore<'a> {
     ) -> Result<(), KithError> {
         self.conn
             .execute(
-                "INSERT INTO outbox \
+                "INSERT OR IGNORE INTO outbox \
                  (message_id, peer_user_id, peer_mailbox_host, next_attempt_at, attempt_count) \
                  VALUES (?1, ?2, ?3, ?4, 0)",
                 params![message_id, peer_user_id, peer_mailbox_host, now_unix],
@@ -789,6 +793,31 @@ mod tests {
         assert_eq!(
             state_before, state_after,
             "state counter must not advance when complete_delivery finds no message row"
+        );
+    }
+
+    #[test]
+    fn enqueue_is_idempotent() {
+        // Oracle: the outbox PRIMARY KEY is (message_id, peer_user_id, kind).
+        // Calling enqueue() twice with the same (message_id, peer_user_id) must:
+        //   - succeed on both calls (no error)
+        //   - leave exactly one row in outbox for that message
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-idem");
+
+        let ob = store.outbox();
+
+        ob.enqueue("msg-idem", "user-b", "host-b.example.ts.net", 1000)
+            .expect("first enqueue must succeed");
+
+        ob.enqueue("msg-idem", "user-b", "host-b.example.ts.net", 1000)
+            .expect("second enqueue with same args must succeed (idempotent)");
+
+        let entries = ob.get_by_message("msg-idem").unwrap();
+        assert_eq!(
+            entries.len(),
+            1,
+            "outbox must contain exactly one row after two identical enqueue calls"
         );
     }
 

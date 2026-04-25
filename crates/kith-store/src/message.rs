@@ -266,6 +266,44 @@ impl<'a> MessageStore<'a> {
         }
     }
 
+    /// List all messages across all chats, ordered by created_at DESC, id DESC.
+    ///
+    /// Used by `Message/get` when `ids=null` (RFC 8620 §5.1: null means return all).
+    pub fn list(&self) -> Result<Vec<Message>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, chat_id, sender_user_id, body, body_type, \
+                        sent_at_peer, created_at, delivery_state, \
+                        delivered_at, read_at, reply_to, sender_msg_id \
+                 FROM messages \
+                 ORDER BY created_at DESC, id DESC",
+            )
+            .map_err(db_err)?;
+
+        let rows = stmt
+            .query_map([], row_to_message)
+            .map_err(db_err)?;
+
+        let mut messages: Vec<Message> = rows
+            .map(|r| r.map_err(db_err))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if messages.is_empty() {
+            return Ok(messages);
+        }
+
+        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
+        for msg in &mut messages {
+            if let Some(atts) = att_map.remove(&msg.id) {
+                msg.attachments = atts;
+            }
+        }
+
+        Ok(messages)
+    }
+
     /// List messages for a chat, newest first, up to `limit` rows.
     pub fn list_by_chat(&self, chat_id: &str, limit: u32) -> Result<Vec<Message>, KithError> {
         let mut stmt = self

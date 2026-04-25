@@ -56,29 +56,30 @@ pub fn load_or_generate_cert(
         let key_der = std::fs::read(key_path)?;
 
         // Determine remaining validity from the sidecar file written at
-        // generation time, or fall back to the mtime heuristic.
+        // generation time.
         //
         // The sidecar (`cert_path` with `.expiry` extension) stores the exact
         // Unix epoch seconds of the certificate's notAfter field as a decimal
         // string.  Reading it directly is immune to mtime changes caused by
         // backups, `touch`, or filesystem migration.  If the sidecar is absent
         // (externally-issued cert, or cert predating this sidecar feature),
-        // we fall back to the mtime heuristic and log that it is approximate.
+        // treat the cert as expired to trigger a regeneration warning.
         let expiry_path = cert_path.with_extension("expiry");
-        let remaining_days: Option<u64> = std::fs::read_to_string(&expiry_path)
-            .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok())
-            .and_then(|not_after_secs| {
-                let now_secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .ok()?
-                    .as_secs();
-                Some(not_after_secs.saturating_sub(now_secs) / 86400)
-            });
+        // Read the sidecar separately so we can distinguish "absent" from
+        // "present but unreadable" in the warning messages below.
+        let sidecar_text = std::fs::read_to_string(&expiry_path).ok();
+        let remaining_days: Option<u64> = sidecar_text.as_ref().and_then(|s| {
+            let not_after_secs = s.trim().parse::<u64>().ok()?;
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()?
+                .as_secs();
+            Some(not_after_secs.saturating_sub(now_secs) / 86400)
+        });
 
         let (remaining_days, expiry_source) = if let Some(d) = remaining_days {
             (d, "exact")
-        } else {
+        } else if sidecar_text.is_none() {
             // Sidecar absent: expiry is unknown (externally-issued cert or cert
             // predating the sidecar feature).  Return 0 days to trigger a renewal
             // warning — safer than estimating from mtime, which is wrong for certs
@@ -87,6 +88,18 @@ pub fn load_or_generate_cert(
                 cert = ?cert_path,
                 "TLS: certificate expiry sidecar missing; treating as expired. \
                  Delete {:?} and {:?} to regenerate.",
+                cert_path, key_path,
+            );
+            (0_u64, "unknown")
+        } else {
+            // Sidecar present but we could not compute remaining days.  This
+            // happens if the file contains non-numeric content or (extremely
+            // unlikely) if the system clock is before the Unix epoch.  Treat
+            // conservatively as expired so the operator sees a clear warning.
+            tracing::warn!(
+                cert = ?cert_path,
+                "TLS: certificate expiry sidecar unreadable or system clock error; \
+                 treating as expired.  Delete {:?} and {:?} to regenerate.",
                 cert_path, key_path,
             );
             (0_u64, "unknown")

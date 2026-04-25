@@ -17,7 +17,11 @@ use crate::app::{AppState, Focus};
 ///   - status row (Length 1): status bar
 ///
 /// Yellow border on the focused panel. Cursor shown in input panel when focused.
-pub fn draw(f: &mut Frame, state: &AppState) {
+///
+/// Updates `state.last_message_panel_height` with the actual inner height of
+/// the message panel so that scroll clamping in event.rs uses the same value
+/// as rendering.
+pub fn draw(f: &mut Frame, state: &mut AppState) {
     let area = f.area();
     if area.width < 4 || area.height < 4 {
         return;
@@ -81,13 +85,15 @@ fn draw_chat_list(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) 
     f.render_widget(List::new(items).block(block), area);
 }
 
-fn draw_messages(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
+fn draw_messages(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Rect) {
     if area.width < 4 || area.height < 4 {
         return;
     }
     let block = Block::default().title("Messages").borders(Borders::ALL);
 
-    let visible_height = area.height.saturating_sub(2) as usize;
+    let inner_height = area.height.saturating_sub(2);
+    state.last_message_panel_height = inner_height;
+    let visible_height = inner_height as usize;
     let total = state.messages.len();
     let top = total
         .saturating_sub(visible_height)
@@ -186,8 +192,8 @@ mod tests {
         // Oracle: TestBackend at standard size; no panic = pass.
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let state = AppState::new();
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        let mut state = AppState::new();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
     }
 
     #[test]
@@ -195,8 +201,8 @@ mod tests {
         // Oracle: TestBackend at minimum area; no panic = pass.
         let backend = TestBackend::new(20, 10);
         let mut terminal = Terminal::new(backend).unwrap();
-        let state = AppState::new();
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        let mut state = AppState::new();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
     }
 
     #[test]
@@ -206,7 +212,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = AppState::new();
         state.set_error("Send failed");
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
         let buf = terminal.backend().buffer().clone();
         let status_row: String = (0..80)
             .map(|x| {
@@ -228,8 +234,8 @@ mod tests {
     fn draw_status_shows_connecting() {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
-        let state = AppState::new(); // connection_status starts as Connecting
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        let mut state = AppState::new(); // connection_status starts as Connecting
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
         let buf = terminal.backend().buffer().clone();
         // Last row should contain "Connecting" text
         let status_row: String = (0..80)
@@ -256,7 +262,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = AppState::new();
         state.connection_status = crate::app::ConnectionStatus::Error("disk full".to_string());
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
         let buf = terminal.backend().buffer().clone();
         let status_row: String = (0..80)
             .map(|x| {
@@ -281,7 +287,7 @@ mod tests {
         let mut terminal = Terminal::new(backend).unwrap();
         let mut state = AppState::new();
         state.connection_status = crate::app::ConnectionStatus::Reconnecting;
-        terminal.draw(|f| draw(f, &state)).unwrap();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
         let buf = terminal.backend().buffer().clone();
         let status_row: String = (0..80)
             .map(|x| {

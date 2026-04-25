@@ -70,6 +70,10 @@ pub struct AppState {
     /// JMAP IDs of inbound messages (senderId != "self") not yet acknowledged
     /// with readAt. Cleared after successful send_read_receipts call.
     pub unread_message_ids: HashSet<String>,
+    /// Inner height of the message panel as rendered in the last draw call
+    /// (area.height - 2 border rows). Used by clamp_scroll so it matches the
+    /// actual visible capacity rather than a terminal-size estimate.
+    pub last_message_panel_height: u16,
 }
 
 impl AppState {
@@ -98,6 +102,7 @@ impl AppState {
             message_ids: VecDeque::new(),
             message_senders: VecDeque::new(),
             unread_message_ids: HashSet::new(),
+            last_message_panel_height: 0,
         }
     }
 

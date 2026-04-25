@@ -191,6 +191,17 @@ const LOCAL_API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5)
 /// verified per-request by the OS network stack).
 const WHOIS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Hard cap on cache entries.
+///
+/// `retain()` removes TTL-expired entries on every write, so in steady state
+/// the cache is bounded by (distinct active IPs × TTL-window).  The cap
+/// provides a safety valve for bursts of unique source addresses (e.g. a large
+/// tailnet or rapid IP churn): when the cap is exceeded after TTL eviction,
+/// the entire cache is cleared.  A full clear causes a brief spike in LocalAPI
+/// calls but avoids unbounded memory growth.  1024 is far above any realistic
+/// Phase 1 tailnet size.
+const WHOIS_CACHE_MAX: usize = 1024;
+
 /// Maximum response body size for a Status response (10 MiB).
 ///
 /// Status includes the full peer map; large tailnets (thousands of nodes)
@@ -421,6 +432,13 @@ impl LocalApiClient {
         // call the real LocalAPI again). Never held across an `.await`.
         if let Ok(mut cache) = self.whois_cache.lock() {
             cache.retain(|_, (cached_at, _)| cached_at.elapsed() < WHOIS_CACHE_TTL);
+            // If TTL eviction alone didn't bring us under the cap (e.g. a large
+            // burst of unique source addresses within one TTL window), clear the
+            // entire cache.  A full clear is safe — the next callers will just
+            // re-populate via the LocalAPI.
+            if cache.len() >= WHOIS_CACHE_MAX {
+                cache.clear();
+            }
             cache.insert(addr, (std::time::Instant::now(), result.clone()));
         }
 

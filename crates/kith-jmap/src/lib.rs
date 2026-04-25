@@ -317,6 +317,15 @@ impl Dispatcher {
 
     /// Register an owner-role handler for a specific JMAP method name.
     ///
+    /// Writes to the **owner** handler map (`self.handlers`).  Owner handlers
+    /// are called only when `caller_role == Role::Owner`.
+    ///
+    /// Do NOT use this for peer-role methods (`Peer/deliver`, `Peer/receipt`).
+    /// Registering a peer method here will cause it to silently return
+    /// `unknownMethod` when called by a peer, because the dispatcher checks
+    /// `self.peer_handlers` for peer-role calls, not `self.handlers`.
+    /// Use [`Dispatcher::register_peer`] for peer-role methods.
+    ///
     /// Overwrites any previously registered handler for that method.
     pub fn register(&mut self, method: impl Into<String>, handler: Box<dyn JmapHandler>) {
         self.handlers.insert(method.into(), handler);
@@ -324,8 +333,16 @@ impl Dispatcher {
 
     /// Register a peer-role handler for a specific JMAP method name.
     ///
-    /// Peer handlers receive the verified caller [`Identity`] as a typed
-    /// parameter; no JSON extraction is required.
+    /// Writes to the **peer** handler map (`self.peer_handlers`).  Peer handlers
+    /// receive the verified caller [`Identity`] as a typed parameter; no JSON
+    /// extraction is required.  They are called only when
+    /// `caller_role == Role::Peer`.
+    ///
+    /// Do NOT use this for owner-role methods.  Registering an owner method
+    /// here will cause it to silently return `unknownMethod` when called by the
+    /// owner, because the dispatcher checks `self.handlers` for owner-role
+    /// calls, not `self.peer_handlers`.  Use [`Dispatcher::register`] for
+    /// owner-role methods.
     pub fn register_peer(&mut self, method: impl Into<String>, handler: Box<dyn PeerJmapHandler>) {
         self.peer_handlers.insert(method.into(), handler);
     }
@@ -422,22 +439,40 @@ impl Dispatcher {
             return error_invocation(method_name, call_id, JmapError::forbidden_method());
         }
 
+        // Invariant: a method must be registered in exactly one map — never both.
+        // If a developer accidentally calls register() for a peer method (or
+        // register_peer() for an owner method), the method ends up in the wrong
+        // map and silently returns unknownMethod at runtime.  This assert fires
+        // during development/testing to surface the mis-registration immediately.
+        debug_assert!(
+            !(self.handlers.contains_key(method_name)
+                && self.peer_handlers.contains_key(method_name)),
+            "method '{method_name}' is registered in both owner and peer handler maps; \
+             use register() for owner methods and register_peer() for peer methods"
+        );
+
         if required_role == Role::Peer {
             // Peer methods: use the typed-identity handler map.
             let Some(handler) = self.peer_handlers.get(method_name) else {
                 return error_invocation(method_name, call_id, JmapError::unknown_method());
             };
-            match handler
-                .call(
-                    method_name.to_string(),
-                    call_id.to_string(),
-                    args,
-                    caller_identity.clone(),
-                )
-                .await
-            {
-                Ok(result) => (method_name.to_string(), result, call_id.to_string()),
-                Err(err) => error_invocation(method_name, call_id, err),
+            // Spawn into a fresh task so that a panic inside the handler kills
+            // only that task and not the connection handler.  The JoinError from
+            // a panicking task is mapped to a serverFail invocation.
+            let fut = handler.call(
+                method_name.to_string(),
+                call_id.to_string(),
+                args,
+                caller_identity.clone(),
+            );
+            match tokio::task::spawn(fut).await {
+                Ok(Ok(result)) => (method_name.to_string(), result, call_id.to_string()),
+                Ok(Err(err)) => error_invocation(method_name, call_id, err),
+                Err(_panic) => error_invocation(
+                    method_name,
+                    call_id,
+                    JmapError::server_fail("internal error"),
+                ),
             }
         } else {
             // Owner methods: use the standard handler map.
@@ -445,12 +480,18 @@ impl Dispatcher {
                 // Method is known in METHOD_ROLES but no handler is registered yet.
                 return error_invocation(method_name, call_id, JmapError::unknown_method());
             };
-            match handler
-                .call(method_name.to_string(), call_id.to_string(), args)
-                .await
-            {
-                Ok(result) => (method_name.to_string(), result, call_id.to_string()),
-                Err(err) => error_invocation(method_name, call_id, err),
+            // Spawn into a fresh task so that a panic inside the handler kills
+            // only that task and not the connection handler.  The JoinError from
+            // a panicking task is mapped to a serverFail invocation.
+            let fut = handler.call(method_name.to_string(), call_id.to_string(), args);
+            match tokio::task::spawn(fut).await {
+                Ok(Ok(result)) => (method_name.to_string(), result, call_id.to_string()),
+                Ok(Err(err)) => error_invocation(method_name, call_id, err),
+                Err(_panic) => error_invocation(
+                    method_name,
+                    call_id,
+                    JmapError::server_fail("internal error"),
+                ),
             }
         }
     }

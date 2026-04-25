@@ -91,6 +91,12 @@ impl<'a> ContactStore<'a> {
     /// - Updates display_name ONLY if it is currently NULL (preserves user-set names)
     /// - NEVER updates first_seen_at or blocked
     ///
+    /// **mailbox_host is always overwritten** with the newly discovered value.
+    /// In Phase 1 there is no UI to manually edit mailbox_host, so this is safe.
+    /// If Phase 2 adds a Contact/set patch for mailbox_host, this function must
+    /// be updated to preserve the owner-set value (e.g. add an `owner_set_host`
+    /// column so discovery only updates when `owner_set_host IS NULL`).
+    ///
     /// Advances the state counter only when a row is newly inserted or at least one
     /// column value actually changed; identical successive calls do not advance state.
     pub fn upsert_discovered_contact(

@@ -109,12 +109,12 @@ pub fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) 
 
         // Scroll
         KeyCode::PageUp => {
-            let visible_height = page_height(state);
+            let visible_height = state.last_message_panel_height as usize;
             state.scroll_offset += visible_height;
             state.clamp_scroll(visible_height);
         }
         KeyCode::PageDown => {
-            let visible_height = page_height(state);
+            let visible_height = state.last_message_panel_height as usize;
             state.scroll_offset = state.scroll_offset.saturating_sub(visible_height);
             state.clamp_scroll(visible_height);
         }
@@ -124,13 +124,6 @@ pub fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) 
 
         _ => {}
     }
-}
-
-/// Estimate the number of visible message lines from the terminal height stored
-/// in state. The message panel is the terminal minus 4 rows (input=3, status=1)
-/// and 2 border rows.
-fn page_height(state: &AppState) -> usize {
-    (state.terminal_size.1 as usize).saturating_sub(6).max(1)
 }
 
 /// Fetch Chat/get and Contact/get from the server and update `state` in place.
@@ -920,6 +913,10 @@ pub async fn run(
                 match maybe_sc {
                     Some(sc) => {
                         handle_state_change(&http_client, &api_url, &sc, state).await;
+                        // A "Chat" state change calls load_startup_data which may
+                        // clamp selected_chat.  Sync prev_selected so the
+                        // post-select reload check does not fire spuriously.
+                        prev_selected = state.selected_chat;
                     }
                     None => {
                         // SSE task exited entirely (receiver dropped). Treat as quit.
