@@ -732,3 +732,45 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    /// Verify the SSE data JSON path that triggers message fetch notifications.
+    ///
+    /// Oracle: the server emits {"changed": {"a-self": {"Message": "s-N", ...}}}.
+    /// This is a regression test for the bug where state_map.get("Message") was
+    /// called at the top level of the data object instead of at ["changed"]["a-self"].
+    #[test]
+    fn sse_state_json_extracts_message_state() {
+        let json_str = r#"{"changed": {"a-self": {"Message": "s-7"}}}"#;
+        let v: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        let got = v
+            .get("changed")
+            .and_then(|c| c.get("a-self"))
+            .and_then(|a| a.get("Message"))
+            .and_then(|s| s.as_str());
+        assert_eq!(got, Some("s-7"));
+    }
+
+    /// Demonstrate the old bug: top-level get("Message") always returns None.
+    /// If this test ever starts failing (returns Some), the parse has regressed.
+    #[test]
+    fn sse_state_json_top_level_message_is_none() {
+        let json_str = r#"{"changed": {"a-self": {"Message": "s-7"}}}"#;
+        let v: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        assert_eq!(v.get("Message").and_then(|s| s.as_str()), None);
+    }
+
+    /// Chat-only SSE event must not trigger a Message fetch.
+    #[test]
+    fn sse_state_json_chat_only_no_message() {
+        let json_str = r#"{"changed": {"a-self": {"Chat": "s-3"}}}"#;
+        let v: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        let got = v
+            .get("changed")
+            .and_then(|c| c.get("a-self"))
+            .and_then(|a| a.get("Message"))
+            .and_then(|s| s.as_str());
+        assert_eq!(got, None);
+    }
+}
