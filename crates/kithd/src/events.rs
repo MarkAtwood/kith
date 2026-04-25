@@ -314,6 +314,7 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // to terminate the SSE connection even when no type-matching event was
     // present in the live broadcast batch.
     let (live_tx, live_rx) = tokio::sync::mpsc::channel::<Option<Result<Event, Infallible>>>(256);
+    let peer_node = caller.identity.node_name.clone();
 
     tokio::spawn(async move {
         // Reuse one HashMap across loop iterations to avoid per-batch allocation.
@@ -394,6 +395,7 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                         Ok(()) => {}
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                             tracing::warn!(
+                                peer = %peer_node,
                                 "SSE client channel full while sending close-signal; \
                                  dropping stalled connection"
                             );
@@ -440,7 +442,10 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             match live_tx.try_send(Some(Ok(event))) {
                 Ok(()) => {}
                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    tracing::warn!("SSE client channel full; dropping stalled connection");
+                    tracing::warn!(
+                        peer = %peer_node,
+                        "SSE client channel full; dropping stalled connection"
+                    );
                     break;
                 }
                 Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
