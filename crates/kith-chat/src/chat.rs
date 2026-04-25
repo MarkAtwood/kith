@@ -202,20 +202,21 @@ impl JmapHandler for ChatSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            // Step 3+5: Acquire the store lock once, capture old_state atomically
-            // with the create batch.  Capturing old_state in a separate lock scope
-            // before this block would allow a concurrent write to slip in between,
-            // causing oldState to describe a state before that write — violating
-            // RFC 8620 §5.3.
+            // Step 3+5: Acquire the store lock once, capture old_state and new_state
+            // atomically with the create batch.  Both state values are read inside the
+            // same lock scope so no concurrent write can slip in between them — which
+            // would cause newState to include changes not part of this Set call,
+            // causing clients that update sinceState to silently miss those changes
+            // (RFC 8620 §5.3).
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
 
-            let old_state = {
+            let (old_state, new_state) = {
                 let guard = store
                     .lock()
                     .map_err(|_| JmapError::server_fail("internal error"))?;
 
-                let state = guard
+                let old_state = guard
                     .chats()
                     .get_state()
                     .map_err(|e| JmapError::server_fail(e.to_string()))?;
@@ -293,8 +294,14 @@ impl JmapHandler for ChatSetHandler {
                     }
                 }
 
-                // Guard drops here; state captured before any creates in this call.
-                state
+                // Capture new_state after all creates, still inside the same lock scope,
+                // so newState reflects exactly this Set's changes and nothing else.
+                let new_state = guard
+                    .chats()
+                    .get_state()
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                (old_state, new_state)
             };
 
             // Step 6: All updates are forbidden.
@@ -318,14 +325,6 @@ impl JmapHandler for ChatSetHandler {
                     );
                 }
             }
-
-            // Step 8: Get new state after all operations.
-            let new_state = store
-                .lock()
-                .map_err(|_| JmapError::server_fail("internal error"))?
-                .chats()
-                .get_state()
-                .map_err(|e| JmapError::server_fail(e.to_string()))?;
 
             Ok(json!({
                 "accountId": "a-self",

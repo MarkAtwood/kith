@@ -187,11 +187,11 @@ fn watch_dispatches_frame_without_event_type() {
     );
     assert_eq!(id, None, "no id field → None");
 
-    // Confirm: None event_type satisfies the dispatch condition used in watch_once.
-    // watch_once dispatches when: event_type.as_deref() == Some("state") || event_type.is_none()
-    let dispatched = event_type.as_deref() == Some("state") || event_type.is_none();
+    // Confirm: None event_type does NOT satisfy the dispatch condition used in watch_once.
+    // watch_once dispatches ONLY when: event_type.as_deref() == Some("state")
+    let dispatched = event_type.as_deref() == Some("state");
     assert!(
-        dispatched,
-        "frame with None event_type must be dispatched by watch_once"
+        !dispatched,
+        "frame with None event_type must NOT be dispatched by watch_once"
     );
 }

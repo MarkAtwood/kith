@@ -303,6 +303,9 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
                     return (StatusCode::INTERNAL_SERVER_ERROR, "read error").into_response();
                 }
             };
+            // Stat to get actual file size for Content-Length — do not use the
+            // DB-recorded size_bytes, which is peer-supplied and untrustworthy.
+            let file_len: Option<u64> = f.metadata().await.ok().map(|m| m.len());
             // Use DB metadata for content-type and filename (not URL params).
             // Sanitize filename from DB the same way as the local-hit path:
             // strip chars that could escape the Content-Disposition quoted string.
@@ -312,8 +315,7 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 .filter(|&c| matches!(c, ' '..='~') && !matches!(c, '"' | ';' | '/' | '\\'))
                 .take(255)
                 .collect();
-            // Use the DB-recorded size as Content-Length for peer-fetched blobs.
-            (f, Some(info.size_bytes), info.content_type, sanitized_peer)
+            (f, file_len, info.content_type, sanitized_peer)
         }
         Err(e) => {
             tracing::error!("blob open failed for id={blob_id:?}: {e}");

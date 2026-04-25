@@ -42,31 +42,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     terminal::enable_raw_mode()?;
     execute!(stdout(), terminal::EnterAlternateScreen)?;
 
+    let result = run_app(&http_client, &args.url).await;
+
+    // Cleanup: always runs regardless of whether run_app returned Ok or Err.
+    let _ = terminal::disable_raw_mode();
+    let _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
+
+    result?;
+    Ok(())
+}
+
+async fn run_app(
+    http_client: &reqwest::Client,
+    url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     let size = terminal.size()?;
     let mut state = AppState::new();
     state.terminal_size = (size.width, size.height);
     state.connection_status = ConnectionStatus::Connecting;
 
-    let session = client::fetch_session(&http_client, &args.url).await?;
+    let session = client::fetch_session(http_client, url).await?;
     let (sse_rx, sse_status_rx, _sse_handle) =
         client::spawn_sse(http_client.clone(), session.event_source_url.clone());
 
     let result = event::run(
         &mut terminal,
         &mut state,
-        http_client,
+        http_client.clone(),
         session.api_url.clone(),
         sse_rx,
         sse_status_rx,
     )
     .await;
 
-    // Cleanup: always runs regardless of whether run() returned Ok or Err.
-    let _ = terminal::disable_raw_mode();
-    let _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
     let _ = terminal.show_cursor();
-
-    result?;
-    Ok(())
+    result
 }

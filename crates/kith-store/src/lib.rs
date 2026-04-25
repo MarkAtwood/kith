@@ -381,11 +381,31 @@ UPDATE contacts SET created_at_counter = -1 WHERE created_at_counter = 0;
 // chats from chats that were updated (e.g. last_message_at changed).  Without this
 // column, get_changes_since_ordered cannot compute is_create and every chat change
 // (including last_message_at updates) is incorrectly placed in created[] by
-// ChatChangesHandler.  Backfill: rows that have a non-zero changed_at_counter
-// already existed, so their created_at_counter = changed_at_counter is correct.
+// ChatChangesHandler.
+//
+// V18 backfill was incorrect: it set created_at_counter = changed_at_counter for
+// pre-existing chats.  A client whose sinceState predates those chats' last update
+// would see them falsely appear in Chat/changes created[].  V19 fixes this.
 const SCHEMA_V18: &str = "
 ALTER TABLE chats ADD COLUMN created_at_counter INTEGER NOT NULL DEFAULT 0;
 UPDATE chats SET created_at_counter = changed_at_counter WHERE changed_at_counter > 0;
+";
+
+// V19: Fix V18 backfill.  V18 set created_at_counter = changed_at_counter for
+// pre-existing chats.  Because is_create = (created_at_counter > sinceCounter), a
+// client at any sinceState before the last update would receive those chats in
+// created[] — identical to the V13/V17 bug for contacts.
+//
+// Fix: reset to the -1 sentinel (same pattern as V17 for contacts).  -1 < 0 <=
+// any valid sinceCounter, so is_create is always false for these rows.
+//
+// Edge case: chats created after V18 that have never received a message will also
+// be reset to -1 (they have changed_at_counter = created_at_counter > 0).  Such
+// chats appear in Chat/changes updated[] instead of created[] on the next sync,
+// which is safe for any client that fetches unknown updated IDs.  New chats
+// created after V19 are unaffected: create() stamps created_at_counter correctly.
+const SCHEMA_V19: &str = "
+UPDATE chats SET created_at_counter = -1 WHERE changed_at_counter > 0;
 ";
 
 // MIGRATIONS must be sorted in ascending order by version number.
@@ -412,6 +432,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (16, SCHEMA_V16),
     (17, SCHEMA_V17),
     (18, SCHEMA_V18),
+    (19, SCHEMA_V19),
 ];
 
 impl Store {
@@ -891,8 +912,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has eighteen entries (versions 1-18), so user_version must be 18 after open.
-        assert_eq!(version, 18);
+        // MIGRATIONS has nineteen entries (versions 1-19), so user_version must be 19 after open.
+        assert_eq!(version, 19);
     }
 
     #[test]
@@ -956,7 +977,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 18, "migration 18 must be applied");
+        assert_eq!(v1, 19, "migration 19 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1043,7 +1064,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 18, "migration v18 must set user_version to 18");
+        assert_eq!(v, 19, "migration v19 must set user_version to 19");
     }
 
     #[test]

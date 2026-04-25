@@ -168,13 +168,32 @@ impl JmapHandler for MessageSetHandler {
                 obj.get("create").and_then(|v| v.as_object());
             let update_map: Option<&Map<String, Value>> =
                 obj.get("update").and_then(|v| v.as_object());
-            let destroy_list: Option<Vec<String>> = obj.get("destroy").and_then(|v| {
-                v.as_array().map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-            });
+            // RFC 8620 §5.3: every submitted destroy ID must appear in either
+            // destroyed or notDestroyed.  Silently dropping non-string elements via
+            // filter_map would violate that requirement.  Instead, reject the whole
+            // request with invalidArguments so the caller knows immediately.
+            let destroy_list: Option<Vec<String>> = match obj.get("destroy") {
+                None | Some(Value::Null) => None,
+                Some(Value::Array(arr)) => {
+                    let mut ids = Vec::with_capacity(arr.len());
+                    for x in arr {
+                        match x.as_str() {
+                            Some(s) => ids.push(s.to_string()),
+                            None => {
+                                return Err(JmapError::invalid_arguments(
+                                    "destroy array must contain only strings",
+                                ));
+                            }
+                        }
+                    }
+                    Some(ids)
+                }
+                _ => {
+                    return Err(JmapError::invalid_arguments(
+                        "destroy must be an array or null",
+                    ));
+                }
+            };
 
             let now_unix = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -192,7 +211,13 @@ impl JmapHandler for MessageSetHandler {
             // call.  This prevents a concurrent Peer/deliver from slipping in between
             // a separate pre-loop lock scope and the first create, which would make
             // oldState describe a state before that concurrent write (RFC 8620 §5.3).
+            //
+            // new_state is captured by each helper after its DB write, inside the same
+            // lock scope as that write, so it reflects exactly this Set's changes and
+            // nothing more.  The last helper's new_state is used.  If no creates or
+            // updates ran, both states are captured in one lock.
             let mut old_state_cell: Option<String> = None;
+            let mut new_state_cell: Option<String> = None;
 
             // Process creates.
             if let Some(creates) = create_map {
@@ -204,6 +229,7 @@ impl JmapHandler for MessageSetHandler {
                         value,
                         now_unix,
                         &mut old_state_cell,
+                        &mut new_state_cell,
                     ) {
                         Ok(msg_value) => {
                             created.insert(client_id.clone(), msg_value);
@@ -218,7 +244,14 @@ impl JmapHandler for MessageSetHandler {
             // Process updates (only readAt is patchable).
             if let Some(updates) = update_map {
                 for (server_id, patch) in updates {
-                    match process_update(&store, server_id, patch, now_unix, &mut old_state_cell) {
+                    match process_update(
+                        &store,
+                        server_id,
+                        patch,
+                        now_unix,
+                        &mut old_state_cell,
+                        &mut new_state_cell,
+                    ) {
                         Ok(()) => {
                             updated.insert(server_id.clone(), Value::Null);
                         }
@@ -242,23 +275,18 @@ impl JmapHandler for MessageSetHandler {
                 }
             }
 
-            // Resolve old_state: if at least one create/update ran, it was captured
-            // inside the first lock scope.  If no creates or updates ran, capture now.
-            let old_state = match old_state_cell {
-                Some(s) => s,
-                None => {
+            // Resolve old_state and new_state.  If at least one create/update ran,
+            // both were captured inside their respective lock scopes.  If no creates
+            // or updates ran, capture both in a single lock now.
+            let (old_state, new_state) = match (old_state_cell, new_state_cell) {
+                (Some(old), Some(new)) => (old, new),
+                _ => {
                     let guard = store
                         .lock()
                         .map_err(|_| JmapError::server_fail("internal error"))?;
-                    guard.messages().get_state().map_err(kith_to_jmap)?
+                    let s = guard.messages().get_state().map_err(kith_to_jmap)?;
+                    (s.clone(), s)
                 }
-            };
-
-            let new_state = {
-                let guard = store
-                    .lock()
-                    .map_err(|_| JmapError::server_fail("internal error"))?;
-                guard.messages().get_state().map_err(kith_to_jmap)?
             };
 
             Ok(json!({
@@ -283,6 +311,7 @@ fn process_create(
     value: &Value,
     now_unix: i64,
     old_state_out: &mut Option<String>,
+    new_state_out: &mut Option<String>,
 ) -> Result<Value, Value> {
     let obj = value.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "create entry must be an object"}),
@@ -484,6 +513,15 @@ fn process_create(
             || json!({"type": "serverFail", "description": "message not found after insert"}),
         )?;
 
+    // Capture new_state after the write, still inside the lock, so it reflects
+    // exactly this create's effect and no concurrent change can slip in.
+    *new_state_out = Some(
+        guard
+            .messages()
+            .get_state()
+            .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+    );
+
     drop(guard);
 
     serde_json::to_value(&msg).map_err(
@@ -497,6 +535,7 @@ fn process_update(
     patch: &Value,
     now_unix: i64,
     old_state_out: &mut Option<String>,
+    new_state_out: &mut Option<String>,
 ) -> Result<(), Value> {
     let patch_obj = patch.as_object().ok_or_else(
         || json!({"type": "invalidArguments", "description": "update patch must be an object"}),
@@ -588,6 +627,15 @@ fn process_update(
             }
         }
     }
+
+    // Capture new_state after the write, still inside the lock, so it reflects
+    // exactly this update's effect and no concurrent change can slip in.
+    *new_state_out = Some(
+        guard
+            .messages()
+            .get_state()
+            .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?,
+    );
 
     drop(guard);
     Ok(())

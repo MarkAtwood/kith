@@ -1247,14 +1247,13 @@ pub async fn outbox_tick<C: DeliverClient>(
             let read_at_unix = match entry.read_at_unix {
                 Some(ts) => ts,
                 None => {
-                    tracing::warn!(msg_id = %entry.message_id, "outbox: receipt entry missing read_at_unix");
+                    tracing::warn!(msg_id = %entry.message_id, "outbox: receipt entry missing read_at_unix — permanently failing");
                     if let Ok(guard) = store.lock() {
-                        if let Err(e) = guard.outbox().record_failure(
-                            &entry,
-                            "receipt missing read_at_unix",
-                            now_unix,
-                        ) {
-                            tracing::warn!(msg_id = %entry.message_id, "outbox: record_failure error: {e}");
+                        if let Err(e) = guard
+                            .outbox()
+                            .mark_failed(&entry, "receipt missing read_at_unix")
+                        {
+                            tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
                         }
                     }
                     continue;

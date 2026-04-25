@@ -602,9 +602,37 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
     // Build once; TlsConnector is Clone and wraps an Arc<ClientConfig> — cheap to clone.
     let connector = build_tls_connector(cert_der)?;
 
-    // 3. SSE reconnect loop.
+    // 3. Bootstrap the message state baseline so we don't fire desktop notifications
+    //    for messages that existed before kithctl started.  Message/get(ids=[]) returns
+    //    the current state with an empty list — no network IDs needed.
+    let bootstrap_req = serde_json::json!({
+        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+        "methodCalls": [["Message/get", {"accountId": "me", "ids": []}, "b0"]]
+    });
+    let initial_state = match jmap_post(
+        config,
+        &tailnet_ip,
+        &connector,
+        &serde_json::to_string(&bootstrap_req).expect("static json"),
+    )
+    .await
+    {
+        Ok(resp) => resp
+            .get("methodResponses")
+            .and_then(|r| r.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|r| r.as_array())
+            .and_then(|r| r.get(1))
+            .and_then(|args| args.get("state"))
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| String::from("s-0")),
+        Err(_) => String::from("s-0"),
+    };
+
+    // 4. SSE reconnect loop.
     let mut last_event_id: Option<String> = None;
-    let mut last_message_state = String::from("s-0");
+    let mut last_message_state = initial_state;
 
     loop {
         match watch_once(

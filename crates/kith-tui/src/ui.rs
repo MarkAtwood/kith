@@ -152,6 +152,29 @@ fn draw_status(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
     f.render_widget(Paragraph::new(Span::raw(text)).style(style), area);
 }
 
+/// Truncate `s` to fit within `max` display characters.
+///
+/// - `max == 0`: returns empty string.
+/// - `max == 1`: returns the first character (no room for an ellipsis).
+/// - `max >= 2`: if `s` is longer than `max` chars, truncates to `max-1` chars
+///   and appends `…` (U+2026, one display column).
+/// - If `s` fits within `max` chars, returns `s` unchanged.
+pub fn fit_col(s: &str, max: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() <= max {
+        return s.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    if max == 1 {
+        return chars[0].to_string();
+    }
+    // max >= 2: truncate with ellipsis
+    let truncated: String = chars[..max - 1].iter().collect();
+    format!("{}…", truncated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,5 +297,72 @@ mod tests {
             status_row.contains("retry"),
             "status bar must show retry hint when Reconnecting, got: {status_row:?}"
         );
+    }
+
+    // fit_col tests — all oracles are manually constructed from the spec.
+
+    #[test]
+    fn fit_col_max_zero_returns_empty() {
+        // Oracle: max=0 → no characters can fit → empty string.
+        assert_eq!(fit_col("hello", 0), "");
+        assert_eq!(fit_col("", 0), "");
+    }
+
+    #[test]
+    fn fit_col_max_one_long_string_returns_first_char() {
+        // Oracle: max=1, "hello" (5 chars) → "h" (first char, no ellipsis room).
+        assert_eq!(fit_col("hello", 1), "h");
+    }
+
+    #[test]
+    fn fit_col_max_one_single_char_unchanged() {
+        // Oracle: max=1, "x" (1 char) fits exactly → "x".
+        assert_eq!(fit_col("x", 1), "x");
+    }
+
+    #[test]
+    fn fit_col_fits_exactly_unchanged() {
+        // Oracle: "abc" is 3 chars, max=3 → fits, returned unchanged.
+        assert_eq!(fit_col("abc", 3), "abc");
+    }
+
+    #[test]
+    fn fit_col_shorter_than_max_unchanged() {
+        // Oracle: "hi" is 2 chars, max=10 → fits, returned unchanged.
+        assert_eq!(fit_col("hi", 10), "hi");
+    }
+
+    #[test]
+    fn fit_col_empty_string_unchanged() {
+        // Oracle: "" is 0 chars, any max → fits, returned unchanged.
+        assert_eq!(fit_col("", 5), "");
+        assert_eq!(fit_col("", 1), "");
+    }
+
+    #[test]
+    fn fit_col_max_two_truncates_with_ellipsis() {
+        // Oracle: "hello" (5 chars), max=2 → "h" + "…" = "h…".
+        assert_eq!(fit_col("hello", 2), "h…");
+    }
+
+    #[test]
+    fn fit_col_max_four_truncates_with_ellipsis() {
+        // Oracle: "hello" (5 chars), max=4 → "hel" + "…" = "hel…".
+        assert_eq!(fit_col("hello", 4), "hel…");
+    }
+
+    #[test]
+    fn fit_col_multibyte_chars_counted_by_char_not_byte() {
+        // Oracle: "héllo" is 5 chars (é is one char, two bytes).
+        // max=3 → "hé" + "…" = "hé…" (3 chars output).
+        assert_eq!(fit_col("héllo", 3), "hé…");
+        // max=5 → fits exactly, returned unchanged.
+        assert_eq!(fit_col("héllo", 5), "héllo");
+    }
+
+    #[test]
+    fn fit_col_max_one_multibyte_first_char() {
+        // Oracle: "élan" (4 chars), max=1 → "é" (first char only).
+        assert_eq!(fit_col("élan", 1), "é");
     }
 }
