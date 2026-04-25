@@ -58,12 +58,10 @@ fn validate_content_type(ct: &str) -> Result<(), &'static str> {
             if !t.is_empty()
                 && !s.is_empty()
                 && !s.contains('/')
-                && t.bytes().all(|b| {
-                    b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.'
-                })
-                && s.bytes().all(|b| {
-                    b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.'
-                }) =>
+                && t.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.')
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.') =>
         {
             Ok(())
         }
@@ -213,10 +211,27 @@ impl JmapHandler for MessageSetHandler {
                 return Err(JmapError::account_not_found());
             }
 
-            let create_map: Option<&Map<String, Value>> =
-                obj.get("create").and_then(|v| v.as_object());
-            let update_map: Option<&Map<String, Value>> =
-                obj.get("update").and_then(|v| v.as_object());
+            // RFC 8620 §5.3: if "create" is present but not an object (and not null),
+            // that is an invalidArguments error — not a silent no-op.
+            let create_map: Option<&Map<String, Value>> = match obj.get("create") {
+                None | Some(Value::Null) => None,
+                Some(Value::Object(m)) => Some(m),
+                Some(_) => {
+                    return Err(JmapError::invalid_arguments(
+                        "create must be an object or null",
+                    ))
+                }
+            };
+            // RFC 8620 §5.3: same rule for "update".
+            let update_map: Option<&Map<String, Value>> = match obj.get("update") {
+                None | Some(Value::Null) => None,
+                Some(Value::Object(m)) => Some(m),
+                Some(_) => {
+                    return Err(JmapError::invalid_arguments(
+                        "update must be an object or null",
+                    ))
+                }
+            };
             // RFC 8620 §5.3: every submitted destroy ID must appear in either
             // destroyed or notDestroyed.  Silently dropping non-string elements via
             // filter_map would violate that requirement.  Instead, reject the whole
@@ -391,10 +406,29 @@ async fn process_create(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let sent_at: Option<String> = obj
-        .get("sentAt")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    // sentAt: validate RFC 3339 format and clamp out-of-range values.
+    // Reject non-parseable strings with invalidArguments; silently clamp
+    // values that are too far in the future or negative to the current time
+    // (we use receivedAt for ordering anyway, so sentAt is informational).
+    let sent_at: Option<String> = match obj.get("sentAt") {
+        None | Some(Value::Null) => None,
+        Some(v) => {
+            let s = v.as_str().ok_or_else(
+                || json!({"type": "invalidArguments", "description": "sentAt must be a string"}),
+            )?;
+            let parsed = chrono::DateTime::parse_from_rfc3339(s).map_err(|_| {
+                json!({"type": "invalidArguments", "description": "sentAt is not a valid RFC 3339 timestamp"})
+            })?;
+            let parsed_unix = parsed.timestamp();
+            // Clamp: if > now + 300 seconds or negative, use current time.
+            let clamped = if parsed_unix < 0 || parsed_unix > now_unix + 300 {
+                unix_secs_to_rfc3339(now_unix as u64)
+            } else {
+                s.to_string()
+            };
+            Some(clamped)
+        }
+    };
 
     // Validate body length BEFORE acquiring the store lock.
     if body.is_empty() {
@@ -756,9 +790,7 @@ impl JmapHandler for MessageGetHandler {
                     Some(v)
                 }
                 _ => {
-                    return Err(JmapError::invalid_arguments(
-                        "ids must be an array or null",
-                    ));
+                    return Err(JmapError::invalid_arguments("ids must be an array or null"));
                 }
             };
 
@@ -1036,6 +1068,8 @@ impl JmapHandler for MessageQueryChangesHandler {
                 return Err(JmapError::account_not_found());
             }
 
+            // RFC 8620 §5.6 lists sinceQueryState first; filter.chatId is our
+            // required extension.  Both are validated before any store access.
             let since_query_state = obj
                 .get("sinceQueryState")
                 .and_then(|v| v.as_str())
@@ -3285,7 +3319,9 @@ mod tests {
         );
 
         // notFound must be empty (RFC 8620 §5.1: when ids=null, notFound is not meaningful).
-        let not_found = result["notFound"].as_array().expect("notFound must be array");
+        let not_found = result["notFound"]
+            .as_array()
+            .expect("notFound must be array");
         assert!(
             not_found.is_empty(),
             "notFound must be empty when ids=null; got: {not_found:?}"

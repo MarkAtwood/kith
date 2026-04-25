@@ -254,7 +254,9 @@ pub(crate) async fn load_startup_data(
                 };
 
                 chat_ids.push(id);
-                chat_list.push(sanitize_display(&display));
+                // display is built from contacts_map (already sanitized) and
+                // numeric/constant strings — no further sanitization needed.
+                chat_list.push(display);
             }
         }
     }
@@ -305,11 +307,13 @@ struct MessageEntry {
     display_line: String,
     msg_id: String,
     sender_id: String,
+    /// Null/missing means unread; any string value means already read.
+    read_at: Option<String>,
 }
 
 /// Named return type for `load_messages_for_chat`.
 ///
-/// All three deques are sorted oldest-first and are always the same length.
+/// All four deques are sorted oldest-first and are always the same length.
 /// When `is_error` is true the load failed; callers must leave the existing
 /// message list unchanged rather than replacing it with an empty deque.
 #[derive(Default)]
@@ -317,6 +321,10 @@ pub(crate) struct LoadedMessages {
     pub display_lines: VecDeque<String>,
     pub message_ids: VecDeque<String>,
     pub sender_ids: VecDeque<String>,
+    /// `readAt` values parallel to `message_ids`. `None` means unread.
+    pub read_ats: VecDeque<Option<String>>,
+    /// The `state` token from the Message/get response. Empty string if unknown.
+    pub state: String,
     /// True when the load failed due to a network or server error.
     pub is_error: bool,
 }
@@ -368,10 +376,10 @@ pub(crate) async fn load_messages_for_chat(
         })
         .unwrap_or_default();
     // total is the server-side count before the limit was applied.
-    let total_on_server: u64 = first_query
+    // May be absent if the server did not support calculateTotal.
+    let total_on_server: Option<u64> = first_query
         .and_then(|(_, args, _)| args.get("total"))
-        .and_then(Value::as_u64)
-        .unwrap_or(ids.len() as u64);
+        .and_then(Value::as_u64);
 
     if ids.is_empty() {
         return LoadedMessages::default();
@@ -401,9 +409,18 @@ pub(crate) async fn load_messages_for_chat(
         }
     };
 
-    let list = match get_resp
-        .method_responses
-        .first()
+    let get_first = get_resp.method_responses.first();
+
+    // Capture the state token from the Message/get response — this is the
+    // authoritative current state after the full reload, used by the
+    // stateMismatch recovery path.
+    let response_state = get_first
+        .and_then(|(_, args, _)| args.get("state"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
+    let list = match get_first
         .and_then(|(_, args, _)| args.get("list"))
         .and_then(Value::as_array)
     {
@@ -416,7 +433,7 @@ pub(crate) async fn load_messages_for_chat(
         }
     };
 
-    // Step C — Format each message, collecting id and senderId alongside each entry.
+    // Step C — Format each message, collecting id, senderId, and readAt alongside each entry.
     let mut entries: Vec<MessageEntry> = Vec::with_capacity(list.len());
     for msg in list {
         let received_at = msg
@@ -434,12 +451,17 @@ pub(crate) async fn load_messages_for_chat(
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
+        let read_at = msg
+            .get("readAt")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         if let Some(display_line) = format_message_line(msg, contacts) {
             entries.push(MessageEntry {
                 received_at,
                 display_line,
                 msg_id,
                 sender_id,
+                read_at,
             });
         }
     }
@@ -447,25 +469,44 @@ pub(crate) async fn load_messages_for_chat(
     // Step D — Sort ascending by receivedAt (oldest first), then move fields
     // into the return struct in a single pass (no clone needed).
     entries.sort_by(|a, b| a.received_at.cmp(&b.received_at));
-    let mut loaded = LoadedMessages::default();
+    let mut loaded = LoadedMessages {
+        state: response_state,
+        ..LoadedMessages::default()
+    };
     for e in entries {
         loaded.display_lines.push_back(e.display_line);
         loaded.message_ids.push_back(e.msg_id);
         loaded.sender_ids.push_back(e.sender_id);
+        loaded.read_ats.push_back(e.read_at);
     }
 
     // If the server has more messages than the limit returned, prepend a notice
     // so the user knows history is truncated rather than silently missing.
-    if total_on_server as usize > ids.len() {
-        let hidden = total_on_server as usize - ids.len();
-        loaded.display_lines.push_front(format!(
-            "[-- {} older message{} not shown --]",
-            hidden,
-            if hidden == 1 { "" } else { "s" }
-        ));
-        // Empty id/sender so unread-receipt logic skips this synthetic entry.
+    // Also warn when total was absent and we hit the 500-message limit — the server
+    // may have more history even though it did not report the count.
+    const QUERY_LIMIT: usize = 500;
+    if let Some(total) = total_on_server {
+        if total as usize > ids.len() {
+            let hidden = total as usize - ids.len();
+            loaded.display_lines.push_front(format!(
+                "[-- {} older message{} not shown --]",
+                hidden,
+                if hidden == 1 { "" } else { "s" }
+            ));
+            // Pad parallel deques so they stay in sync with display_lines.
+            loaded.message_ids.push_front(String::new());
+            loaded.sender_ids.push_front(String::new());
+            loaded.read_ats.push_front(None);
+        }
+    } else if ids.len() >= QUERY_LIMIT {
+        // Server omitted `total`; we hit the limit so history may be truncated.
+        loaded
+            .display_lines
+            .push_front("[-- message history may be truncated --]".to_string());
+        // Pad parallel deques so they stay in sync with display_lines.
         loaded.message_ids.push_front(String::new());
         loaded.sender_ids.push_front(String::new());
+        loaded.read_ats.push_front(None);
     }
 
     loaded
@@ -599,18 +640,24 @@ pub(crate) async fn send_read_receipts(
 
 /// Build the set of unread message IDs from a freshly loaded message list.
 ///
-/// An unread message is one whose sender is not `"self"` and whose id is
-/// non-empty. `ids` and `senders` must be the same length (they are parallel
-/// VecDeques returned by `load_messages_for_chat`).
+/// An unread message is one whose sender is not `"self"`, whose id is
+/// non-empty, and whose `readAt` field is `None` (null or absent in the JSON).
+/// Messages that already have a `readAt` value are skipped — they were read in
+/// a previous session and must not trigger a redundant JMAP update.
+///
+/// `ids`, `senders`, and `read_ats` must all be the same length (they are
+/// parallel VecDeques returned by `load_messages_for_chat`).
 fn unread_ids_from_loaded_messages(
     ids: &VecDeque<String>,
     senders: &VecDeque<String>,
+    read_ats: &VecDeque<Option<String>>,
 ) -> HashSet<String> {
     senders
         .iter()
         .zip(ids.iter())
-        .filter(|(s, _)| s.as_str() != "self")
-        .map(|(_, id)| id.clone())
+        .zip(read_ats.iter())
+        .filter(|((s, _), ra)| s.as_str() != "self" && ra.is_none())
+        .map(|((_, id), _)| id.clone())
         .filter(|id| !id.is_empty())
         .collect()
 }
@@ -698,12 +745,17 @@ pub(crate) async fn handle_state_change(
                                 "Failed to load messages".to_string(),
                             );
                         } else {
+                            // Use the state token from the Message/get response, not
+                            // sc.new_state, which may be stale if more messages arrived
+                            // between the stateMismatch error and the reload completing.
+                            if !loaded.state.is_empty() {
+                                state.message_state = loaded.state;
+                            }
                             state.messages = loaded.display_lines;
                             state.message_ids = loaded.message_ids;
                             state.message_senders = loaded.sender_ids;
                         }
                     }
-                    state.message_state = sc.new_state.clone();
                 } else {
                     eprintln!("kith-tui: Message/changes returned error: {error_type}");
                 }
@@ -875,8 +927,14 @@ pub async fn run(
             state.messages = loaded.display_lines;
             state.message_ids = loaded.message_ids;
             state.message_senders = loaded.sender_ids;
-            state.unread_message_ids =
-                unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+            if !loaded.state.is_empty() {
+                state.message_state = loaded.state;
+            }
+            state.unread_message_ids = unread_ids_from_loaded_messages(
+                &state.message_ids,
+                &state.message_senders,
+                &loaded.read_ats,
+            );
             flush_unread_receipts(&http_client, &api_url, state).await;
             state.scroll_offset = 0;
         }
@@ -935,10 +993,13 @@ pub async fn run(
                     Some(crate::client::SseStatus::AuthError(code)) => {
                         // Auth failure — the SSE task has stopped. Surface the
                         // error to the user and quit; retrying is pointless.
+                        // Break immediately so we do not process stale JMAP
+                        // calls or draw another frame with the dead session.
                         state.connection_status = crate::app::ConnectionStatus::Error(
                             format!("Authentication failed (HTTP {code}): check Tailscale identity"),
                         );
                         state.quit = true;
+                        break;
                     }
                     None => {
                         // Status channel closed; task exited.
@@ -986,8 +1047,14 @@ pub async fn run(
                     state.messages = loaded.display_lines;
                     state.message_ids = loaded.message_ids;
                     state.message_senders = loaded.sender_ids;
-                    state.unread_message_ids =
-                        unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+                    if !loaded.state.is_empty() {
+                        state.message_state = loaded.state;
+                    }
+                    state.unread_message_ids = unread_ids_from_loaded_messages(
+                        &state.message_ids,
+                        &state.message_senders,
+                        &loaded.read_ats,
+                    );
                     flush_unread_receipts(&http_client, &api_url, state).await;
                     state.scroll_offset = 0;
                     prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
@@ -1605,8 +1672,11 @@ mod tests {
             state.messages = loaded.display_lines;
             state.message_ids = loaded.message_ids;
             state.message_senders = loaded.sender_ids;
-            state.unread_message_ids =
-                unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+            state.unread_message_ids = unread_ids_from_loaded_messages(
+                &state.message_ids,
+                &state.message_senders,
+                &loaded.read_ats,
+            );
             flush_unread_receipts(&http_client, &api_url, &mut state).await;
             state.message_state = "s-4".to_string(); // set from Message/get state field
             state.scroll_offset = 0;

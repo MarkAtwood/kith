@@ -281,9 +281,7 @@ impl<'a> MessageStore<'a> {
             )
             .map_err(db_err)?;
 
-        let rows = stmt
-            .query_map([], row_to_message)
-            .map_err(db_err)?;
+        let rows = stmt.query_map([], row_to_message).map_err(db_err)?;
 
         let mut messages: Vec<Message> = rows
             .map(|r| r.map_err(db_err))

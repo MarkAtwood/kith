@@ -398,6 +398,17 @@ impl<'a> ChatStore<'a> {
     /// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
     /// writer can advance the counter between the two statements and cause this
     /// caller to return a stale value.
+    ///
+    /// **Warning:** This method advances the global state counter WITHOUT stamping
+    /// any chat row's `changed_at_counter`.  A caller that invokes this directly
+    /// produces a phantom state advance: `new_state > since_state` but
+    /// `get_changes_since` returns no rows, which can confuse RFC 8620 §5.2 clients.
+    /// The only legitimate use is in `kithd` integration tests that need to prime
+    /// the state counter to a known value before asserting SSE replay behaviour —
+    /// never in production code paths.  All production writes use
+    /// `advance_state_counter_in_tx` inside a transaction that also stamps the
+    /// per-row counter.  This method remains `pub` only because `kithd` (a separate
+    /// crate) calls it from tests; it cannot be `pub(crate)`.
     pub fn advance_state(&self) -> Result<String, KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         tx.execute(

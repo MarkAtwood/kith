@@ -104,6 +104,13 @@ pub async fn fetch_session(
 
 // ── JMAP API call ─────────────────────────────────────────────────────────────
 
+/// Timeout applied to each JMAP API call.
+///
+/// A kithd that accepts a connection but stalls sending the response would
+/// otherwise cause the event loop to block indefinitely, making the TUI
+/// unresponsive to keyboard events.
+const JMAP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// POST a `JmapRequest` to `api_url` and return the parsed `JmapResponse`.
 pub async fn call_jmap(
     client: &reqwest::Client,
@@ -113,6 +120,7 @@ pub async fn call_jmap(
     let resp = client
         .post(api_url)
         .json(req)
+        .timeout(JMAP_CALL_TIMEOUT)
         .send()
         .await?
         .error_for_status()?;
@@ -142,7 +150,7 @@ pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
         } else if let Some(rest) = line.strip_prefix("data:") {
             data_parts.push(rest.trim());
         }
-        // Ignore "id:", comment lines, and anything else.
+        // "id:" is handled by extract_sse_id; comment lines and anything else ignored.
     }
 
     if event_type != "state" {
@@ -165,6 +173,16 @@ pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
         }
     }
     out
+}
+
+/// Extract the `id:` field value from a single SSE event block.
+///
+/// Returns `Some(id)` if the block contains an `id:` line, `None` otherwise.
+/// Used to track the `Last-Event-ID` for reconnect resumption per the SSE spec.
+fn extract_sse_id(block: &str) -> Option<String> {
+    block
+        .lines()
+        .find_map(|line| line.strip_prefix("id:").map(|v| v.trim().to_owned()))
 }
 
 // ── SSE background task ───────────────────────────────────────────────────────
@@ -195,9 +213,21 @@ pub fn spawn_sse(
     let (status_tx, status_rx) = mpsc::channel::<SseStatus>(8);
     let handle = tokio::spawn(async move {
         let mut backoff_secs: u64 = 2;
+        // Track the last SSE id: value across reconnect attempts so we can
+        // send Last-Event-ID for server-side resumption (SSE spec §9.2).
+        let mut last_event_id: Option<String> = None;
         loop {
-            match run_sse(client.clone(), &event_url, tx.clone(), &status_tx).await {
-                Ok(()) => {
+            match run_sse(
+                client.clone(),
+                &event_url,
+                tx.clone(),
+                &status_tx,
+                last_event_id.as_deref(),
+            )
+            .await
+            {
+                Ok(id) => {
+                    last_event_id = id;
                     // Stream closed cleanly (server EOF). Reconnect.
                     eprintln!("kith-tui: SSE stream closed; reconnecting in {backoff_secs}s");
                     // Reset backoff on a clean close — the server was reachable.
@@ -206,15 +236,13 @@ pub fn spawn_sse(
                 Err(ClientError::AuthFailed(code)) => {
                     // 401/403 means our identity is rejected. Retrying will not
                     // help — surface the error and stop the task entirely.
-                    eprintln!(
-                        "kith-tui: SSE authentication failed (HTTP {code}): not retrying"
-                    );
-                    let _ = status_tx
-                        .send(SseStatus::AuthError(code))
-                        .await;
+                    eprintln!("kith-tui: SSE authentication failed (HTTP {code}): not retrying");
+                    let _ = status_tx.send(SseStatus::AuthError(code)).await;
                     return;
                 }
                 Err(e) => {
+                    // Keep last_event_id on error — the server may replay from
+                    // that point on reconnect, minimising missed events.
                     eprintln!("kith-tui: SSE stream error: {e}; reconnecting in {backoff_secs}s");
                 }
             }
@@ -225,7 +253,12 @@ pub fn spawn_sse(
                 return;
             }
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
+            // Use select! so that a dropped StateChange receiver wakes the
+            // task immediately during backoff rather than waiting up to 60s.
+            tokio::select! {
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)) => {}
+                _ = tx.closed() => { return; }
+            }
             backoff_secs = (backoff_secs * 2).min(60);
 
             // Exit if the StateChange receiver was dropped while we slept.
@@ -253,17 +286,23 @@ pub enum SseStatus {
 /// 1 MiB and return a fatal error so the caller can reconnect (or give up).
 const MAX_SSE_BUF: usize = 1024 * 1024; // 1 MiB
 
+/// Run one SSE connection attempt.
+///
+/// Accepts `last_event_id` to send a `Last-Event-ID` header, enabling the
+/// server to resume the stream from the last acknowledged event.
+/// Returns the last `id:` value seen in the stream (for the next reconnect).
 async fn run_sse(
     client: reqwest::Client,
     event_url: &str,
     tx: mpsc::Sender<StateChange>,
     status_tx: &mpsc::Sender<SseStatus>,
-) -> Result<(), ClientError> {
-    let resp = client
-        .get(event_url)
-        .header("Accept", "text/event-stream")
-        .send()
-        .await?;
+    last_event_id: Option<&str>,
+) -> Result<Option<String>, ClientError> {
+    let mut req = client.get(event_url).header("Accept", "text/event-stream");
+    if let Some(lei) = last_event_id {
+        req = req.header("Last-Event-ID", lei);
+    }
+    let resp = req.send().await?;
 
     // Detect auth failures before calling error_for_status() so we can return
     // a typed AuthFailed error instead of a generic Http error. The caller
@@ -272,8 +311,7 @@ async fn run_sse(
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         return Err(ClientError::AuthFailed(status.as_u16()));
     }
-    resp.error_for_status_ref()
-        .map_err(ClientError::Http)?;
+    resp.error_for_status_ref().map_err(ClientError::Http)?;
 
     // HTTP connection established — notify the UI.
     // Ignore send errors: the UI may have exited.
@@ -281,6 +319,8 @@ async fn run_sse(
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
+    // Track the last SSE id: field seen for Last-Event-ID resumption.
+    let mut last_id: Option<String> = last_event_id.map(str::to_owned);
 
     while let Some(chunk) = stream.next().await {
         let bytes = chunk?;
@@ -311,15 +351,20 @@ async fn run_sse(
         while let Some(pos) = buf.find("\n\n") {
             let block = buf[..pos].to_string();
             buf.drain(..pos + 2);
+            // Update last_id before dispatching state changes so that the
+            // next reconnect can resume from this id even if the receiver drops.
+            if let Some(id) = extract_sse_id(&block) {
+                last_id = Some(id);
+            }
             for sc in parse_sse_event(&block) {
                 if tx.send(sc).await.is_err() {
                     // Receiver dropped; exit silently.
-                    return Ok(());
+                    return Ok(last_id);
                 }
             }
         }
     }
-    Ok(())
+    Ok(last_id)
 }
 
 #[cfg(test)]
@@ -426,6 +471,23 @@ mod tests {
         assert_eq!(resp.method_responses[0].0, "Chat/get");
         assert_eq!(resp.method_responses[0].2, "c0");
         assert_eq!(resp.session_state, "s-1");
+    }
+
+    // ── extract_sse_id ────────────────────────────────────────────────────────
+
+    // Oracle: "id: s-7" in a block yields Some("s-7").
+    // Constructed from SSE spec (HTML §9.2): id: field sets last event ID.
+    #[test]
+    fn extract_sse_id_present() {
+        let block = "event: state\nid: s-7\ndata: {}";
+        assert_eq!(extract_sse_id(block), Some("s-7".to_string()));
+    }
+
+    // Oracle: block without id: field yields None.
+    #[test]
+    fn extract_sse_id_absent() {
+        let block = "event: state\ndata: {}";
+        assert_eq!(extract_sse_id(block), None);
     }
 
     // ── parse_sse_event ───────────────────────────────────────────────────────
@@ -552,7 +614,9 @@ mod tests {
 
         // After both chunks, the buffer must contain a complete LF-only event
         // terminated by "\n\n".  Extract the block and parse it.
-        let pos = buf.find("\n\n").expect("blank-line frame boundary must exist");
+        let pos = buf
+            .find("\n\n")
+            .expect("blank-line frame boundary must exist");
         let block = &buf[..pos];
 
         let changes = parse_sse_event(block);

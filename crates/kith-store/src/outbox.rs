@@ -1,7 +1,7 @@
 use crate::db_err;
 use kith_core::{KithError, StateChange};
 use rand::Rng;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
 /// Maximum number of delivery attempts before an outbox entry is marked failed.
@@ -283,36 +283,55 @@ impl<'a> OutboxStore<'a> {
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
 
-        // Single UPDATE per delivery path: delivery_state, optional delivered_at,
-        // and state_version are all written together.  The subquery reads the
-        // next counter value inline so that the state_version stamp and the
-        // delivery-state change are atomic in one statement.
-        let rows = if let Some(at) = delivered_at {
-            tx.execute(
-                "UPDATE messages \
-                 SET delivery_state = ?1, delivered_at = ?2, \
-                     state_version = (SELECT counter + 1 FROM state_counters \
-                                      WHERE type_name = 'message') \
-                 WHERE id = ?3 AND delivery_state != 'delivered'",
-                params![final_state, at, entry.message_id],
-            )
-            .map_err(db_err)?
-        } else {
-            tx.execute(
-                "UPDATE messages \
-                 SET delivery_state = ?1, \
-                     state_version = (SELECT counter + 1 FROM state_counters \
-                                      WHERE type_name = 'message') \
-                 WHERE id = ?2 AND delivery_state != 'delivered'",
-                params![final_state, entry.message_id],
-            )
-            .map_err(db_err)?
-        };
-
-        // Advance the state counter only when the UPDATE actually touched a row.
+        // Ordering requirement: advance the counter FIRST, then stamp state_version
+        // on the messages row with that captured value.  This guarantees that
+        // state_version on the row equals exactly the counter announced in the
+        // StateChange event — never counter+1 from a stale subquery read.
+        //
+        // If we stamped state_version via a subquery (counter+1) and then advanced
+        // the counter, the two values would agree only because SQLite serialises
+        // writes within a transaction.  Making the order explicit removes the
+        // dependency on that coincidence and makes the invariant self-documenting.
+        //
+        // The counter is advanced only when the UPDATE actually touches a row.
         // For orphaned outbox entries (message row absent) the counter must not move.
-        let version = if rows > 0 {
-            Some(crate::advance_state_counter_in_tx(&tx, "message")?)
+
+        // First: probe whether the messages row exists and is not already delivered.
+        // We use a SELECT rather than a speculative UPDATE so we can branch before
+        // touching the counter.
+        let exists: bool = tx
+            .query_row(
+                "SELECT 1 FROM messages WHERE id = ?1 AND delivery_state != 'delivered'",
+                params![entry.message_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(db_err)?
+            .is_some();
+
+        let version = if exists {
+            // Advance the counter first; capture the new value.
+            let v = crate::advance_state_counter_in_tx(&tx, "message")?;
+
+            // Now stamp the row with the exact counter value we just reserved.
+            if let Some(at) = delivered_at {
+                tx.execute(
+                    "UPDATE messages \
+                     SET delivery_state = ?1, delivered_at = ?2, state_version = ?3 \
+                     WHERE id = ?4 AND delivery_state != 'delivered'",
+                    params![final_state, at, v, entry.message_id],
+                )
+                .map_err(db_err)?;
+            } else {
+                tx.execute(
+                    "UPDATE messages \
+                     SET delivery_state = ?1, state_version = ?2 \
+                     WHERE id = ?3 AND delivery_state != 'delivered'",
+                    params![final_state, v, entry.message_id],
+                )
+                .map_err(db_err)?;
+            }
+            Some(v)
         } else {
             None
         };

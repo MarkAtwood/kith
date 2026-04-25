@@ -44,7 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let result = run_app(&http_client, &args.url).await;
 
-    // Cleanup: always runs regardless of whether run_app returned Ok or Err.
+    // Cleanup: always runs regardless of whether run_app returned Ok or Err,
+    // including when fetch_session fails before the terminal is used.
+    let _ = execute!(io::stdout(), crossterm::cursor::Show);
     let _ = terminal::disable_raw_mode();
     let _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
 
@@ -66,7 +68,7 @@ async fn run_app(
     let (sse_rx, sse_status_rx, _sse_handle) =
         client::spawn_sse(http_client.clone(), session.event_source_url.clone());
 
-    let result = event::run(
+    event::run(
         &mut terminal,
         &mut state,
         http_client.clone(),
@@ -74,8 +76,5 @@ async fn run_app(
         sse_rx,
         sse_status_rx,
     )
-    .await;
-
-    let _ = terminal.show_cursor();
-    result
+    .await
 }

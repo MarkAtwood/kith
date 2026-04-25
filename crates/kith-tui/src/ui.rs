@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::{AppState, Focus};
 
@@ -158,27 +158,44 @@ fn draw_status(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
     f.render_widget(Paragraph::new(Span::raw(text)).style(style), area);
 }
 
-/// Truncate `s` to fit within `max` display characters.
+/// Truncate `s` to fit within `max` terminal display columns.
+///
+/// Counts display columns using `unicode_width`, so wide characters (CJK,
+/// emoji) count as 2 columns each. Multi-byte characters that render as a
+/// single column (e.g. `é`) count as 1.
 ///
 /// - `max == 0`: returns empty string.
 /// - `max == 1`: returns the first character (no room for an ellipsis).
-/// - `max >= 2`: if `s` is longer than `max` chars, truncates to `max-1` chars
-///   and appends `…` (U+2026, one display column).
-/// - If `s` fits within `max` chars, returns `s` unchanged.
+/// - `max >= 2`: if `s` is wider than `max` columns, truncates to `max-1`
+///   columns and appends `…` (U+2026, one display column).
+/// - If `s` fits within `max` columns, returns `s` unchanged.
 pub fn fit_col(s: &str, max: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    if chars.len() <= max {
+    let total_width = s.width();
+    if total_width <= max {
         return s.to_string();
     }
     if max == 0 {
         return String::new();
     }
     if max == 1 {
-        return chars[0].to_string();
+        // Return the first character even if it is wide (no better option).
+        return s.chars().next().map(|c| c.to_string()).unwrap_or_default();
     }
-    // max >= 2: truncate with ellipsis
-    let truncated: String = chars[..max - 1].iter().collect();
-    format!("{}…", truncated)
+    // max >= 2: build truncated string by display columns, then append ellipsis.
+    // Reserve 1 column for '…'.
+    let target = max - 1;
+    let mut result = String::new();
+    let mut cols_used = 0usize;
+    for c in s.chars() {
+        let cw = UnicodeWidthChar::width(c).unwrap_or(1);
+        if cols_used + cw > target {
+            break;
+        }
+        result.push(c);
+        cols_used += cw;
+    }
+    result.push('…');
+    result
 }
 
 #[cfg(test)]
@@ -370,5 +387,24 @@ mod tests {
     fn fit_col_max_one_multibyte_first_char() {
         // Oracle: "élan" (4 chars), max=1 → "é" (first char only).
         assert_eq!(fit_col("élan", 1), "é");
+    }
+
+    #[test]
+    fn fit_col_wide_chars_counted_by_display_columns() {
+        // Oracle: "你好ABC" — '你' and '好' are each 2 display columns.
+        // Total display width = 2+2+1+1+1 = 7.
+        // max=4 → reserve 1 col for '…', so 3 cols available.
+        // '你' = 2 cols → fits (2 ≤ 3). '好' = 2 cols → 2+2=4 > 3 → stop.
+        // Result: "你…" (3 display cols).
+        assert_eq!(fit_col("你好ABC", 4), "你…");
+
+        // max=5 → reserve 1 col for '…', 4 cols available.
+        // '你' = 2, '好' = 2 → 4 ≤ 4 → include both.
+        // 'A' → 4+1=5 > 4 → stop.
+        // Result: "你好…" (5 display cols).
+        assert_eq!(fit_col("你好ABC", 5), "你好…");
+
+        // max=7 → fits exactly → returned unchanged.
+        assert_eq!(fit_col("你好ABC", 7), "你好ABC");
     }
 }

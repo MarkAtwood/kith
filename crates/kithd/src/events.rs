@@ -102,7 +102,14 @@ impl TypeFilter {
             // broadcast type MUST add a corresponding arm here or all events of
             // that type will be silently filtered out for clients using a type
             // filter.
-            _ => false,
+            _ => {
+                debug_assert!(
+                    false,
+                    "TypeFilter::allows: unknown type_name {type_name:?} — \
+                     add a match arm for every type emitted by the store"
+                );
+                false
+            }
         }
     }
 }
@@ -200,12 +207,17 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // Replay design note: the client sends a single Last-Event-ID token
     // (e.g. "s-5"), which is the state token from the last SSE event it
     // received — not a per-type cursor.  That single value is compared
-    // independently against each type's current state.  A mismatch triggers
-    // replay for that type.  If two types happen to share the same counter
-    // value as the LEI, replay is suppressed for them — safe over-silence
-    // only in the accidental-equality edge case.  On reconnect the client
-    // calls <Type>/changes for each type it tracks anyway, so an occasional
-    // missed replay causes one extra no-op round-trip, not data loss.
+    // independently against each type's current state.  A type is replayed
+    // when server_n >= lei_n (strictly ahead OR equal-counter).
+    //
+    // Equal-counter replay: per-type counters are independent.  If Chat is at
+    // s-5 and the client's LEI is s-5 from a Message event, the client may
+    // never have received a Chat event at s-5.  Replaying when server_n ==
+    // lei_n sends one extra SSE event; the client calls Chat/changes with
+    // sinceState=s-4 and gets the delta.  The worst case (client already has
+    // s-5) is one spurious no-op changes round-trip — correct and safe.
+    // Suppressing (server_n < lei_n only) risks silent data loss if the
+    // client missed an event for a type whose counter equals the LEI.
     if let Some(ref lei) = last_event_id {
         let type_states: [(&str, String); 3] = {
             let store = match state.store.lock() {
@@ -256,7 +268,10 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 // malformed.
                 let server_n = parse_state_counter(&current_state).unwrap_or(0);
                 let lei_n = parse_state_counter(lei).unwrap_or(i64::MAX);
-                if server_n <= lei_n {
+                // Replay when server is at or ahead of LEI: includes equal-counter
+                // case to avoid silent missed-event for types that share a counter
+                // value with the LEI from a different type's event.
+                if server_n < lei_n {
                     return None;
                 }
                 let data = serde_json::json!({
@@ -856,9 +871,10 @@ mod tests {
     // events_last_event_id_replay_on_state_advance
     // Oracle: Client sends Last-Event-ID "s-0".  We advance Message state to
     //         "s-1" in the store before connecting.  The handler must
-    //         immediately replay a state event for Message with "s-1"
-    //         without waiting for a live broadcast.  closeafter=state causes
-    //         the stream to close after the single replayed event.
+    //         immediately replay state events for all three types (Contact,
+    //         Chat, Message) whose server_n >= lei_n=0, including those still
+    //         at s-0 (equal-counter replay prevents silent missed events).
+    //         closeafter=state causes the stream to close after the replays.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn events_last_event_id_replay_on_state_advance() {
@@ -891,30 +907,31 @@ mod tests {
         let body = std::str::from_utf8(&body_bytes).unwrap();
 
         let event_count = body.lines().filter(|l| *l == "event: state").count();
+        // Three types (Contact, Chat, Message) all have server_n >= lei_n=0.
         assert_eq!(
-            event_count, 1,
-            "exactly one replay event expected, got body: {body:?}"
+            event_count, 3,
+            "all three types must replay when server_n >= lei_n, got body: {body:?}"
         );
         assert!(
             body.contains("Message"),
-            "replay must name the advanced type, body: {body:?}"
+            "replay must include the advanced Message type, body: {body:?}"
         );
         assert!(
             body.contains("s-1"),
-            "replay must carry the current state token, body: {body:?}"
+            "replay must carry Message's current state token, body: {body:?}"
         );
     }
 
     // -----------------------------------------------------------------------
-    // events_last_event_id_no_replay_when_current
-    // Oracle: Client sends Last-Event-ID "s-0".  No state advance has
-    //         happened — all types are still at "s-0".  No replay event must
+    // events_last_event_id_no_replay_when_client_ahead
+    // Oracle: Client sends Last-Event-ID "s-2" but all types are still at
+    //         "s-0" (server_n < lei_n for all types).  No replay event must
     //         be emitted.  We use a live broadcast event to close the stream
     //         so we can read the body and confirm no extra "event: state"
     //         line appeared before it.
     // -----------------------------------------------------------------------
     #[tokio::test]
-    async fn events_last_event_id_no_replay_when_current() {
+    async fn events_last_event_id_no_replay_when_client_ahead() {
         let state = make_state(
             MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
             "uid-owner",
@@ -932,9 +949,11 @@ mod tests {
             });
         });
 
+        // LEI "s-2" is ahead of every type's server counter (all at s-0):
+        // server_n=0 < lei_n=2 → no replay for any type.
         let req = Request::builder()
             .uri("/jmap/events?closeafter=state")
-            .header("last-event-id", "s-0")
+            .header("last-event-id", "s-2")
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -943,11 +962,11 @@ mod tests {
         let body_bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
         let body = std::str::from_utf8(&body_bytes).unwrap();
 
-        // Exactly one event: the live ChatContact event, not a spurious replay.
+        // Exactly one event: the live ChatContact event, no spurious replays.
         let event_count = body.lines().filter(|l| *l == "event: state").count();
         assert_eq!(
             event_count, 1,
-            "no replay when state matches LEI, got body: {body:?}"
+            "no replay when client is ahead of server, got body: {body:?}"
         );
         assert!(
             body.contains("ChatContact"),
@@ -1031,17 +1050,18 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // events_last_event_id_suppresses_current_state
+    // events_last_event_id_replays_at_equal_counter
     // Oracle: When the client's Last-Event-ID equals a type's current state,
-    //         no replay is emitted for that type — the client is already
-    //         up-to-date.  We advance Message to "s-1" then reconnect with
-    //         LEI "s-1" and types=Message.  The replay list is empty.  A
-    //         subsequent live broadcast of Message "s-2" provides the single
-    //         event that closes the stream.  The body must contain "s-2" but
-    //         not a duplicate "s-1" replay event.
+    //         replay IS emitted for that type.  Per-type counters are
+    //         independent: LEI "s-1" from a Contact event does not guarantee
+    //         the client received a Message event also at counter 1.
+    //         We advance Message to "s-1" then reconnect with LEI "s-1" and
+    //         types=Message.  A replay of Message "s-1" is emitted (1 event)
+    //         and closeafter=state closes the stream before the live "s-2"
+    //         broadcast fires.  The body must contain "s-1" and NOT "s-2".
     // -----------------------------------------------------------------------
     #[tokio::test]
-    async fn events_last_event_id_suppresses_current_state() {
+    async fn events_last_event_id_replays_at_equal_counter() {
         let state = make_state(
             MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
             "uid-owner",
@@ -1080,19 +1100,20 @@ mod tests {
         let body_bytes = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
         let body = std::str::from_utf8(&body_bytes).unwrap();
 
-        // Exactly one event: the live "s-2", not a spurious "s-1" replay.
+        // Exactly one event: the "s-1" replay.  closeafter=state with 1
+        // replay event suppresses the live "s-2" broadcast (live_limit=0).
         let event_count = body.lines().filter(|l| *l == "event: state").count();
         assert_eq!(
             event_count, 1,
-            "must have exactly one event (live s-2, no s-1 replay), body: {body:?}"
+            "must have exactly one event (s-1 replay), body: {body:?}"
         );
         assert!(
-            body.contains("s-2"),
-            "live event s-2 must be present, body: {body:?}"
+            body.contains("\"s-1\""),
+            "equal-counter replay must appear, body: {body:?}"
         );
         assert!(
-            !body.contains("\"s-1\""),
-            "suppressed replay s-1 must not appear in body: {body:?}"
+            !body.contains("\"s-2\""),
+            "live s-2 must not appear (stream closed by replay), body: {body:?}"
         );
     }
 

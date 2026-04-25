@@ -88,8 +88,9 @@ pub struct DeliverMessageArgs {
 /// 5. Validate message `id` is a well-formed ULID.
 /// 6. (If `replyTo` present) verify the referenced message exists in this chat.
 /// 7. `chats().get` or `create`; verify sender matches `contact_id` if chat exists.
-/// 8. `messages().insert` with `delivery_state = Received`.
-/// 9. `contacts().upsert`.
+/// 8. `contacts().upsert` (idempotent; must precede message insert so a failed
+///    insert never leaves a message without a contact row).
+/// 9. `messages().insert` with `delivery_state = Received`.
 pub struct DeliverHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -298,7 +299,25 @@ impl PeerJmapHandler for DeliverHandler {
             // Assign a fresh receiver-side ULID; the sender's id becomes sender_msg_id.
             let new_id = Ulid::new().to_string();
 
-            // Step 9: Insert the message and its attachments in a single transaction.
+            // Step 9a: Upsert the contact record BEFORE inserting the message.
+            // This is idempotent, so if the message insert later fails the contact
+            // row being present is harmless.  Conversely, if upsert fails here we
+            // return an error before any message is stored — leaving the DB clean.
+            guard
+                .contacts()
+                .upsert(
+                    &identity.user_id,
+                    &identity.login_name,
+                    &identity.node_name,
+                    identity.display_name.as_deref(),
+                    now_unix,
+                )
+                .map_err(|e| {
+                    tracing::error!("store error upserting contact: {e}");
+                    JmapError::server_fail("internal error")
+                })?;
+
+            // Step 9b: Insert the message and its attachments in a single transaction.
             guard
                 .insert_message_with_attachments(
                     &new_id,
@@ -326,21 +345,6 @@ impl PeerJmapHandler for DeliverHandler {
                 .update_last_message_at(&resolved_chat_id, now_unix)
                 .map_err(|e| {
                     tracing::error!("store error updating chat last_message_at: {e}");
-                    JmapError::server_fail("internal error")
-                })?;
-
-            // Step 10: Upsert the contact record for this peer.
-            guard
-                .contacts()
-                .upsert(
-                    &identity.user_id,
-                    &identity.login_name,
-                    &identity.node_name,
-                    identity.display_name.as_deref(),
-                    now_unix,
-                )
-                .map_err(|e| {
-                    tracing::error!("store error upserting contact: {e}");
                     JmapError::server_fail("internal error")
                 })?;
 

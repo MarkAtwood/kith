@@ -579,10 +579,18 @@ async fn jmap_post(
         if h.is_empty() {
             break;
         }
-        if let Some(val) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+        let h_lower = h.to_ascii_lowercase();
+        if let Some(val) = h_lower.strip_prefix("content-length:") {
             if let Ok(len) = val.trim().parse::<usize>() {
                 content_length_hint = Some(len);
             }
+        }
+        // kithd uses Body::from(String) which produces a fixed-length body;
+        // hyper sets Content-Length and does NOT use chunked Transfer-Encoding.
+        // Reject chunked explicitly: our body reader does not decode chunk framing
+        // and would misparse the response, surfacing as a JSON parse error.
+        if h_lower.strip_prefix("transfer-encoding:").map(|v| v.trim()) == Some("chunked") {
+            return Err("JMAP response uses chunked Transfer-Encoding (not supported)".into());
         }
         header_count += 1;
     }

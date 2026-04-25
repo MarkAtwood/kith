@@ -188,7 +188,7 @@ impl<'a> ContactStore<'a> {
             .prepare_cached(
                 "SELECT peer_user_id, peer_login, display_name, \
                         first_seen_at, last_seen_at, blocked \
-                 FROM contacts ORDER BY peer_login",
+                 FROM contacts ORDER BY peer_login, peer_user_id",
             )
             .map_err(db_err)?;
         let rows = stmt.query_map([], row_to_contact).map_err(db_err)?;
@@ -199,10 +199,10 @@ impl<'a> ContactStore<'a> {
         Ok(contacts)
     }
 
-    /// Return the 0-based position of `peer_user_id` in the `ORDER BY peer_login` list.
+    /// Return the 0-based position of `peer_user_id` in the `ORDER BY peer_login, peer_user_id` list.
     ///
-    /// Counts contacts whose `peer_login` sorts strictly before the given contact's
-    /// `peer_login`.  Returns `None` if `peer_user_id` is not in the table.
+    /// Counts contacts that sort strictly before the given contact using the same
+    /// tiebreaker as `list()`.  Returns `None` if `peer_user_id` is not in the table.
     ///
     /// Used by `Contact/queryChanges` to report insertion indices without loading the
     /// full contact list into memory.
@@ -213,7 +213,9 @@ impl<'a> ContactStore<'a> {
         let n: Option<i64> = self
             .conn
             .query_row(
-                "SELECT (SELECT COUNT(*) FROM contacts c2 WHERE c2.peer_login < c1.peer_login) \
+                "SELECT (SELECT COUNT(*) FROM contacts c2 \
+                          WHERE c2.peer_login < c1.peer_login \
+                             OR (c2.peer_login = c1.peer_login AND c2.peer_user_id < c1.peer_user_id)) \
                  FROM contacts c1 \
                  WHERE c1.peer_user_id = ?1",
                 params![peer_user_id],
@@ -277,11 +279,6 @@ impl<'a> ContactStore<'a> {
             )
             .map_err(db_err)?;
         Ok(format!("s-{counter}"))
-    }
-
-    /// Increment the contact state counter and return the new state string.
-    pub fn advance_state(&self) -> Result<String, KithError> {
-        advance_state(self.conn)
     }
 
     /// Return IDs of contacts that changed after `since_state`.
@@ -383,7 +380,9 @@ impl<'a> ContactStore<'a> {
                 let id: String = row.get(0)?;
                 let changed: i64 = row.get(1)?;
                 let created: i64 = row.get(2)?;
-                Ok((id, changed, created > since_counter))
+                // Mirror the sentinel guard in get_changes_since: created_at_counter == 0
+                // means "pre-V8 row" — never classify as created regardless of since_counter.
+                Ok((id, changed, created > since_counter && created > 0))
             })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
@@ -493,29 +492,6 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
         },
         blocked: blocked != 0,
     })
-}
-
-/// Increment the contact state counter and return the new state string like "s-5".
-///
-/// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
-/// writer can advance the counter between the two statements and cause this
-/// caller to return a stale value.
-fn advance_state(conn: &Connection) -> Result<String, KithError> {
-    let tx = conn.unchecked_transaction().map_err(db_err)?;
-    tx.execute(
-        "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'contact'",
-        [],
-    )
-    .map_err(db_err)?;
-    let counter: i64 = tx
-        .query_row(
-            "SELECT counter FROM state_counters WHERE type_name = 'contact'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(db_err)?;
-    tx.commit().map_err(db_err)?;
-    Ok(format!("s-{counter}"))
 }
 
 #[cfg(test)]

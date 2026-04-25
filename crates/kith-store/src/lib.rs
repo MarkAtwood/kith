@@ -788,9 +788,9 @@ impl Store {
             )
             .map_err(db_err)?;
 
-        let mut contact = "s-0".to_string();
-        let mut chat = "s-0".to_string();
-        let mut message = "s-0".to_string();
+        let mut contact: Option<String> = None;
+        let mut chat: Option<String> = None;
+        let mut message: Option<String> = None;
 
         let rows = stmt
             .query_map([], |row| {
@@ -804,12 +804,22 @@ impl Store {
             let (name, counter) = row.map_err(db_err)?;
             let state = format!("s-{counter}");
             match name.as_str() {
-                "contact" => contact = state,
-                "chat" => chat = state,
-                "message" => message = state,
+                "contact" => contact = Some(state),
+                "chat" => chat = Some(state),
+                "message" => message = Some(state),
                 _ => {}
             }
         }
+
+        // All three rows must be present — a missing row indicates DB corruption
+        // or a failed migration (not a legitimate "counter=0" state, because
+        // migrations always insert all three rows).
+        let contact = contact
+            .ok_or_else(|| KithError::Store("state_counters missing 'contact' row".into()))?;
+        let chat =
+            chat.ok_or_else(|| KithError::Store("state_counters missing 'chat' row".into()))?;
+        let message = message
+            .ok_or_else(|| KithError::Store("state_counters missing 'message' row".into()))?;
 
         Ok([
             ("ChatContact", contact),

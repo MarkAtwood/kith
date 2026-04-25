@@ -15,8 +15,20 @@ const MAX_CALLS_IN_REQUEST: usize = 16;
 
 /// Parse and validate a raw JMAP request value.
 ///
-/// Returns `Err(JmapError)` on: unknown capability, missing `urn:ietf:params:jmap:chat`,
-/// too many method calls, or deserialization failure.
+/// Returns `Err(JmapError)` on: empty `using` array, too many method calls, or
+/// deserialization failure.
+///
+/// # RFC 8620 §3.3 deviation
+///
+/// RFC 8620 §3.3 REQUIRES returning `unknownCapability` for any URI in `using`
+/// that the server does not support.  Kith deliberately deviates: unknown URIs
+/// are silently accepted.  Rationale: standard JMAP clients include capabilities
+/// the server does not implement (e.g. `urn:ietf:params:jmap:mail`), and
+/// rejecting them would break interoperability without any security or correctness
+/// benefit — Kith dispatches only the methods it knows about regardless of the
+/// `using` declaration.  `urn:ietf:params:jmap:chat` is never required: clients
+/// that declare only `urn:ietf:params:jmap:core` are accepted and have access to
+/// the full kith method set.
 pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> {
     let req: JmapRequest = serde_json::from_value(body)
         .map_err(|e| JmapError::invalid_arguments(format!("invalid request: {e}")))?;
@@ -25,10 +37,8 @@ pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> 
         return Err(JmapError::unknown_capability("using must not be empty"));
     }
 
-    // Unknown capability URIs are silently ignored for interoperability with stock
-    // JMAP clients that include capabilities Kith does not implement (e.g. jmap:mail).
-    // urn:ietf:params:jmap:chat is implicit — clients that only declare urn:ietf:params:jmap:core
-    // are accepted and dispatched against the full kith method set.
+    // Unknown capability URIs are silently accepted — see RFC 8620 §3.3 deviation note
+    // in the doc comment above.
 
     if req.method_calls.len() > MAX_CALLS_IN_REQUEST {
         return Err(JmapError::request_too_large("maxCallsInRequest is 16"));
@@ -55,7 +65,9 @@ pub fn error_status(err: &JmapError) -> StatusCode {
     match err.error_type.as_str() {
         "unknownCapability" | "invalidArguments" | "requestTooLarge" => StatusCode::BAD_REQUEST,
         "forbidden" => StatusCode::FORBIDDEN,
-        "accountNotFound" | "notFound" => StatusCode::NOT_FOUND,
+        // accountNotFound is a request-level error (RFC 8620 §3.2).
+        // notFound is method-level only — must NOT appear here (must stay HTTP 200).
+        "accountNotFound" => StatusCode::NOT_FOUND,
         "serverFail" => StatusCode::INTERNAL_SERVER_ERROR,
         // Unknown error types are server-side bugs, not client mistakes.
         _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -178,7 +190,7 @@ pub fn build_session(
         Account {
             name: identity.display().to_string(),
             is_personal: true,
-            is_read_only: false,
+            is_read_only: role == Role::Peer,
             account_capabilities: AccountCapabilities {
                 kith_chat: KithAccountCapability { role: role_str },
             },

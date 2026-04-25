@@ -153,10 +153,27 @@ impl JmapHandler for ChatContactSetHandler {
                 return Err(JmapError::account_not_found());
             }
 
-            let create_map: Option<&Map<String, Value>> =
-                obj.get("create").and_then(|v| v.as_object());
-            let update_map: Option<&Map<String, Value>> =
-                obj.get("update").and_then(|v| v.as_object());
+            // RFC 8620 §5.3: if "create" is present but not an object (and not null),
+            // that is an invalidArguments error — not a silent no-op.
+            let create_map: Option<&Map<String, Value>> = match obj.get("create") {
+                None | Some(Value::Null) => None,
+                Some(Value::Object(m)) => Some(m),
+                Some(_) => {
+                    return Err(JmapError::invalid_arguments(
+                        "create must be an object or null",
+                    ))
+                }
+            };
+            // RFC 8620 §5.3: same rule for "update".
+            let update_map: Option<&Map<String, Value>> = match obj.get("update") {
+                None | Some(Value::Null) => None,
+                Some(Value::Object(m)) => Some(m),
+                Some(_) => {
+                    return Err(JmapError::invalid_arguments(
+                        "update must be an object or null",
+                    ))
+                }
+            };
             // RFC 8620 §5.3: every submitted destroy ID must appear in either
             // destroyed or notDestroyed.  Silently dropping non-string elements via
             // filter_map would violate that requirement.  Instead, reject the whole
@@ -814,6 +831,10 @@ impl JmapHandler for ChatContactQueryChangesHandler {
                 "accountId": "a-self",
                 "oldQueryState": since_query_state,
                 "newQueryState": new_state,
+                // RFC 8620 queryChanges `removed` = IDs that left the result set.
+                // Contacts cannot be destroyed (destroy is forbidden in Contact/set),
+                // so `removed` is always empty.  When Phase 2 adds filtering, this
+                // field must be replaced with filter-aware removal tracking.
                 "removed": changes.destroyed,
                 "added": added_with_index,
             }))
