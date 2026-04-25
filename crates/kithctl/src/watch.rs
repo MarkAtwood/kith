@@ -207,12 +207,14 @@ fn fire_notification(sender: &str, preview: &str) {
 
     #[cfg(target_os = "linux")]
     {
-        let status = std::process::Command::new("notify-send")
+        match std::process::Command::new("notify-send")
             .arg("Kith")
             .arg(&body)
-            .status();
-        if let Err(e) = status {
-            eprintln!("watch: notify-send failed: {e}");
+            .status()
+        {
+            Err(e) => eprintln!("watch: notify-send failed to launch: {e}"),
+            Ok(s) if !s.success() => eprintln!("watch: notify-send exited with {s}"),
+            Ok(_) => {}
         }
     }
 
@@ -375,7 +377,6 @@ async fn watch_once(
                                     tailnet_ip,
                                     &connector,
                                     &prev_state,
-                                    &new_state,
                                 )
                                 .await
                                 {
@@ -417,7 +418,6 @@ async fn fetch_and_notify(
     tailnet_ip: &str,
     connector: &TlsConnector,
     since_state: &str,
-    _new_state: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // --- Message/changes (paginated) ---
     // Loop until hasMoreChanges=false.  maxChanges=500 matches the kithd query

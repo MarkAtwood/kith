@@ -16,10 +16,6 @@ pub struct Config {
     /// If absent, the caller must auto-detect or exit with an error.
     pub owner_id: Option<String>,
 
-    /// `KITHD_BASE_URL` — Base URL for JMAP session responses.
-    /// Default: None (callers use `https://kith.local` fallback)
-    pub base_url: Option<String>,
-
     /// `KITHD_BIND_ADDR` — development/test fallback bind address.
     ///
     /// When tailnet binding fails and this is set, kithd binds a plain HTTP
@@ -61,9 +57,6 @@ impl Config {
             .unwrap_or_else(|_| "/var/run/tailscale/tailscaled.sock".to_string());
         let port = Self::resolve_port();
         let owner_id = Self::resolve_owner_id();
-        let base_url = std::env::var("KITHD_BASE_URL")
-            .ok()
-            .filter(|s| !s.is_empty());
         let fallback_bind_addr = Self::resolve_fallback_bind_addr();
         let discovery_interval_secs = {
             let raw = std::env::var("KITHD_DISCOVERY_INTERVAL_SECS")
@@ -90,7 +83,6 @@ impl Config {
             ts_socket,
             port,
             owner_id,
-            base_url,
             fallback_bind_addr,
             discovery_interval_secs,
             db_path,
