@@ -686,7 +686,10 @@ mod tests {
         (store, dir)
     }
 
-    fn make_app_for_test(owner_id: &str, whois: MockWhoIs) -> (Router, Arc<BlobStore>, tempfile::TempDir) {
+    fn make_app_for_test(
+        owner_id: &str,
+        whois: MockWhoIs,
+    ) -> (Router, Arc<BlobStore>, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
@@ -725,7 +728,11 @@ mod tests {
     async fn build_dispatcher_registers_all_spec_methods() {
         let store = Store::open_in_memory().unwrap();
         let (blob_store, _blob_dir) = make_blob_store_for_test();
-        let dispatcher = build_dispatcher(Arc::new(Mutex::new(store)), blob_store, "uid-test-owner".to_string());
+        let dispatcher = build_dispatcher(
+            Arc::new(Mutex::new(store)),
+            blob_store,
+            "uid-test-owner".to_string(),
+        );
 
         // (method_name, role_required_by_spec)
         let owner_methods = [

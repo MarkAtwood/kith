@@ -1576,11 +1576,7 @@ mod tests {
         let handler = ChatContactGetHandler::new(Arc::clone(&store));
         let args = json!({"accountId": "a-self", "ids": []});
         let result = handler
-            .call(
-                "ChatContact/get".to_string(),
-                "c0".to_string(),
-                args,
-            )
+            .call("ChatContact/get".to_string(), "c0".to_string(), args)
             .await
             .expect("ids=[] must succeed");
 
@@ -1607,11 +1603,7 @@ mod tests {
         let ids: Vec<String> = (0..=500).map(|i| format!("uid-{i}")).collect();
         let args = json!({"accountId": "a-self", "ids": ids});
         let result = handler
-            .call(
-                "ChatContact/get".to_string(),
-                "c0".to_string(),
-                args,
-            )
+            .call("ChatContact/get".to_string(), "c0".to_string(), args)
             .await;
         assert!(result.is_err(), "501 ids must return Err(tooLarge)");
         let err = result.unwrap_err();

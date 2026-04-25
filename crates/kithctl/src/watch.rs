@@ -186,11 +186,9 @@ fn build_tls_connector(
 ///
 /// Called at startup and again whenever kithd rotates its cert (detected when
 /// TLS handshake fails with "does not match pinned certificate").
-fn load_connector(
-    cert_path: &std::path::Path,
-) -> Result<TlsConnector, Box<dyn std::error::Error>> {
-    let cert_der = std::fs::read(cert_path)
-        .map_err(|e| format!("failed to read cert {cert_path:?}: {e}"))?;
+fn load_connector(cert_path: &std::path::Path) -> Result<TlsConnector, Box<dyn std::error::Error>> {
+    let cert_der =
+        std::fs::read(cert_path).map_err(|e| format!("failed to read cert {cert_path:?}: {e}"))?;
     build_tls_connector(cert_der)
 }
 
@@ -372,13 +370,8 @@ async fn watch_once(
                                 let prev_state = last_message_state.clone();
                                 let new_state = new_state.to_owned();
 
-                                match fetch_and_notify(
-                                    config,
-                                    tailnet_ip,
-                                    &connector,
-                                    &prev_state,
-                                )
-                                .await
+                                match fetch_and_notify(config, tailnet_ip, &connector, &prev_state)
+                                    .await
                                 {
                                     Ok(()) => {
                                         *last_message_state = new_state;
@@ -717,7 +710,9 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
                             eprintln!("watch: cert reloaded, reconnecting...");
                         }
                         Err(load_err) => {
-                            eprintln!("watch: failed to reload cert: {load_err}; retrying in 2s...");
+                            eprintln!(
+                                "watch: failed to reload cert: {load_err}; retrying in 2s..."
+                            );
                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         }
                     }

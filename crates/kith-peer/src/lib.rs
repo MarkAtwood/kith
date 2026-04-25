@@ -404,7 +404,10 @@ pub struct ReceiptHandler {
 
 impl ReceiptHandler {
     pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_user_id: String) -> Self {
-        Self { store, owner_user_id }
+        Self {
+            store,
+            owner_user_id,
+        }
     }
 }
 
@@ -1977,7 +1980,13 @@ mod tests {
         let store = make_store();
         // contact_id must match the caller identity below.
         insert_chat_with_contact(&store, "chat-r1", "uid-bob");
-        insert_msg(&store, "msg-r1", "chat-r1", "uid-test-owner", &DeliveryState::Pending);
+        insert_msg(
+            &store,
+            "msg-r1",
+            "chat-r1",
+            "uid-test-owner",
+            &DeliveryState::Pending,
+        );
 
         let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());
@@ -2108,7 +2117,13 @@ mod tests {
     async fn receipt_invalid_kind_returns_invalid_arguments() {
         let store = make_store();
         insert_chat_with_contact(&store, "chat-r4", "uid-bob");
-        insert_msg(&store, "msg-r4", "chat-r4", "uid-test-owner", &DeliveryState::Pending);
+        insert_msg(
+            &store,
+            "msg-r4",
+            "chat-r4",
+            "uid-test-owner",
+            &DeliveryState::Pending,
+        );
 
         let caller = make_identity("uid-bob");
         let handler = ReceiptHandler::new(Arc::clone(&store), "uid-test-owner".to_string());

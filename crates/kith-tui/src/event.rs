@@ -745,9 +745,14 @@ pub(crate) async fn handle_state_change(
                 if error_type == "stateMismatch" {
                     if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
                         // Reload full message list for current chat; silently skipped if no chats loaded.
-                        let loaded =
-                            load_messages_for_chat(http_client, api_url, &chat_id, &state.contacts, &state.owner_user_id)
-                                .await;
+                        let loaded = load_messages_for_chat(
+                            http_client,
+                            api_url,
+                            &chat_id,
+                            &state.contacts,
+                            &state.owner_user_id,
+                        )
+                        .await;
                         if loaded.is_error {
                             state.connection_status = crate::app::ConnectionStatus::Error(
                                 "Failed to load messages".to_string(),
@@ -858,7 +863,8 @@ pub(crate) async fn handle_state_change(
                     continue;
                 }
 
-                if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_user_id) {
+                if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_user_id)
+                {
                     state.messages.push_back(line);
                     let msg_id = msg
                         .get("id")
@@ -926,8 +932,14 @@ pub async fn run(
     load_startup_data(&http_client, &api_url, state).await;
 
     if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
-        let loaded =
-            load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts, &state.owner_user_id).await;
+        let loaded = load_messages_for_chat(
+            &http_client,
+            &api_url,
+            &chat_id,
+            &state.contacts,
+            &state.owner_user_id,
+        )
+        .await;
         if loaded.is_error {
             state.connection_status =
                 crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
@@ -1064,8 +1076,14 @@ pub async fn run(
             if let Some(chat_id) = state.chat_ids.get(state.selected_chat) {
                 // Reload messages for the newly selected chat.
                 let chat_id = chat_id.clone();
-                let loaded =
-                    load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts, &state.owner_user_id).await;
+                let loaded = load_messages_for_chat(
+                    &http_client,
+                    &api_url,
+                    &chat_id,
+                    &state.contacts,
+                    &state.owner_user_id,
+                )
+                .await;
                 if loaded.is_error {
                     state.connection_status =
                         crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
@@ -1292,7 +1310,14 @@ mod tests {
         let mut contacts = HashMap::new();
         contacts.insert("c-1".to_string(), "Alice".to_string());
 
-        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-abc", &contacts, "uid-test-owner").await;
+        let loaded = load_messages_for_chat(
+            &http_client,
+            &api_url,
+            "chat-abc",
+            &contacts,
+            "uid-test-owner",
+        )
+        .await;
         let msgs = loaded.display_lines;
 
         // Oracle: derived from mock data above — HH:MM from receivedAt[11..16]
@@ -1329,7 +1354,8 @@ mod tests {
         let http_client = reqwest::Client::new();
         let contacts = HashMap::new();
 
-        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-xyz", &contacts, "").await;
+        let loaded =
+            load_messages_for_chat(&http_client, &api_url, "chat-xyz", &contacts, "").await;
 
         assert!(
             loaded.display_lines.is_empty(),
@@ -1696,8 +1722,14 @@ mod tests {
 
         // Step 2+3: initial message load (+ step 3: send_read_receipts for inbound m-init)
         if let Some(chat_id) = state.chat_ids.first().cloned() {
-            let loaded =
-                load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts, &state.owner_user_id).await;
+            let loaded = load_messages_for_chat(
+                &http_client,
+                &api_url,
+                &chat_id,
+                &state.contacts,
+                &state.owner_user_id,
+            )
+            .await;
             state.messages = loaded.display_lines;
             state.message_ids = loaded.message_ids;
             state.message_senders = loaded.sender_ids;
