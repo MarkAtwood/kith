@@ -17,7 +17,7 @@
 //! mailbox, verifies its SHA-256 hash, and writes it to the local blob store.
 
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full, Limited};
+use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
 use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::connect::HttpConnector;
@@ -421,17 +421,22 @@ async fn fetch_with_https_client(
     }
 
     // Collect body with a hard limit of expected_size + 1 bytes.
+    // If Limited hits its limit, the error type is LengthLimitError (size exceeded).
+    // Any other error is a network failure.  Distinguish them so the caller can
+    // return the correct status code (500 for bad peer data, 502 for network).
     let limit = (expected_size as usize).saturating_add(1);
-    let collected = match Limited::new(resp.into_body(), limit).collect().await {
-        Ok(c) => c,
+    let body_bytes = match Limited::new(resp.into_body(), limit).collect().await {
+        Ok(c) => c.to_bytes(),
+        Err(e) if e.downcast_ref::<LengthLimitError>().is_some() => {
+            tracing::warn!(blob_id, "fetch_peer_blob: body exceeded expected_size");
+            return Err(FetchBlobError::SizeExceeded);
+        }
         Err(e) => {
             let msg = e.to_string();
             tracing::warn!(blob_id, "fetch_peer_blob: body read error: {msg}");
             return Err(FetchBlobError::Network(msg));
         }
     };
-
-    let body_bytes = collected.to_bytes();
 
     if body_bytes.len() > expected_size as usize {
         tracing::warn!(
@@ -525,15 +530,13 @@ async fn fetch_peer_blob_from_url(
     }
 
     let limit = (expected_size as usize).saturating_add(1);
-    let collected = match Limited::new(resp.into_body(), limit).collect().await {
-        Ok(c) => c,
-        Err(e) => {
-            let msg = e.to_string();
-            return Err(FetchBlobError::Network(msg));
+    let body_bytes = match Limited::new(resp.into_body(), limit).collect().await {
+        Ok(c) => c.to_bytes(),
+        Err(e) if e.downcast_ref::<LengthLimitError>().is_some() => {
+            return Err(FetchBlobError::SizeExceeded);
         }
+        Err(e) => return Err(FetchBlobError::Network(e.to_string())),
     };
-
-    let body_bytes = collected.to_bytes();
 
     if body_bytes.len() > expected_size as usize {
         return Err(FetchBlobError::SizeExceeded);
