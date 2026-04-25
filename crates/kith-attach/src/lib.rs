@@ -133,7 +133,12 @@ impl BlobStore {
         }
         drop(file);
 
-        tokio::fs::rename(&tmp_path, &final_path).await?;
+        // Clean up the temp file if rename fails (cross-device move, permissions
+        // error, etc.) so orphaned .tmp files do not accumulate in the blob dir.
+        if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
         Ok(data.len() as u64)
     }
 
@@ -230,7 +235,13 @@ impl BlobStore {
             return Err(e);
         }
         drop(tmp_file);
-        tokio::fs::rename(&tmp_path, &final_path).await?;
+
+        // Clean up the temp file if rename fails so orphaned .tmp files do not
+        // accumulate in the blob dir.
+        if let Err(e) = tokio::fs::rename(&tmp_path, &final_path).await {
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(e);
+        }
 
         let sha256 = format!("{:x}", hasher.finalize());
         Ok((total_bytes, sha256))

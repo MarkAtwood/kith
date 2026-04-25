@@ -508,7 +508,9 @@ impl<'a> ChatStore<'a> {
                 let id: String = row.get(0)?;
                 let changed: i64 = row.get(1)?;
                 let created: i64 = row.get(2)?;
-                Ok((id, changed, created > since_counter))
+                // Match get_changes_since: created_at_counter=0 is the
+                // pre-classification sentinel — treat as updated, not created.
+                Ok((id, changed, created > since_counter && created > 0))
             })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()

@@ -37,7 +37,9 @@ pub fn is_tailnet_ip(ip: std::net::IpAddr) -> bool {
         }
         IpAddr::V6(v6) => {
             let segs = v6.segments();
-            // Reject link-local: fe80::/10 (top 10 bits = 1111 1110 10).
+            // Explicitly reject link-local fe80::/10 (top 10 bits = 1111 1110 10).
+            // fe80::/10 is also rejected by the ULA mask below (fe80 & 0xfe00 = 0xfe00 ≠ 0xfc00),
+            // but the explicit guard documents intent rather than relying on that coincidence.
             if (segs[0] & 0xffc0) == 0xfe80 {
                 return false;
             }
