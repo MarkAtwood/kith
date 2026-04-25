@@ -506,8 +506,6 @@ impl JmapHandler for ChatContactChangesHandler {
             drop(guard);
 
             // 6. Apply maxChanges limit (RFC 8620 §5.6).
-            // Phase 1 contacts only ever produce "added" (no per-row update/destroy
-            // tracking), so the total is just the added count.
             let total = added_with_counter.len();
             let (items, has_more, new_state) = if let Some(max) = max_changes {
                 if total > max {
@@ -516,7 +514,10 @@ impl JmapHandler for ChatContactChangesHandler {
                     // max=0 is rejected at parse time (RFC 8620 §5.6 invalidArguments),
                     // so the slice index is always non-zero here.
                     let truncated = &added_with_counter[..max];
-                    let new_state = truncated.last().map(|(_, c)| format!("s-{c}")).expect(
+                    let new_state = truncated
+                        .last()
+                        .map(|(_, c, _)| format!("s-{c}"))
+                        .expect(
                         "truncated slice is non-empty: max>=1 invariant established at parse time",
                     );
                     (truncated.to_vec(), true, new_state)
@@ -527,7 +528,17 @@ impl JmapHandler for ChatContactChangesHandler {
                 (added_with_counter, false, current_state)
             };
 
-            let created: Vec<Value> = items.into_iter().map(|(id, _)| Value::String(id)).collect();
+            // RFC 8620 §5.2: split into created (newly inserted after sinceState)
+            // vs updated (existed at sinceState but was modified since).
+            let mut created: Vec<Value> = Vec::new();
+            let mut updated: Vec<Value> = Vec::new();
+            for (id, _, is_create) in items {
+                if is_create {
+                    created.push(Value::String(id));
+                } else {
+                    updated.push(Value::String(id));
+                }
+            }
 
             // 7. Return changes response.
             Ok(json!({
@@ -536,7 +547,7 @@ impl JmapHandler for ChatContactChangesHandler {
                 "newState": new_state,
                 "hasMoreChanges": has_more,
                 "created": created,
-                "updated": [],
+                "updated": updated,
                 "destroyed": [],
             }))
         })

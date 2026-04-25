@@ -4,6 +4,9 @@ use kith_core::{ChatContact, JmapError, KithError, StateChange};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
+/// Row returned by `get_changes_since_ordered`: (peer_user_id, changed_at_counter, is_create).
+type ContactChangeRow = (String, i64, bool);
+
 pub struct ContactStore<'a> {
     conn: &'a Connection,
     events_tx: Option<&'a broadcast::Sender<StateChange>>,
@@ -72,11 +75,31 @@ impl<'a> ContactStore<'a> {
             // A crash after the counter advances but before the row update would leave
             // this contact invisible to ChatContact/changes forever.
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
-            tx.execute(
-                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                params![counter, peer_user_id],
-            )
-            .map_err(db_err)?;
+            // Detect fresh insert vs update: a fresh insert has created_at_counter = 0
+            // (the DEFAULT value). An update leaves the existing created_at_counter intact.
+            // Set created_at_counter only on fresh inserts so Contact/changes can correctly
+            // classify this change as "created" vs "updated" (RFC 8620 §5.2).
+            let created_at: i64 = tx
+                .query_row(
+                    "SELECT created_at_counter FROM contacts WHERE peer_user_id = ?1",
+                    params![peer_user_id],
+                    |row| row.get(0),
+                )
+                .map_err(db_err)?;
+            if created_at == 0 {
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
+                     WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            } else {
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            }
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
         } else {
@@ -134,11 +157,27 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
-            tx.execute(
-                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                params![counter, peer_user_id],
-            )
-            .map_err(db_err)?;
+            let created_at: i64 = tx
+                .query_row(
+                    "SELECT created_at_counter FROM contacts WHERE peer_user_id = ?1",
+                    params![peer_user_id],
+                    |row| row.get(0),
+                )
+                .map_err(db_err)?;
+            if created_at == 0 {
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
+                     WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            } else {
+                tx.execute(
+                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                    params![counter, peer_user_id],
+                )
+                .map_err(db_err)?;
+            }
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
         } else {
@@ -345,7 +384,7 @@ impl<'a> ContactStore<'a> {
     pub fn get_changes_since_ordered(
         &self,
         since_state: &str,
-    ) -> Result<(Vec<(String, i64)>, String), KithError> {
+    ) -> Result<(Vec<ContactChangeRow>, String), KithError> {
         let (since_counter, current_counter, current_state) =
             self.resolve_since_counters(since_state)?;
 
@@ -356,13 +395,21 @@ impl<'a> ContactStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT peer_user_id, changed_at_counter FROM contacts \
+                "SELECT peer_user_id, changed_at_counter, created_at_counter FROM contacts \
                  WHERE changed_at_counter > ?1 \
                  ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
-        let rows: Vec<(String, i64)> = stmt
-            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
+        // is_create = true when created_at_counter > since_counter, meaning the row
+        // was first inserted after sinceState (RFC 8620 §5.2 created[]).
+        // is_create = false means the row existed before sinceState and was updated.
+        let rows: Vec<ContactChangeRow> = stmt
+            .query_map(params![since_counter], |row| {
+                let id: String = row.get(0)?;
+                let changed: i64 = row.get(1)?;
+                let created: i64 = row.get(2)?;
+                Ok((id, changed, created > since_counter))
+            })
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;

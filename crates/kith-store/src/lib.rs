@@ -286,6 +286,16 @@ const SCHEMA_V12: &str = "
 CREATE INDEX IF NOT EXISTS idx_contacts_changed_at_counter ON contacts(changed_at_counter);
 ";
 
+// V13: add created_at_counter to contacts so Contact/changes can distinguish
+// newly-created contacts (RFC 8620 §5.2 created[]) from updated ones (updated[]).
+// Mirrors the created_at_version column on messages.  Existing rows are backfilled
+// to created_at_counter = changed_at_counter so they appear as "created" on a fresh
+// sinceState=s-0 sync and as "updated" on any later sync.
+const SCHEMA_V13: &str = "
+ALTER TABLE contacts ADD COLUMN created_at_counter INTEGER NOT NULL DEFAULT 0;
+UPDATE contacts SET created_at_counter = changed_at_counter WHERE changed_at_counter > 0;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -304,6 +314,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (10, SCHEMA_V10),
     (11, SCHEMA_V11),
     (12, SCHEMA_V12),
+    (13, SCHEMA_V13),
 ];
 
 impl Store {
@@ -760,8 +771,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has twelve entries (versions 1-12), so user_version must be 12 after open.
-        assert_eq!(version, 12);
+        // MIGRATIONS has thirteen entries (versions 1-13), so user_version must be 13 after open.
+        assert_eq!(version, 13);
     }
 
     #[test]
@@ -797,7 +808,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 12, "migration 12 must be applied");
+        assert_eq!(v1, 13, "migration 13 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -884,7 +895,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 12, "migration v12 must set user_version to 12");
+        assert_eq!(v, 13, "migration v13 must set user_version to 13");
     }
 
     #[test]
