@@ -585,20 +585,19 @@ mod tests {
         }
     }
 
-    fn make_blob_store_for_test() -> Arc<BlobStore> {
-        let dir =
-            std::env::temp_dir().join(format!("kithd-lib-test-{}", BlobStore::generate_blob_id()));
-        let store = Arc::new(BlobStore::new(&dir));
+    fn make_blob_store_for_test() -> (Arc<BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new must succeed");
+        let store = Arc::new(BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
-    fn make_app_for_test(owner_id: &str, whois: MockWhoIs) -> (Router, Arc<BlobStore>) {
+    fn make_app_for_test(owner_id: &str, whois: MockWhoIs) -> (Router, Arc<BlobStore>, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
         let (events_tx, _events_rx) = make_channel(64);
-        let blob_store = make_blob_store_for_test();
+        let (blob_store, blob_dir) = make_blob_store_for_test();
         let dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&store),
             Arc::clone(&blob_store),
@@ -614,7 +613,7 @@ mod tests {
             blob_store: Arc::clone(&blob_store),
         };
         let app = build_app(state).layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))));
-        (app, blob_store)
+        (app, blob_store, blob_dir)
     }
 
     // Oracle: every method listed in kith-architecture.md must be dispatched
@@ -630,7 +629,7 @@ mod tests {
     #[tokio::test]
     async fn build_dispatcher_registers_all_spec_methods() {
         let store = Store::open_in_memory().unwrap();
-        let blob_store = make_blob_store_for_test();
+        let (blob_store, _blob_dir) = make_blob_store_for_test();
         let dispatcher = build_dispatcher(Arc::new(Mutex::new(store)), blob_store);
 
         // (method_name, role_required_by_spec)
@@ -700,7 +699,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-dl-aself";
         const OWNER_LOGIN: &str = "owner@dl-aself.example.com";
 
-        let (app, blob_store) =
+        let (app, blob_store, _blob_dir) =
             make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
 
         // Write a known blob directly — independent of the upload handler path.
@@ -744,7 +743,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-dl-badacct";
         const OWNER_LOGIN: &str = "owner@dl-badacct.example.com";
 
-        let (app, blob_store) =
+        let (app, blob_store, _blob_dir) =
             make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
 
         let blob_id = BlobStore::generate_blob_id();
@@ -781,7 +780,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-dl-literal";
         const OWNER_LOGIN: &str = "owner@dl-literal.example.com";
 
-        let (app, blob_store) =
+        let (app, blob_store, _blob_dir) =
             make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
 
         let blob_id = BlobStore::generate_blob_id();
