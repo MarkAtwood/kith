@@ -329,6 +329,7 @@ impl JmapHandler for MessageSetHandler {
                         server_id,
                         patch,
                         now_unix,
+                        &owner_user_id,
                         &mut old_state_cell,
                         &mut new_state_cell,
                     ) {
@@ -627,7 +628,7 @@ async fn process_create(
         id: msg_id.clone(),
         sender_msg_id: msg_id,
         chat_id,
-        sender_id: "self".to_string(),
+        sender_id: owner_user_id.to_string(),
         body,
         body_type,
         attachments: core_attachments,
@@ -649,6 +650,7 @@ fn process_update(
     server_id: &str,
     patch: &Value,
     now_unix: i64,
+    owner_user_id: &str,
     old_state_out: &mut Option<String>,
     new_state_out: &mut Option<String>,
 ) -> Result<(), Value> {
@@ -726,7 +728,7 @@ fn process_update(
     // Enqueue a read receipt to the original sender for inbound messages.
     // Failures are silently ignored — receipt enqueue must not fail the readAt update.
     if let Ok(Some(msg)) = guard.messages().get(server_id) {
-        if msg.sender_id != "self" {
+        if msg.sender_id != owner_user_id {
             // Intentional: receipts are not sent to blocked senders. Marking a blocked
             // contact's message as read is a local-only operation.
             if let Ok(true) = guard.contacts().is_permitted(&msg.sender_id) {

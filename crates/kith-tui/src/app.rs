@@ -44,6 +44,9 @@ pub struct AppState {
     pub chat_ids: Vec<String>,
     /// Index into chat_list of the currently selected chat.
     pub selected_chat: usize,
+    /// Verified Tailscale user ID of the owner. Used to distinguish outbound
+    /// messages (sender == owner) from inbound ones. Empty until session is fetched.
+    pub owner_user_id: String,
     /// Message display lines. Parallel to `message_ids` and `message_senders` —
     /// all three must always have the same length. Push/pop to all three together.
     pub messages: VecDeque<String>,
@@ -65,9 +68,9 @@ pub struct AppState {
     pub error_notification: Option<(String, std::time::Instant)>,
     /// JMAP message IDs. Parallel to `messages` — see invariant note there.
     pub message_ids: VecDeque<String>,
-    /// senderId for each message ("self" for outbound). Parallel to `messages` — see invariant note there.
+    /// senderId for each message (owner's user ID for outbound). Parallel to `messages` — see invariant note there.
     pub message_senders: VecDeque<String>,
-    /// JMAP IDs of inbound messages (senderId != "self") not yet acknowledged
+    /// JMAP IDs of inbound messages (sender is not the owner) not yet acknowledged
     /// with readAt. Cleared after successful send_read_receipts call.
     pub unread_message_ids: HashSet<String>,
     /// Inner height of the message panel as rendered in the last draw call
@@ -90,6 +93,7 @@ impl AppState {
             chat_list: vec![],
             chat_ids: vec![],
             selected_chat: 0,
+            owner_user_id: String::new(),
             messages: VecDeque::new(),
             scroll_offset: 0,
             input: String::new(),

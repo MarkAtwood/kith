@@ -47,6 +47,10 @@ pub struct ClientSession {
     #[serde(rename = "eventSourceUrl")]
     pub event_source_url: String,
     pub state: String,
+    /// Verified Tailscale user ID of the owner. Used to distinguish outbound
+    /// messages (sender == owner) from inbound ones in the TUI.
+    #[serde(rename = "ownerUserId", default)]
+    pub owner_user_id: String,
 }
 
 impl ClientSession {
@@ -379,7 +383,8 @@ mod tests {
             "primaryAccounts": {"urn:ietf:params:jmap:chat": "a-self"},
             "apiUrl": format!("{}/jmap/api", mock_server.uri()),
             "eventSourceUrl": format!("{}/jmap/events", mock_server.uri()),
-            "state": "s-1"
+            "state": "s-1",
+            "ownerUserId": "uid-test-owner"
         });
         Mock::given(method("GET"))
             .and(path("/.well-known/jmap"))
@@ -393,6 +398,7 @@ mod tests {
         let session = result.expect("expected Ok from fetch_session");
         assert_eq!(session.account_id(), Some("a-self"));
         assert_eq!(session.state, "s-1");
+        assert_eq!(session.owner_user_id, "uid-test-owner");
         assert!(
             session.api_url.contains("/jmap/api"),
             "api_url must contain /jmap/api"
