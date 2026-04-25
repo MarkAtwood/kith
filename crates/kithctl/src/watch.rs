@@ -775,23 +775,37 @@ mod tests {
     }
 
     /// Regression guard: Message/get returns "senderId", not "sender".
-    /// If this test fails, the sender field name has regressed and notifications
-    /// will show "(unknown)" for all received messages.
+    ///
+    /// Oracle: kith_core::Message serialises sender_id as "senderId" via
+    /// #[serde(rename = "senderId")].  We construct a real Message, serialise
+    /// it, and verify that our parse path extracts the right key.  If the
+    /// serde rename ever changes, this test fails — and so does the kith-core
+    /// field-name test — before any code reaches production.
     #[test]
     fn message_get_response_sender_field_is_sender_id() {
-        // Oracle: kith-core serialises the Message struct with senderId (camelCase).
-        // kith-core/src/message.rs asserts this in its own tests.
-        let msg = serde_json::json!({
-            "id": "m-1",
-            "senderId": "uid-alice",
-            "body": "hello"
-        });
-        // Correct parse
+        let msg = kith_core::Message {
+            id: "m-1".to_string(),
+            sender_msg_id: "m-1".to_string(),
+            chat_id: "chat-1".to_string(),
+            sender_id: "uid-alice".to_string(),
+            body: "hello".to_string(),
+            body_type: "text/plain".to_string(),
+            attachments: vec![],
+            reply_to: None,
+            sent_at: "2026-01-01T00:00:00Z".to_string(),
+            received_at: "2026-01-01T00:00:00Z".to_string(),
+            delivery_state: kith_core::DeliveryState::Received,
+            delivered_at: None,
+            read_at: None,
+        };
+        let json_val = serde_json::to_value(&msg).expect("Message must serialise");
+
+        // Correct parse — must find the sender
         assert_eq!(
-            msg.get("senderId").and_then(|v| v.as_str()),
+            json_val.get("senderId").and_then(|v| v.as_str()),
             Some("uid-alice")
         );
-        // Wrong parse (old bug) always returns None
-        assert_eq!(msg.get("sender").and_then(|v| v.as_str()), None);
+        // Wrong parse (old bug) — must return None
+        assert_eq!(json_val.get("sender").and_then(|v| v.as_str()), None);
     }
 }
