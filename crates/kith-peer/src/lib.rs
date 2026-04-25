@@ -30,6 +30,8 @@ const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
 /// Anything beyond this (e.g. year 9999) is clamped to `now + grace` to
 /// prevent misleading "read in the far future" UI state.
 const RECEIPT_GRACE_SECS: i64 = 300;
+/// How long the outbox worker sleeps between polling ticks.
+const OUTBOX_POLL_INTERVAL_SECS: u64 = 30;
 
 // ---------------------------------------------------------------------------
 // Peer/deliver — inbound handler
@@ -1451,7 +1453,7 @@ pub async fn outbox_worker<C: DeliverClient>(
     outbox_tick(&store, &client, &owner_id, now_unix).await;
 
     loop {
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        tokio::time::sleep(Duration::from_secs(OUTBOX_POLL_INTERVAL_SECS)).await;
         let now_unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()

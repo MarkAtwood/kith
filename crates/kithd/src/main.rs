@@ -219,15 +219,11 @@ async fn main() {
                 kith_peer::PeerHttpClient::new(),
                 owner_id_for_outbox.clone(),
             ));
-            match h.await {
-                Ok(_) => {
-                    tracing::warn!("outbox_worker exited unexpectedly; restarting");
-                }
-                Err(e) => {
-                    tracing::error!("outbox_worker panicked: {e:?}; restarting in 5s");
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
-            }
+            // outbox_worker is `-> !` and never returns Ok; only a panic
+            // produces Err here.
+            let Err(e) = h.await;
+            tracing::error!("outbox_worker panicked: {e:?}; restarting in 5s");
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     });
 
