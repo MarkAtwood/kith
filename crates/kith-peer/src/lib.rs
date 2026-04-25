@@ -5,7 +5,9 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use kith_core::{unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES};
+use kith_core::{
+    unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
+};
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
@@ -162,12 +164,13 @@ impl PeerJmapHandler for DeliverHandler {
                 // unwrap_or_default() guards against the impossible case without panic.
                 .unwrap_or_default()
                 .as_secs() as i64;
-            let received_at = unix_secs_to_rfc3339(now_unix);
+            // now_unix is guaranteed non-negative (system clock >= UNIX_EPOCH).
+            let received_at = unix_secs_to_rfc3339(now_unix as u64);
 
             // Acquire the store lock for all DB operations.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // Step 8: Resolve the chat to use for this message.
             //
@@ -436,8 +439,8 @@ impl PeerJmapHandler for ReceiptHandler {
                 .lock()
                 // A poisoned mutex means a previous handler panicked while holding
                 // the lock, leaving the store in an unknown state.  Propagate as a
-                // server error rather than panicking.
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                // generic server error — do not expose the internal cause to callers.
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             let msg = guard.messages().get(&parsed.message_id).map_err(|e| {
                 tracing::error!("store error fetching message for receipt: {e}");
@@ -1256,7 +1259,8 @@ pub async fn outbox_tick<C: DeliverClient>(
                     continue;
                 }
             };
-            let at_str = unix_secs_to_rfc3339(read_at_unix);
+            // read_at_unix is a Unix timestamp stored in the DB; guaranteed non-negative.
+            let at_str = unix_secs_to_rfc3339(read_at_unix as u64);
             let jmap_request = build_peer_receipt_request(&entry.message_id, "read", &at_str);
             match client.deliver_msg(&url, jmap_request).await {
                 Ok(()) => {

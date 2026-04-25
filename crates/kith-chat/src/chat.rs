@@ -64,7 +64,7 @@ impl JmapHandler for ChatGetHandler {
             // Step 3: Acquire store lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // Step 4: Fetch chats.
             let (chats, not_found) = match ids {
@@ -213,7 +213,7 @@ impl JmapHandler for ChatSetHandler {
             let old_state = {
                 let guard = store
                     .lock()
-                    .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                    .map_err(|_| JmapError::server_fail("internal error"))?;
 
                 let state = guard
                     .chats()
@@ -322,7 +322,7 @@ impl JmapHandler for ChatSetHandler {
             // Step 8: Get new state after all operations.
             let new_state = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?
+                .map_err(|_| JmapError::server_fail("internal error"))?
                 .chats()
                 .get_state()
                 .map_err(|e| JmapError::server_fail(e.to_string()))?;
@@ -407,7 +407,7 @@ impl JmapHandler for ChatChangesHandler {
             // Step 4: Acquire store lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // Step 5: Get changes since the given state.
             let (rows, current_state) = guard
@@ -524,7 +524,7 @@ impl JmapHandler for ChatQueryHandler {
             // Step 3: Acquire store lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store lock poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // Step 4: Fetch a page of chat IDs with SQL-level pagination
             // (ordered by lastMessageAt DESC NULLS LAST, createdAt DESC).

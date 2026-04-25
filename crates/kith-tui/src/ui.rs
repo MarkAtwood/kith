@@ -224,4 +224,55 @@ mod tests {
             "status bar should show Connecting, got: {status_row:?}"
         );
     }
+
+    #[test]
+    fn draw_status_shows_error_inner_string() {
+        // Oracle: ConnectionStatus::Error("disk full") must show "disk full" in status bar.
+        // Before the fix, Display only wrote "Error" and the inner string was dropped.
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState::new();
+        state.connection_status = crate::app::ConnectionStatus::Error("disk full".to_string());
+        terminal.draw(|f| draw(f, &state)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let status_row: String = (0..80)
+            .map(|x| {
+                buf.cell((x, 23))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(
+            status_row.contains("disk full"),
+            "status bar must show error inner string, got: {status_row:?}"
+        );
+    }
+
+    #[test]
+    fn draw_status_reconnecting_shows_retry_hint() {
+        // Oracle: Reconnecting status must show retry hint so user knows it will self-recover.
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState::new();
+        state.connection_status = crate::app::ConnectionStatus::Reconnecting;
+        terminal.draw(|f| draw(f, &state)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let status_row: String = (0..80)
+            .map(|x| {
+                buf.cell((x, 23))
+                    .unwrap()
+                    .symbol()
+                    .chars()
+                    .next()
+                    .unwrap_or(' ')
+            })
+            .collect();
+        assert!(
+            status_row.contains("retry"),
+            "status bar must show retry hint when Reconnecting, got: {status_row:?}"
+        );
+    }
 }

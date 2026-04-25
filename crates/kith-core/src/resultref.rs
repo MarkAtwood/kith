@@ -30,6 +30,14 @@ pub struct ResultReference {
 /// Uses `#[serde(untagged)]` which tries to deserialize as T first.
 /// If T and ResultReference share field names, T is preferred.
 /// Callers must handle the `#` key prefix before deserializing.
+///
+/// **Do not parameterize this type with `serde_json::Value` for deserialization.**
+/// `Value` accepts any JSON, so the `Ref` variant can never be reached via serde
+/// when `T = Value`.  The current dispatch path in kith-jmap strips `#`-prefixed
+/// keys and deserializes `ResultReference` directly, so the existing code is not
+/// affected — but future handlers that use `Argument<Value>` for deserialization
+/// will silently discard all `Ref` variants.  Use a concrete strongly-typed struct
+/// as `T`, or strip the `#`-key prefix before deserializing this type.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Argument<T> {

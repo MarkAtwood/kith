@@ -317,11 +317,15 @@ struct MessageEntry {
 /// Named return type for `load_messages_for_chat`.
 ///
 /// All three deques are sorted oldest-first and are always the same length.
+/// When `is_error` is true the load failed; callers must leave the existing
+/// message list unchanged rather than replacing it with an empty deque.
 #[derive(Default)]
 pub(crate) struct LoadedMessages {
     pub display_lines: VecDeque<String>,
     pub message_ids: VecDeque<String>,
     pub sender_ids: VecDeque<String>,
+    /// True when the load failed due to a network or server error.
+    pub is_error: bool,
 }
 
 /// Fetch messages for a specific chat.
@@ -353,7 +357,10 @@ pub(crate) async fn load_messages_for_chat(
         Ok(r) => r,
         Err(e) => {
             eprintln!("kith-tui: Message/query failed: {e}");
-            return LoadedMessages::default();
+            return LoadedMessages {
+                is_error: true,
+                ..LoadedMessages::default()
+            };
         }
     };
 
@@ -394,7 +401,10 @@ pub(crate) async fn load_messages_for_chat(
         Ok(r) => r,
         Err(e) => {
             eprintln!("kith-tui: Message/get failed: {e}");
-            return LoadedMessages::default();
+            return LoadedMessages {
+                is_error: true,
+                ..LoadedMessages::default()
+            };
         }
     };
 
@@ -405,7 +415,12 @@ pub(crate) async fn load_messages_for_chat(
         .and_then(Value::as_array)
     {
         Some(l) => l,
-        None => return LoadedMessages::default(),
+        None => {
+            return LoadedMessages {
+                is_error: true,
+                ..LoadedMessages::default()
+            };
+        }
     };
 
     // Step C — Format each message, collecting id and senderId alongside each entry.
@@ -685,9 +700,15 @@ pub(crate) async fn handle_state_change(
                         let loaded =
                             load_messages_for_chat(http_client, api_url, &chat_id, &state.contacts)
                                 .await;
-                        state.messages = loaded.display_lines;
-                        state.message_ids = loaded.message_ids;
-                        state.message_senders = loaded.sender_ids;
+                        if loaded.is_error {
+                            state.connection_status = crate::app::ConnectionStatus::Error(
+                                "Failed to load messages".to_string(),
+                            );
+                        } else {
+                            state.messages = loaded.display_lines;
+                            state.message_ids = loaded.message_ids;
+                            state.message_senders = loaded.sender_ids;
+                        }
                     }
                     state.message_state = sc.new_state.clone();
                 } else {
@@ -836,8 +857,10 @@ pub async fn run(
     http_client: reqwest::Client,
     api_url: String,
     sse_rx: mpsc::Receiver<StateChange>,
+    sse_status_rx: mpsc::Receiver<crate::client::SseStatus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut sse_rx = sse_rx;
+    let mut sse_status_rx = sse_status_rx;
     let mut events = EventStream::new();
     let mut tick = tokio::time::interval(Duration::from_millis(50));
 
@@ -857,13 +880,18 @@ pub async fn run(
         let chat_id = chat_id.clone();
         let loaded =
             load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
-        state.messages = loaded.display_lines;
-        state.message_ids = loaded.message_ids;
-        state.message_senders = loaded.sender_ids;
-        state.unread_message_ids =
-            unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
-        flush_unread_receipts(&http_client, &api_url, state).await;
-        state.scroll_offset = 0;
+        if loaded.is_error {
+            state.connection_status =
+                crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+        } else {
+            state.messages = loaded.display_lines;
+            state.message_ids = loaded.message_ids;
+            state.message_senders = loaded.sender_ids;
+            state.unread_message_ids =
+                unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+            flush_unread_receipts(&http_client, &api_url, state).await;
+            state.scroll_offset = 0;
+        }
     }
 
     // Track the previously selected chat to detect changes and reload messages.
@@ -895,12 +923,25 @@ pub async fn run(
             maybe_sc = sse_rx.recv() => {
                 match maybe_sc {
                     Some(sc) => {
-                        state.connection_status = crate::app::ConnectionStatus::Connected;
                         handle_state_change(&http_client, &api_url, &sc, state).await;
                     }
                     None => {
-                        // SSE channel closed (background task exited).
+                        // SSE task exited entirely (receiver dropped). Treat as quit.
+                        state.quit = true;
+                    }
+                }
+            }
+            maybe_status = sse_status_rx.recv() => {
+                match maybe_status {
+                    Some(crate::client::SseStatus::Connected) => {
+                        state.connection_status = crate::app::ConnectionStatus::Connected;
+                    }
+                    Some(crate::client::SseStatus::Reconnecting) => {
                         state.connection_status = crate::app::ConnectionStatus::Reconnecting;
+                    }
+                    None => {
+                        // Status channel closed; task exited.
+                        state.quit = true;
                     }
                 }
             }
@@ -936,13 +977,18 @@ pub async fn run(
                 let chat_id = chat_id.clone();
                 let loaded =
                     load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
-                state.messages = loaded.display_lines;
-                state.message_ids = loaded.message_ids;
-                state.message_senders = loaded.sender_ids;
-                state.unread_message_ids =
-                    unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
-                flush_unread_receipts(&http_client, &api_url, state).await;
-                state.scroll_offset = 0;
+                if loaded.is_error {
+                    state.connection_status =
+                        crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+                } else {
+                    state.messages = loaded.display_lines;
+                    state.message_ids = loaded.message_ids;
+                    state.message_senders = loaded.sender_ids;
+                    state.unread_message_ids =
+                        unread_ids_from_loaded_messages(&state.message_ids, &state.message_senders);
+                    flush_unread_receipts(&http_client, &api_url, state).await;
+                    state.scroll_offset = 0;
+                }
             }
             prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
         }
@@ -976,13 +1022,14 @@ mod tests {
             http_client: reqwest::Client,
             api_url: String,
             sse_rx: tokio::sync::mpsc::Receiver<kith_core::StateChange>,
+            sse_status_rx: tokio::sync::mpsc::Receiver<crate::client::SseStatus>,
         ) {
             // Calling run() with these typed args would require an async context.
             // Naming the call is enough to confirm the signature compiles.
-            let _ = run(terminal, state, http_client, api_url, sse_rx);
+            let _ = run(terminal, state, http_client, api_url, sse_rx, sse_status_rx);
         }
         // _assert_run_types is never called; the type-check is purely static.
-        let _ = _assert_run_types as fn(_, _, _, _, _);
+        let _ = _assert_run_types as fn(_, _, _, _, _, _);
     }
 
     #[test]

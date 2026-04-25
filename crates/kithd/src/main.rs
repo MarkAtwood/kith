@@ -148,6 +148,8 @@ async fn main() {
         db_path = ?config.db_path,
         ts_socket = %config.ts_socket,
         port = config.port,
+        owner_id = %owner_id,
+        owner_login = %owner_login,
         "kithd starting"
     );
 

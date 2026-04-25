@@ -102,11 +102,7 @@ fn row_to_attachment(row: &rusqlite::Row<'_>) -> rusqlite::Result<Attachment> {
     let size_bytes: i64 = row.get(3)?;
     // Negative means DB corruption; reject rather than clamp.
     if size_bytes < 0 {
-        return Err(rusqlite::Error::InvalidColumnType(
-            3,
-            "size_bytes".to_string(),
-            rusqlite::types::Type::Integer,
-        ));
+        return Err(rusqlite::Error::IntegralValueOutOfRange(3, size_bytes));
     }
     let sha256: String = row.get(4)?;
     Ok(Attachment {

@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.connection_status = ConnectionStatus::Connecting;
 
     let session = client::fetch_session(&http_client, &args.url).await?;
-    let (sse_rx, _sse_handle) =
+    let (sse_rx, sse_status_rx, _sse_handle) =
         client::spawn_sse(http_client.clone(), session.event_source_url.clone());
 
     let result = event::run(
@@ -58,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http_client,
         session.api_url.clone(),
         sse_rx,
+        sse_status_rx,
     )
     .await;
 

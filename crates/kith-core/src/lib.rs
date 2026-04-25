@@ -28,12 +28,14 @@ pub const MAX_ATTACHMENT_BYTES: usize = 104_857_600;
 /// Uses the Hinnant civil-calendar algorithm for accuracy without an
 /// external time crate.  Correct for dates from the Unix epoch (t=0) through 2299.
 ///
+/// The parameter type is `u64` to enforce at the type level that only
+/// non-negative values (i.e. valid Unix epoch seconds) are accepted.
+///
 /// Single canonical implementation shared by `kith-store` and `kith-peer`.
-pub fn unix_secs_to_rfc3339(secs: i64) -> String {
-    assert!(secs >= 0, "unix_secs_to_rfc3339: secs must be non-negative, got {secs}");
-    let secs_in_day: i64 = 86400;
-    let days = secs.div_euclid(secs_in_day);
-    let time_secs = secs.rem_euclid(secs_in_day);
+pub fn unix_secs_to_rfc3339(secs: u64) -> String {
+    let secs_in_day: u64 = 86400;
+    let days = secs / secs_in_day;
+    let time_secs = secs % secs_in_day;
 
     let hh = time_secs / 3600;
     let mm = (time_secs % 3600) / 60;
@@ -41,6 +43,8 @@ pub fn unix_secs_to_rfc3339(secs: i64) -> String {
 
     // Civil date from days since epoch (1970-01-01).
     // Source: https://howardhinnant.github.io/date_algorithms.html
+    // Widen to i64 for the signed arithmetic required by the algorithm.
+    let days = days as i64;
     let z = days + 719468;
     let era = z.div_euclid(146097);
     let doe = z.rem_euclid(146097);
@@ -58,12 +62,6 @@ pub fn unix_secs_to_rfc3339(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[should_panic(expected = "unix_secs_to_rfc3339: secs must be non-negative")]
-    fn unix_secs_to_rfc3339_rejects_negative() {
-        unix_secs_to_rfc3339(-1);
-    }
 
     #[test]
     fn unix_secs_to_rfc3339_known_values() {

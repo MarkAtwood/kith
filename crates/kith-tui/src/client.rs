@@ -160,30 +160,76 @@ pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
 // ── SSE background task ───────────────────────────────────────────────────────
 
 /// Spawn a background task that streams `/jmap/events` and sends parsed
-/// [`StateChange`] values on the returned channel.
+/// [`StateChange`] values on the returned `StateChange` channel.
 ///
-/// The task exits silently when the channel receiver is dropped or when the
-/// HTTP stream ends or errors.  On stream error a warning is printed to
-/// stderr; no automatic reconnect is attempted (Phase 1 trade-off).
+/// A second returned channel carries [`SseStatus`] signals (`Connected` when
+/// the stream is live, `Reconnecting` during backoff).  The event loop selects
+/// on both channels and updates `connection_status` accordingly.
+///
+/// The task reconnects automatically on stream end or error using exponential
+/// backoff (2 s → 4 s → … → 60 s cap).  Backoff resets to 2 s on each
+/// successful connection.  The task exits only when the `StateChange` receiver
+/// is dropped.
+///
 /// The returned [`tokio::task::JoinHandle`] may be dropped safely — the task
 /// will still shut down when the receiver is dropped.
 pub fn spawn_sse(
     client: reqwest::Client,
     event_url: String,
-) -> (mpsc::Receiver<StateChange>, tokio::task::JoinHandle<()>) {
-    let (tx, rx) = mpsc::channel(64);
+) -> (
+    mpsc::Receiver<StateChange>,
+    mpsc::Receiver<SseStatus>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (tx, rx) = mpsc::channel::<StateChange>(64);
+    let (status_tx, status_rx) = mpsc::channel::<SseStatus>(8);
     let handle = tokio::spawn(async move {
-        if let Err(e) = run_sse(client, &event_url, tx).await {
-            eprintln!("kith-tui: SSE stream ended: {e}");
+        let mut backoff_secs: u64 = 2;
+        loop {
+            match run_sse(client.clone(), &event_url, tx.clone(), &status_tx).await {
+                Ok(()) => {
+                    // Stream closed cleanly (server EOF). Reconnect.
+                    eprintln!("kith-tui: SSE stream closed; reconnecting in {backoff_secs}s");
+                    // Reset backoff on a clean close — the server was reachable.
+                    backoff_secs = 2;
+                }
+                Err(e) => {
+                    eprintln!("kith-tui: SSE stream error: {e}; reconnecting in {backoff_secs}s");
+                }
+            }
+
+            // Signal the UI that we are reconnecting.
+            if status_tx.send(SseStatus::Reconnecting).await.is_err() {
+                // Receiver dropped; UI is gone, exit the task.
+                return;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
+            backoff_secs = (backoff_secs * 2).min(60);
+
+            // Exit if the StateChange receiver was dropped while we slept.
+            if tx.is_closed() {
+                return;
+            }
         }
     });
-    (rx, handle)
+    (rx, status_rx, handle)
+}
+
+/// Status signals emitted by the SSE background task to the event loop.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SseStatus {
+    /// The SSE stream is live and delivering events.
+    Connected,
+    /// The stream closed or errored; backoff in progress before next attempt.
+    Reconnecting,
 }
 
 async fn run_sse(
     client: reqwest::Client,
     event_url: &str,
     tx: mpsc::Sender<StateChange>,
+    status_tx: &mpsc::Sender<SseStatus>,
 ) -> Result<(), ClientError> {
     let resp = client
         .get(event_url)
@@ -191,6 +237,10 @@ async fn run_sse(
         .send()
         .await?
         .error_for_status()?;
+
+    // HTTP connection established — notify the UI.
+    // Ignore send errors: the UI may have exited.
+    let _ = status_tx.send(SseStatus::Connected).await;
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();

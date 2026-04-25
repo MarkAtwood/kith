@@ -183,6 +183,14 @@ pub struct WhoIsResponse {
 /// than blocking the request thread indefinitely.
 const LOCAL_API_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// TTL for cached WhoIs responses.
+///
+/// 30 seconds balances identity freshness against tailscaled round-trip cost.
+/// Tailscale identity changes (node removal, user re-auth) are rare; a 30-second
+/// window is acceptable given the security model (the TCP peer address is still
+/// verified per-request by the OS network stack).
+const WHOIS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Maximum response body size for a Status response (10 MiB).
 ///
 /// Status includes the full peer map; large tailnets (thousands of nodes)
@@ -274,8 +282,17 @@ async fn call_local_api(
 ///
 /// Each method opens a fresh connection. tailscaled is local, so connection
 /// overhead is negligible and this avoids connection lifecycle complexity.
+///
+/// WhoIs responses are cached for [`WHOIS_CACHE_TTL`] to reduce round-trips to
+/// tailscaled on every authenticated request. Failures are never cached. The
+/// cache Mutex is never held across an `.await` point — it is acquired, read or
+/// updated, and released before any async I/O.
 pub struct LocalApiClient {
     socket_path: String,
+    /// Short-TTL in-process WhoIs cache. Keyed by peer SocketAddr.
+    whois_cache: std::sync::Mutex<
+        std::collections::HashMap<std::net::SocketAddr, (std::time::Instant, WhoIsResponse)>,
+    >,
 }
 
 impl LocalApiClient {
@@ -285,6 +302,7 @@ impl LocalApiClient {
     pub fn new(socket_path: impl Into<String>) -> Self {
         Self {
             socket_path: socket_path.into(),
+            whois_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -336,7 +354,29 @@ impl LocalApiClient {
     /// returns the parsed [`WhoIsResponse`]. Every network and parse error is
     /// wrapped in [`AuthError::WhoIsFailed`] with a context string that does
     /// not include the user ID value.
+    ///
+    /// Responses are cached for [`WHOIS_CACHE_TTL`] (30 seconds) to reduce
+    /// round-trips to tailscaled on every authenticated request. Cache failures
+    /// are never stored; only successful, validated responses are cached.
+    ///
+    /// The cache Mutex is never held across an `.await` — it is acquired,
+    /// read or written, then released before any network I/O begins.
     pub async fn whois(&self, addr: SocketAddr) -> Result<WhoIsResponse, AuthError> {
+        // Phase 1 (sync): check cache under a short lock scope, then release.
+        // The guard is dropped before any `.await` so we never hold a Mutex across
+        // an async suspension point.
+        {
+            let now = std::time::Instant::now();
+            // Ignore a poisoned cache — treat it as a miss rather than crashing.
+            if let Ok(cache) = self.whois_cache.lock() {
+                if let Some((cached_at, cached_resp)) = cache.get(&addr) {
+                    if now.duration_since(*cached_at) < WHOIS_CACHE_TTL {
+                        return Ok(cached_resp.clone());
+                    }
+                }
+            }
+        } // lock guard dropped here — no Mutex held across the await below
+
         // Build the request path before the async call; addr does not appear
         // in error messages (per defensive rules).
         let uri = format!("/localapi/v0/whois?addr={addr}");
@@ -374,6 +414,13 @@ impl LocalApiClient {
             .is_some_and(|s| s.contains('\0'))
         {
             return Err(AuthError::WhoIsFailed("null byte in display_name".into()));
+        }
+
+        // Phase 2 (sync): store validated result in cache under a short lock scope.
+        // Ignore a poisoned cache — missing a cache write is safe (next request will
+        // call the real LocalAPI again). Never held across an `.await`.
+        if let Ok(mut cache) = self.whois_cache.lock() {
+            cache.insert(addr, (std::time::Instant::now(), result.clone()));
         }
 
         Ok(result)

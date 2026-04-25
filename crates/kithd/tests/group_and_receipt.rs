@@ -343,7 +343,10 @@ mod inner {
         let alice_peer_whois = MockWhoIs(make_whois(BOB_OWNER_ID, BOB_LOGIN));
         let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(64);
         let alice_peer_blob_store = make_blob_store();
-        let alice_peer_dispatcher = Arc::new(build_dispatcher(Arc::clone(&pair.alice_store), Arc::clone(&alice_peer_blob_store)));
+        let alice_peer_dispatcher = Arc::new(build_dispatcher(
+            Arc::clone(&pair.alice_store),
+            Arc::clone(&alice_peer_blob_store),
+        ));
         let alice_peer_state = AppState {
             ts: Arc::new(alice_peer_whois),
             store: Arc::clone(&pair.alice_store),
@@ -483,7 +486,10 @@ mod inner {
         let alice_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
         let alice_blob_store = make_blob_store();
-        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store), Arc::clone(&alice_blob_store)));
+        let alice_dispatcher = Arc::new(build_dispatcher(
+            Arc::clone(&alice_store),
+            Arc::clone(&alice_blob_store),
+        ));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),
             store: Arc::clone(&alice_store),

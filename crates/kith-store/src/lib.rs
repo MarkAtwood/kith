@@ -309,6 +309,58 @@ BEGIN
 END;
 ";
 
+// V15: Add indexes on contacts(peer_login) and messages(chat_id, state_version).
+// contacts(peer_login) accelerates lookups by login name (e.g. WhoIs resolution).
+// messages(chat_id, state_version) accelerates Message/changes queries that filter
+// by chat and state counter range.
+const SCHEMA_V15: &str = "
+CREATE INDEX IF NOT EXISTS idx_contacts_peer_login ON contacts(peer_login);
+CREATE INDEX IF NOT EXISTS idx_messages_chat_state ON messages(chat_id, state_version);
+";
+
+// V16: Recreate the messages table with ON DELETE CASCADE on the chat_id FK.
+// SQLite does not support ALTER TABLE … DROP CONSTRAINT, so the standard
+// table-recreation pattern is used.  All existing indexes and the V6 NOT NULL
+// trigger are recreated on the new table.  PRAGMA foreign_keys is disabled
+// only for the duration of this migration and re-enabled at the end.
+const SCHEMA_V16: &str = "
+PRAGMA foreign_keys = OFF;
+CREATE TABLE messages_new (
+    id               TEXT NOT NULL PRIMARY KEY,
+    chat_id          TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    sender_user_id   TEXT NOT NULL,
+    body             TEXT NOT NULL,
+    body_type        TEXT NOT NULL DEFAULT 'text/plain',
+    sent_at_peer     TEXT,
+    created_at       INTEGER NOT NULL,
+    state_version    INTEGER NOT NULL DEFAULT 0,
+    delivery_state   TEXT NOT NULL DEFAULT 'pending'
+                         CHECK(delivery_state IN ('pending','delivered','failed','received')),
+    delivered_at     INTEGER,
+    read_at          INTEGER,
+    reply_to         TEXT REFERENCES messages_new(id) ON DELETE SET NULL,
+    sender_msg_id    TEXT,
+    created_at_version INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO messages_new SELECT id,chat_id,sender_user_id,body,body_type,sent_at_peer,created_at,state_version,delivery_state,delivered_at,read_at,reply_to,sender_msg_id,created_at_version FROM messages;
+DROP TABLE messages;
+ALTER TABLE messages_new RENAME TO messages;
+CREATE INDEX IF NOT EXISTS messages_chat_time ON messages(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS messages_pending ON messages(delivery_state) WHERE delivery_state = 'pending';
+CREATE INDEX IF NOT EXISTS messages_state_version ON messages(state_version);
+CREATE UNIQUE INDEX messages_sender_msg_id ON messages(chat_id, sender_msg_id);
+CREATE INDEX IF NOT EXISTS messages_unread ON messages(chat_id) WHERE delivery_state = 'received' AND read_at IS NULL;
+CREATE INDEX IF NOT EXISTS messages_created_at_version ON messages(created_at_version);
+CREATE INDEX IF NOT EXISTS idx_messages_chat_state ON messages(chat_id, state_version);
+CREATE TRIGGER IF NOT EXISTS messages_sender_msg_id_not_null
+BEFORE INSERT ON messages
+WHEN NEW.sender_msg_id IS NULL
+BEGIN
+    SELECT RAISE(ABORT, 'sender_msg_id must not be NULL');
+END;
+PRAGMA foreign_keys = ON;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -329,6 +381,8 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (12, SCHEMA_V12),
     (13, SCHEMA_V13),
     (14, SCHEMA_V14),
+    (15, SCHEMA_V15),
+    (16, SCHEMA_V16),
 ];
 
 impl Store {
@@ -454,11 +508,7 @@ impl Store {
                     // size_bytes is always non-negative at write time; a negative
                     // value means DB corruption — reject rather than silently clamp.
                     if size_bytes_i64 < 0 {
-                        return Err(rusqlite::Error::InvalidColumnType(
-                            4,
-                            "size_bytes".to_string(),
-                            rusqlite::types::Type::Integer,
-                        ));
+                        return Err(rusqlite::Error::IntegralValueOutOfRange(4, size_bytes_i64));
                     }
                     Ok(PeerBlobInfo {
                         mailbox_host: row.get(0)?,
@@ -706,7 +756,20 @@ impl Store {
 /// A blanket `impl From<rusqlite::Error> for KithError` would violate the
 /// orphan rule (both types are external to this crate).  Call sites within
 /// kith-store use `.map_err(db_err)` at every rusqlite boundary.
+///
+/// Error classification:
+/// - **Constraint violation** (`SQLITE_CONSTRAINT`) → `KithError::Validation`.
+///   These arise from invalid client input (duplicate IDs, FK violations, CHECK
+///   constraint failures).  Callers that surface `KithError` to JMAP will
+///   automatically map `Validation` → `invalidArguments`, which is correct.
+/// - **All other errors** → `KithError::Store`.  These represent genuine storage
+///   failures (I/O, corruption, type mismatch) and map to `serverFail`.
 fn db_err(e: rusqlite::Error) -> KithError {
+    if let rusqlite::Error::SqliteFailure(ref ffi_err, _) = e {
+        if ffi_err.code == rusqlite::ErrorCode::ConstraintViolation {
+            return KithError::Validation(format!("constraint violation: {e}"));
+        }
+    }
     KithError::Store(e.to_string())
 }
 
@@ -799,13 +862,14 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has fourteen entries (versions 1-14), so user_version must be 14 after open.
-        assert_eq!(version, 14);
+        // MIGRATIONS has sixteen entries (versions 1-16), so user_version must be 16 after open.
+        assert_eq!(version, 16);
     }
 
     #[test]
     fn db_err_produces_store_variant() {
-        // Construct a rusqlite error by running a query against a nonexistent table.
+        // Oracle: a SQL error that is not a constraint violation (no_such_table
+        // gives SQLITE_ERROR, not SQLITE_CONSTRAINT) must map to KithError::Store.
         let conn = Connection::open_in_memory().unwrap();
         let result: Result<i64, rusqlite::Error> =
             conn.query_row("SELECT 1 FROM no_such_table", [], |row| row.get(0));
@@ -813,6 +877,33 @@ mod tests {
         match kith_err {
             KithError::Store(msg) => assert!(!msg.is_empty()),
             other => panic!("expected KithError::Store, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn db_err_constraint_violation_produces_validation_variant() {
+        // Oracle: UNIQUE constraint violations (SQLITE_CONSTRAINT) must map to
+        // KithError::Validation so callers can surface them as invalidArguments
+        // rather than serverFail.  The oracle is the SQLite error code
+        // SQLITE_CONSTRAINT (19), which rusqlite exposes as ErrorCode::ConstraintViolation.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            .unwrap();
+        conn.execute("INSERT INTO t VALUES (1)", []).unwrap();
+        // Second INSERT with same PK triggers UNIQUE constraint violation.
+        let result: Result<usize, rusqlite::Error> = conn.execute("INSERT INTO t VALUES (1)", []);
+        let kith_err = db_err(result.unwrap_err());
+        match kith_err {
+            KithError::Validation(msg) => {
+                assert!(
+                    msg.contains("constraint"),
+                    "validation message must mention 'constraint', got: {msg}"
+                );
+            }
+            other => panic!(
+                "UNIQUE constraint violation must map to KithError::Validation, got {:?}",
+                other
+            ),
         }
     }
 
@@ -836,7 +927,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 14, "migration 14 must be applied");
+        assert_eq!(v1, 16, "migration 16 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -923,7 +1014,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 14, "migration v14 must set user_version to 14");
+        assert_eq!(v, 16, "migration v16 must set user_version to 16");
     }
 
     #[test]
@@ -1537,7 +1628,10 @@ mod tests {
             .conn
             .query_row("SELECT COUNT(*) FROM self", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(count, 1, "self table must contain exactly one row after rejected INSERT");
+        assert_eq!(
+            count, 1,
+            "self table must contain exactly one row after rejected INSERT"
+        );
     }
 
     #[test]

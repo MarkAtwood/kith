@@ -76,10 +76,11 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let delivery_state = parse_delivery_state(&delivery_state_raw).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(e))
     })?;
-    let received_at = crate::util::unix_secs_to_rfc3339(created_at);
+    // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
+    let received_at = crate::util::unix_secs_to_rfc3339(created_at as u64);
     let sent_at = sent_at_peer.unwrap_or_else(|| received_at.clone());
-    let delivered_at = delivered_at_unix.map(crate::util::unix_secs_to_rfc3339);
-    let read_at = read_at_unix.map(crate::util::unix_secs_to_rfc3339);
+    let delivered_at = delivered_at_unix.map(|s| crate::util::unix_secs_to_rfc3339(s as u64));
+    let read_at = read_at_unix.map(|s| crate::util::unix_secs_to_rfc3339(s as u64));
     let sender_msg_id = sender_msg_id.unwrap_or_else(|| id.clone());
 
     Ok(Message {
@@ -136,11 +137,7 @@ fn load_attachments_for_messages(
                         let s: i64 = row.get(4)?;
                         // Negative means DB corruption; reject rather than clamp.
                         if s < 0 {
-                            return Err(rusqlite::Error::InvalidColumnType(
-                                4,
-                                "size_bytes".to_string(),
-                                rusqlite::types::Type::Integer,
-                            ));
+                            return Err(rusqlite::Error::IntegralValueOutOfRange(4, s));
                         }
                         s as u64
                     },
@@ -362,37 +359,36 @@ impl<'a> MessageStore<'a> {
         chat_id: &str,
         msg_id: &str,
     ) -> Result<Option<u32>, KithError> {
-        // Check the message exists in this chat first.
-        let exists: bool = self
+        // Single query: look up the target message and count predecessors in one
+        // round-trip, eliminating the separate existence check and the duplicate
+        // correlated subquery.
+        //
+        // The outer SELECT drives off the target row (m).  If the message is absent
+        // or belongs to a different chat, the FROM clause returns no rows and
+        // .optional() yields None.  The subquery COUNT runs only once (the target
+        // message's created_at is read from m, not from a repeated correlated
+        // subquery).
+        //
+        // A message N is "before" M in newest-first order when:
+        //   N.created_at > M.created_at, OR
+        //   N.created_at = M.created_at AND N.id > M.id  (tie-break by id desc)
+        let pos: Option<i64> = self
             .conn
             .query_row(
-                "SELECT COUNT(*) FROM messages WHERE id = ?1 AND chat_id = ?2",
-                params![msg_id, chat_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(db_err)?
-            > 0;
-
-        if !exists {
-            return Ok(None);
-        }
-
-        // Count messages that come before this one in newest-first order.
-        // A message M is "before" (has a lower index) if it has a larger created_at,
-        // or the same created_at but a lexicographically larger id.
-        let pos: i64 = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages \
-                 WHERE chat_id = ?1 \
-                 AND (created_at > (SELECT created_at FROM messages WHERE id = ?2) \
-                      OR (created_at = (SELECT created_at FROM messages WHERE id = ?2) AND id > ?2))",
+                "SELECT \
+                    (SELECT COUNT(*) FROM messages \
+                     WHERE chat_id = ?1 \
+                     AND (created_at > m.created_at \
+                          OR (created_at = m.created_at AND id > ?2))) \
+                 FROM messages m \
+                 WHERE m.id = ?2 AND m.chat_id = ?1",
                 params![chat_id, msg_id],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(db_err)?;
 
-        Ok(Some(pos as u32))
+        Ok(pos.map(|p| p as u32))
     }
 
     /// Find a message by the sender-assigned ID within a specific chat.

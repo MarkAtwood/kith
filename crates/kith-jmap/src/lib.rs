@@ -355,12 +355,12 @@ impl Dispatcher {
         // Accumulate client-id → server-id mappings from /set created maps (RFC 8620 §3.4).
         let mut created_ids: HashMap<String, String> = HashMap::new();
 
-        for (method_name, mut args, call_id) in request.method_calls {
+        for (method_name, args, call_id) in request.method_calls {
             let invocation = self
                 .dispatch_one(
                     &method_name,
                     &call_id,
-                    &mut args,
+                    args,
                     caller_role,
                     &caller_identity,
                     &prior,
@@ -398,13 +398,13 @@ impl Dispatcher {
         &self,
         method_name: &str,
         call_id: &str,
-        args: &mut serde_json::Value,
+        mut args: serde_json::Value,
         caller_role: Role,
         caller_identity: &Identity,
         prior_responses: &[(String, String, serde_json::Value)],
     ) -> Invocation {
         // Resolve any ResultReference arguments before role check or handler dispatch.
-        if let Err(e) = resolve_args(args, prior_responses) {
+        if let Err(e) = resolve_args(&mut args, prior_responses) {
             return error_invocation(method_name, call_id, e);
         }
 
@@ -431,7 +431,7 @@ impl Dispatcher {
                 .call(
                     method_name.to_string(),
                     call_id.to_string(),
-                    args.clone(),
+                    args,
                     caller_identity.clone(),
                 )
                 .await
@@ -446,7 +446,7 @@ impl Dispatcher {
                 return error_invocation(method_name, call_id, JmapError::unknown_method());
             };
             match handler
-                .call(method_name.to_string(), call_id.to_string(), args.clone())
+                .call(method_name.to_string(), call_id.to_string(), args)
                 .await
             {
                 Ok(result) => (method_name.to_string(), result, call_id.to_string()),

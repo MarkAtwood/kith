@@ -3,7 +3,7 @@
 ///
 /// Delegates to [`kith_core::unix_secs_to_rfc3339`]; the single canonical
 /// implementation lives in `kith-core`.
-pub(crate) fn unix_secs_to_rfc3339(secs: i64) -> String {
+pub(crate) fn unix_secs_to_rfc3339(secs: u64) -> String {
     kith_core::unix_secs_to_rfc3339(secs)
 }
 

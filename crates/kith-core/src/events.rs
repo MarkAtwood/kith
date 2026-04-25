@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// `StateChange` for every object type that was modified.  The receiver
 /// calls `<Type>/changes` to pull the delta — the event only signals
 /// *that* a change occurred, not *what* changed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StateChange {
     /// JMAP object type name, e.g. "ChatContact", "Chat", "Message".
     pub type_name: String,

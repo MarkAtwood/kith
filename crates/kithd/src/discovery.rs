@@ -396,7 +396,12 @@ async fn run_discovery_round(
             // responding_ip is the Tailscale-verified IP that answered; mailbox_host
             // is derived from it — not from the peer-supplied apiUrl — so a malicious
             // peer cannot redirect outbound delivery to a different node.
-            (peer.dns_name.clone(), peer.user_id.clone(), session, responding_ip)
+            (
+                peer.dns_name.clone(),
+                peer.user_id.clone(),
+                session,
+                responding_ip,
+            )
         });
     }
 

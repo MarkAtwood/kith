@@ -278,33 +278,41 @@ impl<'a> OutboxStore<'a> {
         delivered_at: Option<i64>,
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+
+        // Single UPDATE per delivery path: delivery_state, optional delivered_at,
+        // and state_version are all written together.  The subquery reads the
+        // next counter value inline so that the state_version stamp and the
+        // delivery-state change are atomic in one statement.
         let rows = if let Some(at) = delivered_at {
             tx.execute(
                 "UPDATE messages \
-                 SET delivery_state = ?1, delivered_at = ?2 \
+                 SET delivery_state = ?1, delivered_at = ?2, \
+                     state_version = (SELECT counter + 1 FROM state_counters \
+                                      WHERE type_name = 'message') \
                  WHERE id = ?3 AND delivery_state != 'delivered'",
                 params![final_state, at, entry.message_id],
             )
             .map_err(db_err)?
         } else {
             tx.execute(
-                "UPDATE messages SET delivery_state = ?1 \
+                "UPDATE messages \
+                 SET delivery_state = ?1, \
+                     state_version = (SELECT counter + 1 FROM state_counters \
+                                      WHERE type_name = 'message') \
                  WHERE id = ?2 AND delivery_state != 'delivered'",
                 params![final_state, entry.message_id],
             )
             .map_err(db_err)?
         };
+
+        // Advance the state counter only when the UPDATE actually touched a row.
+        // For orphaned outbox entries (message row absent) the counter must not move.
         let version = if rows > 0 {
-            let v = crate::advance_state_counter_in_tx(&tx, "message")?;
-            tx.execute(
-                "UPDATE messages SET state_version = ?1 WHERE id = ?2",
-                params![v, entry.message_id],
-            )
-            .map_err(db_err)?;
-            Some(v)
+            Some(crate::advance_state_counter_in_tx(&tx, "message")?)
         } else {
             None
         };
+
         tx.execute(
             "DELETE FROM outbox \
              WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",

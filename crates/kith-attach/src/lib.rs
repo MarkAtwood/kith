@@ -4,6 +4,11 @@ use std::path::PathBuf;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 
+/// Hard upper bound on blob size accepted by [`BlobStore::write_blob`].
+/// `write_blob_streaming` uses its caller-supplied `max_bytes` parameter
+/// instead (which must be ≤ this limit in practice).
+const MAX_BLOB_BYTES: u64 = 200 * 1024 * 1024; // 200 MiB
+
 /// On-disk blob storage for kith attachments.
 pub struct BlobStore {
     base_dir: PathBuf,
@@ -71,6 +76,17 @@ impl BlobStore {
                 format!(
                     "BlobStore base_dir does not exist: {:?}; was init() called?",
                     self.base_dir
+                ),
+            ));
+        }
+
+        if data.len() as u64 > MAX_BLOB_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "blob size {} exceeds hard limit of {} bytes",
+                    data.len(),
+                    MAX_BLOB_BYTES
                 ),
             ));
         }
@@ -434,6 +450,32 @@ mod tests {
         let result = store.write_blob_streaming("../bad", body, 1024).await;
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // Oracle: MAX_BLOB_BYTES is a compile-time constant (200 MiB).  Passing a
+    // slice whose length exceeds that constant must return Err(InvalidInput)
+    // before any file I/O occurs.  The allocation is immediately freed on drop.
+    #[tokio::test]
+    async fn write_blob_oversized_returns_invalid_input() {
+        let (store, _dir) = make_temp_store();
+        let id = BlobStore::generate_blob_id();
+        // Allocate exactly one byte over the hard cap.
+        let data = vec![0u8; MAX_BLOB_BYTES as usize + 1];
+        let result = store.write_blob(&id, &data).await;
+        assert!(
+            result.is_err(),
+            "write_blob must reject data exceeding MAX_BLOB_BYTES"
+        );
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput,
+            "error kind must be InvalidInput for oversized blob"
+        );
+        // No file must have been created.
+        assert!(
+            store.read_blob(&id).await.unwrap().is_none(),
+            "no blob file must exist after oversized write is rejected"
+        );
     }
 
     // Oracle: write_blob on a BlobStore whose base_dir was never created (or was

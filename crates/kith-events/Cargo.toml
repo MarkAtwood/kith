@@ -12,5 +12,3 @@ tokio-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-[dev-dependencies]
-kith-store.workspace = true

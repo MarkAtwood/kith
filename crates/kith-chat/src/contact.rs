@@ -74,7 +74,7 @@ impl JmapHandler for ChatContactGetHandler {
             // 3. Acquire lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // 4. Fetch contacts.
             let (contacts, not_found) = match ids {
@@ -232,7 +232,7 @@ impl JmapHandler for ChatContactSetHandler {
                 None => {
                     let guard = store
                         .lock()
-                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                        .map_err(|_| JmapError::server_fail("internal error"))?;
                     guard.contacts().get_state().map_err(kith_to_jmap)?
                 }
             };
@@ -241,7 +241,7 @@ impl JmapHandler for ChatContactSetHandler {
             let new_state = {
                 let guard = store
                     .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                    .map_err(|_| JmapError::server_fail("internal error"))?;
                 guard.contacts().get_state().map_err(kith_to_jmap)?
             };
 
@@ -312,7 +312,7 @@ fn process_create(
     // Acquire lock, upsert, optionally set_blocked, fetch back.
     let guard = store
         .lock()
-        .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+        .map_err(|_| json!({"type": "serverFail", "description": "internal error"}))?;
 
     // Capture old_state on the first call, inside the lock, before any DB write.
     if old_state_out.is_none() {
@@ -380,7 +380,7 @@ fn process_update(
 
     let guard = store
         .lock()
-        .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+        .map_err(|_| json!({"type": "serverFail", "description": "internal error"}))?;
 
     // Capture old_state on the first call, inside the lock, before any DB write.
     if old_state_out.is_none() {
@@ -522,7 +522,7 @@ impl JmapHandler for ChatContactChangesHandler {
             // 3. Acquire store lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // 4. Fetch changes with per-row counters (needed for correct newState
             //    when maxChanges truncation occurs — RFC 8620 §5.6).
@@ -546,10 +546,7 @@ impl JmapHandler for ChatContactChangesHandler {
                     // max=0 is rejected at parse time (RFC 8620 §5.6 invalidArguments),
                     // so the slice index is always non-zero here.
                     let truncated = &added_with_counter[..max];
-                    let new_state = truncated
-                        .last()
-                        .map(|(_, c, _)| format!("s-{c}"))
-                        .expect(
+                    let new_state = truncated.last().map(|(_, c, _)| format!("s-{c}")).expect(
                         "truncated slice is non-empty: max>=1 invariant established at parse time",
                     );
                     (truncated.to_vec(), true, new_state)
@@ -634,7 +631,7 @@ impl JmapHandler for ChatContactQueryHandler {
             // 3. Acquire lock.
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // 4. List all contacts.
             let contacts = guard.contacts().list().map_err(kith_to_jmap)?;
@@ -717,7 +714,7 @@ impl JmapHandler for ChatContactQueryChangesHandler {
 
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             let current_state = guard.contacts().get_state().map_err(kith_to_jmap)?;
             let current_counter: i64 = current_state

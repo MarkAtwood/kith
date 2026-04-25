@@ -429,7 +429,10 @@ mod tests {
         let saved = take_vars(&["KITHD_DISCOVERY_INTERVAL_SECS"]);
         unsafe { std::env::set_var("KITHD_DISCOVERY_INTERVAL_SECS", "5") };
         let cfg = Config::from_env();
-        assert_eq!(cfg.discovery_interval_secs, 60, "value below 60 must clamp to 60");
+        assert_eq!(
+            cfg.discovery_interval_secs, 60,
+            "value below 60 must clamp to 60"
+        );
         restore_vars(saved);
     }
 
@@ -489,7 +492,10 @@ mod tests {
         let saved = take_vars(&["KITHD_BIND_ADDR", "KITH_BIND_ADDR"]);
         unsafe { std::env::set_var("KITHD_BIND_ADDR", "not-an-address") };
         let cfg = Config::from_env();
-        assert_eq!(cfg.fallback_bind_addr, None, "unparseable address must be ignored");
+        assert_eq!(
+            cfg.fallback_bind_addr, None,
+            "unparseable address must be ignored"
+        );
         restore_vars(saved);
     }
 

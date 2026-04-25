@@ -76,14 +76,15 @@ mod tests {
     }
 
     #[test]
-    fn test_store_set_events_tx() {
-        let mut store = kith_store::Store::open_in_memory().expect("in-memory store must open");
-        assert!(store.events_tx.is_none(), "events_tx must start as None");
+    fn test_make_channel_returns_sender_and_receiver() {
+        // Oracle: broadcast channel semantics — sender.receiver_count() reports the
+        // number of live receivers. A fresh channel via make_channel(64) must have
+        // exactly one receiver (the one returned by the call).
         let (tx, _rx) = make_channel(64);
-        store.set_events_tx(tx);
-        assert!(
-            store.events_tx.is_some(),
-            "events_tx must be Some after set"
+        assert_eq!(
+            tx.receiver_count(),
+            1,
+            "make_channel must return exactly one receiver"
         );
     }
 

@@ -22,8 +22,10 @@ impl fmt::Display for ConnectionStatus {
         match self {
             ConnectionStatus::Connecting => write!(f, "Connecting"),
             ConnectionStatus::Connected => write!(f, "Connected"),
-            ConnectionStatus::Reconnecting => write!(f, "Reconnecting"),
-            ConnectionStatus::Error(_) => write!(f, "Error"),
+            ConnectionStatus::Reconnecting => {
+                write!(f, "Reconnecting (will retry automatically)")
+            }
+            ConnectionStatus::Error(msg) => write!(f, "Error: {msg}"),
         }
     }
 }
@@ -72,10 +74,18 @@ pub struct AppState {
 
 impl AppState {
     /// Construct initial state with hardcoded placeholder data.
+    ///
+    /// Invariant: `messages`, `message_ids`, and `message_senders` are always
+    /// the same length.  All three are populated here with 20 placeholder entries
+    /// so the invariant holds from construction.
     pub fn new() -> Self {
         let mut messages = VecDeque::new();
+        let mut message_ids = VecDeque::new();
+        let mut message_senders = VecDeque::new();
         for i in 1..=20u32 {
             messages.push_back(format!("12:{:02} alice: placeholder message {i}", i % 60));
+            message_ids.push_back(String::new());
+            message_senders.push_back(String::new());
         }
         AppState {
             quit: false,
@@ -97,8 +107,8 @@ impl AppState {
             message_state: String::new(),
             should_send_message: false,
             error_notification: None,
-            message_ids: VecDeque::new(),
-            message_senders: VecDeque::new(),
+            message_ids,
+            message_senders,
             unread_message_ids: HashSet::new(),
         }
     }
@@ -236,12 +246,22 @@ mod tests {
 
     #[test]
     fn new_state_initializes_send_fields() {
-        // Oracle: initial state is zero/empty (structural invariant).
+        // Oracle: should_send_message, error_notification, and unread_message_ids
+        // start at their zero values.  message_ids and message_senders must be
+        // parallel to messages (same length) — the invariant, not necessarily empty.
         let state = AppState::new();
         assert!(!state.should_send_message);
         assert!(state.error_notification.is_none());
-        assert!(state.message_ids.is_empty());
-        assert!(state.message_senders.is_empty());
+        assert_eq!(
+            state.message_ids.len(),
+            state.messages.len(),
+            "message_ids must be parallel to messages"
+        );
+        assert_eq!(
+            state.message_senders.len(),
+            state.messages.len(),
+            "message_senders must be parallel to messages"
+        );
         assert!(state.unread_message_ids.is_empty());
     }
 

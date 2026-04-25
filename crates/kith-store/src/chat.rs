@@ -150,8 +150,10 @@ impl<'a> ChatStore<'a> {
             id,
             kind,
             contact_id: contact_id_val,
-            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
-            last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
+            // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
+            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
+            last_message_at: last_message_at_secs
+                .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
             unread_count,
         }))
     }
@@ -191,8 +193,10 @@ impl<'a> ChatStore<'a> {
             id,
             kind,
             contact_id,
-            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
-            last_message_at: last_message_at_secs.map(crate::util::unix_secs_to_rfc3339),
+            // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
+            created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
+            last_message_at: last_message_at_secs
+                .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
             unread_count,
         }))
     }
@@ -232,13 +236,14 @@ impl<'a> ChatStore<'a> {
             .into_iter()
             .map(
                 |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
+                    // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
                     Chat {
                         id,
                         kind,
                         contact_id,
-                        created_at: crate::util::unix_secs_to_rfc3339(created_at_secs),
+                        created_at: crate::util::unix_secs_to_rfc3339(created_at_secs as u64),
                         last_message_at: last_message_at_secs
-                            .map(crate::util::unix_secs_to_rfc3339),
+                            .map(|s| crate::util::unix_secs_to_rfc3339(s as u64)),
                         unread_count,
                     }
                 },

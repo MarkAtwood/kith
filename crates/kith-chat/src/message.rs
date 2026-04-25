@@ -251,7 +251,7 @@ impl JmapHandler for MessageSetHandler {
                 None => {
                     let guard = store
                         .lock()
-                        .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                        .map_err(|_| JmapError::server_fail("internal error"))?;
                     guard.messages().get_state().map_err(kith_to_jmap)?
                 }
             };
@@ -259,7 +259,7 @@ impl JmapHandler for MessageSetHandler {
             let new_state = {
                 let guard = store
                     .lock()
-                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                    .map_err(|_| JmapError::server_fail("internal error"))?;
                 guard.messages().get_state().map_err(kith_to_jmap)?
             };
 
@@ -341,7 +341,7 @@ fn process_create(
     // Acquire the store lock for all DB operations.
     let guard = store
         .lock()
-        .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+        .map_err(|_| json!({"type": "serverFail", "description": "internal error"}))?;
 
     // Capture old_state on the first call, inside the lock, before any DB write.
     if old_state_out.is_none() {
@@ -541,7 +541,7 @@ fn process_update(
 
     let guard = store
         .lock()
-        .map_err(|_| json!({"type": "serverFail", "description": "store poisoned"}))?;
+        .map_err(|_| json!({"type": "serverFail", "description": "internal error"}))?;
 
     // Capture old_state on the first call, inside the lock, before any DB write.
     if old_state_out.is_none() {
@@ -638,7 +638,7 @@ impl JmapHandler for MessageGetHandler {
 
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             let mut messages = Vec::new();
             let mut not_found = Vec::new();
@@ -722,7 +722,7 @@ impl JmapHandler for MessageChangesHandler {
 
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             let (rows, current_state) = guard
                 .messages()
@@ -826,7 +826,7 @@ impl JmapHandler for MessageQueryHandler {
 
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             // Validate chatId exists.
             if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
@@ -933,7 +933,7 @@ impl JmapHandler for MessageQueryChangesHandler {
 
             let guard = store
                 .lock()
-                .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                .map_err(|_| JmapError::server_fail("internal error"))?;
 
             if guard.chats().get(&chat_id).map_err(kith_to_jmap)?.is_none() {
                 return Err(JmapError::invalid_arguments("unknown chatId"));

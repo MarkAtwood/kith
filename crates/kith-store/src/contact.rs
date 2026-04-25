@@ -451,8 +451,9 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
         id: peer_user_id,
         login: peer_login,
         display_name,
-        first_seen_at: crate::util::unix_secs_to_rfc3339(first_seen_at),
-        last_seen_at: crate::util::unix_secs_to_rfc3339(last_seen_at),
+        // Timestamps stored in SQLite are guaranteed non-negative Unix seconds.
+        first_seen_at: crate::util::unix_secs_to_rfc3339(first_seen_at as u64),
+        last_seen_at: crate::util::unix_secs_to_rfc3339(last_seen_at as u64),
         blocked: blocked != 0,
     })
 }
