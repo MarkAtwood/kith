@@ -393,7 +393,10 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                     match live_tx.try_send(None) {
                         Ok(()) => {}
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                            tracing::warn!("SSE client channel full; dropping stalled connection");
+                            tracing::warn!(
+                                "SSE client channel full while sending close-signal; \
+                                 dropping stalled connection"
+                            );
                             break;
                         }
                         Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => break,
