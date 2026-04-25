@@ -132,8 +132,18 @@ impl Default for AppState {
     }
 }
 
-/// Strip ANSI SGR escape sequences (ESC `[` ... `m`) from `s` and return
-/// only the visible characters.
+/// Strip all ANSI/VT100 escape sequences from `s` and return only the
+/// visible characters.
+///
+/// Sequences stripped:
+/// - CSI sequences: `ESC [` followed by parameter bytes (0x30–0x3F),
+///   intermediate bytes (0x20–0x2F), and a final byte (0x40–0x7E).
+///   This covers SGR color/style (`ESC[...m`), cursor movement
+///   (`ESC[A`/`ESC[B`/`ESC[H`/…), screen clear (`ESC[2J`), and all
+///   other CSI sequences.
+/// - OSC sequences: `ESC ]` followed by any bytes up to a BEL (0x07)
+///   or a String Terminator (`ESC \`).
+/// - Any remaining bare ESC byte not consumed by the above.
 ///
 /// The function is pure: no I/O, no side effects.
 pub fn sanitize_display(s: &str) -> String {
@@ -141,19 +151,56 @@ pub fn sanitize_display(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
-            // Skip ESC '[' and everything up to and including the next 'm'.
-            i += 2;
-            while i < bytes.len() {
-                let b = bytes[i];
-                i += 1;
-                if b == b'm' {
-                    break;
-                }
-            }
-        } else {
+        if bytes[i] != 0x1b {
             out.push(bytes[i]);
             i += 1;
+            continue;
+        }
+        // ESC byte found. Peek at the next byte to classify the sequence.
+        if i + 1 >= bytes.len() {
+            // Lone ESC at end of input: discard it.
+            i += 1;
+            continue;
+        }
+        match bytes[i + 1] {
+            b'[' => {
+                // CSI sequence: ESC [ {param bytes}* {intermediate bytes}* {final byte}
+                // Parameter bytes: 0x30–0x3F  (digits, ';', ':', '<', '=', '>', '?')
+                // Intermediate bytes: 0x20–0x2F (space, '!', '"', …, '/')
+                // Final byte: 0x40–0x7E ('@' through '~', includes 'm', 'A', 'B', 'J', …)
+                i += 2; // consume ESC [
+                while i < bytes.len() {
+                    let b = bytes[i];
+                    i += 1;
+                    if (0x40..=0x7e).contains(&b) {
+                        // Final byte consumed — sequence complete.
+                        break;
+                    }
+                    // Parameter or intermediate byte — keep consuming.
+                }
+            }
+            b']' => {
+                // OSC sequence: ESC ] ... BEL  or  ESC ] ... ESC \
+                i += 2; // consume ESC ]
+                while i < bytes.len() {
+                    if bytes[i] == 0x07 {
+                        // BEL terminates the OSC.
+                        i += 1;
+                        break;
+                    }
+                    if bytes[i] == 0x1b && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+                        // ST (String Terminator = ESC \) terminates the OSC.
+                        i += 2;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            _ => {
+                // Unknown two-byte escape: discard only the ESC byte. The next
+                // byte will be re-evaluated on the next iteration.
+                i += 1;
+            }
         }
     }
     // out contains only bytes that were never part of an escape sequence;
@@ -246,6 +293,54 @@ mod tests {
     #[test]
     fn sanitize_display_empty_string() {
         assert_eq!(sanitize_display(""), "");
+    }
+
+    // ── Extended sanitize_display tests (Bug 2 — KITH-hqrw.48) ──────────────
+    // All oracles are manually constructed from known ANSI/VT100 escape sequences.
+    // Reference: ECMA-48 §5.4 (CSI), §8.3.89 (OSC), VT100 User Guide.
+
+    #[test]
+    fn sanitize_display_strips_cursor_movement_csi() {
+        // Oracle: ESC[A = cursor up (CSI, final byte 'A' = 0x41, in 0x40–0x7E).
+        // Visible content: "AB". ESC[A must be discarded entirely.
+        // Input: "A\x1b[AB" → strip ESC[A → "AB"
+        assert_eq!(sanitize_display("A\x1b[AB"), "AB");
+    }
+
+    #[test]
+    fn sanitize_display_strips_screen_clear_csi() {
+        // Oracle: ESC[2J = erase display (CSI, parameter '2', final byte 'J' = 0x4A).
+        // Input: "before\x1b[2Jafter" → strip ESC[2J → "beforeafter"
+        assert_eq!(sanitize_display("before\x1b[2Jafter"), "beforeafter");
+    }
+
+    #[test]
+    fn sanitize_display_strips_osc_with_bel_terminator() {
+        // Oracle: ESC]0;title\x07 is the standard OSC for setting the terminal
+        // window title (OSC 0 = icon name + title, terminated by BEL = 0x07).
+        // Visible content: "text". The entire OSC sequence must be discarded.
+        // Input: "\x1b]0;My Title\x07text" → strip OSC → "text"
+        assert_eq!(sanitize_display("\x1b]0;My Title\x07text"), "text");
+    }
+
+    #[test]
+    fn sanitize_display_strips_osc_with_st_terminator() {
+        // Oracle: ESC]8;;url ESC\ is the OSC 8 hyperlink sequence terminated by
+        // ST (String Terminator = ESC \). Both the OSC and its ST must be removed.
+        // Input: "\x1b]8;;https://example.com\x1b\\link" → "link"
+        assert_eq!(
+            sanitize_display("\x1b]8;;https://example.com\x1b\\link"),
+            "link"
+        );
+    }
+
+    #[test]
+    fn sanitize_display_strips_bare_esc_byte() {
+        // Oracle: a bare ESC byte not followed by '[' or ']' (or at end of input)
+        // is an unknown/incomplete escape. It must be discarded.
+        // Input: "a\x1bb" — ESC followed by 'b' (not '[' or ']'); discard ESC only.
+        // After discarding ESC: "ab"
+        assert_eq!(sanitize_display("a\x1bb"), "ab");
     }
 
     #[test]

@@ -415,12 +415,14 @@ async fn fetch_and_notify(
     let changes_body = serde_json::to_string(&changes_request)?;
     let changes_response = jmap_post(config, tailnet_ip, connector, &changes_body).await?;
 
-    let new_ids: Vec<String> = changes_response
+    let method_args = changes_response
         .get("methodResponses")
         .and_then(|r| r.as_array())
         .and_then(|arr| arr.first())
         .and_then(|r| r.as_array())
-        .and_then(|r| r.get(1))
+        .and_then(|r| r.get(1));
+
+    let created_ids: Vec<String> = method_args
         .and_then(|args| args.get("created"))
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -429,6 +431,16 @@ async fn fetch_and_notify(
                 .collect()
         })
         .unwrap_or_default();
+    let updated_ids: Vec<String> = method_args
+        .and_then(|args| args.get("updated"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default();
+    let new_ids: Vec<String> = created_ids.into_iter().chain(updated_ids).collect();
 
     if new_ids.is_empty() {
         return Ok(());

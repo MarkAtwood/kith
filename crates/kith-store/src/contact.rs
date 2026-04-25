@@ -312,20 +312,33 @@ impl<'a> ContactStore<'a> {
         let mut stmt = self
             .conn
             .prepare_cached(
-                "SELECT peer_user_id FROM contacts \
+                "SELECT peer_user_id, created_at_counter FROM contacts \
                  WHERE changed_at_counter > ?1 \
                  ORDER BY changed_at_counter ASC",
             )
             .map_err(db_err)?;
-        let ids: Vec<String> = stmt
-            .query_map(params![since_counter], |row| row.get(0))
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![since_counter], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
+        let mut added = Vec::new();
+        let mut updated = Vec::new();
+        for (id, created_at) in rows {
+            // is_create: row was first inserted after sinceState (RFC 8620 §5.2 created[]).
+            // created_at_counter == 0 is the pre-V8 sentinel meaning "existed before
+            // classification" — treat as updated, not created.
+            if created_at > since_counter && created_at > 0 {
+                added.push(id);
+            } else {
+                updated.push(id);
+            }
+        }
+
         Ok(ChangesResult {
-            added: ids,
-            updated: vec![],
+            added,
+            updated,
             destroyed: vec![],
             new_state: current_state,
         })
@@ -730,6 +743,50 @@ mod tests {
         );
         assert!(result.updated.is_empty());
         assert!(result.destroyed.is_empty());
+    }
+
+    #[test]
+    fn contact_changes_update_goes_to_updated_not_added() {
+        // Oracle: a contact that existed before sinceState and was then modified
+        // must appear in updated[], NOT added[].  get_changes_since previously put
+        // all IDs in added[] regardless of create/update status (KITH-hqrw.51).
+        //
+        // Sequence:
+        //   1. Insert uid-upd at t=1000  → state s-1
+        //   2. Record s-1 as sinceState
+        //   3. Update uid-upd at t=2000 (different last_seen_at → counter advances)
+        //   4. get_changes_since("s-1") must have uid-upd in updated[], NOT added[].
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert(
+            "uid-upd",
+            "upd@example.com",
+            "upd-kith.tail.ts.net",
+            None,
+            1000,
+        )
+        .unwrap();
+        let since = cs.get_state().unwrap();
+        // Touch the row so it appears in the next changes window.
+        cs.upsert(
+            "uid-upd",
+            "upd@example.com",
+            "upd-kith.tail.ts.net",
+            None,
+            2000,
+        )
+        .unwrap();
+        let result = cs.get_changes_since(&since).unwrap();
+        assert!(
+            !result.added.contains(&"uid-upd".to_string()),
+            "updated contact must NOT appear in added[]; added={:?}",
+            result.added
+        );
+        assert!(
+            result.updated.contains(&"uid-upd".to_string()),
+            "updated contact must appear in updated[]; updated={:?}",
+            result.updated
+        );
     }
 
     #[test]

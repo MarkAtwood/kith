@@ -935,6 +935,14 @@ pub async fn run(
                     Some(crate::client::SseStatus::Reconnecting) => {
                         state.connection_status = crate::app::ConnectionStatus::Reconnecting;
                     }
+                    Some(crate::client::SseStatus::AuthError(code)) => {
+                        // Auth failure — the SSE task has stopped. Surface the
+                        // error to the user and quit; retrying is pointless.
+                        state.connection_status = crate::app::ConnectionStatus::Error(
+                            format!("Authentication failed (HTTP {code}): check Tailscale identity"),
+                        );
+                        state.quit = true;
+                    }
                     None => {
                         // Status channel closed; task exited.
                         state.quit = true;

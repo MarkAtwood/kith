@@ -102,7 +102,7 @@ cargo zigbuild --release --target aarch64-unknown-linux-musl   # NAS / Pi
   /kith-events    EventSource push for owner clients
   /kith-attach    attachment blob storage on disk
 /web              static client assets (served by kithd at /)
-/migrations       SQLite migration files
+/migrations       (placeholder only — migrations are embedded in kith-store/src/lib.rs as SCHEMA_V* constants)
 Cargo.toml        workspace manifest
 kith-architecture.md  full design doc — read this before making protocol changes
 ```

@@ -27,6 +27,12 @@ pub enum ClientError {
     Http(#[from] reqwest::Error),
     #[error("response parse error: {0}")]
     Parse(String),
+    /// Auth failure (HTTP 401/403): retrying will not help.
+    #[error("authentication failed (HTTP {0}): check Tailscale identity")]
+    AuthFailed(u16),
+    /// SSE frame exceeded the size cap: treat as a connection error.
+    #[error("SSE frame too large (>{0} bytes)")]
+    SseFrameTooLarge(usize),
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────
@@ -194,6 +200,17 @@ pub fn spawn_sse(
                     // Reset backoff on a clean close — the server was reachable.
                     backoff_secs = 2;
                 }
+                Err(ClientError::AuthFailed(code)) => {
+                    // 401/403 means our identity is rejected. Retrying will not
+                    // help — surface the error and stop the task entirely.
+                    eprintln!(
+                        "kith-tui: SSE authentication failed (HTTP {code}): not retrying"
+                    );
+                    let _ = status_tx
+                        .send(SseStatus::AuthError(code))
+                        .await;
+                    return;
+                }
                 Err(e) => {
                     eprintln!("kith-tui: SSE stream error: {e}; reconnecting in {backoff_secs}s");
                 }
@@ -224,7 +241,14 @@ pub enum SseStatus {
     Connected,
     /// The stream closed or errored; backoff in progress before next attempt.
     Reconnecting,
+    /// Auth failure (HTTP 401/403). The task has exited; no retry will occur.
+    AuthError(u16),
 }
+
+/// Maximum SSE buffer size. If a server sends bytes without ever emitting a
+/// blank-line frame boundary, the buffer would grow without bound. Cap it at
+/// 1 MiB and return a fatal error so the caller can reconnect (or give up).
+const MAX_SSE_BUF: usize = 1024 * 1024; // 1 MiB
 
 async fn run_sse(
     client: reqwest::Client,
@@ -236,8 +260,17 @@ async fn run_sse(
         .get(event_url)
         .header("Accept", "text/event-stream")
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+
+    // Detect auth failures before calling error_for_status() so we can return
+    // a typed AuthFailed error instead of a generic Http error. The caller
+    // uses this to stop retrying — a 401/403 will not resolve on its own.
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(ClientError::AuthFailed(status.as_u16()));
+    }
+    resp.error_for_status_ref()
+        .map_err(ClientError::Http)?;
 
     // HTTP connection established — notify the UI.
     // Ignore send errors: the UI may have exited.
@@ -250,6 +283,12 @@ async fn run_sse(
         let bytes = chunk?;
         // Lossy UTF-8 decode: skip invalid sequences rather than crashing.
         buf.push_str(&String::from_utf8_lossy(&bytes).replace("\r\n", "\n"));
+
+        // Guard against unbounded buffer growth when the server sends bytes
+        // but never emits a blank-line SSE frame boundary.
+        if buf.len() > MAX_SSE_BUF {
+            return Err(ClientError::SseFrameTooLarge(MAX_SSE_BUF));
+        }
 
         // Split on blank lines (SSE event boundary).
         while let Some(pos) = buf.find("\n\n") {

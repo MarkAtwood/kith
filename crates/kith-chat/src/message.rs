@@ -6,6 +6,7 @@ use kith_core::{Attachment, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use ulid::Ulid;
@@ -38,13 +39,33 @@ fn validate_content_type(ct: &str) -> Result<(), &'static str> {
     if ct.is_empty() {
         return Err("contentType must not be empty");
     }
-    if ct.len() > 256 {
+    if ct.len() > 255 {
         return Err("contentType exceeds maximum length");
     }
-    if ct.chars().filter(|&c| c == '/').count() != 1 {
-        return Err("contentType must contain exactly one '/'");
+    // MIME types are ASCII; reject non-ASCII, control characters (0x00–0x1F,
+    // 0x7F), and spaces.  This prevents CRLF injection, null-byte injection,
+    // and multi-byte Unicode sequences that could bypass byte-range checks.
+    if !ct.is_ascii() || ct.bytes().any(|b| b < 0x21 || b == 0x7f) {
+        return Err("contentType contains disallowed characters");
     }
-    Ok(())
+    // Must be exactly type/subtype.  Each token allows only the MIME token
+    // character set: alphanumeric, hyphen, plus, and dot (RFC 2045 §5.1).
+    match ct.split_once('/') {
+        Some((t, s))
+            if !t.is_empty()
+                && !s.is_empty()
+                && !s.contains('/')
+                && t.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.'
+                })
+                && s.bytes().all(|b| {
+                    b.is_ascii_alphanumeric() || b == b'-' || b == b'+' || b == b'.'
+                }) =>
+        {
+            Ok(())
+        }
+        _ => Err("contentType must be type/subtype with only alphanumeric, '-', '+', '.' chars"),
+    }
 }
 
 fn validate_sha256(s: &str) -> Result<(), &'static str> {
@@ -59,7 +80,7 @@ fn validate_sha256(s: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn parse_attachments(
+async fn parse_attachments(
     obj: &serde_json::Map<String, Value>,
     blob_store: &BlobStore,
 ) -> Result<Vec<ParsedAttachment>, Value> {
@@ -88,11 +109,6 @@ fn parse_attachments(
         BlobStore::validate_blob_id(&blob_id).map_err(|e| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].blobId: {e}")})
         })?;
-        if !blob_store.blob_exists(&blob_id) {
-            return Err(
-                json!({"type": "invalidArguments", "description": format!("attachments[{i}].blobId: blob not found")}),
-            );
-        }
         let filename = att.get("filename").and_then(|v| v.as_str()).ok_or_else(|| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].filename is required")})
         })?.to_string();
@@ -119,6 +135,36 @@ fn parse_attachments(
         validate_sha256(&sha256).map_err(|e| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].sha256: {e}")})
         })?;
+
+        // Read the blob from disk and verify both size and sha256 against the
+        // caller-supplied values.  A caller can claim any size or hash for a
+        // blob they own; we reject mismatches before persisting the metadata.
+        let blob_bytes = blob_store
+            .read_blob(&blob_id)
+            .await
+            .map_err(|e| {
+                json!({"type": "serverFail", "description": format!("attachments[{i}].blobId: read error: {e}")})
+            })?
+            .ok_or_else(|| {
+                json!({"type": "invalidArguments", "description": format!("attachments[{i}].blobId: blob not found")})
+            })?;
+
+        let actual_size = blob_bytes.len() as u64;
+        if actual_size != size {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("attachments[{i}].size: claimed {size} but blob is {actual_size} bytes")
+            }));
+        }
+
+        let actual_sha256 = format!("{:x}", Sha256::digest(&blob_bytes));
+        if actual_sha256 != sha256 {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("attachments[{i}].sha256: mismatch (claimed {sha256}, actual {actual_sha256})")
+            }));
+        }
+
         result.push(ParsedAttachment {
             blob_id,
             filename,
@@ -230,7 +276,9 @@ impl JmapHandler for MessageSetHandler {
                         now_unix,
                         &mut old_state_cell,
                         &mut new_state_cell,
-                    ) {
+                    )
+                    .await
+                    {
                         Ok(msg_value) => {
                             created.insert(client_id.clone(), msg_value);
                         }
@@ -304,7 +352,7 @@ impl JmapHandler for MessageSetHandler {
     }
 }
 
-fn process_create(
+async fn process_create(
     store: &Arc<Mutex<kith_store::Store>>,
     blob_store: &BlobStore,
     _client_id: &str,
@@ -363,7 +411,7 @@ fn process_create(
     }
 
     // Parse and validate attachments BEFORE acquiring the store lock.
-    let attachments = parse_attachments(obj, blob_store)?;
+    let attachments = parse_attachments(obj, blob_store).await?;
 
     // Acquire the store lock for all DB operations.
     let guard = store
@@ -2223,12 +2271,15 @@ mod tests {
     // -----------------------------------------------------------------------
 
     fn valid_attachment(blob_id: &str) -> serde_json::Value {
+        // Oracle: b"fake attachment content" is 23 bytes.
+        // printf "fake attachment content" | sha256sum
+        // → 508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d
         json!({
             "blobId": blob_id,
             "filename": "test.txt",
             "contentType": "text/plain",
-            "size": 100u64,
-            "sha256": "a".repeat(64)
+            "size": 23u64,
+            "sha256": "508f8b56d1077deba4d0cd0ff79390581de5edc2ba126240628176256e6bbb4d"
         })
     }
 
@@ -2378,6 +2429,78 @@ mod tests {
             "notCreated.m0 must be set for contentType without '/'"
         );
         assert_eq!(get_message_count(&store), 0);
+    }
+
+    // Unit tests for validate_content_type (Bug 3 fix).
+    // Oracle: RFC 2045 §5.1 MIME token character set plus the stricter
+    // Kith policy (no control chars, no spaces, no injection characters).
+
+    #[test]
+    fn validate_content_type_accepts_simple_types() {
+        assert!(validate_content_type("text/plain").is_ok());
+        assert!(validate_content_type("application/json").is_ok());
+        assert!(validate_content_type("image/png").is_ok());
+        assert!(validate_content_type("application/octet-stream").is_ok());
+        assert!(validate_content_type("application/vnd.ms-excel").is_ok());
+        assert!(validate_content_type("application/x-tar").is_ok());
+        assert!(validate_content_type("font/woff2").is_ok());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_no_slash() {
+        assert!(validate_content_type("notavalidmime").is_err());
+        assert!(validate_content_type("text").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_empty_type_or_subtype() {
+        assert!(validate_content_type("/plain").is_err());
+        assert!(validate_content_type("text/").is_err());
+        assert!(validate_content_type("/").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_multiple_slashes() {
+        assert!(validate_content_type("text/plain/extra").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_control_characters() {
+        // CRLF injection attempt
+        assert!(validate_content_type("text/plain\r\nX-Evil: injected").is_err());
+        // Null byte
+        assert!(validate_content_type("text/plain\x00").is_err());
+        // Bare CR
+        assert!(validate_content_type("text/plain\r").is_err());
+        // Tab (0x09 < 0x21)
+        assert!(validate_content_type("text/plain\t").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_spaces() {
+        assert!(validate_content_type("text/plain charset=utf-8").is_err());
+        assert!(validate_content_type("text /plain").is_err());
+        assert!(validate_content_type("text/ plain").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_disallowed_chars_in_token() {
+        // '@' is not in the allowed MIME token set
+        assert!(validate_content_type("text/plain@evil").is_err());
+        // '?' is not allowed
+        assert!(validate_content_type("text/plain?q=1").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_empty() {
+        assert!(validate_content_type("").is_err());
+    }
+
+    #[test]
+    fn validate_content_type_rejects_oversized() {
+        let long = format!("text/{}", "a".repeat(252));
+        assert!(long.len() > 255);
+        assert!(validate_content_type(&long).is_err());
     }
 
     #[tokio::test]

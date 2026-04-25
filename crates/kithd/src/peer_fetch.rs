@@ -267,10 +267,21 @@ fn percent_encode_unreserved(s: &str) -> String {
 /// The client uses [`TailnetCertVerifier`] so it can connect to kithd
 /// instances that present self-signed certificates.  HTTP/1.1 only;
 /// plaintext (`http://`) connections are rejected by the connector.
+///
+/// Uses an explicit `CryptoProvider` (never the process global) so the
+/// function works in any context and does not panic if no global provider
+/// has been installed.  System CA roots are never consulted: the custom
+/// `TailnetCertVerifier` replaces all certificate verification.
 pub(crate) fn build_tailnet_https_client(
 ) -> Client<hyper_rustls::HttpsConnector<HttpConnector>, Full<Bytes>> {
+    let provider: Arc<rustls::crypto::CryptoProvider> =
+        rustls::crypto::CryptoProvider::get_default()
+            .cloned()
+            .unwrap_or_else(|| Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
     let verifier = Arc::new(TailnetCertVerifier::new());
-    let tls_config = rustls::ClientConfig::builder()
+    let tls_config = rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .expect("TLS protocol version defaults are valid")
         .dangerous()
         .with_custom_certificate_verifier(verifier)
         .with_no_client_auth();
