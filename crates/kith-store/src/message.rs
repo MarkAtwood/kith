@@ -96,7 +96,18 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         );
         crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
     });
-    let sender_msg_id = sender_msg_id.unwrap_or_else(|| id.clone());
+    // sender_msg_id is enforced NOT NULL by the V6 trigger; NULL means
+    // pre-V6 data or DB corruption.  Reject rather than silently fall back.
+    let sender_msg_id = sender_msg_id.ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            11,
+            rusqlite::types::Type::Null,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "sender_msg_id is NULL (pre-V6 row or DB corruption)",
+            )),
+        )
+    })?;
 
     Ok(Message {
         id,

@@ -72,11 +72,7 @@ where
 /// the trailing dot so callers receive a clean hostname string.
 fn strip_trailing_dot<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let s = String::deserialize(d)?;
-    if s.ends_with('.') {
-        Ok(s[..s.len() - 1].to_owned())
-    } else {
-        Ok(s)
-    }
+    Ok(s.strip_suffix('.').map(str::to_owned).unwrap_or(s))
 }
 
 /// A remote peer node as returned inside the `Peer` map of the
