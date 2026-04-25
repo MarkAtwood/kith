@@ -314,7 +314,14 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // to terminate the SSE connection even when no type-matching event was
     // present in the live broadcast batch.
     let (live_tx, live_rx) = tokio::sync::mpsc::channel::<Option<Result<Event, Infallible>>>(256);
-    let peer_node = caller.identity.node_name.clone();
+    // "peer" in Kith is a remote kith user; this is the owner's client node.
+    // node_name is the MagicDNS hostname; may be empty on bare Headscale — fall
+    // back to display() (login_name or user_id) so the log is always actionable.
+    let client_node = if caller.identity.node_name.is_empty() {
+        caller.identity.display().to_owned()
+    } else {
+        caller.identity.node_name.clone()
+    };
 
     tokio::spawn(async move {
         // Reuse one HashMap across loop iterations to avoid per-batch allocation.
@@ -395,7 +402,7 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                         Ok(()) => {}
                         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                             tracing::warn!(
-                                peer = %peer_node,
+                                client = %client_node,
                                 "SSE client channel full while sending close-signal; \
                                  dropping stalled connection"
                             );
@@ -443,7 +450,7 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
                 Ok(()) => {}
                 Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                     tracing::warn!(
-                        peer = %peer_node,
+                        client = %client_node,
                         "SSE client channel full; dropping stalled connection"
                     );
                     break;
