@@ -140,7 +140,10 @@ pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
     // Step 2: read current session state from the store (before dispatch).
     let session_state = match app.store.lock() {
         Ok(guard) => combined_state(&guard),
-        Err(_) => "s-0-s-0-s-0".to_string(),
+        Err(e) => {
+            tracing::error!("store mutex poisoned in jmap_handler: {e}");
+            "s-0-s-0-s-0".to_string()
+        }
     };
 
     // Step 3: dispatch.  Caller identity is passed as a typed parameter; the

@@ -75,41 +75,7 @@ impl<'a> ContactStore<'a> {
             // A crash after the counter advances but before the row update would leave
             // this contact invisible to ChatContact/changes forever.
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
-            // Detect fresh insert vs update: a fresh insert has created_at_counter = 0
-            // (the DEFAULT value). An update leaves the existing created_at_counter intact.
-            // Set created_at_counter only on fresh inserts so Contact/changes can correctly
-            // classify this change as "created" vs "updated" (RFC 8620 §5.2).
-            let created_at: i64 = tx
-                .query_row(
-                    "SELECT created_at_counter FROM contacts WHERE peer_user_id = ?1",
-                    params![peer_user_id],
-                    |row| row.get(0),
-                )
-                .map_err(db_err)?;
-            if created_at == 0 {
-                // Fresh insert: stamp both counters so the contact appears in created[].
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
-                     WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            } else if created_at < 0 {
-                // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
-                // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
-                     WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            } else {
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            }
+            stamp_contact_counters(&tx, peer_user_id, counter)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
         } else {
@@ -167,37 +133,7 @@ impl<'a> ContactStore<'a> {
             .map_err(db_err)?;
         if affected > 0 {
             let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
-            let created_at: i64 = tx
-                .query_row(
-                    "SELECT created_at_counter FROM contacts WHERE peer_user_id = ?1",
-                    params![peer_user_id],
-                    |row| row.get(0),
-                )
-                .map_err(db_err)?;
-            if created_at == 0 {
-                // Fresh insert: stamp both counters so the contact appears in created[].
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
-                     WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            } else if created_at < 0 {
-                // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
-                // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
-                     WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            } else {
-                tx.execute(
-                    "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
-                    params![counter, peer_user_id],
-                )
-                .map_err(db_err)?;
-            }
+            stamp_contact_counters(&tx, peer_user_id, counter)?;
             tx.commit().map_err(db_err)?;
             self.emit(format!("s-{counter}"));
         } else {
@@ -457,6 +393,57 @@ impl<'a> ContactStore<'a> {
     }
 }
 
+/// Advance the per-row counters for a contact after an INSERT or UPDATE.
+///
+/// Sentinel logic:
+/// - `created_at_counter == 0`: fresh insert — stamp both counters so the contact
+///   appears in `created[]` in `ChatContact/changes`.
+/// - `created_at_counter < 0`: pre-V8 row (V17 sentinel = -1) — reset
+///   `created_at_counter` to 0 so `is_create = (0 > sinceState) = false`
+///   (i.e. the contact is classified as *updated*, not created).
+/// - otherwise: existing row — advance only `changed_at_counter`.
+///
+/// Must be called inside an open transaction `tx` that has already advanced the
+/// global state counter to `counter`.
+fn stamp_contact_counters(
+    tx: &rusqlite::Transaction,
+    peer_user_id: &str,
+    counter: i64,
+) -> Result<(), KithError> {
+    let created_at: i64 = tx
+        .query_row(
+            "SELECT created_at_counter FROM contacts WHERE peer_user_id = ?1",
+            params![peer_user_id],
+            |row| row.get(0),
+        )
+        .map_err(db_err)?;
+    if created_at == 0 {
+        // Fresh insert: stamp both counters so the contact appears in created[].
+        tx.execute(
+            "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = ?1 \
+             WHERE peer_user_id = ?2",
+            params![counter, peer_user_id],
+        )
+        .map_err(db_err)?;
+    } else if created_at < 0 {
+        // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
+        // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
+        tx.execute(
+            "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
+             WHERE peer_user_id = ?2",
+            params![counter, peer_user_id],
+        )
+        .map_err(db_err)?;
+    } else {
+        tx.execute(
+            "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+            params![counter, peer_user_id],
+        )
+        .map_err(db_err)?;
+    }
+    Ok(())
+}
+
 /// Map a rusqlite Row to a ChatContact.  Column order must match the SELECT above.
 /// Note: peer_mailbox_host is not selected here — it is a DB-only routing field.
 /// Use ContactStore::get_mailbox_host when delivery routing is needed.
@@ -491,24 +478,24 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
 
 /// Increment the contact state counter and return the new state string like "s-5".
 ///
-/// # Concurrency
-/// This function reads and then increments the counter in two separate
-/// statements. It is safe only for single-threaded use (Phase 1 constraint).
-/// Phase 2, if it introduces concurrent writers, must wrap this in a
-/// single atomic UPDATE … RETURNING or hold a write-level transaction.
+/// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
+/// writer can advance the counter between the two statements and cause this
+/// caller to return a stale value.
 fn advance_state(conn: &Connection) -> Result<String, KithError> {
-    conn.execute(
+    let tx = conn.unchecked_transaction().map_err(db_err)?;
+    tx.execute(
         "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'contact'",
         [],
     )
     .map_err(db_err)?;
-    let counter: i64 = conn
+    let counter: i64 = tx
         .query_row(
             "SELECT counter FROM state_counters WHERE type_name = 'contact'",
             [],
             |row| row.get(0),
         )
         .map_err(db_err)?;
+    tx.commit().map_err(db_err)?;
     Ok(format!("s-{counter}"))
 }
 

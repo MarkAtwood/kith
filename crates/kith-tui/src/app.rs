@@ -73,32 +73,20 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Construct initial state with hardcoded placeholder data.
+    /// Construct initial state with empty data.
     ///
     /// Invariant: `messages`, `message_ids`, and `message_senders` are always
-    /// the same length.  All three are populated here with 20 placeholder entries
-    /// so the invariant holds from construction.
+    /// the same length.  All three start empty so the invariant holds from
+    /// construction.
     pub fn new() -> Self {
-        let mut messages = VecDeque::new();
-        let mut message_ids = VecDeque::new();
-        let mut message_senders = VecDeque::new();
-        for i in 1..=20u32 {
-            messages.push_back(format!("12:{:02} alice: placeholder message {i}", i % 60));
-            message_ids.push_back(String::new());
-            message_senders.push_back(String::new());
-        }
         AppState {
             quit: false,
             terminal_size: (80, 24),
             focus: Focus::Input,
-            chat_list: vec![
-                "alice".to_string(),
-                "bob".to_string(),
-                "group-chat".to_string(),
-            ],
+            chat_list: vec![],
             chat_ids: vec![],
             selected_chat: 0,
-            messages,
+            messages: VecDeque::new(),
             scroll_offset: 0,
             input: String::new(),
             input_cursor: 0,
@@ -107,8 +95,8 @@ impl AppState {
             message_state: String::new(),
             should_send_message: false,
             error_notification: None,
-            message_ids,
-            message_senders,
+            message_ids: VecDeque::new(),
+            message_senders: VecDeque::new(),
             unread_message_ids: HashSet::new(),
         }
     }
@@ -178,11 +166,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn new_produces_nonempty_chat_list_and_messages() {
-        // Oracle: hardcoded; new() must populate placeholder data.
+    fn new_produces_empty_chat_list_and_messages() {
+        // Oracle: new() must produce empty chat_list and messages (no placeholder data).
         let state = AppState::new();
-        assert!(!state.chat_list.is_empty(), "chat_list must be non-empty");
-        assert!(!state.messages.is_empty(), "messages must be non-empty");
+        assert!(
+            state.chat_list.is_empty(),
+            "chat_list must be empty at construction"
+        );
+        assert!(
+            state.messages.is_empty(),
+            "messages must be empty at construction"
+        );
+        assert!(
+            state.chat_ids.is_empty(),
+            "chat_ids must be empty at construction"
+        );
         assert_eq!(state.selected_chat, 0);
         assert_eq!(state.input_cursor, 0);
         assert!(!state.quit);
@@ -191,7 +189,10 @@ mod tests {
     #[test]
     fn clamp_scroll_reduces_oversized_offset() {
         // Oracle: with 20 messages and visible_height=5, max scroll = 15.
-        let mut state = AppState::new(); // 20 placeholder messages
+        let mut state = AppState::new();
+        for i in 0..20 {
+            state.messages.push_back(format!("msg {i}"));
+        }
         state.scroll_offset = 100;
         state.clamp_scroll(5);
         assert_eq!(
@@ -204,6 +205,9 @@ mod tests {
     fn clamp_scroll_leaves_valid_offset_unchanged() {
         // Oracle: scroll_offset=3 with 20 messages and visible_height=5 is valid (max=15).
         let mut state = AppState::new();
+        for i in 0..20 {
+            state.messages.push_back(format!("msg {i}"));
+        }
         state.scroll_offset = 3;
         state.clamp_scroll(5);
         assert_eq!(state.scroll_offset, 3);

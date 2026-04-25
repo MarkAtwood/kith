@@ -47,7 +47,10 @@ enum ContactsCmd {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    let mut config = Config::from_env();
+    let mut config = Config::from_env().unwrap_or_else(|e| {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    });
     if let Some(d) = cli.data_dir {
         config.data_dir = d;
     }

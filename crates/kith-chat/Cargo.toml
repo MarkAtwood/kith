@@ -15,3 +15,6 @@ tokio = { workspace = true }
 tracing.workspace = true
 ulid.workspace = true
 chrono = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

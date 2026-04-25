@@ -443,9 +443,12 @@ mod inner {
 
         // ---- Step 5: Second download serves from local cache ----
         //
-        // After step 4, the blob was written to receiver's blob store.
-        // A second download must return 200 with the same bytes without
-        // triggering another fetch_peer_blob call.
+        // Shut down the sender's TLS listener before issuing the second
+        // download.  If the download handler attempted a second fetch_peer_blob
+        // it would fail because the sender is no longer reachable.  A
+        // successful response proves the blob was served from local cache.
+        sender_handle.abort();
+
         let cached_req = Request::builder()
             .method("GET")
             .uri(format!("/jmap/download/a-self/{blob_id}/test.txt"))
@@ -523,7 +526,5 @@ mod inner {
                 "oracle: attachment size must match content length"
             );
         }
-
-        sender_handle.abort();
     }
 }

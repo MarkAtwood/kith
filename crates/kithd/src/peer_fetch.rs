@@ -453,16 +453,6 @@ async fn fetch_with_https_client(
         Ok(c) => c,
         Err(e) => {
             let msg = e.to_string();
-            // `http_body_util::Limited` does not expose a typed error variant for
-            // the limit-exceeded case — it wraps the error as a boxed `std::error::Error`
-            // with the message "length limit exceeded".  String matching is the only
-            // available way to distinguish a size-exceeded error from other I/O errors
-            // without forking the crate.  This string was introduced in
-            // http-body-util 0.1.0 and has not changed through 0.1.x.
-            if msg.contains("length limit") {
-                tracing::warn!(blob_id, "fetch_peer_blob: body exceeded size limit");
-                return Err(FetchBlobError::SizeExceeded);
-            }
             tracing::warn!(blob_id, "fetch_peer_blob: body read error: {msg}");
             return Err(FetchBlobError::Network(msg));
         }
@@ -566,11 +556,6 @@ async fn fetch_peer_blob_from_url(
         Ok(c) => c,
         Err(e) => {
             let msg = e.to_string();
-            // Same string-match heuristic as the production path — see the
-            // comment in `fetch_with_https_client` for rationale.
-            if msg.contains("length limit") {
-                return Err(FetchBlobError::SizeExceeded);
-            }
             return Err(FetchBlobError::Network(msg));
         }
     };

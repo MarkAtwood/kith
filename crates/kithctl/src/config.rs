@@ -7,7 +7,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_env() -> Self {
+    pub fn from_env() -> Result<Self, String> {
         let data_dir = if let Ok(dir) = std::env::var("KITHD_DATA_DIR") {
             PathBuf::from(dir)
         } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
@@ -15,8 +15,7 @@ impl Config {
         } else if let Ok(home) = std::env::var("HOME") {
             PathBuf::from(home).join(".local/share/kithd")
         } else {
-            eprintln!("error: KITHD_DATA_DIR or HOME must be set");
-            std::process::exit(1);
+            return Err("KITHD_DATA_DIR or HOME must be set".to_string());
         };
 
         let ts_socket = std::env::var("KITHD_TAILSCALED_SOCKET")
@@ -30,11 +29,11 @@ impl Config {
             Err(_) => 443,
         };
 
-        Self {
+        Ok(Self {
             data_dir,
             ts_socket,
             port,
-        }
+        })
     }
 
     pub fn db_path(&self) -> PathBuf {

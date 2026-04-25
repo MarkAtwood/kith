@@ -394,19 +394,25 @@ impl<'a> ChatStore<'a> {
 
     /// Increment the chat state counter and return the new value as a string token.
     ///
-    /// # Concurrency
-    /// This function reads and then increments the counter in two separate
-    /// statements. It is safe only for single-threaded use (Phase 1 constraint).
-    /// Phase 2, if it introduces concurrent writers, must wrap this in a
-    /// single atomic UPDATE … RETURNING or hold a write-level transaction.
+    /// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
+    /// writer can advance the counter between the two statements and cause this
+    /// caller to return a stale value.
     pub fn advance_state(&self) -> Result<String, KithError> {
-        self.conn
-            .execute(
-                "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'chat'",
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute(
+            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'chat'",
+            [],
+        )
+        .map_err(db_err)?;
+        let counter: i64 = tx
+            .query_row(
+                "SELECT counter FROM state_counters WHERE type_name = 'chat'",
                 [],
+                |row| row.get(0),
             )
             .map_err(db_err)?;
-        self.get_state()
+        tx.commit().map_err(db_err)?;
+        Ok(format!("s-{counter}"))
     }
 
     /// Return IDs of chats that were created or updated after `since_state`.

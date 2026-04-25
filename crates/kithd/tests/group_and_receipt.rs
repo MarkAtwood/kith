@@ -91,14 +91,11 @@ mod inner {
         }
     }
 
-    fn make_blob_store() -> Arc<kith_attach::BlobStore> {
-        let dir = std::env::temp_dir().join(format!(
-            "kithd-test-blobs-gr-{}",
-            kith_attach::BlobStore::generate_blob_id()
-        ));
-        let store = Arc::new(kith_attach::BlobStore::new(&dir));
+    fn make_blob_store() -> (Arc<kith_attach::BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new must succeed");
+        let store = Arc::new(kith_attach::BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
     // -----------------------------------------------------------------------
@@ -342,7 +339,7 @@ mod inner {
         // requiring a second TLS listener for alice.
         let alice_peer_whois = MockWhoIs(make_whois(BOB_OWNER_ID, BOB_LOGIN));
         let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(64);
-        let alice_peer_blob_store = make_blob_store();
+        let (alice_peer_blob_store, _alice_peer_blob_dir) = make_blob_store();
         let alice_peer_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&pair.alice_store),
             Arc::clone(&alice_peer_blob_store),
@@ -422,9 +419,10 @@ mod inner {
                 .get(&msg_id)
                 .expect("alice messages().get must not fail")
                 .expect("alice must have the message");
-            assert!(
-                alice_msg.read_at.is_some(),
-                "oracle: alice's message must have read_at set after Peer/receipt"
+            assert_eq!(
+                alice_msg.read_at.as_deref(),
+                Some("2026-01-01T12:00:00Z"),
+                "oracle: alice's message read_at must equal the timestamp sent in the receipt"
             );
         }
     }
@@ -485,7 +483,7 @@ mod inner {
         // Step 2: build alice's in-process router.
         let alice_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
-        let alice_blob_store = make_blob_store();
+        let (alice_blob_store, _alice_blob_dir) = make_blob_store();
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),
             Arc::clone(&alice_blob_store),
@@ -646,14 +644,18 @@ mod inner {
             .expect("alice: update bob contact with real mailbox_host must succeed");
 
         // Step 3: add carol as a contact with an unreachable host.
-        // Port 19999 is never bound by the test harness; the OS returns
-        // "Connection refused" immediately, exercising the failure path.
-        let carol_host = "127.0.0.1:19999";
+        // Bind then immediately drop a TcpListener so the OS returns
+        // "Connection refused" for that port, exercising the failure path.
+        let carol_listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind for carol port");
+        let carol_port = carol_listener.local_addr().unwrap().port();
+        drop(carol_listener);
+        let carol_host = format!("127.0.0.1:{carol_port}");
         pair.alice_store
             .lock()
             .expect("alice store lock must not be poisoned")
             .contacts()
-            .upsert(CAROL_OWNER_ID, CAROL_LOGIN, carol_host, None, 1_000_000)
+            .upsert(CAROL_OWNER_ID, CAROL_LOGIN, &carol_host, None, 1_000_000)
             .expect("alice: upsert carol as contact must succeed");
 
         // Step 4: create the group chat in alice's store and register members.

@@ -872,12 +872,7 @@ pub async fn run(
 
     load_startup_data(&http_client, &api_url, state).await;
 
-    if !state.chat_ids.is_empty() {
-        let Some(chat_id) = state.chat_ids.get(state.selected_chat) else {
-            // No chats loaded yet (new user or load_startup_data pending); safe to exit.
-            return Ok(());
-        };
-        let chat_id = chat_id.clone();
+    if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
         let loaded =
             load_messages_for_chat(&http_client, &api_url, &chat_id, &state.contacts).await;
         if loaded.is_error {
@@ -893,6 +888,7 @@ pub async fn run(
             state.scroll_offset = 0;
         }
     }
+    // If chat_ids is empty (new user with no chats yet), continue into the event loop.
 
     // Track the previously selected chat to detect changes and reload messages.
     // Invariant: prev_selected must be updated to state.selected_chat at the end of

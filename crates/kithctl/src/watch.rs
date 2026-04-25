@@ -70,12 +70,12 @@ pub fn parse_sse_frame(frame: &str) -> (Option<String>, Option<String>, Option<S
     let mut id: Option<String> = None;
 
     for line in frame.lines() {
-        if let Some(value) = line.strip_prefix("event: ") {
-            event_type = Some(value.to_owned());
-        } else if let Some(value) = line.strip_prefix("data: ") {
-            data_parts.push(value);
-        } else if let Some(value) = line.strip_prefix("id: ") {
-            id = Some(value.to_owned());
+        if let Some(value) = line.strip_prefix("event:") {
+            event_type = Some(value.trim().to_owned());
+        } else if let Some(value) = line.strip_prefix("data:") {
+            data_parts.push(value.trim());
+        } else if let Some(value) = line.strip_prefix("id:") {
+            id = Some(value.trim().to_owned());
         }
     }
 
@@ -306,7 +306,11 @@ async fn watch_once(
     }
 
     // Skip HTTP headers (read until blank line).
+    let mut header_count = 0usize;
     loop {
+        if header_count >= 100 {
+            return Err("too many HTTP headers (limit: 100)".into());
+        }
         let mut header_line = String::new();
         let n = buf_reader
             .read_line(&mut header_line)
@@ -318,6 +322,7 @@ async fn watch_once(
         if header_line == "\r\n" || header_line == "\n" {
             break;
         }
+        header_count += 1;
     }
 
     // SSE frame accumulation loop.
@@ -344,7 +349,7 @@ async fn watch_once(
 
                 let (event_type, data, id) = parse_sse_frame(&frame);
 
-                if event_type.as_deref() == Some("state") || event_type.is_none() {
+                if event_type.as_deref() == Some("state") {
                     if let Some(ref json_str) = data {
                         if let Ok(state_map) = serde_json::from_str::<serde_json::Value>(json_str) {
                             if let Some(new_state) =
@@ -354,7 +359,7 @@ async fn watch_once(
                                 let prev_state = last_message_state.clone();
                                 let new_state = new_state.to_owned();
 
-                                if let Err(e) = fetch_and_notify(
+                                match fetch_and_notify(
                                     config,
                                     tailnet_ip,
                                     &connector,
@@ -363,9 +368,15 @@ async fn watch_once(
                                 )
                                 .await
                                 {
-                                    eprintln!("watch: JMAP fetch error: {e}");
-                                } else {
-                                    *last_message_state = new_state;
+                                    Ok(()) => {
+                                        *last_message_state = new_state;
+                                    }
+                                    Err(e) if e.to_string() == "auth-failure" => {
+                                        return Ok(()); // clean exit — do not reconnect
+                                    }
+                                    Err(e) => {
+                                        eprintln!("watch: JMAP fetch error: {e}");
+                                    }
                                 }
                             }
                         }
@@ -505,7 +516,7 @@ async fn jmap_post(
 
     if status_code == 401 || status_code == 403 {
         eprintln!("watch: JMAP request rejected (HTTP {status_code}); exiting");
-        std::process::exit(1);
+        return Err("auth-failure".into());
     }
     if status_code != 200 {
         return Err(format!("JMAP POST returned HTTP {status_code}").into());
@@ -513,7 +524,11 @@ async fn jmap_post(
 
     // Skip headers, collect Content-Length if present.
     let mut content_length_hint: Option<usize> = None;
+    let mut header_count = 0usize;
     loop {
+        if header_count >= 100 {
+            return Err("too many HTTP headers (limit: 100)".into());
+        }
         let mut header = String::new();
         let n = buf_reader.read_line(&mut header).await?;
         if n == 0 {
@@ -528,15 +543,18 @@ async fn jmap_post(
                 content_length_hint = Some(len);
             }
         }
+        header_count += 1;
     }
 
     // Read response body, bounded by MAX_RESPONSE_BYTES to prevent OOM from a
     // misbehaving or malicious kithd.
     let response_bytes = if let Some(len) = content_length_hint {
-        // Cap at MAX_RESPONSE_BYTES even if Content-Length claims more.
-        let capped = len.min(MAX_RESPONSE_BYTES);
-        let mut buf = vec![0u8; capped];
-        tokio::io::AsyncReadExt::read_exact(&mut buf_reader, &mut buf).await?;
+        if len > MAX_RESPONSE_BYTES {
+            return Err("JMAP response Content-Length exceeds size limit".into());
+        }
+        let mut limited = tokio::io::AsyncReadExt::take(&mut buf_reader, len as u64);
+        let mut buf = Vec::with_capacity(len);
+        tokio::io::AsyncReadExt::read_to_end(&mut limited, &mut buf).await?;
         buf
     } else {
         let mut limited =
@@ -601,11 +619,8 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
             Ok(()) => break, // clean shutdown (e.g. 403)
             Err(e) => {
                 eprintln!("watch: connection lost ({e}), reconnecting in 2s...");
-                // Update last_event_id with current message state token so we
-                // resume from where we left off.
-                if is_valid_last_event_id(&last_message_state) {
-                    last_event_id = Some(last_message_state.clone());
-                }
+                // last_event_id is updated from the SSE stream's id: field inside
+                // watch_once and is used as-is on reconnect for resumption.
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }

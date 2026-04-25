@@ -394,9 +394,9 @@ pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
             // Compute the SSE event id: highest numeric suffix across all
             // state tokens in this batch.  State tokens are "s-N"; parse N
             // and take the max, then re-format as "s-{max}".
-            let max_n: u64 = batch
+            let max_n: i64 = batch
                 .values()
-                .filter_map(|s| s.strip_prefix("s-").and_then(|n| n.parse::<u64>().ok()))
+                .filter_map(|s| s.strip_prefix("s-").and_then(|n| n.parse::<i64>().ok()))
                 .max()
                 .unwrap_or(0); // unwrap_or: batch is non-empty but may lack "s-N" tokens
             let event_id = format!("s-{max_n}");

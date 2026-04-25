@@ -720,7 +720,7 @@ impl JmapHandler for ChatContactQueryChangesHandler {
             let current_counter: i64 = current_state
                 .strip_prefix("s-")
                 .and_then(|n| n.parse::<i64>().ok())
-                .unwrap_or(0);
+                .ok_or_else(|| JmapError::server_fail("state counter corrupted"))?;
 
             // If no changes since sinceQueryState, return early with empty delta.
             if since_counter >= current_counter {

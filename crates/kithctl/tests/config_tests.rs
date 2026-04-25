@@ -43,7 +43,7 @@ fn config_defaults() {
     }
 
     // Act.
-    let config = Config::from_env();
+    let config = Config::from_env().expect("config must succeed in test");
 
     // Assert — independent oracle: spec says:
     //   data_dir  = $HOME/.local/share/kithd
@@ -75,7 +75,7 @@ fn config_from_env() {
     }
 
     // Act.
-    let config = Config::from_env();
+    let config = Config::from_env().expect("config must succeed in test");
 
     // Assert — independent oracle: spec says env vars are read directly.
     assert_eq!(
@@ -113,7 +113,7 @@ fn config_derived_paths() {
     }
 
     // Act.
-    let config = Config::from_env();
+    let config = Config::from_env().expect("config must succeed in test");
 
     // Assert.
     assert_eq!(
@@ -151,7 +151,7 @@ fn config_invalid_port() {
     }
 
     // Act — must not panic.
-    let config = Config::from_env();
+    let config = Config::from_env().expect("config must succeed in test");
 
     // Assert — invalid port falls back to 443.
     assert_eq!(

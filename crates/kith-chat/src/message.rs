@@ -2,7 +2,7 @@
 
 use crate::kith_to_jmap;
 use kith_attach::BlobStore;
-use kith_core::{Attachment, JmapError};
+use kith_core::{Attachment, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
 use serde_json::{json, Map, Value};
@@ -10,8 +10,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use ulid::Ulid;
 
-const MAX_BODY_BYTES: usize = 65_536;
-const MAX_ATTACHMENT_BYTES: u64 = 104_857_600; // 100 MiB per attachment
 const MAX_ATTACHMENTS: usize = 20;
 const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
 
@@ -110,7 +108,7 @@ fn parse_attachments(
         let size = att.get("size").and_then(|v| v.as_u64()).ok_or_else(|| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].size must be a non-negative integer")})
         })?;
-        if size == 0 || size > MAX_ATTACHMENT_BYTES {
+        if size == 0 || size > MAX_ATTACHMENT_BYTES as u64 {
             return Err(
                 json!({"type": "invalidArguments", "description": format!("attachments[{i}].size must be between 1 and {MAX_ATTACHMENT_BYTES} bytes")}),
             );
@@ -473,7 +471,9 @@ fn process_create(
     // Update last_message_at on the chat (best-effort cache; not part of the
     // delivery transaction — a failure here does not un-deliver the message,
     // and must not cause notCreated when the message was already committed).
-    let _ = guard.chats().update_last_message_at(&chat_id, now_unix);
+    if let Err(e) = guard.chats().update_last_message_at(&chat_id, now_unix) {
+        tracing::warn!("update_last_message_at failed: {e}");
+    }
 
     // Fetch the created message for the response.
     let msg = guard
@@ -627,10 +627,20 @@ impl JmapHandler for MessageGetHandler {
 
             // ids is required in v1; null or absent → invalidArguments.
             let ids: Vec<String> = match obj.get("ids") {
-                Some(Value::Array(arr)) => arr
-                    .iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect(),
+                Some(Value::Array(arr)) => {
+                    let mut v = Vec::with_capacity(arr.len());
+                    for item in arr {
+                        match item.as_str() {
+                            Some(s) => v.push(s.to_string()),
+                            None => {
+                                return Err(JmapError::invalid_arguments(
+                                    "ids must be an array of strings",
+                                ))
+                            }
+                        }
+                    }
+                    v
+                }
                 _ => {
                     return Err(JmapError::invalid_arguments("ids required"));
                 }
@@ -982,20 +992,16 @@ mod tests {
         ))
     }
 
-    /// Return a BlobStore backed by a temporary directory.
-    /// The directory is created immediately and persists for the test process lifetime.
-    fn make_blob_store() -> Arc<BlobStore> {
-        let dir = std::env::temp_dir().join(format!(
-            "kith-test-blobs-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .subsec_nanos()
-        ));
-        let bs = BlobStore::new(&dir);
+    /// Return a BlobStore backed by a unique temporary directory.
+    ///
+    /// Returns `(Arc<BlobStore>, tempfile::TempDir)`.  The caller must hold the
+    /// `TempDir` guard for the duration of the test; dropping it removes the
+    /// directory from disk.
+    fn make_blob_store() -> (Arc<BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new must succeed");
+        let bs = BlobStore::new(dir.path());
         bs.init().expect("blob store init must succeed");
-        Arc::new(bs)
+        (Arc::new(bs), dir)
     }
 
     /// Insert a chat and contact so creates can enqueue to outbox.
@@ -1034,7 +1040,8 @@ mod tests {
         let chat_id = "chat-abc";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1070,7 +1077,8 @@ mod tests {
         let chat_id = "chat-big";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let oversized = "x".repeat(65537);
         let args = json!({
             "accountId": "a-self",
@@ -1110,7 +1118,8 @@ mod tests {
         let chat_id = "chat-empty-body";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1157,7 +1166,8 @@ mod tests {
     async fn test_message_set_create_unknown_chat() {
         let store = make_store();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1212,7 +1222,8 @@ mod tests {
             msg_in_chat1 = "msg-in-chat1";
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1336,7 +1347,8 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1389,7 +1401,8 @@ mod tests {
         }
 
         // Submit a readAt that is clearly in the far future (year 2099).
-        let set_handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let set_handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let set_args = json!({
             "accountId": "a-self",
             "update": {
@@ -1461,7 +1474,8 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1490,7 +1504,8 @@ mod tests {
     async fn test_message_set_update_nonexistent_id_returns_not_found() {
         let store = make_store();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -2000,7 +2015,8 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -2065,7 +2081,8 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -2174,7 +2191,7 @@ mod tests {
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
         // Write the blob to the store so the existence check passes.
-        let blob_store = make_blob_store();
+        let (blob_store, _blob_dir) = make_blob_store();
         let blob_id = "a".repeat(64);
         blob_store
             .write_blob(&blob_id, b"fake attachment content")
@@ -2210,7 +2227,8 @@ mod tests {
         let chat_id = "chat-att-bad-blob";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2246,7 +2264,8 @@ mod tests {
         let chat_id = "chat-att-bad-fn";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2282,7 +2301,8 @@ mod tests {
         let chat_id = "chat-att-bad-ct";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2318,7 +2338,8 @@ mod tests {
         let chat_id = "chat-att-zero-sz";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2354,7 +2375,8 @@ mod tests {
         let chat_id = "chat-att-oversize";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2390,7 +2412,8 @@ mod tests {
         let chat_id = "chat-att-bad-sha";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2441,7 +2464,8 @@ mod tests {
             })
             .collect();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2500,7 +2524,8 @@ mod tests {
             "sha256": "b".repeat(64)
         });
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2584,7 +2609,8 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2779,7 +2805,8 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2853,7 +2880,8 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(Arc::clone(&store), blob_store);
         let args = json!({
             "accountId": "a-self",
             "update": {

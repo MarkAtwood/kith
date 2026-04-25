@@ -79,25 +79,22 @@ fn make_owner_whois() -> MockWhoIs {
 // App factory
 // ---------------------------------------------------------------------------
 
-fn make_blob_store() -> std::sync::Arc<kith_attach::BlobStore> {
-    let dir = std::env::temp_dir().join(format!(
-        "kithd-test-blobs-{}",
-        kith_attach::BlobStore::generate_blob_id()
-    ));
-    let store = std::sync::Arc::new(kith_attach::BlobStore::new(&dir));
+fn make_blob_store() -> (std::sync::Arc<kith_attach::BlobStore>, tempfile::TempDir) {
+    let dir = tempfile::TempDir::new().expect("TempDir::new must succeed");
+    let store = std::sync::Arc::new(kith_attach::BlobStore::new(dir.path()));
     store.init().expect("blob store init must succeed");
-    store
+    (store, dir)
 }
 
-fn make_app() -> Router {
+fn make_app() -> (Router, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let blob_store_for_dispatcher = make_blob_store();
+    let (blob_store, blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
-        Arc::clone(&blob_store_for_dispatcher),
+        Arc::clone(&blob_store),
     ));
     let state = AppState {
         ts: Arc::new(make_owner_whois()),
@@ -107,9 +104,9 @@ fn make_app() -> Router {
         base_url: kithd::DEFAULT_BASE_URL.to_string(),
         events_tx,
         dispatcher,
-        blob_store: make_blob_store(),
+        blob_store,
     };
-    build_app(state).layer(MockConnectInfo(MOCK_ADDR))
+    (build_app(state).layer(MockConnectInfo(MOCK_ADDR)), blob_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +129,7 @@ async fn body_bytes(resp: axum::response::Response) -> Vec<u8> {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_root_serves_index_html() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -176,7 +173,7 @@ async fn static_get_root_serves_index_html() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_index_html_serves_html() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -221,7 +218,7 @@ async fn static_get_index_html_serves_html() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_style_css_serves_css() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -260,7 +257,7 @@ async fn static_get_style_css_serves_css() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_app_js_serves_javascript() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -301,7 +298,7 @@ async fn static_get_app_js_serves_javascript() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_no_extension_path_serves_spa_fallback() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -350,7 +347,7 @@ async fn static_get_no_extension_path_serves_spa_fallback() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_unknown_extension_returns_404() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -378,7 +375,7 @@ async fn static_get_unknown_extension_returns_404() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_session_not_shadowed_by_static_handler() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")
@@ -423,7 +420,7 @@ async fn jmap_session_not_shadowed_by_static_handler() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn static_get_dot_in_non_final_segment_serves_spa_fallback() {
-    let app = make_app();
+    let (app, _blob_dir) = make_app();
 
     let req = Request::builder()
         .method("GET")

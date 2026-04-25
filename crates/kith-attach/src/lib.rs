@@ -61,8 +61,12 @@ impl BlobStore {
 
     /// Return `true` if the blob file exists on disk.
     ///
-    /// Callers must have validated `id` with [`validate_blob_id`] first.
+    /// Returns `false` for any `id` that fails [`validate_blob_id`] rather than
+    /// panicking — a malformed id cannot refer to any valid blob.
     pub fn blob_exists(&self, id: &str) -> bool {
+        if Self::validate_blob_id(id).is_err() {
+            return false;
+        }
         self.blob_path(id).exists()
     }
 

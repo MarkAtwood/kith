@@ -815,26 +815,24 @@ impl<'a> MessageStore<'a> {
 
     /// Internal: increment counter and return the new integer value.
     ///
-    /// # Concurrency
-    /// This function reads and then increments the counter in two separate
-    /// statements. It is safe only for single-threaded use (Phase 1 constraint).
-    /// Phase 2, if it introduces concurrent writers, must wrap this in a
-    /// single atomic UPDATE … RETURNING or hold a write-level transaction.
+    /// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
+    /// writer can advance the counter between the two statements and cause this
+    /// caller to return a stale value.
     fn advance_state_counter(&self) -> Result<i64, KithError> {
-        self.conn
-            .execute(
-                "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'message'",
-                [],
-            )
-            .map_err(db_err)?;
-        let v: i64 = self
-            .conn
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute(
+            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'message'",
+            [],
+        )
+        .map_err(db_err)?;
+        let v: i64 = tx
             .query_row(
                 "SELECT counter FROM state_counters WHERE type_name = 'message'",
                 [],
                 |row| row.get(0),
             )
             .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
         Ok(v)
     }
 }

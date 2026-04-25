@@ -27,8 +27,10 @@ fn make_store() -> Arc<Mutex<kith_store::Store>> {
     ))
 }
 
-fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> Dispatcher {
-    let blob_store = Arc::new(kith_attach::BlobStore::new(std::env::temp_dir()));
+fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> (Dispatcher, tempfile::TempDir) {
+    let blob_dir = tempfile::TempDir::new().expect("blob dir");
+    let blob_store = Arc::new(kith_attach::BlobStore::new(blob_dir.path()));
+    blob_store.init().expect("blob store init must succeed");
     let mut d = Dispatcher::new();
     d.register(
         "ChatContact/get",
@@ -107,7 +109,7 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> Dispatcher {
             Arc::clone(&store),
         )),
     );
-    d
+    (d, blob_dir)
 }
 
 fn kith_request(method_calls: Vec<(&str, serde_json::Value, &str)>) -> JmapRequest {
@@ -133,7 +135,7 @@ fn kith_request(method_calls: Vec<(&str, serde_json::Value, &str)>) -> JmapReque
 #[tokio::test]
 async fn test_full_contact_workflow() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Step 1: ChatContact/set create.
     let req = kith_request(vec![(
@@ -231,7 +233,7 @@ async fn test_full_contact_workflow() {
 #[tokio::test]
 async fn test_full_chat_workflow() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Step 1: Create the contact that the chat will reference.
     let req = kith_request(vec![(
@@ -339,7 +341,7 @@ async fn test_full_chat_workflow() {
 #[tokio::test]
 async fn test_full_message_workflow() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Step 1: Create a contact.
     let req = kith_request(vec![(
@@ -521,7 +523,7 @@ async fn test_full_message_workflow() {
 #[tokio::test]
 async fn test_peer_cannot_call_owner_methods() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Oracle: all methods listed in METHOD_ROLES as Role::Owner must be rejected.
     let owner_methods = [
@@ -538,6 +540,7 @@ async fn test_peer_cannot_call_owner_methods() {
         "Message/changes",
         "Message/query",
         "Message/queryChanges",
+        "ChatContact/queryChanges",
     ];
 
     for method in owner_methods {
@@ -565,7 +568,7 @@ async fn test_peer_cannot_call_owner_methods() {
 #[tokio::test]
 async fn test_owner_cannot_call_unknown_method() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     let req = kith_request(vec![("Foo/bar", json!({}), "c0")]);
     let resp = d
@@ -585,7 +588,7 @@ async fn test_owner_cannot_call_unknown_method() {
 #[tokio::test]
 async fn test_owner_cannot_call_peer_methods() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     for method in ["Peer/deliver", "Peer/receipt"] {
         let req = kith_request(vec![(method, json!({}), "c0")]);
@@ -610,7 +613,7 @@ async fn test_owner_cannot_call_peer_methods() {
 #[tokio::test]
 async fn test_message_body_size_boundary_exact() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Set up contact and chat.
     {
@@ -671,7 +674,7 @@ async fn test_message_body_size_boundary_exact() {
 #[tokio::test]
 async fn test_message_body_size_boundary_exceeded() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // Set up contact and chat.
     {
@@ -746,7 +749,7 @@ async fn test_message_body_size_boundary_exceeded() {
 #[tokio::test]
 async fn test_message_query_requires_chat_id() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     // No filter at all.
     let req = kith_request(vec![(
@@ -792,7 +795,7 @@ async fn test_message_query_requires_chat_id() {
 #[tokio::test]
 async fn test_message_changes_future_state() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     let req = kith_request(vec![(
         "Message/changes",
@@ -828,7 +831,7 @@ async fn test_message_changes_future_state() {
 #[tokio::test]
 async fn test_contact_changes_malformed_state() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     let req = kith_request(vec![(
         "ChatContact/changes",
@@ -856,7 +859,7 @@ async fn test_contact_changes_malformed_state() {
 #[tokio::test]
 async fn test_message_set_wrong_chat_id() {
     let store = make_store();
-    let d = make_dispatcher(Arc::clone(&store));
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
 
     let req = kith_request(vec![(
         "Message/set",

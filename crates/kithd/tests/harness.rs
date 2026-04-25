@@ -54,14 +54,11 @@ mod inner {
     /// Independent oracle: sha256("\x00".join(sorted(["uid-alice", "uid-bob"])))
     /// Computed offline: echo -ne "uid-alice\x00uid-bob" | sha256sum
 
-    fn make_blob_store() -> std::sync::Arc<kith_attach::BlobStore> {
-        let dir = std::env::temp_dir().join(format!(
-            "kithd-test-blobs-{}",
-            kith_attach::BlobStore::generate_blob_id()
-        ));
-        let store = std::sync::Arc::new(kith_attach::BlobStore::new(&dir));
+    fn make_blob_store() -> (std::sync::Arc<kith_attach::BlobStore>, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("TempDir::new must succeed");
+        let store = std::sync::Arc::new(kith_attach::BlobStore::new(dir.path()));
         store.init().expect("blob store init must succeed");
-        store
+        (store, dir)
     }
 
     pub const EXPECTED_CHAT_ID: &str =
@@ -137,6 +134,9 @@ mod inner {
 
         /// Join handle for bob's TCP listener task.  Aborted in `Drop`.
         bob_handle: Option<JoinHandle<()>>,
+        /// TempDir guards for blob store directories.  Dropped after bob_handle.
+        _alice_blob_dir: tempfile::TempDir,
+        _bob_blob_dir: tempfile::TempDir,
     }
 
     impl Drop for TestPair {
@@ -205,7 +205,7 @@ mod inner {
 
         // ---- alice's AppState ----
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
-        let alice_blob_store = make_blob_store();
+        let (alice_blob_store, alice_blob_dir) = make_blob_store();
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),
             Arc::clone(&alice_blob_store),
@@ -234,7 +234,7 @@ mod inner {
 
         // ---- bob's AppState for the TCP listener ----
         let (bob_events_tx, _bob_events_rx) = make_channel(64);
-        let bob_blob_store = make_blob_store();
+        let (bob_blob_store, bob_blob_dir) = make_blob_store();
         let bob_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&bob_store),
             Arc::clone(&bob_blob_store),
@@ -247,7 +247,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: bob_events_tx,
             dispatcher: Arc::clone(&bob_dispatcher),
-            blob_store: bob_blob_store,
+            blob_store: Arc::clone(&bob_blob_store),
         };
 
         // ---- spawn bob's real TCP listener ----
@@ -270,7 +270,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: bob_assert_events_tx,
             dispatcher: bob_dispatcher,
-            blob_store: make_blob_store(),
+            blob_store: Arc::clone(&bob_blob_store),
         };
         let bob_router = build_app(bob_assert_state).layer(MockConnectInfo(BOB_MOCK_ADDR));
 
@@ -282,6 +282,8 @@ mod inner {
             bob_cert_der,
             bob_router,
             bob_handle: Some(bob_handle),
+            _alice_blob_dir: alice_blob_dir,
+            _bob_blob_dir: bob_blob_dir,
         }
     }
 }

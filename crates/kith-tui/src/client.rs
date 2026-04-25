@@ -74,6 +74,7 @@ pub fn build_client(cert_der: &[u8]) -> Result<reqwest::Client, ClientError> {
     let cert = reqwest::Certificate::from_der(cert_der).map_err(|_| ClientError::CertInvalid)?;
     reqwest::Client::builder()
         .add_root_certificate(cert)
+        .tls_built_in_root_certs(false)
         .build()
         .map_err(ClientError::Http)
 }

@@ -361,11 +361,10 @@ pub struct PeerReceiptArgs {
     pub kind: String,
     /// Peer-supplied timestamp for when the event occurred.
     ///
-    /// Per CLAUDE.md defensive input policy, `at` is accepted on the wire for
-    /// protocol compatibility but is **discarded**. Timestamps stored in the
-    /// database (`delivered_at`, `read_at`) are always set from the local clock
-    /// (`SystemTime::now()`), not from this field.  The sender's clock is
-    /// unverified and must not be trusted for ordering.
+    /// Validated as RFC 3339 at the boundary and stored as `delivered_at` /
+    /// `read_at` in the database.  This is an attribution timestamp (when the
+    /// peer performed the action), not an ordering timestamp — ordering uses
+    /// local `receivedAt`.  The field is validated strictly before use.
     pub at: String,
 }
 
@@ -414,16 +413,18 @@ impl PeerJmapHandler for ReceiptHandler {
                 )));
             }
 
-            // Step c2: validate at is a well-formed RFC 3339 timestamp.
-            // The field is discarded in favour of the local clock, but accepting
-            // arbitrary strings is inconsistent with the defensive policy applied
-            // to sentAt in Peer/deliver, and leaves a landmine if discard is
-            // ever reconsidered.
-            if DateTime::parse_from_rfc3339(&parsed.at).is_err() {
-                return Err(JmapError::invalid_arguments(
-                    "at must be a valid RFC 3339 timestamp".to_string(),
-                ));
-            }
+            // Step c2: validate and parse at — this is the timestamp the peer
+            // claims the event occurred (delivery or read).  We store it as the
+            // attribution timestamp (delivered_at / read_at) rather than the
+            // local clock because the field is about the peer's action, not our
+            // receipt of the receipt.  Validate strictly before trusting.
+            let at_unix: i64 = DateTime::parse_from_rfc3339(&parsed.at)
+                .map_err(|_| {
+                    JmapError::invalid_arguments(
+                        "at must be a valid RFC 3339 timestamp".to_string(),
+                    )
+                })?
+                .timestamp();
 
             // Step d: validate messageId is non-empty.
             if parsed.message_id.is_empty() {
@@ -435,13 +436,6 @@ impl PeerJmapHandler for ReceiptHandler {
             // Steps e-h: look up message and validate ownership.
             // We hold the lock only for the lookup+update block and drop it
             // before returning, keeping the critical section minimal.
-            let now_unix: i64 = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                // System clock is always >= UNIX_EPOCH on any real deployment;
-                // unwrap_or_default() guards against the impossible case without panic.
-                .unwrap_or_default()
-                .as_secs() as i64;
-
             let guard = store
                 .lock()
                 // A poisoned mutex means a previous handler panicked while holding
@@ -493,7 +487,7 @@ impl PeerJmapHandler for ReceiptHandler {
                         .update_delivery_state(
                             &parsed.message_id,
                             &DeliveryState::Delivered,
-                            Some(now_unix),
+                            Some(at_unix),
                         )
                         .map_err(|e| {
                             tracing::error!("store error updating delivery state: {e}");
@@ -503,7 +497,7 @@ impl PeerJmapHandler for ReceiptHandler {
                 "read" => {
                     guard
                         .messages()
-                        .update_read_at(&parsed.message_id, now_unix)
+                        .update_read_at(&parsed.message_id, at_unix)
                         .map_err(|e| {
                             tracing::error!("store error updating read_at: {e}");
                             JmapError::server_fail("internal error")
