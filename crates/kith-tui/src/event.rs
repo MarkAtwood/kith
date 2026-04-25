@@ -1028,12 +1028,15 @@ pub async fn run(
         }
 
         // Dispatch deferred SSE state change (see comment above pending_sc).
-        if let Some(sc) = pending_sc.take() {
-            handle_state_change(&http_client, &api_url, &sc, state).await;
-            // A "Chat" state change calls load_startup_data which may
-            // clamp selected_chat.  Sync prev_selected so the
-            // post-select reload check does not fire spuriously.
-            prev_selected = state.selected_chat;
+        // Skip if quitting — no point fetching data we will immediately discard.
+        if !state.quit {
+            if let Some(sc) = pending_sc.take() {
+                handle_state_change(&http_client, &api_url, &sc, state).await;
+                // A "Chat" state change calls load_startup_data which may
+                // clamp selected_chat.  Sync prev_selected so the
+                // post-select reload check does not fire spuriously.
+                prev_selected = state.selected_chat;
+            }
         }
 
         // Dispatch async send when Enter was pressed in handle_key().
