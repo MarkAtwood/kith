@@ -107,6 +107,17 @@ impl BlobStore {
         let nonce: u32 = rand::thread_rng().gen();
         let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
+        // Use mode 0o600 so the tmp file is only readable by the daemon process,
+        // not world-readable via the process umask.  Mirrors the pattern in
+        // kithctl/src/backup.rs.
+        #[cfg(unix)]
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .await?;
+        #[cfg(not(unix))]
         let mut file = tokio::fs::File::create(&tmp_path).await?;
 
         // Clean up the temp file if write or sync fails (don't leave orphaned .tmp files).
@@ -169,6 +180,15 @@ impl BlobStore {
         let nonce: u32 = rand::thread_rng().gen();
         let tmp_path = self.base_dir.join(format!("{id}.{nonce:08x}.tmp"));
 
+        // Use mode 0o600 so the tmp file is only readable by the daemon process.
+        #[cfg(unix)]
+        let mut tmp_file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&tmp_path)
+            .await?;
+        #[cfg(not(unix))]
         let mut tmp_file = tokio::fs::File::create(&tmp_path).await?;
         let mut hasher = Sha256::new();
         let mut total_bytes: u64 = 0;

@@ -81,6 +81,15 @@ pub struct DeliverMessageArgs {
 ///
 /// # Validation order (mandatory — do not reorder)
 ///
+/// **Pre-condition (handled by the axum `Caller` extractor, before this handler
+/// is ever called):** the caller's WhoIs identity must exist in `contacts` AND
+/// must not be blocked.  `kithd::auth::classify` calls `contacts.is_permitted`
+/// which enforces both conditions; a blocked peer is rejected with HTTP 401
+/// before reaching this handler.  This means the handler never needs to
+/// re-check the `blocked` flag itself.  If `is_permitted` is ever changed to
+/// omit the blocked check, the extractor tests in `kithd/src/extractors.rs`
+/// (`extractor_blocked_returns_401`) will catch the regression.
+///
 /// 1. Parse args into `PeerDeliverArgs`.
 /// 2. `check_sender`: verify `senderUserId` equals the typed caller identity.
 /// 3. Enforce `maxBodyBytes`.

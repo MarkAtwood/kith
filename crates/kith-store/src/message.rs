@@ -880,23 +880,12 @@ impl<'a> MessageStore<'a> {
 
     /// Internal: increment counter and return the new integer value.
     ///
-    /// The UPDATE and SELECT are wrapped in a transaction so that no concurrent
-    /// writer can advance the counter between the two statements and cause this
-    /// caller to return a stale value.
+    /// Wrapped in a transaction so that the counter read and write are atomic.
+    /// Delegates to `advance_state_counter_in_tx` so the i64 overflow guard
+    /// fires here too, matching production paths.
     fn advance_state_counter(&self) -> Result<i64, KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
-        tx.execute(
-            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'message'",
-            [],
-        )
-        .map_err(db_err)?;
-        let v: i64 = tx
-            .query_row(
-                "SELECT counter FROM state_counters WHERE type_name = 'message'",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(db_err)?;
+        let v = crate::advance_state_counter_in_tx(&tx, "message")?;
         tx.commit().map_err(db_err)?;
         Ok(v)
     }

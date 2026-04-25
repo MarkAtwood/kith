@@ -87,6 +87,9 @@ pub fn run(config: &Config, dest: Option<PathBuf>) -> Result<(), Box<dyn std::er
             loop {
                 match backup.step(PAGES_PER_STEP)? {
                     rusqlite::backup::StepResult::Done => {
+                        // Print final progress so small databases (one step)
+                        // always show "N/N pages" before the completion message.
+                        backup_progress(backup.progress());
                         cleanup.disarm();
                         break;
                     }

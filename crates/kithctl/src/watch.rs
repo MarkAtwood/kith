@@ -407,50 +407,66 @@ async fn fetch_and_notify(
     since_state: &str,
     _new_state: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // --- Message/changes ---
-    let changes_request = serde_json::json!({
-        "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
-        "methodCalls": [
-            ["Message/changes", {"accountId": "me", "sinceState": since_state, "maxChanges": 50}, "c0"]
-        ]
-    });
-
-    let changes_body = serde_json::to_string(&changes_request)?;
-    let changes_response = jmap_post(config, tailnet_ip, connector, &changes_body).await?;
-
-    let method_args = changes_response
-        .get("methodResponses")
-        .and_then(|r| r.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|r| r.as_array())
-        .and_then(|r| r.get(1));
-
-    let created_ids: Vec<String> = method_args
-        .and_then(|args| args.get("created"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default();
-    let updated_ids: Vec<String> = method_args
-        .and_then(|args| args.get("updated"))
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default();
-    // Only notify for created messages.  Updated IDs represent delivery/read
-    // state changes on existing messages (e.g. pending→delivered) and must not
-    // fire a "new message" desktop notification.
+    // --- Message/changes (paginated) ---
+    // Loop until hasMoreChanges=false.  maxChanges=500 matches the kithd query
+    // limit; in practice a single page covers any realistic burst.  Without
+    // this loop, messages beyond the first page are silently dropped — they
+    // never fire desktop notifications and are lost when the state baseline
+    // advances to newState.
     //
-    // We still collect updated_ids above so a future extension (e.g. update
-    // badge counts) has them available; they are deliberately NOT included here.
-    let _ = updated_ids; // intentionally unused for notifications
-    let new_ids: Vec<String> = created_ids;
+    // accountId must be "a-self" — kithd rejects any other value.
+    let mut cursor = since_state.to_string();
+    let mut new_ids: Vec<String> = Vec::new();
+
+    loop {
+        let changes_request = serde_json::json!({
+            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
+            "methodCalls": [
+                ["Message/changes", {"accountId": "a-self", "sinceState": cursor, "maxChanges": 500}, "c0"]
+            ]
+        });
+
+        let changes_body = serde_json::to_string(&changes_request)?;
+        let changes_response = jmap_post(config, tailnet_ip, connector, &changes_body).await?;
+
+        let method_args = changes_response
+            .get("methodResponses")
+            .and_then(|r| r.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|r| r.as_array())
+            .and_then(|r| r.get(1));
+
+        let created_ids: Vec<String> = method_args
+            .and_then(|args| args.get("created"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Only notify for created messages.  Updated IDs represent delivery/read
+        // state changes on existing messages (e.g. pending→delivered) and must not
+        // fire a "new message" desktop notification.
+        new_ids.extend(created_ids);
+
+        let has_more = method_args
+            .and_then(|args| args.get("hasMoreChanges"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if !has_more {
+            break;
+        }
+
+        // Advance cursor to newState so the next page starts where this one ended.
+        cursor = method_args
+            .and_then(|args| args.get("newState"))
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+            .ok_or("hasMoreChanges=true but newState missing in Message/changes response")?;
+    }
 
     if new_ids.is_empty() {
         return Ok(());
@@ -461,7 +477,7 @@ async fn fetch_and_notify(
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [
             ["Message/get", {
-                "accountId": "me",
+                "accountId": "a-self",
                 "ids": new_ids,
                 "properties": ["sender", "body"]
             }, "c1"]
@@ -640,7 +656,7 @@ pub async fn cmd_watch(config: &Config) -> Result<(), Box<dyn std::error::Error>
     //    the current state with an empty list — no network IDs needed.
     let bootstrap_req = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
-        "methodCalls": [["Message/get", {"accountId": "me", "ids": []}, "b0"]]
+        "methodCalls": [["Message/get", {"accountId": "a-self", "ids": []}, "b0"]]
     });
     // Bootstrap the message state baseline.  Falling back to "s-0" would cause
     // kithctl to replay ALL historical messages as new-message notifications on

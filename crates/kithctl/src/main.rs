@@ -97,17 +97,23 @@ async fn cmd_status(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// If the string is longer than `max`, it is truncated to `max - 1` characters
 /// and an ellipsis (`…`) is appended so the result fits within `max` columns.
+/// Special cases:
+/// - `max == 0`: returns empty string.
+/// - `max == 1`: returns the first character (no room for an ellipsis).
 fn fit_col(s: &str, max: usize) -> String {
     if max == 0 {
         return String::new();
     }
     let chars: Vec<char> = s.chars().collect();
-    if chars.len() > max && max >= 2 {
-        let truncated: String = chars[..max - 1].iter().collect();
-        format!("{truncated}…")
-    } else {
-        s.to_string()
+    if chars.len() <= max {
+        return s.to_string();
     }
+    if max == 1 {
+        return chars[0].to_string();
+    }
+    // max >= 2: truncate to max-1 chars, append ellipsis.
+    let truncated: String = chars[..max - 1].iter().collect();
+    format!("{truncated}…")
 }
 
 fn cmd_contacts_list(config: &Config) -> Result<(), Box<dyn std::error::Error>> {

@@ -61,6 +61,13 @@ pub const MAX_ATTACHMENT_BYTES: usize = 104_857_600;
 /// The parameter type is `u64` to enforce at the type level that only
 /// non-negative values (i.e. valid Unix epoch seconds) are accepted.
 ///
+/// # Panics (debug builds only)
+/// Panics if `secs` exceeds `MAX_UNIX_SECS` (~year 292 billion), because the
+/// Hinnant algorithm requires `days` to fit in an `i64`. All kith timestamps
+/// originate from SQLite `INTEGER` columns (which are `i64`), so in practice
+/// `secs` is always ≤ `i64::MAX`. The debug assertion catches callers that
+/// mistakenly pass a full-range `u64` (e.g. an unvalidated network value).
+///
 /// Single canonical implementation shared by `kith-store` and `kith-peer`.
 pub fn unix_secs_to_rfc3339(secs: u64) -> String {
     let secs_in_day: u64 = 86400;
@@ -74,6 +81,13 @@ pub fn unix_secs_to_rfc3339(secs: u64) -> String {
     // Civil date from days since epoch (1970-01-01).
     // Source: https://howardhinnant.github.io/date_algorithms.html
     // Widen to i64 for the signed arithmetic required by the algorithm.
+    // The debug assert catches callers passing values beyond i64::MAX/86400;
+    // all production callers use SQLite-sourced i64 timestamps so this is
+    // unreachable at runtime.
+    debug_assert!(
+        days <= i64::MAX as u64,
+        "unix_secs_to_rfc3339: secs={secs} overflows i64 day count; max supported timestamp is i64::MAX seconds"
+    );
     let days = days as i64;
     let z = days + 719468;
     let era = z.div_euclid(146097);

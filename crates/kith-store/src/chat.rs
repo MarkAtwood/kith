@@ -411,18 +411,10 @@ impl<'a> ChatStore<'a> {
     /// crate) calls it from tests; it cannot be `pub(crate)`.
     pub fn advance_state(&self) -> Result<String, KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
-        tx.execute(
-            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = 'chat'",
-            [],
-        )
-        .map_err(db_err)?;
-        let counter: i64 = tx
-            .query_row(
-                "SELECT counter FROM state_counters WHERE type_name = 'chat'",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(db_err)?;
+        // Delegate to the shared helper so the i64 overflow guard fires here
+        // too, not just in production paths that use advance_state_counter_in_tx
+        // directly within a larger transaction.
+        let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
         tx.commit().map_err(db_err)?;
         Ok(format!("s-{counter}"))
     }
