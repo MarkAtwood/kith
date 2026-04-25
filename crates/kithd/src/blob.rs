@@ -1,7 +1,6 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use sha2::{Digest, Sha256};
 
 use crate::auth::WhoIsProvider;
 use crate::extractors::{AppState, Caller};
@@ -17,10 +16,9 @@ const MAX_CONTENT_TYPE_LEN: usize = 256;
 /// `POST /jmap/upload/{account_id}` — receive a blob and return its blobId.
 ///
 /// RFC 8620 §6.1 defines the upload endpoint.  Only the owner may upload.
-/// The request body is buffered (up to `MAX_BLOB_BYTES`), then written to
-/// disk via `BlobStore::write_blob`.  SHA-256 is computed over the buffered
-/// bytes independently before writing, so the hash in the response is always
-/// consistent with the bytes on disk.
+/// The request body is streamed directly to disk via `BlobStore::write_blob_streaming`,
+/// which computes SHA-256 incrementally and enforces the size limit without
+/// buffering the full body in heap.
 ///
 /// No DB row is written at upload time.  The DB row is created when the
 /// returned `blobId` is referenced in a subsequent `Message/set` create.
@@ -79,34 +77,25 @@ pub async fn blob_upload_handler<W: WhoIsProvider + Send + Sync + 'static>(
         }
     };
 
-    // 4. Buffer body with a hard size cap.  Read one byte over the limit so
-    //    we can distinguish "exactly at limit" from "exceeded".
-    let bytes = match axum::body::to_bytes(request.into_body(), MAX_BLOB_BYTES + 1).await {
-        Ok(b) => b,
-        Err(_) => {
+    // 4. Generate blob ID and stream body directly to disk.
+    //    write_blob_streaming computes SHA-256 incrementally and enforces the
+    //    size limit without buffering the full body.  InvalidInput means body
+    //    exceeded MAX_BLOB_BYTES; other errors are storage failures.
+    let blob_id = kith_attach::BlobStore::generate_blob_id();
+    let (size, sha256) = match state
+        .blob_store
+        .write_blob_streaming(&blob_id, request.into_body(), MAX_BLOB_BYTES as u64)
+        .await
+    {
+        Ok(result) => result,
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {
             return (StatusCode::PAYLOAD_TOO_LARGE, "attachment too large").into_response();
         }
+        Err(e) => {
+            tracing::error!("blob write failed: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "storage error").into_response();
+        }
     };
-    if bytes.len() > MAX_BLOB_BYTES {
-        return (StatusCode::PAYLOAD_TOO_LARGE, "attachment too large").into_response();
-    }
-
-    // 5. Compute SHA-256 over the buffered bytes.  This is an independent
-    //    oracle — the hash is derived from the bytes that will be written to
-    //    disk, so the client can verify the transfer without re-downloading.
-    let sha256 = {
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        format!("{:x}", hasher.finalize())
-    };
-    let size = bytes.len() as u64;
-
-    // 6. Generate blob ID and write to disk.
-    let blob_id = kith_attach::BlobStore::generate_blob_id();
-    if let Err(e) = state.blob_store.write_blob(&blob_id, &bytes).await {
-        tracing::error!("blob write failed: {e}");
-        return (StatusCode::INTERNAL_SERVER_ERROR, "storage error").into_response();
-    }
 
     // 7. Return 201 Created with blob metadata (RFC 8620 §6.1).
     (
