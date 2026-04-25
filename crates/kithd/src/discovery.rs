@@ -34,9 +34,6 @@ pub struct PeerSession {
     pub owner_user_id: String,
     pub owner_login: String,
     pub owner_display_name: Option<String>,
-    /// Hostname (and optional `:port`) extracted from the session's `apiUrl`.
-    /// Used as `mailboxHost` in the contacts table.
-    pub mailbox_host: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +47,6 @@ struct SessionProbe {
     owner_user_id: Option<String>,
     owner_login: Option<String>,
     owner_display_name: Option<String>,
-    api_url: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -230,14 +226,11 @@ pub async fn probe_peer(
 
         let owner_user_id = probe.owner_user_id?;
         let owner_login = probe.owner_login?;
-        let api_url = probe.api_url?;
-        let mailbox_host = extract_mailbox_host(&api_url)?;
 
         Some(PeerSession {
             owner_user_id,
             owner_login,
             owner_display_name: probe.owner_display_name,
-            mailbox_host,
         })
     })
     .await;
@@ -246,8 +239,28 @@ pub async fn probe_peer(
 }
 
 // ---------------------------------------------------------------------------
-// Helper: extract host[:port] from an API URL
+// Helpers
 // ---------------------------------------------------------------------------
+
+/// Build a `host` or `host:port` string suitable for use as `mailboxHost` from
+/// a Tailscale-verified IP address and the port we connected on.
+///
+/// IPv6 addresses are wrapped in brackets per RFC 3986 §3.2.2 so that the
+/// resulting value can be safely interpolated into `https://{mailbox_host}/…`.
+/// Port 443 is omitted (it is the default HTTPS port).
+pub(crate) fn build_mailbox_host(ip: &str, port: u16) -> String {
+    // Wrap bare IPv6 addresses (contain ':') in brackets for URL safety.
+    let host = if ip.contains(':') {
+        format!("[{}]", ip)
+    } else {
+        ip.to_string()
+    };
+    if port == 443 {
+        host
+    } else {
+        format!("{}:{}", host, port)
+    }
+}
 
 /// Extract `host` or `host:port` from a URL string.
 ///
@@ -370,21 +383,26 @@ async fn run_discovery_round(
         join_set.spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore never closed");
             let mut session = None;
+            let mut responding_ip: Option<String> = None;
             for ip in &peer.tailscale_ips {
                 if let Some(s) = probe_peer(&client, ip, port).await {
                     session = Some(s);
+                    responding_ip = Some(ip.clone());
                     break;
                 }
             }
             // Include the WhoIs-verified user_id so the outer loop can validate
             // the session's claimed owner_user_id against Tailscale's identity.
-            (peer.dns_name.clone(), peer.user_id.clone(), session)
+            // responding_ip is the Tailscale-verified IP that answered; mailbox_host
+            // is derived from it — not from the peer-supplied apiUrl — so a malicious
+            // peer cannot redirect outbound delivery to a different node.
+            (peer.dns_name.clone(), peer.user_id.clone(), session, responding_ip)
         });
     }
 
     let mut found = 0usize;
     while let Some(res) = join_set.join_next().await {
-        let (dns_name, whois_user_id, session_opt) = match res {
+        let (dns_name, whois_user_id, session_opt, responding_ip) = match res {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!("discovery: probe task panicked: {e}");
@@ -394,6 +412,12 @@ async fn run_discovery_round(
 
         let Some(ps) = session_opt else {
             tracing::debug!("discovery: no kithd found for peer {dns_name}");
+            continue;
+        };
+
+        // responding_ip is always Some when session is Some (they are set together).
+        let Some(ip) = responding_ip else {
+            tracing::warn!("discovery: internal: session present but responding_ip missing for {dns_name}; skipping");
             continue;
         };
 
@@ -410,6 +434,12 @@ async fn run_discovery_round(
             continue;
         }
 
+        // Derive mailbox_host from the Tailscale-verified IP and the port we
+        // connected to — never from the peer-supplied apiUrl.  This closes the
+        // redirect attack: a peer cannot steer outbound delivery to a different
+        // node by returning a fabricated apiUrl hostname.
+        let mailbox_host = build_mailbox_host(&ip, port);
+
         let now_unix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -421,7 +451,7 @@ async fn run_discovery_round(
                 Ok(g) => g.contacts().upsert_discovered_contact(
                     &ps.owner_user_id,
                     &ps.owner_login,
-                    &ps.mailbox_host,
+                    &mailbox_host,
                     ps.owner_display_name.as_deref(),
                     now_unix,
                 ),
@@ -498,6 +528,31 @@ mod tests {
     #[test]
     fn extract_mailbox_host_empty_host() {
         assert_eq!(extract_mailbox_host("https:///jmap/api"), None);
+    }
+
+    // --- build_mailbox_host unit tests ---
+    // Oracle: RFC 3986 §3.2.2 — IPv6 literals in URLs require brackets.
+    // Port 443 is the default HTTPS port and must be omitted.
+
+    #[test]
+    fn build_mailbox_host_ipv4_with_port() {
+        assert_eq!(build_mailbox_host("100.64.1.2", 8443), "100.64.1.2:8443");
+    }
+
+    #[test]
+    fn build_mailbox_host_ipv4_port_443_omitted() {
+        assert_eq!(build_mailbox_host("100.64.1.2", 443), "100.64.1.2");
+    }
+
+    #[test]
+    fn build_mailbox_host_ipv6_with_port() {
+        // Oracle: RFC 3986 §3.2.2 — IPv6 literals need brackets.
+        assert_eq!(build_mailbox_host("fd7a::1", 8443), "[fd7a::1]:8443");
+    }
+
+    #[test]
+    fn build_mailbox_host_ipv6_port_443_omitted() {
+        assert_eq!(build_mailbox_host("fd7a::1", 443), "[fd7a::1]");
     }
 
     fn install_crypto_provider() {

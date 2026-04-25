@@ -168,7 +168,7 @@ mod inner {
         // 127.0.0.1 and only reachable by the test process.
         let sender_tcp_whois = MockWhoIs(make_whois(SENDER_OWNER_ID, SENDER_LOGIN));
         let (sender_events_tx, _sender_events_rx) = make_channel(64);
-        let sender_dispatcher = Arc::new(build_dispatcher(Arc::clone(&sender_store)));
+        let sender_dispatcher = Arc::new(build_dispatcher(Arc::clone(&sender_store), Arc::clone(&sender_blob_store)));
         let sender_tcp_state = AppState {
             ts: Arc::new(sender_tcp_whois),
             store: Arc::clone(&sender_store),
@@ -191,7 +191,7 @@ mod inner {
         // ---- Sender's in-process owner router (for the upload call) ----
         let sender_owner_whois = MockWhoIs(make_whois(SENDER_OWNER_ID, SENDER_LOGIN));
         let (sender_owner_events_tx, _sender_owner_events_rx) = make_channel(64);
-        let sender_owner_dispatcher = Arc::new(build_dispatcher(Arc::clone(&sender_store)));
+        let sender_owner_dispatcher = Arc::new(build_dispatcher(Arc::clone(&sender_store), Arc::clone(&sender_blob_store)));
         let sender_owner_state = AppState {
             ts: Arc::new(sender_owner_whois),
             store: Arc::clone(&sender_store),
@@ -208,7 +208,7 @@ mod inner {
         // ---- Receiver's in-process owner router ----
         let receiver_owner_whois = MockWhoIs(make_whois(RECEIVER_OWNER_ID, RECEIVER_LOGIN));
         let (receiver_owner_events_tx, _receiver_owner_events_rx) = make_channel(64);
-        let receiver_owner_dispatcher = Arc::new(build_dispatcher(Arc::clone(&receiver_store)));
+        let receiver_owner_dispatcher = Arc::new(build_dispatcher(Arc::clone(&receiver_store), Arc::clone(&receiver_blob_store)));
         let receiver_owner_state = AppState {
             ts: Arc::new(receiver_owner_whois),
             store: Arc::clone(&receiver_store),

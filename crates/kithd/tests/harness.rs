@@ -205,7 +205,8 @@ mod inner {
 
         // ---- alice's AppState ----
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
-        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store)));
+        let alice_blob_store = make_blob_store();
+        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store), Arc::clone(&alice_blob_store)));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),
             store: Arc::clone(&alice_store),
@@ -214,7 +215,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: alice_events_tx,
             dispatcher: alice_dispatcher,
-            blob_store: make_blob_store(),
+            blob_store: alice_blob_store,
         };
 
         // ---- alice's in-process router ----
@@ -230,7 +231,8 @@ mod inner {
 
         // ---- bob's AppState for the TCP listener ----
         let (bob_events_tx, _bob_events_rx) = make_channel(64);
-        let bob_dispatcher = Arc::new(build_dispatcher(Arc::clone(&bob_store)));
+        let bob_blob_store = make_blob_store();
+        let bob_dispatcher = Arc::new(build_dispatcher(Arc::clone(&bob_store), Arc::clone(&bob_blob_store)));
         let bob_tcp_state = AppState {
             ts: Arc::new(bob_tcp_whois),
             store: Arc::clone(&bob_store),
@@ -239,7 +241,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: bob_events_tx,
             dispatcher: Arc::clone(&bob_dispatcher),
-            blob_store: make_blob_store(),
+            blob_store: bob_blob_store,
         };
 
         // ---- spawn bob's real TCP listener ----

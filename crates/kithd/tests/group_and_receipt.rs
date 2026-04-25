@@ -342,7 +342,8 @@ mod inner {
         // requiring a second TLS listener for alice.
         let alice_peer_whois = MockWhoIs(make_whois(BOB_OWNER_ID, BOB_LOGIN));
         let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(64);
-        let alice_peer_dispatcher = Arc::new(build_dispatcher(Arc::clone(&pair.alice_store)));
+        let alice_peer_blob_store = make_blob_store();
+        let alice_peer_dispatcher = Arc::new(build_dispatcher(Arc::clone(&pair.alice_store), Arc::clone(&alice_peer_blob_store)));
         let alice_peer_state = AppState {
             ts: Arc::new(alice_peer_whois),
             store: Arc::clone(&pair.alice_store),
@@ -351,7 +352,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: alice_peer_events_tx,
             dispatcher: alice_peer_dispatcher,
-            blob_store: make_blob_store(),
+            blob_store: alice_peer_blob_store,
         };
         // BOB_PEER_MOCK_ADDR is distinct from ALICE_MOCK_ADDR; MockWhoIs ignores
         // the address and returns bob's identity regardless.
@@ -481,7 +482,8 @@ mod inner {
         // Step 2: build alice's in-process router.
         let alice_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
-        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store)));
+        let alice_blob_store = make_blob_store();
+        let alice_dispatcher = Arc::new(build_dispatcher(Arc::clone(&alice_store), Arc::clone(&alice_blob_store)));
         let alice_state = AppState {
             ts: Arc::new(alice_whois),
             store: Arc::clone(&alice_store),
@@ -490,7 +492,7 @@ mod inner {
             base_url: kithd::DEFAULT_BASE_URL.to_string(),
             events_tx: alice_events_tx,
             dispatcher: alice_dispatcher,
-            blob_store: make_blob_store(),
+            blob_store: alice_blob_store,
         };
         let alice_router = build_app(alice_state).layer(MockConnectInfo(ALICE_MOCK_ADDR));
 
