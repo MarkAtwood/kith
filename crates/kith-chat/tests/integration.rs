@@ -28,6 +28,7 @@ fn make_store() -> Arc<Mutex<kith_store::Store>> {
 }
 
 fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> Dispatcher {
+    let blob_store = Arc::new(kith_attach::BlobStore::new(std::env::temp_dir()));
     let mut d = Dispatcher::new();
     d.register(
         "ChatContact/get",
@@ -83,9 +84,10 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> Dispatcher {
     );
     d.register(
         "Message/set",
-        Box::new(kith_chat::message::MessageSetHandler::new(Arc::clone(
-            &store,
-        ))),
+        Box::new(kith_chat::message::MessageSetHandler::new(
+            Arc::clone(&store),
+            Arc::clone(&blob_store),
+        )),
     );
     d.register(
         "Message/changes",

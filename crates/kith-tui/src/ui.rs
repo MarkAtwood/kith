@@ -121,7 +121,10 @@ fn draw_input(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
     );
 
     if focused {
-        let visible_cursor_col = UnicodeWidthStr::width(&state.input[..state.input_cursor]) as u16;
+        // Clamp to u16::MAX before casting: input is capped at 65536 bytes so
+        // the width can be 65536, which does not fit in u16 (max 65535).
+        let col_width = UnicodeWidthStr::width(&state.input[..state.input_cursor]);
+        let visible_cursor_col = u16::try_from(col_width).unwrap_or(u16::MAX);
         f.set_cursor_position((area.x + 1 + visible_cursor_col, area.y + 1));
     }
 }

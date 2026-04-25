@@ -43,7 +43,12 @@ pub fn run(config: &Config, dest: Option<PathBuf>) -> Result<(), Box<dyn std::er
                 .create_new(true)
                 .mode(0o600)
                 .open(&dest_path)?;
-            let mut dst = rusqlite::Connection::open(&dest_path)?;
+            let mut dst = rusqlite::Connection::open(&dest_path)
+                .inspect_err(|_| {
+                    // Clean up the pre-created stub file so the user can retry without
+                    // hitting the "destination already exists" guard.
+                    let _ = std::fs::remove_file(&dest_path);
+                })?;
             let backup = rusqlite::backup::Backup::new(&src, &mut dst)?;
             const PAGES_PER_STEP: i32 = 100;
             const PAUSE: Duration = Duration::from_millis(250);

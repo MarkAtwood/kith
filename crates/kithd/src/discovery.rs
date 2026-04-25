@@ -376,13 +376,15 @@ async fn run_discovery_round(
                     break;
                 }
             }
-            (peer.dns_name.clone(), session)
+            // Include the WhoIs-verified user_id so the outer loop can validate
+            // the session's claimed owner_user_id against Tailscale's identity.
+            (peer.dns_name.clone(), peer.user_id.clone(), session)
         });
     }
 
     let mut found = 0usize;
     while let Some(res) = join_set.join_next().await {
-        let (dns_name, session_opt) = match res {
+        let (dns_name, whois_user_id, session_opt) = match res {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!("discovery: probe task panicked: {e}");
@@ -394,6 +396,19 @@ async fn run_discovery_round(
             tracing::debug!("discovery: no kithd found for peer {dns_name}");
             continue;
         };
+
+        // Cross-validate: the session's claimed owner_user_id must match the
+        // Tailscale-verified user_id for this peer.  A malicious node could
+        // serve any owner_user_id in its session response; accepting it would
+        // let an attacker redirect outbound delivery for the spoofed user.
+        if ps.owner_user_id != whois_user_id {
+            tracing::warn!(
+                "discovery: peer {dns_name} claims owner_user_id={} but Tailscale says {}; skipping",
+                ps.owner_user_id,
+                whois_user_id,
+            );
+            continue;
+        }
 
         let now_unix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

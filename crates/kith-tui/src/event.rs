@@ -328,7 +328,7 @@ pub(crate) async fn load_messages_for_chat(
         ],
         method_calls: vec![(
             "Message/query".into(),
-            json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 500}),
+            json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 500, "calculateTotal": true}),
             "mq0".into(),
         )],
     };

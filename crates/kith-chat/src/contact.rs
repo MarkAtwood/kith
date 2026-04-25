@@ -171,6 +171,15 @@ impl JmapHandler for ChatContactSetHandler {
                 .unwrap_or_default()
                 .as_secs() as i64;
 
+            // Capture old_state before any mutations so the client can detect
+            // concurrent changes (RFC 8620 §5.3).
+            let old_state = {
+                let guard = store
+                    .lock()
+                    .map_err(|_| JmapError::server_fail("store poisoned"))?;
+                guard.contacts().get_state().map_err(kith_to_jmap)?
+            };
+
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
             let mut updated: Map<String, Value> = Map::new();
@@ -229,7 +238,7 @@ impl JmapHandler for ChatContactSetHandler {
             // 8. Return full set response.
             Ok(json!({
                 "accountId": "a-self",
-                "oldState": Value::Null,
+                "oldState": old_state,
                 "newState": new_state,
                 "created": created,
                 "updated": updated,

@@ -107,6 +107,12 @@ impl PeerJmapHandler for DeliverHandler {
             // Step 1: Parse the public Peer/deliver arguments.
             let deliver: PeerDeliverArgs = serde_json::from_value(args)
                 .map_err(|_| JmapError::invalid_arguments("invalid Peer/deliver arguments"))?;
+
+            // RFC 8620 §5.1: accountId must match the server's own account.
+            if deliver.account_id != "a-self" {
+                return Err(JmapError::account_not_found());
+            }
+
             let msg = &deliver.message;
 
             // Step 2: check_sender — MUST occur before any DB write.
@@ -387,6 +393,11 @@ impl PeerJmapHandler for ReceiptHandler {
             let parsed: PeerReceiptArgs = serde_json::from_value(args).map_err(|e| {
                 JmapError::invalid_arguments(format!("invalid Peer/receipt arguments: {e}"))
             })?;
+
+            // RFC 8620 §5.1: accountId must match the server's own account.
+            if parsed.account_id != "a-self" {
+                return Err(JmapError::account_not_found());
+            }
 
             // Step c: validate kind.
             if parsed.kind != "delivered" && parsed.kind != "read" {

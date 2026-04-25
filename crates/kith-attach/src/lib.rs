@@ -54,6 +54,13 @@ impl BlobStore {
         self.base_dir.join(id)
     }
 
+    /// Return `true` if the blob file exists on disk.
+    ///
+    /// Callers must have validated `id` with [`validate_blob_id`] first.
+    pub fn blob_exists(&self, id: &str) -> bool {
+        self.blob_path(id).exists()
+    }
+
     pub async fn write_blob(&self, id: &str, data: &[u8]) -> Result<u64, io::Error> {
         Self::validate_blob_id(id)
             .map_err(|reason| io::Error::new(io::ErrorKind::InvalidInput, reason))?;

@@ -161,8 +161,11 @@ fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, blob_dir) = make_blob_store();
+    let dispatcher = Arc::new(build_dispatcher(
+        Arc::clone(&store),
+        Arc::clone(&blob_store),
+    ));
 
     let state = AppState {
         ts: Arc::new(whois),
@@ -195,8 +198,11 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
     let (blob_store, blob_dir) = make_blob_store();
+    let dispatcher = Arc::new(build_dispatcher(
+        Arc::clone(&store),
+        Arc::clone(&blob_store),
+    ));
     let state = AppState {
         ts: Arc::new(whois),
         store: Arc::clone(&store),

@@ -61,7 +61,10 @@ fn validate_sha256(s: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-fn parse_attachments(obj: &serde_json::Map<String, Value>) -> Result<Vec<ParsedAttachment>, Value> {
+fn parse_attachments(
+    obj: &serde_json::Map<String, Value>,
+    blob_store: &BlobStore,
+) -> Result<Vec<ParsedAttachment>, Value> {
     let arr = match obj.get("attachments") {
         None | Some(Value::Null) => return Ok(vec![]),
         Some(Value::Array(a)) => a,
@@ -87,6 +90,11 @@ fn parse_attachments(obj: &serde_json::Map<String, Value>) -> Result<Vec<ParsedA
         BlobStore::validate_blob_id(&blob_id).map_err(|e| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].blobId: {e}")})
         })?;
+        if !blob_store.blob_exists(&blob_id) {
+            return Err(
+                json!({"type": "invalidArguments", "description": format!("attachments[{i}].blobId: blob not found")}),
+            );
+        }
         let filename = att.get("filename").and_then(|v| v.as_str()).ok_or_else(|| {
             json!({"type": "invalidArguments", "description": format!("attachments[{i}].filename is required")})
         })?.to_string();
@@ -130,17 +138,19 @@ fn parse_attachments(obj: &serde_json::Map<String, Value>) -> Result<Vec<ParsedA
 
 pub struct MessageSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
+    blob_store: Arc<BlobStore>,
 }
 
 impl MessageSetHandler {
-    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
-        Self { store }
+    pub fn new(store: Arc<Mutex<kith_store::Store>>, blob_store: Arc<BlobStore>) -> Self {
+        Self { store, blob_store }
     }
 }
 
 impl JmapHandler for MessageSetHandler {
     fn call(&self, _method_name: String, _call_id: String, args: Value) -> HandlerFuture {
         let store = Arc::clone(&self.store);
+        let blob_store = Arc::clone(&self.blob_store);
 
         Box::pin(async move {
             let obj = args
@@ -189,7 +199,14 @@ impl JmapHandler for MessageSetHandler {
             // Process creates.
             if let Some(creates) = create_map {
                 for (client_id, value) in creates {
-                    match process_create(&store, client_id, value, now_unix, &mut old_state_cell) {
+                    match process_create(
+                        &store,
+                        &blob_store,
+                        client_id,
+                        value,
+                        now_unix,
+                        &mut old_state_cell,
+                    ) {
                         Ok(msg_value) => {
                             created.insert(client_id.clone(), msg_value);
                         }
@@ -263,6 +280,7 @@ impl JmapHandler for MessageSetHandler {
 
 fn process_create(
     store: &Arc<Mutex<kith_store::Store>>,
+    blob_store: &BlobStore,
     _client_id: &str,
     value: &Value,
     now_unix: i64,
@@ -311,7 +329,7 @@ fn process_create(
     }
 
     // Parse and validate attachments BEFORE acquiring the store lock.
-    let attachments = parse_attachments(obj)?;
+    let attachments = parse_attachments(obj, blob_store)?;
 
     // Acquire the store lock for all DB operations.
     let guard = store
@@ -781,7 +799,7 @@ impl JmapHandler for MessageQueryHandler {
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(50)
-                .min(200) as u32;
+                .min(500) as u32;
 
             let calculate_total: bool = obj
                 .get("calculateTotal")
@@ -946,6 +964,22 @@ mod tests {
         ))
     }
 
+    /// Return a BlobStore backed by a temporary directory.
+    /// The directory is created immediately and persists for the test process lifetime.
+    fn make_blob_store() -> Arc<BlobStore> {
+        let dir = std::env::temp_dir().join(format!(
+            "kith-test-blobs-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .subsec_nanos()
+        ));
+        let bs = BlobStore::new(&dir);
+        bs.init().expect("blob store init must succeed");
+        Arc::new(bs)
+    }
+
     /// Insert a chat and contact so creates can enqueue to outbox.
     fn setup_chat_and_contact(
         store: &Arc<Mutex<Store>>,
@@ -982,7 +1016,7 @@ mod tests {
         let chat_id = "chat-abc";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1018,7 +1052,7 @@ mod tests {
         let chat_id = "chat-big";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let oversized = "x".repeat(65537);
         let args = json!({
             "accountId": "a-self",
@@ -1055,7 +1089,7 @@ mod tests {
     async fn test_message_set_create_unknown_chat() {
         let store = make_store();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1110,7 +1144,7 @@ mod tests {
             msg_in_chat1 = "msg-in-chat1";
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -1234,7 +1268,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1287,7 +1321,7 @@ mod tests {
         }
 
         // Submit a readAt that is clearly in the far future (year 2099).
-        let set_handler = MessageSetHandler::new(Arc::clone(&store));
+        let set_handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let set_args = json!({
             "accountId": "a-self",
             "update": {
@@ -1359,7 +1393,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1870,7 +1904,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -1935,7 +1969,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "update": {
@@ -2043,8 +2077,14 @@ mod tests {
         let chat_id = "chat-att-ok";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
+        // Write the blob to the store so the existence check passes.
+        let blob_store = make_blob_store();
         let blob_id = "a".repeat(64);
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        blob_store
+            .write_blob(&blob_id, b"fake attachment content")
+            .await
+            .expect("write_blob must succeed");
+        let handler = MessageSetHandler::new(Arc::clone(&store), Arc::clone(&blob_store));
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2074,7 +2114,7 @@ mod tests {
         let chat_id = "chat-att-bad-blob";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2110,7 +2150,7 @@ mod tests {
         let chat_id = "chat-att-bad-fn";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2146,7 +2186,7 @@ mod tests {
         let chat_id = "chat-att-bad-ct";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2182,7 +2222,7 @@ mod tests {
         let chat_id = "chat-att-zero-sz";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2218,7 +2258,7 @@ mod tests {
         let chat_id = "chat-att-oversize";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2254,7 +2294,7 @@ mod tests {
         let chat_id = "chat-att-bad-sha";
         setup_chat_and_contact(&store, chat_id, "peer-uid", "peer.tail.ts.net");
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2305,7 +2345,7 @@ mod tests {
             })
             .collect();
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2364,7 +2404,7 @@ mod tests {
             "sha256": "b".repeat(64)
         });
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "create": {
@@ -2448,7 +2488,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2643,7 +2683,7 @@ mod tests {
             guard.messages().get_state().unwrap()
         };
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let result = handler
             .call(
                 "Message/set".to_string(),
@@ -2717,7 +2757,7 @@ mod tests {
                 .unwrap();
         }
 
-        let handler = MessageSetHandler::new(Arc::clone(&store));
+        let handler = MessageSetHandler::new(Arc::clone(&store), make_blob_store());
         let args = json!({
             "accountId": "a-self",
             "update": {

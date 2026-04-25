@@ -181,8 +181,11 @@ mod tests {
             Store::open_in_memory().expect("in-memory store must open"),
         ));
         let (events_tx, _events_rx) = make_channel(64);
-        let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
         let (blob_store, blob_dir) = make_blob_store();
+        let dispatcher = Arc::new(build_dispatcher(
+            Arc::clone(&store),
+            Arc::clone(&blob_store),
+        ));
         let state = AppState {
             ts: Arc::new(whois),
             store,
@@ -219,8 +222,11 @@ mod tests {
             )
             .expect("upsert must succeed");
         let (events_tx, _events_rx) = make_channel(64);
-        let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
         let (blob_store, blob_dir) = make_blob_store();
+        let dispatcher = Arc::new(build_dispatcher(
+            Arc::clone(&store),
+            Arc::clone(&blob_store),
+        ));
         let state = AppState {
             ts: Arc::new(owner_whois),
             store,

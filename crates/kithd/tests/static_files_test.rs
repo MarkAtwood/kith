@@ -94,7 +94,11 @@ fn make_app() -> Router {
         Store::open_in_memory().expect("in-memory store must open"),
     ));
     let (events_tx, _events_rx) = make_channel(64);
-    let dispatcher = Arc::new(build_dispatcher(Arc::clone(&store)));
+    let blob_store_for_dispatcher = make_blob_store();
+    let dispatcher = Arc::new(build_dispatcher(
+        Arc::clone(&store),
+        Arc::clone(&blob_store_for_dispatcher),
+    ));
     let state = AppState {
         ts: Arc::new(make_owner_whois()),
         store,
