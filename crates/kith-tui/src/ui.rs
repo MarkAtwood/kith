@@ -99,16 +99,14 @@ fn draw_messages(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Rec
         .saturating_sub(visible_height)
         .saturating_sub(state.scroll_offset);
 
+    let end = (top + visible_height).min(total);
     let lines: Vec<Line> = state
         .messages
-        .iter()
+        .range(top..end)
         .map(|m| Line::from(Span::raw(m.as_str())))
         .collect();
 
-    f.render_widget(
-        Paragraph::new(lines).block(block).scroll((top as u16, 0)),
-        area,
-    );
+    f.render_widget(Paragraph::new(lines).block(block), area);
 }
 
 fn draw_input(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
