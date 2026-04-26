@@ -16,7 +16,7 @@
 
 The core insight behind Kith is that a significant class of users — systems administrators, homelab operators, small engineering teams, privacy-conscious individuals — already have the infrastructure and already use Tailscale. For these users, a self-hosted chat system does not need to invent an identity system, a transport layer, or a trust model. Tailscale provides all three. Kith threads those primitives into a mailbox protocol and gets out of the way.
 
-Each user runs `kithd`, a small daemon on any Tailscale node they own — a home server, a NAS, a five-dollar VPS. The daemon stores messages in a single SQLite file and speaks JMAP over the tailnet. Clients — a minimal web UI and a terminal UI in the initial release — connect only to their owner's mailbox, never directly to any other user's mailbox. Mailboxes talk to mailboxes. Authentication is Tailscale's `WhoIs` API called on every request: no passwords, no sessions, no tokens. Phase 1 is 1:1 chat within a single tailnet. Cross-tailnet chat via Tailscale's node-sharing feature, with no in-app invite flow, is the Phase 2 target.
+Each user runs `kithd`, a small daemon on any Tailscale node they own — a home server, a NAS, a five-dollar VPS. The daemon stores messages in a single SQLite file and speaks JMAP over the tailnet. Clients — a minimal web UI and a terminal UI in the initial release — connect only to their owner's mailbox, never directly to any other user's mailbox. Mailboxes talk to mailboxes. Authentication is Tailscale's `WhoIs` API called on every request: no passwords, no sessions, no tokens. Cross-tailnet chat via Tailscale's node-sharing feature, with no in-app invite flow, is supported.
 
 "I've run my own email since 2009 and my own XMPP server since 2014," said a systems administrator and homelab operator who tested an early build. "Both of those are enormous maintenance surfaces. Kith is the first messaging system where I looked at the architecture and thought: yes, I understand every piece of this, I trust every piece of this, and none of it will break in a way I can't debug at 2am."
 
@@ -50,7 +50,7 @@ Yes. Tailscale is the transport, the identity layer, and the access control syst
 
 **Can I chat with people in a different Tailscale tailnet?**
 
-Yes, in Phase 2 and beyond, using Tailscale's node-sharing feature. Alice shares her `alice-kith` node to Carol's Tailscale identity; Carol shares `carol-kith` back to Alice. Both mailboxes then appear on each other's tailnet and can deliver messages directly. There is no in-app invite flow, no pending/accepted state machine inside Kith. The Tailscale admin UI is the workflow.
+Yes, using Tailscale's node-sharing feature. Alice shares her `alice-kith` node to Carol's Tailscale identity; Carol shares `carol-kith` back to Alice. Both mailboxes then appear on each other's tailnet and can deliver messages directly. There is no in-app invite flow, no pending/accepted state machine inside Kith. The Tailscale admin UI is the workflow.
 
 Note: this requires both parties to be on Tailscale's coordination plane, or both to be on the same Headscale instance. Cross-instance federation between two separate Headscale deployments is not currently supported by Tailscale's node-sharing model, and Kith inherits that limitation.
 

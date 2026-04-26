@@ -84,9 +84,7 @@ All three are built from the same workspace: `cargo build --release` produces al
 
 ---
 
-## External chat *(Phase 2)*
-
-> **Phase 1 scope:** participants must be in the same Tailscale tailnet. Cross-tailnet chat via node sharing is planned for Phase 2.
+## External chat
 
 Alice wants to chat with Carol, who is in a different tailnet.
 
