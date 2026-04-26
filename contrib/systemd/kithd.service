@@ -1,6 +1,6 @@
 [Unit]
 Description=Kith mailbox daemon
-Documentation=https://github.com/markAtwood/kith
+Documentation=https://github.com/MarkAtwood/kith
 After=network-online.target tailscaled.service
 Requires=tailscaled.service
 

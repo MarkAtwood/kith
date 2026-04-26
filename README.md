@@ -22,13 +22,12 @@ Kith is a self-hosted chat system built on Tailscale. Every participant runs the
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 
-# 2. Download the kithd binary
-curl -fsSL https://github.com/yourorg/kith/releases/latest/download/kithd-x86_64-unknown-linux-musl \
-  -o /usr/local/bin/kithd
-chmod +x /usr/local/bin/kithd
+# 2. Build kithd (see "Building from source" below)
+cargo build --release -p kithd
+sudo install -m 755 target/release/kithd /usr/local/bin/kithd
 
 # 3. Install and start the service
-sudo install -m 644 contrib/kithd.service /etc/systemd/system/kithd.service
+sudo install -m 644 contrib/systemd/kithd.service /etc/systemd/system/kithd.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now kithd
 
@@ -73,7 +72,21 @@ A user is a Tailscale identity from the tailnet's identity provider. A mailbox i
 
 ---
 
-## External chat
+## Tools
+
+| Binary | Purpose |
+|--------|---------|
+| `kithd` | Mailbox daemon. Runs as a system service. Serves the web client and the JMAP API. |
+| `kithctl` | Local CLI. Contact management, status, backup, and `kithctl watch` for desktop notifications on new messages. |
+| `kith-tui` | Terminal UI client. Connects to your local `kithd` and renders chats in the terminal. |
+
+All three are built from the same workspace: `cargo build --release` produces all binaries under `target/release/`.
+
+---
+
+## External chat *(Phase 2)*
+
+> **Phase 1 scope:** participants must be in the same Tailscale tailnet. Cross-tailnet chat via node sharing is planned for Phase 2.
 
 Alice wants to chat with Carol, who is in a different tailnet.
 
@@ -116,13 +129,14 @@ After=network-online.target tailscaled@%i.service
 Requires=tailscaled@%i.service
 
 [Service]
-Type=notify
+Type=simple
 User=kith-%i
 Group=kith
 Environment=KITHD_DATA_DIR=/var/lib/kith/%i
 Environment=KITHD_TAILSCALED_SOCKET=/var/run/tailscale/%i/tailscaled.sock
-ExecStart=/usr/bin/kithd
+ExecStart=/usr/local/bin/kithd
 Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -191,19 +205,16 @@ The reference deployment for the strongest trust properties: Headscale + self-ho
 
 ## Building from source
 
-Requires Rust stable (1.80 or later recommended).
+Requires Rust stable (MSRV 1.75).
 
 ```bash
-# Build
+# Build (dynamic, for development)
 cargo build --release
 
-# Static musl binary for servers (recommended)
-rustup target add x86_64-unknown-linux-musl
-cargo build --release --target x86_64-unknown-linux-musl
-
-# ARM64 (NAS, Raspberry Pi, etc.)
-rustup target add aarch64-unknown-linux-musl
-cargo build --release --target aarch64-unknown-linux-musl
+# Static musl binary for servers (recommended deployment target)
+# Requires: cargo install cargo-zigbuild  (and zig on PATH)
+cargo zigbuild --release --target x86_64-unknown-linux-musl   # x86-64
+cargo zigbuild --release --target aarch64-unknown-linux-musl  # NAS / Raspberry Pi
 ```
 
 Quality gates — run before every commit:
@@ -238,7 +249,9 @@ See `kith-architecture.md` for the full protocol specification, data types, and 
 
 ---
 
-## License
+## License and copyright
+
+Copyright (C) 2026 Mark Atwood
 
 AGPL-3.0-or-later.
 
