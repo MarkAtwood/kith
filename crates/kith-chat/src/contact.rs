@@ -1,7 +1,7 @@
 // Contact/get, Contact/set, Contact/changes, Contact/query handlers
 
 use crate::kith_to_jmap;
-use kith_core::{JmapError, KithError, MAX_OBJECTS_IN_GET};
+use kith_core::{JmapError, KithError, Presence, MAX_OBJECTS_IN_GET};
 use kith_jmap::{HandlerFuture, JmapHandler};
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// `kith-store`.  A test (`test_known_update_keys_exact_and_accepted`) enforces
 /// that (a) this slice contains exactly the expected names and (b) each name is
 /// accepted by the `ChatContact/set` handler — catching drift in both directions.
-pub(crate) const CONTACT_UPDATE_KEYS: &[&str] = &["displayName", "blocked"];
+pub(crate) const CONTACT_UPDATE_KEYS: &[&str] = &[
+    "displayName",
+    "blocked",
+    "presence",
+    "lastActiveAt",
+    "statusText",
+    "statusEmoji",
+];
 
 // ---------------------------------------------------------------------------
 // Contact/get
@@ -521,6 +528,99 @@ fn process_update(
         guard
             .contacts()
             .set_blocked(server_id, blocked)
+            .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+    }
+
+    // Apply presence-related field changes if any were supplied in the patch.
+    let has_presence_patch = patch_obj.contains_key("presence")
+        || patch_obj.contains_key("lastActiveAt")
+        || patch_obj.contains_key("statusText")
+        || patch_obj.contains_key("statusEmoji");
+
+    if has_presence_patch {
+        // Parse presence: string or null.
+        let new_presence: Option<Presence> = if let Some(v) = patch_obj.get("presence") {
+            if v.is_null() {
+                None
+            } else {
+                let s = v.as_str().ok_or_else(|| {
+                    json!({"type": "invalidArguments", "description": "presence must be a string or null"})
+                })?;
+                Some(serde_json::from_value::<Presence>(Value::String(s.to_string())).map_err(
+                    |e| json!({"type": "invalidArguments", "description": format!("invalid presence value: {e}")}),
+                )?)
+            }
+        } else {
+            existing.presence.clone()
+        };
+
+        // Parse lastActiveAt: string (RFC 3339) or null.
+        // Stored as Unix seconds in the DB; we parse the RFC 3339 string here.
+        let new_last_active_at: Option<i64> = if let Some(v) = patch_obj.get("lastActiveAt") {
+            if v.is_null() {
+                None
+            } else {
+                let s = v.as_str().ok_or_else(|| {
+                    json!({"type": "invalidArguments", "description": "lastActiveAt must be an RFC 3339 string or null"})
+                })?;
+                let dt = chrono::DateTime::parse_from_rfc3339(s).map_err(|e| {
+                    json!({"type": "invalidArguments", "description": format!("invalid lastActiveAt: {e}")})
+                })?;
+                Some(dt.timestamp())
+            }
+        } else {
+            // Preserve existing value. existing.last_active_at is Option<UTCDate>.
+            // We need to convert it back to unix seconds.
+            existing.last_active_at.as_ref().map(|d| {
+                chrono::DateTime::parse_from_rfc3339(d.as_ref())
+                    .expect("existing lastActiveAt must be valid RFC 3339")
+                    .timestamp()
+            })
+        };
+
+        // Parse statusText: string or null.
+        let new_status_text: Option<String> = if let Some(v) = patch_obj.get("statusText") {
+            if v.is_null() {
+                None
+            } else {
+                Some(
+                    v.as_str()
+                        .ok_or_else(|| {
+                            json!({"type": "invalidArguments", "description": "statusText must be a string or null"})
+                        })?
+                        .to_string(),
+                )
+            }
+        } else {
+            existing.status_text.clone()
+        };
+
+        // Parse statusEmoji: string or null.
+        let new_status_emoji: Option<String> = if let Some(v) = patch_obj.get("statusEmoji") {
+            if v.is_null() {
+                None
+            } else {
+                Some(
+                    v.as_str()
+                        .ok_or_else(|| {
+                            json!({"type": "invalidArguments", "description": "statusEmoji must be a string or null"})
+                        })?
+                        .to_string(),
+                )
+            }
+        } else {
+            existing.status_emoji.clone()
+        };
+
+        guard
+            .contacts()
+            .set_presence_fields(
+                server_id,
+                new_presence.as_ref(),
+                new_last_active_at,
+                new_status_text.as_deref(),
+                new_status_emoji.as_deref(),
+            )
             .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
     }
 
@@ -1502,8 +1602,17 @@ mod tests {
     async fn test_known_update_keys_exact_and_accepted() {
         // Oracle: the exact set of patchable JMAP properties for ChatContact.
         // Update this list when a new patchable field is added to ChatContact.
-        let expected_keys: std::collections::HashSet<&str> =
-            ["displayName", "blocked"].iter().copied().collect();
+        let expected_keys: std::collections::HashSet<&str> = [
+            "displayName",
+            "blocked",
+            "presence",
+            "lastActiveAt",
+            "statusText",
+            "statusEmoji",
+        ]
+        .iter()
+        .copied()
+        .collect();
         let actual_keys: std::collections::HashSet<&str> =
             CONTACT_UPDATE_KEYS.iter().copied().collect();
         assert_eq!(
@@ -1534,6 +1643,10 @@ mod tests {
             let patch_value: Value = match key {
                 "displayName" => json!("Updated Name"),
                 "blocked" => json!(false),
+                "presence" => json!("online"),
+                "lastActiveAt" => json!("2026-01-01T00:00:00Z"),
+                "statusText" => json!("Working"),
+                "statusEmoji" => json!("💻"),
                 other => {
                     panic!("test does not know a valid value for key {other:?}; update this test")
                 }

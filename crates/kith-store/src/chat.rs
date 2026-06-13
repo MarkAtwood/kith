@@ -170,11 +170,13 @@ impl<'a> ChatStore<'a> {
         let mut chat = Chat::new(
             Id::from(id),
             parse_chat_kind(&kind),
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(
+                created_at_secs.max(0) as u64
+            )),
             unread_count as u64,
-            vec![],   // pinned_message_ids (not implemented yet)
-            false,    // muted (not implemented yet)
-            false,    // receive_typing_indicators (not implemented yet)
+            vec![], // pinned_message_ids (not implemented yet)
+            false,  // muted (not implemented yet)
+            false,  // receive_typing_indicators (not implemented yet)
         );
         chat.contact_id = contact_id_val.map(Id::from);
         chat.last_message_at = last_message_at_secs.map(|s| {
@@ -225,11 +227,13 @@ impl<'a> ChatStore<'a> {
         let mut chat = Chat::new(
             Id::from(id),
             parse_chat_kind(&kind),
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(
+                created_at_secs.max(0) as u64
+            )),
             unread_count as u64,
-            vec![],   // pinned_message_ids (not implemented yet)
-            false,    // muted (not implemented yet)
-            false,    // receive_typing_indicators (not implemented yet)
+            vec![], // pinned_message_ids (not implemented yet)
+            false,  // muted (not implemented yet)
+            false,  // receive_typing_indicators (not implemented yet)
         );
         chat.contact_id = contact_id.map(Id::from);
         chat.last_message_at = last_message_at_secs.map(|s| {
@@ -277,19 +281,27 @@ impl<'a> ChatStore<'a> {
             .into_iter()
             .map(
                 |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
-                    debug_assert!(created_at_secs >= 0, "timestamp must be non-negative Unix seconds, got {created_at_secs}");
+                    debug_assert!(
+                        created_at_secs >= 0,
+                        "timestamp must be non-negative Unix seconds, got {created_at_secs}"
+                    );
                     let mut chat = Chat::new(
                         Id::from(id),
                         parse_chat_kind(&kind),
-                        UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+                        UTCDate::from(crate::util::unix_secs_to_rfc3339(
+                            created_at_secs.max(0) as u64
+                        )),
                         unread_count as u64,
-                        vec![],   // pinned_message_ids (not implemented yet)
-                        false,    // muted (not implemented yet)
-                        false,    // receive_typing_indicators (not implemented yet)
+                        vec![], // pinned_message_ids (not implemented yet)
+                        false,  // muted (not implemented yet)
+                        false,  // receive_typing_indicators (not implemented yet)
                     );
                     chat.contact_id = contact_id.map(Id::from);
                     chat.last_message_at = last_message_at_secs.map(|s| {
-                        debug_assert!(s >= 0, "timestamp must be non-negative Unix seconds, got {s}");
+                        debug_assert!(
+                            s >= 0,
+                            "timestamp must be non-negative Unix seconds, got {s}"
+                        );
                         UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
                     });
                     chat
@@ -579,7 +591,10 @@ mod tests {
             "created_at must not change on second call"
         );
         assert_eq!(chat1.kind, ChatKind::Direct);
-        assert_eq!(chat1.contact_id.as_ref().map(|id| id.as_ref()), Some("uid:bob"));
+        assert_eq!(
+            chat1.contact_id.as_ref().map(|id| id.as_ref()),
+            Some("uid:bob")
+        );
     }
 
     #[test]
@@ -596,7 +611,10 @@ mod tests {
             .unwrap()
             .expect("must find existing direct chat");
         assert_eq!(found.id, "chat-bbb");
-        assert_eq!(found.contact_id.as_ref().map(|id| id.as_ref()), Some("uid:carol"));
+        assert_eq!(
+            found.contact_id.as_ref().map(|id| id.as_ref()),
+            Some("uid:carol")
+        );
     }
 
     #[test]

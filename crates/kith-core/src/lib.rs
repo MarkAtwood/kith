@@ -5,17 +5,17 @@ pub mod events;
 
 // ── Re-exports from jmap-types (RFC 8620 primitives) ──
 pub use jmap_types::{
-    Argument, Id, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, State,
-    UTCDate,
+    Argument, Id, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, State, UTCDate,
 };
 
 // ── Re-exports from jmap-chat-types (draft-atwood-jmap-chat-00 types) ──
-pub use jmap_chat_types::chat::{Chat, ChatKind, ChatMember, ChannelPermission};
+pub use jmap_chat_types::chat::{ChannelPermission, Chat, ChatKind, ChatMember};
 pub use jmap_chat_types::contact::{ChatContact, Endpoint};
 pub use jmap_chat_types::message::{
     Attachment, BodyType, DeliveryReceipt, DeliveryState, Mention, Message, MessageAction,
     MessageRevision, Reaction, ReadDisposition, SenderId,
 };
+pub use jmap_chat_types::presence::Presence;
 
 // ── kith-specific re-exports ──
 pub use auth::{Identity, Role};

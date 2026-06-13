@@ -1022,7 +1022,10 @@ impl JmapHandler for MessageQueryHandler {
                 .list_by_chat_paged(&chat_id, limit, position)
                 .map_err(kith_to_jmap)?;
 
-            let page_ids: Vec<String> = page_messages.into_iter().map(|m| m.id.into_inner()).collect();
+            let page_ids: Vec<String> = page_messages
+                .into_iter()
+                .map(|m| m.id.into_inner())
+                .collect();
 
             let total_count = if calculate_total {
                 guard

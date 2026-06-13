@@ -415,6 +415,19 @@ const SCHEMA_V19: &str = "
 UPDATE chats SET created_at_counter = -1 WHERE changed_at_counter > 0;
 ";
 
+// V20: Add presence fields to contacts (draft-atwood-jmap-chat-00 §4.8).
+// presence is stored as TEXT (serde wire string: "online", "away", "busy", etc.).
+// last_active_at is stored as INTEGER (Unix seconds), mirroring first_seen_at/last_seen_at.
+// status_text and status_emoji are stored as TEXT (nullable).
+// endpoints are NOT stored locally — they come from peer announcements and would be part
+// of a future Peer/presence protocol.
+const SCHEMA_V20: &str = "
+ALTER TABLE contacts ADD COLUMN presence TEXT;
+ALTER TABLE contacts ADD COLUMN last_active_at INTEGER;
+ALTER TABLE contacts ADD COLUMN status_text TEXT;
+ALTER TABLE contacts ADD COLUMN status_emoji TEXT;
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -440,6 +453,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (17, SCHEMA_V17),
     (18, SCHEMA_V18),
     (19, SCHEMA_V19),
+    (20, SCHEMA_V20),
 ];
 
 impl Store {
@@ -951,8 +965,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has nineteen entries (versions 1-19), so user_version must be 19 after open.
-        assert_eq!(version, 19);
+        // MIGRATIONS has twenty entries (versions 1-20), so user_version must be 20 after open.
+        assert_eq!(version, 20);
     }
 
     #[test]
@@ -1016,7 +1030,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 19, "migration 19 must be applied");
+        assert_eq!(v1, 20, "migration 20 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1103,7 +1117,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 19, "migration v19 must set user_version to 19");
+        assert_eq!(v, 20, "migration v20 must set user_version to 20");
     }
 
     #[test]

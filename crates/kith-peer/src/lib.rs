@@ -202,68 +202,72 @@ impl PeerJmapHandler for DeliverHandler {
             //      the handler idempotent for the "peer sends with wrong/stale chatId"
             //      case and avoids a UNIQUE INDEX violation on contact_id.
             //   c) chatId unknown and no direct chat for this contact → create one.
-            let resolved_chat_id: String = match guard.chats().get(msg.chat_id.as_ref()).map_err(|e| {
-                tracing::error!("store error looking up chat: {e}");
-                JmapError::server_fail("internal error")
-            })? {
-                Some(existing) => {
-                    let sender_permitted = match existing.contact_id.as_ref().map(|id| id.as_ref()) {
-                        // Direct chat: sender must be the contact.
-                        Some(cid) => cid == identity.user_id.as_str(),
-                        // Group chat: sender must be in chat_members.
-                        None => guard
-                            .chats()
-                            .get_members(existing.id.as_ref())
-                            .map_err(|e| {
-                                tracing::error!("store error fetching members: {e}");
-                                JmapError::server_fail("internal error")
-                            })?
-                            .iter()
-                            .any(|m| m == identity.user_id.as_str()),
-                    };
-                    if !sender_permitted {
-                        return Err(JmapError::invalid_arguments("chatId sender mismatch"));
-                    }
-                    existing.id.into_inner()
-                }
-                None => {
-                    // Case (b): adopt an existing direct chat for this contact if
-                    // one exists, so a stale chatId never causes a UNIQUE violation.
-                    if let Some(adopted) = guard
-                        .chats()
-                        .find_direct_by_contact_id(&identity.user_id)
-                        .map_err(|e| {
-                            tracing::error!("store error looking up direct chat by contact: {e}");
-                            JmapError::server_fail("internal error")
-                        })?
-                    {
-                        adopted.id.into_inner()
-                    } else {
-                        // Case (c): no existing direct chat — create one.
-                        // If replyTo is set, it cannot reference a message in a
-                        // not-yet-existing chat: reject before creating an orphaned row.
-                        if msg.reply_to.is_some() {
-                            return Err(JmapError::invalid_arguments(
-                                "replyTo references a nonexistent message",
-                            ));
+            let resolved_chat_id: String =
+                match guard.chats().get(msg.chat_id.as_ref()).map_err(|e| {
+                    tracing::error!("store error looking up chat: {e}");
+                    JmapError::server_fail("internal error")
+                })? {
+                    Some(existing) => {
+                        let sender_permitted =
+                            match existing.contact_id.as_ref().map(|id| id.as_ref()) {
+                                // Direct chat: sender must be the contact.
+                                Some(cid) => cid == identity.user_id.as_str(),
+                                // Group chat: sender must be in chat_members.
+                                None => guard
+                                    .chats()
+                                    .get_members(existing.id.as_ref())
+                                    .map_err(|e| {
+                                        tracing::error!("store error fetching members: {e}");
+                                        JmapError::server_fail("internal error")
+                                    })?
+                                    .iter()
+                                    .any(|m| m == identity.user_id.as_str()),
+                            };
+                        if !sender_permitted {
+                            return Err(JmapError::invalid_arguments("chatId sender mismatch"));
                         }
-                        guard
+                        existing.id.into_inner()
+                    }
+                    None => {
+                        // Case (b): adopt an existing direct chat for this contact if
+                        // one exists, so a stale chatId never causes a UNIQUE violation.
+                        if let Some(adopted) = guard
                             .chats()
-                            .create(
-                                msg.chat_id.as_ref(),
-                                "direct",
-                                Some(identity.user_id.as_str()),
-                                now_unix,
-                            )
+                            .find_direct_by_contact_id(&identity.user_id)
                             .map_err(|e| {
-                                tracing::error!("store error creating chat: {e}");
+                                tracing::error!(
+                                    "store error looking up direct chat by contact: {e}"
+                                );
                                 JmapError::server_fail("internal error")
                             })?
-                            .id
-                            .into_inner()
+                        {
+                            adopted.id.into_inner()
+                        } else {
+                            // Case (c): no existing direct chat — create one.
+                            // If replyTo is set, it cannot reference a message in a
+                            // not-yet-existing chat: reject before creating an orphaned row.
+                            if msg.reply_to.is_some() {
+                                return Err(JmapError::invalid_arguments(
+                                    "replyTo references a nonexistent message",
+                                ));
+                            }
+                            guard
+                                .chats()
+                                .create(
+                                    msg.chat_id.as_ref(),
+                                    "direct",
+                                    Some(identity.user_id.as_str()),
+                                    now_unix,
+                                )
+                                .map_err(|e| {
+                                    tracing::error!("store error creating chat: {e}");
+                                    JmapError::server_fail("internal error")
+                                })?
+                                .id
+                                .into_inner()
+                        }
                     }
-                }
-            };
+                };
 
             // Step 6 (deferred): Validate replyTo — referenced message must exist
             // and be in the resolved chat.  This check uses `resolved_chat_id`
@@ -272,7 +276,8 @@ impl PeerJmapHandler for DeliverHandler {
             // check against `msg.chat_id` would never find them.
             if let Some(ref reply_id) = msg.reply_to {
                 match guard.messages().get(reply_id.as_ref()) {
-                    Ok(Some(ref referenced)) if referenced.chat_id.as_ref() == resolved_chat_id => {}
+                    Ok(Some(ref referenced)) if referenced.chat_id.as_ref() == resolved_chat_id => {
+                    }
                     Ok(Some(_)) => {
                         return Err(JmapError::invalid_arguments(
                             "replyTo references a message in a different chat",
@@ -1593,7 +1598,8 @@ mod tests {
         assert_eq!(msg.sender_id, SenderId::Contact("uid-bob".to_string()));
         assert_eq!(msg.body, "Hello!");
         assert_eq!(
-            msg.sender_msg_id.as_ref(), msg_id,
+            msg.sender_msg_id.as_ref(),
+            msg_id,
             "sender_msg_id must equal the sender's ULID"
         );
     }
@@ -2633,13 +2639,8 @@ mod tests {
     // literal, not from the code under test.
     #[test]
     fn build_peer_deliver_request_with_attachments() {
-        let attachment = make_attachment(
-            "a".repeat(64),
-            "test.txt",
-            "text/plain",
-            42,
-            "b".repeat(64),
-        );
+        let attachment =
+            make_attachment("a".repeat(64), "test.txt", "text/plain", 42, "b".repeat(64));
         let req = build_peer_deliver_request(
             "01JVWXYZ0000000000000000AB",
             &"b3d4e5f6".repeat(8),
@@ -3666,7 +3667,8 @@ mod tests {
             .expect("find_by_sender_msg_id must not error")
             .expect("message must exist after both delivers");
         assert_eq!(
-            found.id.as_ref(), original_id,
+            found.id.as_ref(),
+            original_id,
             "the stored row must have the receiver-assigned id from the first delivery"
         );
     }

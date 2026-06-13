@@ -1,6 +1,6 @@
 use crate::db_err;
 use crate::message::ChangesResult;
-use kith_core::{ChatContact, Id, JmapError, KithError, StateChange, UTCDate};
+use kith_core::{ChatContact, Id, JmapError, KithError, Presence, StateChange, UTCDate};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
@@ -155,7 +155,8 @@ impl<'a> ContactStore<'a> {
     ) -> Result<Option<ChatContact>, KithError> {
         let result = self.conn.query_row(
             "SELECT peer_user_id, peer_login, display_name, \
-                    first_seen_at, last_seen_at, blocked \
+                    first_seen_at, last_seen_at, blocked, \
+                    presence, last_active_at, status_text, status_emoji \
              FROM contacts WHERE peer_user_id = ?1",
             params![peer_user_id],
             row_to_contact,
@@ -187,7 +188,8 @@ impl<'a> ContactStore<'a> {
             .conn
             .prepare_cached(
                 "SELECT peer_user_id, peer_login, display_name, \
-                        first_seen_at, last_seen_at, blocked \
+                        first_seen_at, last_seen_at, blocked, \
+                        presence, last_active_at, status_text, status_emoji \
                  FROM contacts ORDER BY peer_login, peer_user_id",
             )
             .map_err(db_err)?;
@@ -270,6 +272,59 @@ impl<'a> ContactStore<'a> {
             .execute(
                 "UPDATE contacts SET blocked = ?1 WHERE peer_user_id = ?2 AND blocked IS NOT ?1",
                 params![blocked as i64, peer_user_id],
+            )
+            .map_err(db_err)?;
+        if affected > 0 {
+            let counter = crate::advance_state_counter_in_tx(&tx, "contact")?;
+            tx.execute(
+                "UPDATE contacts SET changed_at_counter = ?1 WHERE peer_user_id = ?2",
+                params![counter, peer_user_id],
+            )
+            .map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{counter}"));
+        } else {
+            tx.commit().map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    /// Update presence-related fields on an existing contact.
+    ///
+    /// Overwrites all four presence columns with the supplied values.
+    /// Pass `None` for a field to clear it.
+    ///
+    /// Advances the contact state counter only if the peer exists and at least
+    /// one column value actually changed.
+    pub fn set_presence_fields(
+        &self,
+        peer_user_id: &str,
+        presence: Option<&Presence>,
+        last_active_at: Option<i64>,
+        status_text: Option<&str>,
+        status_emoji: Option<&str>,
+    ) -> Result<(), KithError> {
+        let presence_str = presence.map(|p| p.to_string());
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
+            .execute(
+                "UPDATE contacts SET \
+                    presence = ?1, \
+                    last_active_at = ?2, \
+                    status_text = ?3, \
+                    status_emoji = ?4 \
+                 WHERE peer_user_id = ?5 \
+                   AND (presence IS NOT ?1 \
+                     OR last_active_at IS NOT ?2 \
+                     OR status_text IS NOT ?3 \
+                     OR status_emoji IS NOT ?4)",
+                params![
+                    presence_str,
+                    last_active_at,
+                    status_text,
+                    status_emoji,
+                    peer_user_id,
+                ],
             )
             .map_err(db_err)?;
         if affected > 0 {
@@ -495,7 +550,9 @@ fn stamp_contact_counters(
     Ok(())
 }
 
-/// Map a rusqlite Row to a ChatContact.  Column order must match the SELECT above.
+/// Map a rusqlite Row to a ChatContact.  Column order must match the SELECT above:
+/// 0: peer_user_id, 1: peer_login, 2: display_name, 3: first_seen_at, 4: last_seen_at,
+/// 5: blocked, 6: presence, 7: last_active_at, 8: status_text, 9: status_emoji.
 /// Note: peer_mailbox_host is not selected here — it is a DB-only routing field.
 /// Use ContactStore::get_mailbox_host when delivery routing is needed.
 fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
@@ -505,6 +562,10 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let first_seen_at: i64 = row.get(3)?;
     let last_seen_at: i64 = row.get(4)?;
     let blocked: i64 = row.get(5)?;
+    let presence_str: Option<String> = row.get(6)?;
+    let last_active_at_unix: Option<i64> = row.get(7)?;
+    let status_text: Option<String> = row.get(8)?;
+    let status_emoji: Option<String> = row.get(9)?;
     debug_assert!(
         first_seen_at >= 0,
         "timestamp must be non-negative Unix seconds, got {first_seen_at}"
@@ -517,12 +578,34 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let mut contact = ChatContact::new(
         Id::from(peer_user_id),
         peer_login,
-        UTCDate::from(crate::util::unix_secs_to_rfc3339(first_seen_at.max(0) as u64)),
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(
+            first_seen_at.max(0) as u64
+        )),
         UTCDate::from(crate::util::unix_secs_to_rfc3339(last_seen_at.max(0) as u64)),
         blocked != 0,
     );
     contact.display_name = display_name;
+    contact.presence = presence_str.map(presence_from_db_string);
+    contact.last_active_at = last_active_at_unix
+        .map(|t| UTCDate::from(crate::util::unix_secs_to_rfc3339(t.max(0) as u64)));
+    contact.status_text = status_text;
+    contact.status_emoji = status_emoji;
     Ok(contact)
+}
+
+/// Convert a presence DB string to a [`Presence`] enum value.
+///
+/// Uses the same wire strings as serde serialization ("online", "away", etc.).
+/// Unknown strings map to [`Presence::Other`] for forward compatibility.
+fn presence_from_db_string(s: String) -> Presence {
+    match s.as_str() {
+        "online" => Presence::Online,
+        "away" => Presence::Away,
+        "busy" => Presence::Busy,
+        "invisible" => Presence::Invisible,
+        "offline" => Presence::Offline,
+        _ => Presence::Other(s),
+    }
 }
 
 #[cfg(test)]
@@ -557,8 +640,14 @@ mod tests {
             Some("alice-kith.tail.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Alice".into()));
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
-        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
+        assert_eq!(
+            c.last_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         assert!(!c.blocked);
     }
 
@@ -677,9 +766,15 @@ mod tests {
         .unwrap();
         let c = cs.get_by_peer_user_id("uid-5").unwrap().unwrap();
         // first_seen_at must remain at the original insert time.
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         // last_seen_at must be updated.
-        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(9999));
+        assert_eq!(
+            c.last_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(9999)
+        );
     }
 
     #[test]
@@ -840,7 +935,10 @@ mod tests {
             Some("bob.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Bob".to_string()));
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         assert!(!c.blocked);
     }
 
@@ -1030,6 +1128,223 @@ mod tests {
             c.blocked,
             "upsert_discovered_contact must not clear the blocked flag"
         );
+    }
+
+    // --- Presence fields tests ---
+    // Oracle: draft-atwood-jmap-chat-00 §4.8 — ChatContact has presence, lastActiveAt,
+    // statusText, statusEmoji fields.  These tests verify DB round-trip using known
+    // literal values inserted via set_presence_fields and read back via get_by_peer_user_id.
+
+    #[test]
+    fn set_presence_online_round_trips() {
+        // Oracle: "online" is a known Presence variant (draft-atwood-jmap-chat-00 §4.8).
+        // Stored as TEXT "online" in DB, must deserialize back to Presence::Online.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-pr1", "pr1@example.com", "pr1.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields(
+            "uid-pr1",
+            Some(&kith_core::Presence::Online),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let c = cs.get_by_peer_user_id("uid-pr1").unwrap().unwrap();
+        assert_eq!(c.presence, Some(kith_core::Presence::Online));
+    }
+
+    #[test]
+    fn set_presence_all_variants_round_trip() {
+        // Oracle: each known Presence wire string round-trips through DB TEXT storage.
+        let store = open();
+        let cs = store.contacts();
+        let variants = [
+            ("uid-away", kith_core::Presence::Away),
+            ("uid-busy", kith_core::Presence::Busy),
+            ("uid-invisible", kith_core::Presence::Invisible),
+            ("uid-offline", kith_core::Presence::Offline),
+            (
+                "uid-other",
+                kith_core::Presence::Other("custom-status".to_string()),
+            ),
+        ];
+        for (uid, expected) in &variants {
+            cs.upsert(uid, &format!("{uid}@test"), "host.ts.net", None, 1000)
+                .unwrap();
+            cs.set_presence_fields(uid, Some(expected), None, None, None)
+                .unwrap();
+            let c = cs.get_by_peer_user_id(uid).unwrap().unwrap();
+            assert_eq!(
+                c.presence.as_ref(),
+                Some(expected),
+                "Presence round-trip failed for {uid}"
+            );
+        }
+    }
+
+    #[test]
+    fn set_status_text_persists() {
+        // Oracle: status_text is a nullable TEXT column; a non-NULL value must persist.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-st", "st@example.com", "st.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields("uid-st", None, None, Some("In a meeting"), None)
+            .unwrap();
+        let c = cs.get_by_peer_user_id("uid-st").unwrap().unwrap();
+        assert_eq!(c.status_text.as_deref(), Some("In a meeting"));
+    }
+
+    #[test]
+    fn set_status_emoji_persists() {
+        // Oracle: status_emoji is a nullable TEXT column.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-se", "se@example.com", "se.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields("uid-se", None, None, None, Some("🎉"))
+            .unwrap();
+        let c = cs.get_by_peer_user_id("uid-se").unwrap().unwrap();
+        assert_eq!(c.status_emoji.as_deref(), Some("🎉"));
+    }
+
+    #[test]
+    fn set_last_active_at_persists() {
+        // Oracle: last_active_at stored as Unix seconds INTEGER; round-trips as UTCDate RFC 3339.
+        // 1700000000 = 2023-11-14T22:13:20Z (verified via `date -u -d @1700000000`)
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-la", "la@example.com", "la.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields("uid-la", None, Some(1_700_000_000), None, None)
+            .unwrap();
+        let c = cs.get_by_peer_user_id("uid-la").unwrap().unwrap();
+        assert_eq!(
+            c.last_active_at.as_ref().map(|d| d.as_ref().to_string()),
+            Some("2023-11-14T22:13:20Z".to_string())
+        );
+    }
+
+    #[test]
+    fn set_all_presence_fields_at_once() {
+        // Oracle: all four presence columns can be set in a single call and all round-trip.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-all", "all@example.com", "all.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields(
+            "uid-all",
+            Some(&kith_core::Presence::Busy),
+            Some(1_700_000_000),
+            Some("Do not disturb"),
+            Some("🔴"),
+        )
+        .unwrap();
+        let c = cs.get_by_peer_user_id("uid-all").unwrap().unwrap();
+        assert_eq!(c.presence, Some(kith_core::Presence::Busy));
+        assert_eq!(
+            c.last_active_at.as_ref().map(|d| d.as_ref().to_string()),
+            Some("2023-11-14T22:13:20Z".to_string())
+        );
+        assert_eq!(c.status_text.as_deref(), Some("Do not disturb"));
+        assert_eq!(c.status_emoji.as_deref(), Some("🔴"));
+    }
+
+    #[test]
+    fn clear_presence_fields_with_none() {
+        // Oracle: setting all fields to None clears them; get_by_peer_user_id must return None.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-clr", "clr@example.com", "clr.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields(
+            "uid-clr",
+            Some(&kith_core::Presence::Online),
+            Some(1_700_000_000),
+            Some("Working"),
+            Some("💻"),
+        )
+        .unwrap();
+        // Now clear all.
+        cs.set_presence_fields("uid-clr", None, None, None, None)
+            .unwrap();
+        let c = cs.get_by_peer_user_id("uid-clr").unwrap().unwrap();
+        assert_eq!(c.presence, None);
+        assert_eq!(c.last_active_at, None);
+        assert_eq!(c.status_text, None);
+        assert_eq!(c.status_emoji, None);
+    }
+
+    #[test]
+    fn set_presence_fields_advances_state() {
+        // Oracle: set_presence_fields must advance the contact state counter when
+        // a value actually changes, to trigger ChatContact/changes for clients.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-adv", "adv@example.com", "adv.ts.net", None, 1000)
+            .unwrap();
+        let state_before = cs.get_state().unwrap();
+        cs.set_presence_fields(
+            "uid-adv",
+            Some(&kith_core::Presence::Online),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let state_after = cs.get_state().unwrap();
+        assert_ne!(
+            state_before, state_after,
+            "set_presence_fields must advance state when presence changes"
+        );
+    }
+
+    #[test]
+    fn set_presence_fields_identical_twice_does_not_advance_state() {
+        // Oracle: calling set_presence_fields twice with identical values must not
+        // advance the state counter the second time (IS NOT guard in WHERE clause).
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-idm", "idm@example.com", "idm.ts.net", None, 1000)
+            .unwrap();
+        cs.set_presence_fields(
+            "uid-idm",
+            Some(&kith_core::Presence::Away),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let state_after_first = cs.get_state().unwrap();
+        cs.set_presence_fields(
+            "uid-idm",
+            Some(&kith_core::Presence::Away),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let state_after_second = cs.get_state().unwrap();
+        assert_eq!(
+            state_after_first, state_after_second,
+            "set_presence_fields with identical values must not advance state"
+        );
+    }
+
+    #[test]
+    fn new_contact_has_no_presence_fields() {
+        // Oracle: a freshly upserted contact must have all presence fields as None.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-fresh", "fresh@example.com", "fresh.ts.net", None, 1000)
+            .unwrap();
+        let c = cs.get_by_peer_user_id("uid-fresh").unwrap().unwrap();
+        assert_eq!(c.presence, None);
+        assert_eq!(c.last_active_at, None);
+        assert_eq!(c.status_text, None);
+        assert_eq!(c.status_emoji, None);
     }
 
     #[test]
