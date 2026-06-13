@@ -52,8 +52,8 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 futures = "0.3"
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-manual-roots"] }
 chrono = { version = "0.4", features = ["serde"] }
-jmap-types = "0.1"
-jmap-chat-types = "0.1"
+jmap-types = { path = "../crate-jmap/crate-jmap-types" }
+jmap-chat-types = { path = "../crate-jmap/crate-jmap-chat-types" }
 
 # Internal crates -- path-based, workspace = true
 kith-core = { path = "crates/kith-core" }

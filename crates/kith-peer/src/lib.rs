@@ -1698,13 +1698,6 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
         };
 
-        // Extract broadcastMentions from the message's extra map.
-        let bm_list: Vec<BroadcastMention> = message
-            .extra
-            .get("broadcastMentions")
-            .and_then(|v| serde_json::from_value(v.clone()).ok())
-            .unwrap_or_default();
-
         // Extract thread_root_id and sender_expires_at from the message.
         let thread_root_id_str: Option<String> = message
             .thread_root_id
@@ -1734,7 +1727,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             message.sent_at.as_ref(),
             message.reply_to.as_ref().map(|id| id.as_ref()),
             message.attachments.as_slice(),
-            &bm_list,
+            &message.broadcast_mentions,
             &extra_params,
         );
 

@@ -1370,8 +1370,6 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "jmap-chat-types"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bcd3ba6e2f71d10d496cc4b4ee02b04ace698d0e9da58898952b1395cfebfdb"
 dependencies = [
  "jmap-types",
  "serde",
@@ -1381,8 +1379,6 @@ dependencies = [
 [[package]]
 name = "jmap-types"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19ca78f7dea338318ac48527ff09e7121b60a1f382d172fb86784c3c6e7d2c9c"
 dependencies = [
  "serde",
  "serde_json",

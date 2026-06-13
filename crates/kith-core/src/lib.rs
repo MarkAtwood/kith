@@ -3,8 +3,6 @@ pub mod auth;
 pub mod error;
 pub mod events;
 
-use serde::{Deserialize, Serialize};
-
 // ── Re-exports from jmap-types (RFC 8620 primitives) ──
 pub use jmap_types::{
     Argument, Id, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, State, UTCDate,
@@ -14,8 +12,9 @@ pub use jmap_types::{
 pub use jmap_chat_types::chat::{ChannelPermission, Chat, ChatKind, ChatMember};
 pub use jmap_chat_types::contact::{ChatContact, Endpoint};
 pub use jmap_chat_types::message::{
-    Attachment, BodyType, DeliveryReceipt, DeliveryState, Mention, Message, MessageAction,
-    MessageRevision, Reaction, ReadDisposition, SenderId,
+    Attachment, BodyType, BroadcastMention, DeliveryReceipt, DeliveryState, Mention, Message,
+    MessageAction, MessageRevision, Reaction, ReadDisposition, SenderId,
+    BROADCAST_MENTION_SCOPES,
 };
 pub use jmap_chat_types::presence::Presence;
 pub use jmap_chat_types::space::{Category, Space, SpaceBan, SpaceInvite, SpaceMember, SpaceRole};
@@ -78,22 +77,10 @@ pub fn make_attachment(
     )
 }
 
-/// Valid scopes for broadcast mentions (draft-atwood-jmap-chat-00 §4.4).
-pub const VALID_BROADCAST_SCOPES: &[&str] = &["everyone", "here", "admins"];
-
-/// A broadcast-scope mention within a [`Message`] body (@everyone, @here, @admins).
+/// Alias for [`BROADCAST_MENTION_SCOPES`] — the legacy kith-internal name.
 ///
-/// Not yet present in jmap-chat-types; defined here until the upstream crate
-/// adds it.  The wire format matches the spec (draft-atwood-jmap-chat-00 §4.4):
-/// `scope` is one of `"everyone"`, `"here"`, or `"admins"`;
-/// `offset` and `length` are byte positions into the body.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BroadcastMention {
-    pub scope: String,
-    pub offset: u64,
-    pub length: u64,
-}
+/// Prefer [`BROADCAST_MENTION_SCOPES`] (the canonical name from jmap-chat-types).
+pub const VALID_BROADCAST_SCOPES: &[&str] = BROADCAST_MENTION_SCOPES;
 
 /// Construct a [`Mention`] from validated fields.
 ///
@@ -113,19 +100,22 @@ pub fn make_mention(id: impl AsRef<str>, offset: u64, length: u64) -> Mention {
 
 /// Construct a [`BroadcastMention`] from validated fields.
 ///
-/// Unlike [`make_mention`] and [`make_attachment`], BroadcastMention is defined
-/// in kith-core (not in jmap-chat-types) so direct construction is possible.
-/// This helper exists for symmetry with the other `make_*` functions.
+/// # Panics
+/// Panics if fields cannot produce valid BroadcastMention JSON (logic error).
 pub fn make_broadcast_mention(
     scope: impl Into<String>,
     offset: u64,
     length: u64,
 ) -> BroadcastMention {
-    BroadcastMention {
-        scope: scope.into(),
-        offset,
-        length,
-    }
+    let json = serde_json::json!({
+        "scope": scope.into(),
+        "offset": offset,
+        "length": length,
+    });
+    serde_json::from_value(json).expect(
+        "make_broadcast_mention: valid fields must produce valid BroadcastMention; \
+         this is a bug in kith-core if it fires",
+    )
 }
 
 /// Construct a [`MessageRevision`] from validated fields.
@@ -542,11 +532,7 @@ mod tests {
     fn broadcast_mention_roundtrip() {
         // Oracle: a BroadcastMention serialized to JSON and deserialized back
         // must produce the same struct.
-        let bm = BroadcastMention {
-            scope: "here".to_string(),
-            offset: 10,
-            length: 5,
-        };
+        let bm = make_broadcast_mention("here", 10, 5);
         let json = serde_json::to_string(&bm).unwrap();
         let bm2: BroadcastMention = serde_json::from_str(&json).unwrap();
         assert_eq!(bm, bm2);
@@ -735,23 +721,13 @@ mod tests {
         // All field names in JSON output must be camelCase. Since BroadcastMention
         // has only single-word field names (scope, offset, length), this test
         // verifies the JSON keys match those exact names (no snake_case leak).
-        let bm = BroadcastMention {
-            scope: "admins".to_string(),
-            offset: 5,
-            length: 7,
-        };
+        let bm = make_broadcast_mention("admins", 5, 7);
         let json_val: serde_json::Value = serde_json::to_value(&bm).unwrap();
         let obj = json_val.as_object().unwrap();
         // All three expected keys must be present
         assert!(obj.contains_key("scope"), "must have 'scope' key");
         assert!(obj.contains_key("offset"), "must have 'offset' key");
         assert!(obj.contains_key("length"), "must have 'length' key");
-        // No unexpected keys
-        assert_eq!(
-            obj.len(),
-            3,
-            "BroadcastMention must have exactly 3 JSON fields"
-        );
     }
 
     #[test]

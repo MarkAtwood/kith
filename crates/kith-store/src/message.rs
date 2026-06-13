@@ -588,19 +588,15 @@ fn load_broadcast_mentions_for_messages(
     Ok(bm_map)
 }
 
-/// Insert broadcast mentions for a single message into the `extra` map
-/// of each message so they appear as `broadcastMentions` in the wire JSON.
+/// Populate the typed `broadcast_mentions` field on each message from the
+/// batch-loaded map.
 fn populate_broadcast_mentions(
     msgs: &mut [Message],
     bm_map: &mut HashMap<String, Vec<BroadcastMention>>,
 ) {
     for msg in msgs {
         if let Some(bms) = bm_map.remove(msg.id.as_ref()) {
-            if !bms.is_empty() {
-                if let Ok(val) = serde_json::to_value(&bms) {
-                    msg.extra.insert("broadcastMentions".to_string(), val);
-                }
-            }
+            msg.broadcast_mentions = bms;
         }
     }
 }
@@ -2792,7 +2788,7 @@ mod tests {
     #[test]
     fn broadcast_mentions_store_round_trip() {
         // Oracle: broadcast mentions stored via insert_message_with_attachments
-        // must be retrievable via get() in the message's extra field.
+        // must be retrievable via get() in the typed broadcast_mentions field.
         let store = Store::open_in_memory().expect("open");
         insert_chat(&store.conn, "chat-bm1");
 
@@ -2825,25 +2821,20 @@ mod tests {
         let ms = MessageStore::new(&store.conn, None);
         let msg = ms.get("msg-bm1").expect("get").expect("must exist");
 
-        // broadcastMentions must appear in the extra map.
-        let bm_val = msg
-            .extra
-            .get("broadcastMentions")
-            .expect("broadcastMentions must be in extra");
-        let bm_arr = bm_val.as_array().expect("must be an array");
-        assert_eq!(bm_arr.len(), 2);
-        assert_eq!(bm_arr[0]["scope"], "everyone");
-        assert_eq!(bm_arr[0]["offset"], 0);
-        assert_eq!(bm_arr[0]["length"], 9);
-        assert_eq!(bm_arr[1]["scope"], "here");
-        assert_eq!(bm_arr[1]["offset"], 15);
-        assert_eq!(bm_arr[1]["length"], 5);
+        // broadcastMentions must appear in the typed field.
+        assert_eq!(msg.broadcast_mentions.len(), 2);
+        assert_eq!(msg.broadcast_mentions[0].scope, "everyone");
+        assert_eq!(msg.broadcast_mentions[0].offset, 0);
+        assert_eq!(msg.broadcast_mentions[0].length, 9);
+        assert_eq!(msg.broadcast_mentions[1].scope, "here");
+        assert_eq!(msg.broadcast_mentions[1].offset, 15);
+        assert_eq!(msg.broadcast_mentions[1].length, 5);
     }
 
     #[test]
     fn broadcast_mentions_empty_not_in_extra() {
-        // Oracle: when no broadcast mentions are stored, the extra map must
-        // NOT contain a broadcastMentions key.
+        // Oracle: when no broadcast mentions are stored, the typed field must
+        // be an empty vec.
         let store = Store::open_in_memory().expect("open");
         insert_chat(&store.conn, "chat-bm2");
 
@@ -2871,8 +2862,8 @@ mod tests {
         let ms = MessageStore::new(&store.conn, None);
         let msg = ms.get("msg-bm2").expect("get").expect("must exist");
         assert!(
-            msg.extra.get("broadcastMentions").is_none(),
-            "broadcastMentions must not appear in extra when empty"
+            msg.broadcast_mentions.is_empty(),
+            "broadcast_mentions must be empty when none stored"
         );
     }
 
@@ -2934,12 +2925,12 @@ mod tests {
         let msg_without = msgs.iter().find(|m| m.id == "msg-bm3b").expect("msg-bm3b");
 
         assert!(
-            msg_with.extra.get("broadcastMentions").is_some(),
-            "message with broadcast mentions must have them in extra"
+            !msg_with.broadcast_mentions.is_empty(),
+            "message with broadcast mentions must have them in typed field"
         );
         assert!(
-            msg_without.extra.get("broadcastMentions").is_none(),
-            "message without broadcast mentions must not have them in extra"
+            msg_without.broadcast_mentions.is_empty(),
+            "message without broadcast mentions must have empty typed field"
         );
     }
 

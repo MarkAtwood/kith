@@ -832,13 +832,7 @@ async fn process_create(
     );
     msg.attachments = core_attachments;
     msg.reply_to = reply_to.map(Id::from);
-    // broadcastMentions is not yet in jmap-chat-types Message; inject via extra.
-    if !broadcast_mentions.is_empty() {
-        let bm_value = serde_json::to_value(&broadcast_mentions).map_err(
-            |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),
-        )?;
-        msg.extra.insert("broadcastMentions".to_string(), bm_value);
-    }
+    msg.broadcast_mentions = broadcast_mentions;
 
     serde_json::to_value(&msg).map_err(
         |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),
