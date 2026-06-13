@@ -19,6 +19,149 @@ fn parse_chat_kind(s: &str) -> ChatKind {
     }
 }
 
+/// Column list shared by all SELECT queries that construct a [`Chat`].
+///
+/// Indices:
+///   0  c.id
+///   1  c.kind
+///   2  c.contact_id
+///   3  c.created_at
+///   4  c.last_message_at
+///   5  unread_count (correlated subquery)
+///   6  c.name
+///   7  c.description
+///   8  c.avatar_blob_id
+///   9  c.muted
+///  10  c.mute_until
+///  11  c.receive_typing_indicators
+///  12  c.receipt_sharing
+///  13  c.message_expiry_seconds
+const CHAT_SELECT_COLS: &str = "\
+    c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
+    (SELECT COUNT(*) FROM messages m \
+     WHERE m.chat_id = c.id \
+       AND m.delivery_state = 'received' \
+       AND m.read_at IS NULL) AS unread_count, \
+    c.name, c.description, c.avatar_blob_id, c.muted, c.mute_until, \
+    c.receive_typing_indicators, c.receipt_sharing, c.message_expiry_seconds";
+
+/// Intermediate struct holding the raw DB row values before Chat construction.
+/// Avoids a 14-element tuple.
+struct ChatRow {
+    id: String,
+    kind: String,
+    contact_id: Option<String>,
+    created_at_secs: i64,
+    last_message_at_secs: Option<i64>,
+    unread_count: u32,
+    name: Option<String>,
+    description: Option<String>,
+    avatar_blob_id: Option<String>,
+    muted: bool,
+    mute_until: Option<String>,
+    receive_typing_indicators: bool,
+    receipt_sharing: Option<bool>,
+    message_expiry_seconds: Option<u64>,
+}
+
+/// Extract a [`ChatRow`] from a rusqlite `Row`.
+///
+/// Column order must match [`CHAT_SELECT_COLS`].
+fn extract_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatRow> {
+    let muted_int: i32 = row.get(9)?;
+    let rti_int: i32 = row.get(11)?;
+    let receipt_sharing_opt: Option<i32> = row.get(12)?;
+    let expiry_opt: Option<i64> = row.get(13)?;
+    Ok(ChatRow {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        contact_id: row.get(2)?,
+        created_at_secs: row.get(3)?,
+        last_message_at_secs: row.get(4)?,
+        unread_count: row.get(5)?,
+        name: row.get(6)?,
+        description: row.get(7)?,
+        avatar_blob_id: row.get(8)?,
+        muted: muted_int != 0,
+        mute_until: row.get(10)?,
+        receive_typing_indicators: rti_int != 0,
+        receipt_sharing: receipt_sharing_opt.map(|v| v != 0),
+        message_expiry_seconds: expiry_opt.map(|v| {
+            debug_assert!(
+                v >= 0,
+                "message_expiry_seconds must be non-negative, got {v}"
+            );
+            v.max(0) as u64
+        }),
+    })
+}
+
+/// Build a [`Chat`] from a [`ChatRow`].  Pinned messages are populated separately.
+fn build_chat(r: ChatRow) -> Chat {
+    debug_assert!(
+        r.created_at_secs >= 0,
+        "timestamp must be non-negative Unix seconds, got {}",
+        r.created_at_secs
+    );
+    let mut chat = Chat::new(
+        Id::from(r.id),
+        parse_chat_kind(&r.kind),
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(
+            r.created_at_secs.max(0) as u64
+        )),
+        r.unread_count as u64,
+        vec![], // pinned_message_ids populated separately via load_pinned_messages
+        r.muted,
+        r.receive_typing_indicators,
+    );
+    chat.contact_id = r.contact_id.map(Id::from);
+    chat.name = r.name;
+    chat.description = r.description;
+    chat.avatar_blob_id = r.avatar_blob_id.map(Id::from);
+    chat.mute_until = r.mute_until.map(UTCDate::from);
+    chat.receipt_sharing = r.receipt_sharing;
+    chat.message_expiry_seconds = r.message_expiry_seconds;
+    chat.last_message_at = r.last_message_at_secs.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+    });
+    chat
+}
+
+/// Optional metadata fields for [`ChatStore::create`].
+///
+/// All fields default to `None` via [`Default`].
+#[derive(Default)]
+pub struct CreateChatMeta<'a> {
+    pub name: Option<&'a str>,
+    pub description: Option<&'a str>,
+}
+
+/// Settable metadata fields for [`ChatStore::update_metadata`].
+///
+/// Each field is `Option<Option<T>>`:
+/// - `None` → leave the column unchanged
+/// - `Some(None)` → set the column to NULL
+/// - `Some(Some(v))` → set the column to `v`
+///
+/// Boolean fields are `Option<bool>`:
+/// - `None` → leave unchanged
+/// - `Some(v)` → set to `v`
+#[derive(Default)]
+pub struct ChatMetadataUpdate<'a> {
+    pub name: Option<Option<&'a str>>,
+    pub description: Option<Option<&'a str>>,
+    pub avatar_blob_id: Option<Option<&'a str>>,
+    pub muted: Option<bool>,
+    pub mute_until: Option<Option<&'a str>>,
+    pub receive_typing_indicators: Option<bool>,
+    pub receipt_sharing: Option<Option<bool>>,
+    pub message_expiry_seconds: Option<Option<u64>>,
+}
+
 pub struct ChatStore<'a> {
     conn: &'a Connection,
     events_tx: Option<&'a broadcast::Sender<StateChange>>,
@@ -41,6 +184,32 @@ impl<'a> ChatStore<'a> {
         }
     }
 
+    /// Load pinned message IDs for a chat from the `pinned_messages` table.
+    pub fn load_pinned_messages(&self, chat_id: &str) -> Result<Vec<Id>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT message_id FROM pinned_messages WHERE chat_id = ?1 ORDER BY message_id",
+            )
+            .map_err(db_err)?;
+        let ids = stmt
+            .query_map(params![chat_id], |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        Ok(ids.into_iter().map(Id::from).collect())
+    }
+
+    /// Fetch a single chat by ID and populate its pinned message IDs.
+    fn get_with_pins(&self, chat_id: &str) -> Result<Option<Chat>, KithError> {
+        let mut chat = match self.get(chat_id)? {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+        chat.pinned_message_ids = self.load_pinned_messages(chat_id)?;
+        Ok(Some(chat))
+    }
+
     /// Create a chat with a caller-supplied ID (server-assigned ULID for owner
     /// chats, peer-supplied chatId for inbound Peer/deliver).
     ///
@@ -61,12 +230,30 @@ impl<'a> ChatStore<'a> {
         contact_id: Option<&str>,
         now_unix: i64,
     ) -> Result<Chat, KithError> {
+        self.create_with_meta(
+            chat_id,
+            kind,
+            contact_id,
+            now_unix,
+            &CreateChatMeta::default(),
+        )
+    }
+
+    /// Create a chat with optional name/description metadata.
+    pub fn create_with_meta(
+        &self,
+        chat_id: &str,
+        kind: &str,
+        contact_id: Option<&str>,
+        now_unix: i64,
+        meta: &CreateChatMeta<'_>,
+    ) -> Result<Chat, KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let affected = tx
             .execute(
-                "INSERT OR IGNORE INTO chats (id, kind, contact_id, created_at) \
-                 VALUES (?1, ?2, ?3, ?4)",
-                params![chat_id, kind, contact_id, now_unix],
+                "INSERT OR IGNORE INTO chats (id, kind, contact_id, created_at, name, description) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![chat_id, kind, contact_id, now_unix, meta.name, meta.description],
             )
             .map_err(db_err)?;
 
@@ -138,176 +325,67 @@ impl<'a> ChatStore<'a> {
     /// contact already exists, return it rather than creating a new one.
     pub fn find_direct_by_contact_id(&self, contact_id: &str) -> Result<Option<Chat>, KithError> {
         let row = self.conn.query_row(
-            "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
-                    (SELECT COUNT(*) FROM messages m \
-                     WHERE m.chat_id = c.id \
-                       AND m.delivery_state = 'received' \
-                       AND m.read_at IS NULL) AS unread_count \
-             FROM chats c WHERE c.kind = 'direct' AND c.contact_id = ?1",
+            &format!(
+                "SELECT {CHAT_SELECT_COLS} FROM chats c \
+                 WHERE c.kind = 'direct' AND c.contact_id = ?1"
+            ),
             params![contact_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, u32>(5)?,
-                ))
-            },
+            extract_chat_row,
         );
         match row {
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-            Err(e) => return Err(db_err(e)),
-            Ok(_) => {}
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(db_err(e)),
+            Ok(r) => {
+                let chat_id = r.id.clone();
+                let mut chat = build_chat(r);
+                chat.pinned_message_ids = self.load_pinned_messages(&chat_id)?;
+                Ok(Some(chat))
+            }
         }
-        let (id, kind, contact_id_val, created_at_secs, last_message_at_secs, unread_count) =
-            row.unwrap();
-        debug_assert!(
-            created_at_secs >= 0,
-            "timestamp must be non-negative Unix seconds, got {created_at_secs}"
-        );
-        let mut chat = Chat::new(
-            Id::from(id),
-            parse_chat_kind(&kind),
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(
-                created_at_secs.max(0) as u64
-            )),
-            unread_count as u64,
-            vec![], // pinned_message_ids (not implemented yet)
-            false,  // muted (not implemented yet)
-            false,  // receive_typing_indicators (not implemented yet)
-        );
-        chat.contact_id = contact_id_val.map(Id::from);
-        chat.last_message_at = last_message_at_secs.map(|s| {
-            debug_assert!(
-                s >= 0,
-                "timestamp must be non-negative Unix seconds, got {s}"
-            );
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
-        });
-        Ok(Some(chat))
     }
 
     /// Fetch a single chat by ID, returning None if it does not exist.
     pub fn get(&self, chat_id: &str) -> Result<Option<Chat>, KithError> {
         let row = self.conn.query_row(
-            "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
-                    (SELECT COUNT(*) FROM messages m \
-                     WHERE m.chat_id = c.id \
-                       AND m.delivery_state = 'received' \
-                       AND m.read_at IS NULL) AS unread_count \
-             FROM chats c WHERE c.id = ?1",
+            &format!("SELECT {CHAT_SELECT_COLS} FROM chats c WHERE c.id = ?1"),
             params![chat_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, u32>(5)?,
-                ))
-            },
+            extract_chat_row,
         );
 
         match row {
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-            Err(e) => return Err(db_err(e)),
-            Ok(_) => {}
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(db_err(e)),
+            Ok(r) => {
+                let mut chat = build_chat(r);
+                chat.pinned_message_ids = self.load_pinned_messages(chat_id)?;
+                Ok(Some(chat))
+            }
         }
-
-        let (id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count) =
-            row.unwrap();
-
-        debug_assert!(
-            created_at_secs >= 0,
-            "timestamp must be non-negative Unix seconds, got {created_at_secs}"
-        );
-        let mut chat = Chat::new(
-            Id::from(id),
-            parse_chat_kind(&kind),
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(
-                created_at_secs.max(0) as u64
-            )),
-            unread_count as u64,
-            vec![], // pinned_message_ids (not implemented yet)
-            false,  // muted (not implemented yet)
-            false,  // receive_typing_indicators (not implemented yet)
-        );
-        chat.contact_id = contact_id.map(Id::from);
-        chat.last_message_at = last_message_at_secs.map(|s| {
-            debug_assert!(
-                s >= 0,
-                "timestamp must be non-negative Unix seconds, got {s}"
-            );
-            UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
-        });
-        Ok(Some(chat))
     }
 
     /// List all chats ordered by last_message_at DESC (nulls last), then created_at DESC.
     pub fn list(&self) -> Result<Vec<Chat>, KithError> {
         let mut stmt = self
             .conn
-            .prepare_cached(
-                "SELECT c.id, c.kind, c.contact_id, c.created_at, c.last_message_at, \
-                        (SELECT COUNT(*) FROM messages m \
-                         WHERE m.chat_id = c.id \
-                           AND m.delivery_state = 'received' \
-                           AND m.read_at IS NULL) AS unread_count \
-                 FROM chats c \
-                 ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC",
-            )
+            .prepare_cached(&format!(
+                "SELECT {CHAT_SELECT_COLS} FROM chats c \
+                 ORDER BY c.last_message_at DESC NULLS LAST, c.created_at DESC"
+            ))
             .map_err(db_err)?;
 
-        #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, Option<String>, i64, Option<i64>, u32)> = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                    row.get::<_, u32>(5)?,
-                ))
-            })
+        let rows: Vec<ChatRow> = stmt
+            .query_map([], extract_chat_row)
             .map_err(db_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
-        let chats = rows
-            .into_iter()
-            .map(
-                |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
-                    debug_assert!(
-                        created_at_secs >= 0,
-                        "timestamp must be non-negative Unix seconds, got {created_at_secs}"
-                    );
-                    let mut chat = Chat::new(
-                        Id::from(id),
-                        parse_chat_kind(&kind),
-                        UTCDate::from(crate::util::unix_secs_to_rfc3339(
-                            created_at_secs.max(0) as u64
-                        )),
-                        unread_count as u64,
-                        vec![], // pinned_message_ids (not implemented yet)
-                        false,  // muted (not implemented yet)
-                        false,  // receive_typing_indicators (not implemented yet)
-                    );
-                    chat.contact_id = contact_id.map(Id::from);
-                    chat.last_message_at = last_message_at_secs.map(|s| {
-                        debug_assert!(
-                            s >= 0,
-                            "timestamp must be non-negative Unix seconds, got {s}"
-                        );
-                        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
-                    });
-                    chat
-                },
-            )
-            .collect();
+        let mut chats = Vec::with_capacity(rows.len());
+        for r in rows {
+            let chat_id = r.id.clone();
+            let mut chat = build_chat(r);
+            chat.pinned_message_ids = self.load_pinned_messages(&chat_id)?;
+            chats.push(chat);
+        }
 
         Ok(chats)
     }
@@ -393,6 +471,172 @@ impl<'a> ChatStore<'a> {
         Ok(())
     }
 
+    /// Update chat metadata fields and advance the chat state counter.
+    ///
+    /// Only fields with `Some(...)` values in the update struct are modified;
+    /// `None` fields are left unchanged.  Returns the updated [`Chat`].
+    ///
+    /// Returns `Err(KithError::Store)` if `chat_id` does not exist.
+    pub fn update_metadata(
+        &self,
+        chat_id: &str,
+        update: &ChatMetadataUpdate<'_>,
+    ) -> Result<Chat, KithError> {
+        // Build SET clauses dynamically to avoid overwriting fields not in the update.
+        let mut set_clauses: Vec<String> = Vec::new();
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+        if let Some(v) = update.name {
+            set_clauses.push(format!("name = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v.map(|s| s.to_owned())));
+        }
+        if let Some(v) = update.description {
+            set_clauses.push(format!("description = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v.map(|s| s.to_owned())));
+        }
+        if let Some(v) = update.avatar_blob_id {
+            set_clauses.push(format!("avatar_blob_id = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v.map(|s| s.to_owned())));
+        }
+        if let Some(v) = update.muted {
+            set_clauses.push(format!("muted = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v as i32));
+        }
+        if let Some(v) = update.mute_until {
+            set_clauses.push(format!("mute_until = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v.map(|s| s.to_owned())));
+        }
+        if let Some(v) = update.receive_typing_indicators {
+            set_clauses.push(format!(
+                "receive_typing_indicators = ?{}",
+                param_values.len() + 1
+            ));
+            param_values.push(Box::new(v as i32));
+        }
+        if let Some(v) = update.receipt_sharing {
+            set_clauses.push(format!("receipt_sharing = ?{}", param_values.len() + 1));
+            param_values.push(Box::new(v.map(|b| b as i32)));
+        }
+        if let Some(v) = update.message_expiry_seconds {
+            set_clauses.push(format!(
+                "message_expiry_seconds = ?{}",
+                param_values.len() + 1
+            ));
+            param_values.push(Box::new(v.map(|n| n as i64)));
+        }
+
+        if set_clauses.is_empty() {
+            // Nothing to update — just return the current chat.
+            return self
+                .get_with_pins(chat_id)?
+                .ok_or_else(|| KithError::Store("chat not found".into()));
+        }
+
+        // Add chat_id as the last parameter.
+        let id_param_idx = param_values.len() + 1;
+        param_values.push(Box::new(chat_id.to_owned()));
+
+        let sql = format!(
+            "UPDATE chats SET {} WHERE id = ?{}",
+            set_clauses.join(", "),
+            id_param_idx
+        );
+
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|b| b.as_ref()).collect();
+        let affected = tx.execute(&sql, param_refs.as_slice()).map_err(db_err)?;
+
+        if affected == 0 {
+            tx.commit().map_err(db_err)?;
+            return Err(KithError::Store("chat not found".into()));
+        }
+
+        let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
+        tx.execute(
+            "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+            params![counter, chat_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{counter}"));
+
+        self.get_with_pins(chat_id)?
+            .ok_or_else(|| KithError::Store("chat not found after update".into()))
+    }
+
+    /// Replace the set of pinned messages for a chat.
+    ///
+    /// Validates that all message IDs exist and belong to the given chat.
+    /// Advances the chat state counter.
+    pub fn set_pinned_messages(
+        &self,
+        chat_id: &str,
+        message_ids: &[&str],
+    ) -> Result<(), KithError> {
+        // Validate all message IDs belong to this chat.
+        for msg_id in message_ids {
+            let exists: bool = self
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM messages WHERE id = ?1 AND chat_id = ?2)",
+                    params![msg_id, chat_id],
+                    |row| row.get(0),
+                )
+                .map_err(db_err)?;
+            if !exists {
+                return Err(KithError::Validation(format!(
+                    "message '{}' does not exist in chat '{}'",
+                    msg_id, chat_id
+                )));
+            }
+        }
+
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+
+        // Clear existing pins.
+        tx.execute(
+            "DELETE FROM pinned_messages WHERE chat_id = ?1",
+            params![chat_id],
+        )
+        .map_err(db_err)?;
+
+        // Insert new pins.
+        for msg_id in message_ids {
+            tx.execute(
+                "INSERT INTO pinned_messages (chat_id, message_id) VALUES (?1, ?2)",
+                params![chat_id, msg_id],
+            )
+            .map_err(db_err)?;
+        }
+
+        let counter = crate::advance_state_counter_in_tx(&tx, "chat")?;
+        tx.execute(
+            "UPDATE chats SET changed_at_counter = ?1 WHERE id = ?2",
+            params![counter, chat_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{counter}"));
+
+        Ok(())
+    }
+
+    /// Check if a blob ID exists in the attachments table.
+    ///
+    /// Used to validate `avatarBlobId` before storing it.
+    pub fn blob_exists(&self, blob_id: &str) -> Result<bool, KithError> {
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM attachments WHERE id = ?1)",
+                params![blob_id],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(exists)
+    }
+
     /// Count messages in this chat that are received and unread (read_at IS NULL).
     pub fn unread_count(&self, chat_id: &str) -> Result<u32, KithError> {
         let count: i64 = self
@@ -456,7 +700,7 @@ impl<'a> ChatStore<'a> {
     ///
     /// `new_state` in the result is always the current store state.
     ///
-    /// **⚠ Do not use this method when `maxChanges` pagination is required.**
+    /// **Do not use this method when `maxChanges` pagination is required.**
     /// When the caller must truncate the result and compute `newState` from the
     /// last returned item's counter, use [`get_changes_since_ordered`] instead.
     ///
@@ -911,5 +1155,315 @@ mod tests {
             "updated chat must appear in updated[]; updated={:?}",
             result.updated
         );
+    }
+
+    // --- V20 metadata tests ---
+
+    #[test]
+    fn create_with_name_and_description() {
+        // Oracle: name and description passed to create_with_meta must be
+        // persisted and returned by get().
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let meta = CreateChatMeta {
+            name: Some("Engineering"),
+            description: Some("Main engineering channel"),
+        };
+        let chat = cs
+            .create_with_meta("chat-grp1", "group", None, 1_000_000, &meta)
+            .unwrap();
+        assert_eq!(chat.name.as_deref(), Some("Engineering"));
+        assert_eq!(
+            chat.description.as_deref(),
+            Some("Main engineering channel")
+        );
+
+        // Verify via independent get.
+        let loaded = cs.get("chat-grp1").unwrap().unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("Engineering"));
+        assert_eq!(
+            loaded.description.as_deref(),
+            Some("Main engineering channel")
+        );
+    }
+
+    #[test]
+    fn default_metadata_values() {
+        // Oracle: a chat created without metadata must have muted=false,
+        // receive_typing_indicators=true, and all optional fields None.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-def1", "direct", Some("uid:alice"), 1_000_000)
+            .unwrap();
+        let chat = cs.get("chat-def1").unwrap().unwrap();
+
+        assert!(!chat.muted, "muted must default to false");
+        assert!(
+            chat.receive_typing_indicators,
+            "receive_typing_indicators must default to true"
+        );
+        assert!(chat.name.is_none(), "name must default to None");
+        assert!(
+            chat.description.is_none(),
+            "description must default to None"
+        );
+        assert!(
+            chat.avatar_blob_id.is_none(),
+            "avatar_blob_id must default to None"
+        );
+        assert!(chat.mute_until.is_none(), "mute_until must default to None");
+        assert!(
+            chat.receipt_sharing.is_none(),
+            "receipt_sharing must default to None"
+        );
+        assert!(
+            chat.message_expiry_seconds.is_none(),
+            "message_expiry_seconds must default to None"
+        );
+        assert!(
+            chat.pinned_message_ids.is_empty(),
+            "pinned_message_ids must default to empty"
+        );
+    }
+
+    #[test]
+    fn update_metadata_muted() {
+        // Oracle: setting muted=true must persist and be returned by get().
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-mut1", "direct", Some("uid:bob"), 1_000_000)
+            .unwrap();
+
+        let updated = cs
+            .update_metadata(
+                "chat-mut1",
+                &ChatMetadataUpdate {
+                    muted: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(updated.muted, "muted must be true after update");
+
+        let loaded = cs.get("chat-mut1").unwrap().unwrap();
+        assert!(loaded.muted, "muted must persist after update");
+    }
+
+    #[test]
+    fn update_metadata_name_change() {
+        // Oracle: updating the name must persist and be returned by get().
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let meta = CreateChatMeta {
+            name: Some("Old Name"),
+            ..Default::default()
+        };
+        cs.create_with_meta("chat-nm1", "group", None, 1_000_000, &meta)
+            .unwrap();
+
+        let updated = cs
+            .update_metadata(
+                "chat-nm1",
+                &ChatMetadataUpdate {
+                    name: Some(Some("New Name")),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(updated.name.as_deref(), Some("New Name"));
+
+        let loaded = cs.get("chat-nm1").unwrap().unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("New Name"));
+    }
+
+    #[test]
+    fn update_metadata_advances_state() {
+        // Oracle: update_metadata must advance the chat state counter.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-st1", "direct", Some("uid:carol"), 1_000_000)
+            .unwrap();
+        let state_before = cs.get_state().unwrap();
+
+        cs.update_metadata(
+            "chat-st1",
+            &ChatMetadataUpdate {
+                muted: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let state_after = cs.get_state().unwrap();
+        assert_ne!(
+            state_before, state_after,
+            "state counter must advance after update_metadata"
+        );
+    }
+
+    #[test]
+    fn update_metadata_nonexistent_chat() {
+        // Oracle: updating a nonexistent chat must return Err.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let result = cs.update_metadata(
+            "no-such-chat",
+            &ChatMetadataUpdate {
+                muted: Some(true),
+                ..Default::default()
+            },
+        );
+        assert!(
+            result.is_err(),
+            "update_metadata on nonexistent chat must fail"
+        );
+    }
+
+    #[test]
+    fn pinned_messages_persist() {
+        // Oracle: pinning messages must be returned by get() and load_pinned_messages().
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-pin1", "direct", Some("uid:dave"), 1_000_000)
+            .unwrap();
+
+        // Insert messages for the chat.
+        store
+            .conn
+            .execute(
+                "INSERT INTO messages \
+                 (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+                 VALUES ('msg-pin-a', 'chat-pin1', 'uid:dave', 'hello', 1000000, 'received', 'msg-pin-a')",
+                [],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO messages \
+                 (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+                 VALUES ('msg-pin-b', 'chat-pin1', 'uid:dave', 'world', 1000001, 'received', 'msg-pin-b')",
+                [],
+            )
+            .unwrap();
+
+        cs.set_pinned_messages("chat-pin1", &["msg-pin-a", "msg-pin-b"])
+            .unwrap();
+
+        let pins = cs.load_pinned_messages("chat-pin1").unwrap();
+        let pin_strs: Vec<&str> = pins.iter().map(|id| id.as_ref()).collect();
+        assert!(
+            pin_strs.contains(&"msg-pin-a"),
+            "msg-pin-a must be in pinned_message_ids"
+        );
+        assert!(
+            pin_strs.contains(&"msg-pin-b"),
+            "msg-pin-b must be in pinned_message_ids"
+        );
+
+        // Verify via get().
+        let chat = cs.get("chat-pin1").unwrap().unwrap();
+        let chat_pin_strs: Vec<&str> = chat
+            .pinned_message_ids
+            .iter()
+            .map(|id| id.as_ref())
+            .collect();
+        assert_eq!(chat_pin_strs.len(), 2);
+        assert!(chat_pin_strs.contains(&"msg-pin-a"));
+        assert!(chat_pin_strs.contains(&"msg-pin-b"));
+    }
+
+    #[test]
+    fn pinned_messages_validation_rejects_wrong_chat() {
+        // Oracle: pinning a message that belongs to a different chat must fail.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-pinv1", "direct", Some("uid:eve"), 1_000_000)
+            .unwrap();
+        cs.create("chat-pinv2", "direct", Some("uid:frank"), 1_000_001)
+            .unwrap();
+
+        store
+            .conn
+            .execute(
+                "INSERT INTO messages \
+                 (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+                 VALUES ('msg-other', 'chat-pinv2', 'uid:frank', 'hi', 1000000, 'received', 'msg-other')",
+                [],
+            )
+            .unwrap();
+
+        let result = cs.set_pinned_messages("chat-pinv1", &["msg-other"]);
+        assert!(
+            result.is_err(),
+            "pinning a message from another chat must fail"
+        );
+    }
+
+    #[test]
+    fn update_metadata_receipt_sharing_and_expiry() {
+        // Oracle: receipt_sharing and message_expiry_seconds must persist.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-rse1", "group", None, 1_000_000).unwrap();
+
+        let updated = cs
+            .update_metadata(
+                "chat-rse1",
+                &ChatMetadataUpdate {
+                    receipt_sharing: Some(Some(true)),
+                    message_expiry_seconds: Some(Some(3600)),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(updated.receipt_sharing, Some(true));
+        assert_eq!(updated.message_expiry_seconds, Some(3600));
+
+        let loaded = cs.get("chat-rse1").unwrap().unwrap();
+        assert_eq!(loaded.receipt_sharing, Some(true));
+        assert_eq!(loaded.message_expiry_seconds, Some(3600));
+    }
+
+    #[test]
+    fn update_metadata_clear_name() {
+        // Oracle: setting name to None must clear it in the database.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let meta = CreateChatMeta {
+            name: Some("Team Chat"),
+            ..Default::default()
+        };
+        cs.create_with_meta("chat-clr1", "group", None, 1_000_000, &meta)
+            .unwrap();
+
+        // Verify name is set.
+        let before = cs.get("chat-clr1").unwrap().unwrap();
+        assert_eq!(before.name.as_deref(), Some("Team Chat"));
+
+        // Clear the name.
+        let after = cs
+            .update_metadata(
+                "chat-clr1",
+                &ChatMetadataUpdate {
+                    name: Some(None),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(after.name.is_none(), "name must be None after clearing");
+
+        let loaded = cs.get("chat-clr1").unwrap().unwrap();
+        assert!(loaded.name.is_none(), "name must persist as None");
     }
 }

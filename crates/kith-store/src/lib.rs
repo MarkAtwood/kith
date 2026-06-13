@@ -416,16 +416,29 @@ UPDATE chats SET created_at_counter = -1 WHERE changed_at_counter > 0;
 ";
 
 // V20: Add presence fields to contacts (draft-atwood-jmap-chat-00 §4.8).
-// presence is stored as TEXT (serde wire string: "online", "away", "busy", etc.).
-// last_active_at is stored as INTEGER (Unix seconds), mirroring first_seen_at/last_seen_at.
-// status_text and status_emoji are stored as TEXT (nullable).
-// endpoints are NOT stored locally — they come from peer announcements and would be part
-// of a future Peer/presence protocol.
 const SCHEMA_V20: &str = "
 ALTER TABLE contacts ADD COLUMN presence TEXT;
 ALTER TABLE contacts ADD COLUMN last_active_at INTEGER;
 ALTER TABLE contacts ADD COLUMN status_text TEXT;
 ALTER TABLE contacts ADD COLUMN status_emoji TEXT;
+";
+
+// V21: Chat group metadata and per-chat preferences (KITH-21vh, KITH-arm0).
+const SCHEMA_V21: &str = "
+ALTER TABLE chats ADD COLUMN name TEXT;
+ALTER TABLE chats ADD COLUMN description TEXT;
+ALTER TABLE chats ADD COLUMN avatar_blob_id TEXT;
+ALTER TABLE chats ADD COLUMN muted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chats ADD COLUMN mute_until TEXT;
+ALTER TABLE chats ADD COLUMN receive_typing_indicators INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE chats ADD COLUMN receipt_sharing INTEGER;
+ALTER TABLE chats ADD COLUMN message_expiry_seconds INTEGER;
+
+CREATE TABLE IF NOT EXISTS pinned_messages (
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    PRIMARY KEY (chat_id, message_id)
+);
 ";
 
 // MIGRATIONS must be sorted in ascending order by version number.
@@ -454,6 +467,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (18, SCHEMA_V18),
     (19, SCHEMA_V19),
     (20, SCHEMA_V20),
+    (21, SCHEMA_V21),
 ];
 
 impl Store {
@@ -1067,6 +1081,7 @@ mod tests {
             "contacts",
             "messages",
             "outbox",
+            "pinned_messages",
             "self",
             "state_counters",
         ] {
