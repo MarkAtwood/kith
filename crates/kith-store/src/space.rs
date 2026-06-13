@@ -416,6 +416,53 @@ impl<'a> SpaceStore<'a> {
         Ok((changed, vec![], current_state))
     }
 
+    /// Return change rows ordered by `changed_at_counter` with create/update
+    /// distinction, suitable for RFC 8620 §5.2 created[] vs updated[].
+    ///
+    /// Each row is `(space_id, changed_at_counter, is_create)`.
+    /// `is_create` is true when `created_at_counter > since_counter`.
+    pub fn get_changes_since_ordered(
+        &self,
+        since_state: &str,
+    ) -> Result<(Vec<(String, i64, bool)>, String), KithError> {
+        let since_counter = since_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .ok_or_else(|| KithError::Jmap(kith_core::JmapError::cannot_calculate_changes()))?;
+
+        let current_state = self.get_state()?;
+        let current_counter: i64 = current_state
+            .strip_prefix("s-")
+            .and_then(|n| n.parse::<i64>().ok())
+            .expect("get_state always returns s-<integer>");
+
+        if since_counter >= current_counter {
+            return Ok((vec![], current_state));
+        }
+
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, changed_at_counter, created_at_counter \
+                 FROM spaces WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC",
+            )
+            .map_err(db_err)?;
+
+        let rows: Vec<(String, i64, bool)> = stmt
+            .query_map(params![since_counter], |row| {
+                let id: String = row.get(0)?;
+                let changed_at: i64 = row.get(1)?;
+                let created_at: i64 = row.get(2)?;
+                let is_create = created_at > since_counter;
+                Ok((id, changed_at, is_create))
+            })
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+
+        Ok((rows, current_state))
+    }
+
     // ── SpaceRole CRUD ──────────────────────────────────────────────────
 
     /// Add a role to a space. Inserts the role row and its permissions.

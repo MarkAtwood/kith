@@ -110,6 +110,16 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> (Dispatcher, tempfil
             Arc::clone(&store),
         )),
     );
+    d.register(
+        "Space/get",
+        Box::new(kith_chat::space::SpaceGetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "Space/changes",
+        Box::new(kith_chat::space::SpaceChangesHandler::new(Arc::clone(
+            &store,
+        ))),
+    );
     (d, blob_dir)
 }
 

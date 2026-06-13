@@ -37,6 +37,7 @@ use kith_chat::message::{
     MessageChangesHandler, MessageGetHandler, MessageQueryChangesHandler, MessageQueryHandler,
     MessageSetHandler,
 };
+use kith_chat::space::{SpaceChangesHandler, SpaceGetHandler};
 use kith_core::Role;
 use kith_jmap::{build_session, parse_request, request_error, Dispatcher};
 use kith_peer::{DeliverHandler, ReceiptHandler};
@@ -344,7 +345,7 @@ pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
     builder.body(body).unwrap()
 }
 
-/// Build the JMAP method dispatcher with all 13 registered handlers.
+/// Build the JMAP method dispatcher with all registered handlers.
 pub fn build_dispatcher(
     store: Arc<Mutex<Store>>,
     blob_store: Arc<BlobStore>,
@@ -416,6 +417,16 @@ pub fn build_dispatcher(
     d.register(
         "Message/queryChanges",
         Box::new(MessageQueryChangesHandler::new(Arc::clone(&store))),
+    );
+
+    // Space methods (owner-only)
+    d.register(
+        "Space/get",
+        Box::new(SpaceGetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "Space/changes",
+        Box::new(SpaceChangesHandler::new(Arc::clone(&store))),
     );
 
     // Peer methods — use register_peer so the dispatcher passes the verified
@@ -750,6 +761,8 @@ mod tests {
             "Message/changes",
             "Message/query",
             "Message/queryChanges",
+            "Space/get",
+            "Space/changes",
         ];
         let peer_methods = ["Peer/deliver", "Peer/receipt"];
 

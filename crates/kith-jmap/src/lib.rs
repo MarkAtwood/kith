@@ -265,6 +265,8 @@ const METHOD_ROLES: &[(&str, Role)] = &[
     ("Message/changes", Role::Owner),
     ("Message/query", Role::Owner),
     ("Message/queryChanges", Role::Owner),
+    ("Space/get", Role::Owner),
+    ("Space/changes", Role::Owner),
     ("Peer/deliver", Role::Peer),
     ("Peer/receipt", Role::Peer),
 ];
@@ -1590,6 +1592,8 @@ mod tests {
             "Message/changes",
             "Message/query",
             "Message/queryChanges",
+            "Space/get",
+            "Space/changes",
             "Peer/deliver",
             "Peer/receipt",
         ]

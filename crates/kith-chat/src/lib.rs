@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod contact;
 pub mod message;
+pub mod space;
 
 pub(crate) fn kith_to_jmap(e: kith_core::KithError) -> kith_core::JmapError {
     match e {
