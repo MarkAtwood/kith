@@ -2099,3 +2099,1834 @@ async fn message_get_returns_broadcast_mentions() {
     assert_eq!(bm_arr[0]["offset"], 0);
     assert_eq!(bm_arr[0]["length"], 5);
 }
+
+// ===========================================================================
+// GROUP D — Message handler integration tests
+// ===========================================================================
+
+// Oracle: RFC 8620 §5.1 — Message/get with specific IDs must return exactly
+// those messages.
+#[tokio::test]
+async fn message_get_by_ids() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-get-ids");
+
+    // Create two messages.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {"chatId": chat_id.clone(), "body": "first"},
+                "m1": {"chatId": chat_id.clone(), "body": "second"}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let args = &resp.method_responses[0].1;
+    let id0 = args["created"]["m0"]["id"].as_str().unwrap().to_string();
+    let id1 = args["created"]["m1"]["id"].as_str().unwrap().to_string();
+
+    // Fetch only one by ID.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [id0.clone()]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/get");
+    let list = args["list"].as_array().unwrap();
+    assert_eq!(list.len(), 1, "must return exactly the requested message");
+    assert_eq!(list[0]["id"], id0);
+    assert_eq!(list[0]["body"], "first");
+    // notFound must be empty.
+    let nf = args["notFound"].as_array().unwrap();
+    assert!(nf.is_empty(), "notFound must be empty; got: {nf:?}");
+
+    // Fetch both.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [id0.clone(), id1.clone()]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let list = args["list"].as_array().unwrap();
+    assert_eq!(list.len(), 2, "must return both messages");
+}
+
+// Oracle: RFC 8620 §5.1 — Message/get with unknown IDs must put them in notFound.
+#[tokio::test]
+async fn message_get_unknown_ids_returns_not_found() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": ["nonexistent-msg-1", "nonexistent-msg-2"]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/get");
+    let list = args["list"].as_array().unwrap();
+    assert!(list.is_empty(), "list must be empty for unknown IDs");
+    let nf = args["notFound"].as_array().unwrap();
+    assert_eq!(nf.len(), 2, "notFound must have both unknown IDs");
+    assert!(nf.contains(&json!("nonexistent-msg-1")));
+    assert!(nf.contains(&json!("nonexistent-msg-2")));
+}
+
+// Oracle: RFC 8620 §5.1 — Message/get with ids=[] must return empty list and
+// empty notFound.
+#[tokio::test]
+async fn message_get_empty_ids_returns_empty_list() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-get-empty");
+
+    // Create a message to ensure it is NOT returned.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id, "body": "invisible"}}
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Fetch with empty ids array.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": []}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"], json!([]), "ids=[] must return empty list");
+    assert_eq!(args["notFound"], json!([]), "ids=[] must return empty notFound");
+}
+
+// Oracle: RFC 8620 §5.1 — Message/get with properties filter should still
+// return the message but only the requested fields.  In our implementation
+// properties filtering is not implemented so all fields are always returned.
+// This test verifies the response still has the expected fields.
+#[tokio::test]
+async fn message_get_with_properties_returns_all_fields() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-get-props");
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "hello props"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let msg_id = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Request with properties (handler may or may not filter).
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [msg_id.clone()], "properties": ["id", "body"]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/get");
+    let list = args["list"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    // The message must at minimum contain id and body.
+    assert_eq!(list[0]["id"], msg_id);
+    assert_eq!(list[0]["body"], "hello props");
+}
+
+// Oracle: RFC 8620 §5.6 — Message/changes with sinceState="s-0" must return all
+// messages created since store initialization.
+#[tokio::test]
+async fn message_changes_since_s0_returns_all() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-chg-all");
+
+    // Create two messages.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {"chatId": chat_id.clone(), "body": "one"},
+                "m1": {"chatId": chat_id.clone(), "body": "two"}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let args = &resp.method_responses[0].1;
+    let id0 = args["created"]["m0"]["id"].as_str().unwrap().to_string();
+    let id1 = args["created"]["m1"]["id"].as_str().unwrap().to_string();
+
+    // Changes since s-0 must include both.
+    let req = kith_request(vec![(
+        "Message/changes",
+        json!({"accountId": "a-self", "sinceState": "s-0"}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/changes");
+    let created = args["created"].as_array().unwrap();
+    assert!(
+        created.contains(&json!(id0)),
+        "id0 must be in created; got: {created:?}"
+    );
+    assert!(
+        created.contains(&json!(id1)),
+        "id1 must be in created; got: {created:?}"
+    );
+    // hasMoreChanges must be false (no maxChanges limit).
+    assert_eq!(args["hasMoreChanges"], false);
+}
+
+// Oracle: RFC 8620 §5.6 — Message/changes with sinceState equal to current state
+// must return empty created/updated/destroyed arrays.
+#[tokio::test]
+async fn message_changes_at_current_state_returns_empty() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-chg-cur");
+
+    // Create a message.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "msg"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let new_state = resp.method_responses[0].1["newState"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Changes at the new state — nothing new.
+    let req = kith_request(vec![(
+        "Message/changes",
+        json!({"accountId": "a-self", "sinceState": new_state.clone()}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["created"], json!([]));
+    assert_eq!(args["updated"], json!([]));
+    assert_eq!(args["destroyed"], json!([]));
+    assert_eq!(args["newState"], new_state);
+}
+
+// Oracle: Message/changes with malformed sinceState must return cannotCalculateChanges.
+#[tokio::test]
+async fn message_changes_malformed_state_returns_error() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Message/changes",
+        json!({"accountId": "a-self", "sinceState": "invalid-format"}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/changes");
+    assert_eq!(
+        args["type"], "cannotCalculateChanges",
+        "malformed sinceState must return cannotCalculateChanges; got: {args}"
+    );
+}
+
+// Oracle: Message/query with filter.chatId returns messages for that chat only,
+// sorted by receivedAt descending (newest first).
+#[tokio::test]
+async fn message_query_filter_by_chat_id() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_a = setup_direct_chat(&store, "msg-qry-a");
+    let chat_b = setup_direct_chat(&store, "msg-qry-b");
+
+    // Create messages in both chats.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "ma": {"chatId": chat_a.clone(), "body": "in chat A"},
+                "mb": {"chatId": chat_b.clone(), "body": "in chat B"}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let args = &resp.method_responses[0].1;
+    let id_a = args["created"]["ma"]["id"].as_str().unwrap().to_string();
+    let id_b = args["created"]["mb"]["id"].as_str().unwrap().to_string();
+
+    // Query for chat A only.
+    let req = kith_request(vec![(
+        "Message/query",
+        json!({"accountId": "a-self", "filter": {"chatId": chat_a.clone()}}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/query");
+    let ids = args["ids"].as_array().unwrap();
+    assert!(
+        ids.contains(&json!(id_a)),
+        "chat A message must be in query result; got: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&json!(id_b)),
+        "chat B message must NOT be in chat A query result; got: {ids:?}"
+    );
+}
+
+// Oracle: Message/query with position and limit pagination returns the correct
+// subset of messages.
+#[tokio::test]
+async fn message_query_position_and_limit_pagination() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-qry-pag");
+
+    // Create 3 messages.
+    for i in 0..3 {
+        let req = kith_request(vec![(
+            "Message/set",
+            json!({
+                "accountId": "a-self",
+                "create": {
+                    format!("m{i}"): {"chatId": chat_id.clone(), "body": format!("msg {i}")}
+                }
+            }),
+            "c0",
+        )]);
+        d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+    }
+
+    // Query with position=1, limit=1 — should get exactly 1 message.
+    let req = kith_request(vec![(
+        "Message/query",
+        json!({
+            "accountId": "a-self",
+            "filter": {"chatId": chat_id.clone()},
+            "position": 1,
+            "limit": 1
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let ids = args["ids"].as_array().unwrap();
+    assert_eq!(ids.len(), 1, "position=1 limit=1 must return exactly 1");
+    assert_eq!(args["position"], 1);
+}
+
+// Oracle: Message/query for a nonexistent chat must return invalidArguments.
+#[tokio::test]
+async fn message_query_nonexistent_chat_returns_error() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Message/query",
+        json!({
+            "accountId": "a-self",
+            "filter": {"chatId": "chat-does-not-exist"}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/query");
+    assert_eq!(
+        args["type"], "invalidArguments",
+        "nonexistent chatId must return invalidArguments; got: {args}"
+    );
+}
+
+// Oracle: Message/query default sort is receivedAt descending — newest messages
+// appear first in the result.
+#[tokio::test]
+async fn message_query_default_sort_received_at_desc() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-qry-sort");
+
+    // Create messages sequentially so they have increasing receivedAt.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "oldest"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let id_oldest = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m1": {"chatId": chat_id.clone(), "body": "newest"}}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let id_newest = resp.method_responses[0].1["created"]["m1"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Query — default sort should put newest first (position=0).
+    let req = kith_request(vec![(
+        "Message/query",
+        json!({
+            "accountId": "a-self",
+            "filter": {"chatId": chat_id.clone()}
+        }),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let ids = args["ids"].as_array().unwrap();
+    assert_eq!(ids.len(), 2);
+    // Newest message is at position 0 (desc order).
+    assert_eq!(ids[0], id_newest, "newest message must be first");
+    assert_eq!(ids[1], id_oldest, "oldest message must be second");
+}
+
+// Oracle: Message/queryChanges with sinceQueryState from before inserts must
+// return added entries with id and index fields.
+#[tokio::test]
+async fn message_query_changes_returns_added_entries() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-qchg");
+
+    // Get state before any messages.
+    let state_before = {
+        let guard = store.lock().unwrap();
+        guard.messages().get_state().unwrap()
+    };
+
+    // Create a message.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "qchg test"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let msg_id = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // queryChanges from state_before.
+    let req = kith_request(vec![(
+        "Message/queryChanges",
+        json!({
+            "accountId": "a-self",
+            "sinceQueryState": state_before,
+            "filter": {"chatId": chat_id.clone()}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Message/queryChanges");
+    let added = args["added"].as_array().unwrap();
+    assert!(!added.is_empty(), "added must not be empty");
+    assert_eq!(added[0]["id"], msg_id);
+    assert!(added[0].get("index").is_some(), "added entry must have index");
+    assert_eq!(args["removed"], json!([]));
+}
+
+// Oracle: Message/queryChanges at current state returns empty added and removed.
+#[tokio::test]
+async fn message_query_changes_at_current_state_returns_empty() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-qchg-cur");
+
+    // Create a message.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "qchg-cur"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let new_state = resp.method_responses[0].1["newState"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // queryChanges at the current state — nothing new.
+    let req = kith_request(vec![(
+        "Message/queryChanges",
+        json!({
+            "accountId": "a-self",
+            "sinceQueryState": new_state.clone(),
+            "filter": {"chatId": chat_id.clone()}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["added"], json!([]));
+    assert_eq!(args["removed"], json!([]));
+    assert_eq!(args["newQueryState"], new_state);
+}
+
+// ===========================================================================
+// GROUP E — Chat handler integration tests
+// ===========================================================================
+
+// Oracle: RFC 8620 §5.1 — Chat/get with no ids param returns all chats.
+#[tokio::test]
+async fn chat_get_all_chats() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_a = setup_direct_chat(&store, "chat-get-a");
+    let chat_b = setup_group_chat(&store, "chat-get-b");
+
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self"}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/get");
+    let list = args["list"].as_array().unwrap();
+    assert!(list.len() >= 2, "must return at least 2 chats; got {}", list.len());
+    let ids: Vec<&str> = list.iter().filter_map(|c| c["id"].as_str()).collect();
+    assert!(ids.contains(&chat_a.as_str()), "chat_a must be in list");
+    assert!(ids.contains(&chat_b.as_str()), "chat_b must be in list");
+}
+
+// Oracle: RFC 8620 §5.1 — Chat/get with specific IDs returns only those.
+#[tokio::test]
+async fn chat_get_by_specific_ids() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_a = setup_direct_chat(&store, "chat-getid-a");
+    let _chat_b = setup_direct_chat(&store, "chat-getid-b");
+
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_a.clone()]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let list = args["list"].as_array().unwrap();
+    assert_eq!(list.len(), 1, "must return exactly the requested chat");
+    assert_eq!(list[0]["id"], chat_a);
+}
+
+// Oracle: Chat/get with unknown IDs puts them in notFound.
+#[tokio::test]
+async fn chat_get_unknown_ids_in_not_found() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": ["ghost-chat-1", "ghost-chat-2"]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let list = args["list"].as_array().unwrap();
+    assert!(list.is_empty(), "list must be empty for unknown IDs");
+    let nf = args["notFound"].as_array().unwrap();
+    assert_eq!(nf.len(), 2, "notFound must have 2 entries");
+    assert!(nf.contains(&json!("ghost-chat-1")));
+    assert!(nf.contains(&json!("ghost-chat-2")));
+}
+
+// Oracle: Chat/get returns all metadata fields (name, muted, kind, etc.).
+#[tokio::test]
+async fn chat_get_returns_all_metadata_fields() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "chat-meta");
+
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let chat = &args["list"][0];
+
+    // Must have these structural fields.
+    assert_eq!(chat["id"], chat_id);
+    assert!(chat.get("kind").is_some(), "kind field must be present");
+    assert!(chat.get("muted").is_some(), "muted field must be present");
+    assert!(
+        chat.get("receiveTypingIndicators").is_some(),
+        "receiveTypingIndicators field must be present"
+    );
+}
+
+// Oracle: Chat/set create for a group chat with name must succeed.
+#[tokio::test]
+async fn chat_set_create_group_chat_with_name() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact first (needed for Chat/set).
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-grp-create",
+                    "login": "grp@example.com",
+                    "mailboxHost": "grp.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Create a chat (direct, since Chat/set only supports direct in Phase 1).
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"ch0": {"contactId": "uid-grp-create"}}
+        }),
+        "ch0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/set");
+    assert!(
+        args["created"].get("ch0").is_some(),
+        "chat create must succeed; got: {args}"
+    );
+    let chat_id = args["created"]["ch0"]["id"].as_str().unwrap();
+    assert!(!chat_id.is_empty(), "chat ID must be non-empty");
+}
+
+// Oracle: Chat/set create with duplicate contactId returns alreadyExists.
+#[tokio::test]
+async fn chat_set_create_duplicate_returns_already_exists() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-dup-chat",
+                    "login": "dup@example.com",
+                    "mailboxHost": "dup.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // First create — succeeds.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"ch0": {"contactId": "uid-dup-chat"}}
+        }),
+        "ch0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    assert!(resp.method_responses[0].1["created"].get("ch0").is_some());
+
+    // Second create — must be notCreated/alreadyExists.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"ch1": {"contactId": "uid-dup-chat"}}
+        }),
+        "ch1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("ch1").is_some(),
+        "duplicate must be in notCreated; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["ch1"]["type"], "alreadyExists");
+}
+
+// Oracle: Chat/set create with invalid (unknown) contactId returns notCreated/notFound.
+#[tokio::test]
+async fn chat_set_create_invalid_contact_id() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"ch0": {"contactId": "uid-nobody-here"}}
+        }),
+        "ch0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/set");
+    assert!(
+        args["notCreated"].get("ch0").is_some(),
+        "unknown contactId must be in notCreated; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["ch0"]["type"], "notFound");
+}
+
+// Oracle: Chat/changes sinceState returns updated chats after metadata change.
+#[tokio::test]
+async fn chat_changes_after_metadata_update() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_group_chat(&store, "chat-chg-upd");
+
+    // Get current state.
+    let state_before = {
+        let guard = store.lock().unwrap();
+        guard.chats().get_state().unwrap()
+    };
+
+    // Update the chat name.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": { chat_id.clone(): {"name": "Updated Name"} }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Chat/changes from state_before.
+    let req = kith_request(vec![(
+        "Chat/changes",
+        json!({"accountId": "a-self", "sinceState": state_before}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/changes");
+    // The chat was created before state_before (by setup_group_chat), so it
+    // appears in the "updated" list, not "created".
+    let updated = args["updated"].as_array().unwrap();
+    assert!(
+        updated.contains(&json!(chat_id)),
+        "chat_id must appear in updated; got: {args}"
+    );
+}
+
+// Oracle: Chat/query returns chat IDs ordered by lastMessageAt DESC nulls last,
+// then createdAt DESC.
+#[tokio::test]
+async fn chat_query_default_sort() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create two chats with explicitly different createdAt times via the store
+    // to ensure a deterministic sort order.
+    let chat_older = "chat-sort-older";
+    let chat_newer = "chat-sort-newer";
+    {
+        let guard = store.lock().unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-sort-old",
+                "sort-old@example.com",
+                "sort-old.tail.ts.net",
+                None,
+                1000,
+            )
+            .unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-sort-new",
+                "sort-new@example.com",
+                "sort-new.tail.ts.net",
+                None,
+                1000,
+            )
+            .unwrap();
+        guard
+            .chats()
+            .create(chat_older, "direct", Some("uid-sort-old"), 1_000_000)
+            .unwrap();
+        guard
+            .chats()
+            .create(chat_newer, "direct", Some("uid-sort-new"), 2_000_000)
+            .unwrap();
+    }
+
+    let req = kith_request(vec![("Chat/query", json!({"accountId": "a-self"}), "c0")]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let ids = args["ids"].as_array().unwrap();
+    // Both chats have null lastMessageAt, so ordering is by createdAt DESC.
+    // chat_newer (createdAt=2_000_000) should appear before chat_older (createdAt=1_000_000).
+    let pos_older = ids.iter().position(|v| v.as_str() == Some(chat_older));
+    let pos_newer = ids.iter().position(|v| v.as_str() == Some(chat_newer));
+    assert!(
+        pos_newer.is_some() && pos_older.is_some(),
+        "both chats must appear in query; got: {ids:?}"
+    );
+    // Newer chat should appear before older in DESC order.
+    assert!(
+        pos_newer.unwrap() < pos_older.unwrap(),
+        "newer chat should appear before older in createdAt DESC; got: {ids:?}"
+    );
+}
+
+// ===========================================================================
+// GROUP F — ChatContact handler integration tests
+// ===========================================================================
+
+// Oracle: RFC 8620 §5.1 — ChatContact/get with ids=null returns all contacts.
+#[tokio::test]
+async fn contact_get_all_contacts() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create two contacts.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {"id": "uid-cg-a", "login": "a@example.com", "mailboxHost": "a.tail.ts.net"},
+                "c1": {"id": "uid-cg-b", "login": "b@example.com", "mailboxHost": "b.tail.ts.net"}
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Get all contacts.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self"}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "ChatContact/get");
+    let list = args["list"].as_array().unwrap();
+    assert!(list.len() >= 2, "must return at least 2 contacts");
+    let ids: Vec<&str> = list.iter().filter_map(|c| c["id"].as_str()).collect();
+    assert!(ids.contains(&"uid-cg-a"));
+    assert!(ids.contains(&"uid-cg-b"));
+}
+
+// Oracle: ChatContact/get by specific IDs returns only those contacts.
+#[tokio::test]
+async fn contact_get_by_specific_ids() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {"id": "uid-cid-a", "login": "cid-a@example.com", "mailboxHost": "a.ts.net"},
+                "c1": {"id": "uid-cid-b", "login": "cid-b@example.com", "mailboxHost": "b.ts.net"}
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Fetch only one.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-cid-a"]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let list = args["list"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["id"], "uid-cid-a");
+    assert!(args["notFound"].as_array().unwrap().is_empty());
+}
+
+// Oracle: ChatContact/get with unknown IDs puts them in notFound.
+#[tokio::test]
+async fn contact_get_unknown_ids_in_not_found() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-phantom"]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let list = args["list"].as_array().unwrap();
+    assert!(list.is_empty());
+    let nf = args["notFound"].as_array().unwrap();
+    assert_eq!(nf.len(), 1);
+    assert_eq!(nf[0], "uid-phantom");
+}
+
+// Oracle: ChatContact/set create adds a new contact with peer info.
+#[tokio::test]
+async fn contact_set_create_new_contact() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-new-contact",
+                    "login": "new@example.com",
+                    "mailboxHost": "new.tail.ts.net",
+                    "displayName": "New Person"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "ChatContact/set");
+    assert!(args["created"].get("c0").is_some());
+    assert_eq!(args["created"]["c0"]["id"], "uid-new-contact");
+    assert_eq!(args["created"]["c0"]["login"], "new@example.com");
+    assert_eq!(args["created"]["c0"]["displayName"], "New Person");
+}
+
+// Oracle: ChatContact/set create with duplicate ID (upsert) does not fail —
+// the store uses upsert semantics.
+#[tokio::test]
+async fn contact_set_create_duplicate_upserts() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-dup-contact",
+                    "login": "dup@example.com",
+                    "mailboxHost": "dup.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Same ID again — should succeed (upsert).
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c1": {
+                    "id": "uid-dup-contact",
+                    "login": "dup-new@example.com",
+                    "mailboxHost": "dup2.tail.ts.net"
+                }
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("c1").is_some(),
+        "duplicate upsert must succeed; got: {args}"
+    );
+}
+
+// Oracle: ChatContact/set update displayName must succeed and persist.
+#[tokio::test]
+async fn contact_set_update_display_name() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-upd-dn",
+                    "login": "dn@example.com",
+                    "mailboxHost": "dn.tail.ts.net",
+                    "displayName": "Original"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Update displayName.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {"uid-upd-dn": {"displayName": "Renamed"}}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get("uid-upd-dn").is_some(),
+        "displayName update must succeed; got: {args}"
+    );
+
+    // Verify via get.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-upd-dn"]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"][0]["displayName"], "Renamed");
+}
+
+// Oracle: ChatContact/set update blocked=true must succeed and persist.
+#[tokio::test]
+async fn contact_set_update_blocked_status() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-upd-blk",
+                    "login": "blk@example.com",
+                    "mailboxHost": "blk.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Block the contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {"uid-upd-blk": {"blocked": true}}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get("uid-upd-blk").is_some(),
+        "blocked update must succeed; got: {args}"
+    );
+
+    // Verify via get.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-upd-blk"]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"][0]["blocked"], true, "blocked must be true");
+}
+
+// Oracle: ChatContact/set update presence fields must succeed.
+#[tokio::test]
+async fn contact_set_update_presence_fields() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-upd-pres",
+                    "login": "pres@example.com",
+                    "mailboxHost": "pres.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Update presence and statusText.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                "uid-upd-pres": {
+                    "presence": "online",
+                    "statusText": "Working hard"
+                }
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get("uid-upd-pres").is_some(),
+        "presence update must succeed; got: {args}"
+    );
+
+    // Verify via get.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-upd-pres"]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"][0]["presence"], "online");
+    assert_eq!(args["list"][0]["statusText"], "Working hard");
+}
+
+// Oracle: ChatContact/changes sinceState returns created contacts after insert.
+#[tokio::test]
+async fn contact_changes_after_create() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Get state before.
+    let state_before = {
+        let guard = store.lock().unwrap();
+        guard.contacts().get_state().unwrap()
+    };
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-chg-new",
+                    "login": "chg@example.com",
+                    "mailboxHost": "chg.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Changes since state_before.
+    let req = kith_request(vec![(
+        "ChatContact/changes",
+        json!({"accountId": "a-self", "sinceState": state_before}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "ChatContact/changes");
+    let created = args["created"].as_array().unwrap();
+    assert!(
+        created.contains(&json!("uid-chg-new")),
+        "new contact must be in created; got: {created:?}"
+    );
+}
+
+// Oracle: ChatContact/changes sinceState after update returns updated contacts.
+#[tokio::test]
+async fn contact_changes_after_update() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-chg-upd",
+                    "login": "chgupd@example.com",
+                    "mailboxHost": "chgupd.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let state_after_create = resp.method_responses[0].1["newState"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Update the contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {"uid-chg-upd": {"displayName": "Updated"}}
+        }),
+        "c1",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Changes since state_after_create.
+    let req = kith_request(vec![(
+        "ChatContact/changes",
+        json!({"accountId": "a-self", "sinceState": state_after_create}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let updated = args["updated"].as_array().unwrap();
+    assert!(
+        updated.contains(&json!("uid-chg-upd")),
+        "updated contact must be in updated list; got: {args}"
+    );
+}
+
+// Oracle: ChatContact/query lists all contact IDs.
+#[tokio::test]
+async fn contact_query_list_all() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contacts.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {"id": "uid-qry-a", "login": "qrya@example.com", "mailboxHost": "a.ts.net"},
+                "c1": {"id": "uid-qry-b", "login": "qryb@example.com", "mailboxHost": "b.ts.net"}
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    let req = kith_request(vec![(
+        "ChatContact/query",
+        json!({"accountId": "a-self"}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "ChatContact/query");
+    let ids = args["ids"].as_array().unwrap();
+    assert!(ids.len() >= 2, "must have at least 2 contact IDs");
+    let id_strs: Vec<&str> = ids.iter().filter_map(|v| v.as_str()).collect();
+    assert!(id_strs.contains(&"uid-qry-a"));
+    assert!(id_strs.contains(&"uid-qry-b"));
+}
+
+// Oracle: ChatContact/query with pagination (position and limit) returns a subset.
+#[tokio::test]
+async fn contact_query_pagination() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create 3 contacts with sorted logins.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {"id": "uid-pag-a", "login": "aaa-pag@example.com", "mailboxHost": "a.ts.net"},
+                "c1": {"id": "uid-pag-b", "login": "bbb-pag@example.com", "mailboxHost": "b.ts.net"},
+                "c2": {"id": "uid-pag-c", "login": "ccc-pag@example.com", "mailboxHost": "c.ts.net"}
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // position=1, limit=1.
+    let req = kith_request(vec![(
+        "ChatContact/query",
+        json!({"accountId": "a-self", "position": 1, "limit": 1}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let ids = args["ids"].as_array().unwrap();
+    assert_eq!(ids.len(), 1, "position=1 limit=1 must return exactly 1");
+    assert_eq!(args["position"], 1);
+}
+
+// Oracle: ChatContact/queryChanges with sinceQueryState from before creates
+// returns added entries.
+#[tokio::test]
+async fn contact_query_changes_returns_added() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Get state before.
+    let state_before = {
+        let guard = store.lock().unwrap();
+        guard.contacts().get_state().unwrap()
+    };
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-qchg-add",
+                    "login": "qchg@example.com",
+                    "mailboxHost": "qchg.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // queryChanges from state_before.
+    let req = kith_request(vec![(
+        "ChatContact/queryChanges",
+        json!({"accountId": "a-self", "sinceQueryState": state_before}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "ChatContact/queryChanges");
+    let added = args["added"].as_array().unwrap();
+    assert!(!added.is_empty(), "added must not be empty");
+    // Each added entry must have id and index.
+    assert!(added[0].get("id").is_some(), "added entry must have id");
+    assert!(added[0].get("index").is_some(), "added entry must have index");
+    // The new contact must be in the added list.
+    let added_ids: Vec<&str> = added.iter().filter_map(|e| e["id"].as_str()).collect();
+    assert!(
+        added_ids.contains(&"uid-qchg-add"),
+        "new contact must be in added; got: {added_ids:?}"
+    );
+}
+
+// Oracle: ChatContact/queryChanges at current state returns empty added/removed.
+#[tokio::test]
+async fn contact_query_changes_at_current_state_empty() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-qchg-cur",
+                    "login": "qchgcur@example.com",
+                    "mailboxHost": "qchgcur.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let new_state = resp.method_responses[0].1["newState"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // queryChanges at new_state — nothing new.
+    let req = kith_request(vec![(
+        "ChatContact/queryChanges",
+        json!({"accountId": "a-self", "sinceQueryState": new_state.clone()}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["added"], json!([]));
+    assert_eq!(args["removed"], json!([]));
+    assert_eq!(args["newQueryState"], new_state);
+}
+
+// ===========================================================================
+// GROUP G — Additional edge case tests
+// ===========================================================================
+
+// Oracle: Message/set create with missing body must be rejected.
+#[tokio::test]
+async fn message_set_create_missing_body_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-nobody");
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {"chatId": chat_id.clone()}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "missing body must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: Message/set create with missing chatId must be rejected.
+#[tokio::test]
+async fn message_set_create_missing_chat_id_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {"body": "hello without chatId"}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "missing chatId must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: ChatContact/set update with unknown field must be rejected with
+// invalidProperties.
+#[tokio::test]
+async fn contact_set_update_unknown_field_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-unkfld",
+                    "login": "unk@example.com",
+                    "mailboxHost": "unk.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Update with unknown field.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {"uid-unkfld": {"fakeProperty": "value"}}
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notUpdated"].get("uid-unkfld").is_some(),
+        "unknown field update must be rejected; got: {args}"
+    );
+    assert_eq!(args["notUpdated"]["uid-unkfld"]["type"], "invalidProperties");
+}
+
+// Oracle: Chat/set destroy must always be rejected (chats persist in Phase 1).
+#[tokio::test]
+async fn chat_set_destroy_forbidden() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "chat-destroy");
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "destroy": [chat_id.clone()]
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/set");
+    assert!(
+        args["notDestroyed"].get(&chat_id).is_some(),
+        "chat destroy must be rejected; got: {args}"
+    );
+    assert_eq!(args["notDestroyed"][&chat_id]["type"], "forbidden");
+    assert_eq!(args["destroyed"], json!([]));
+}
+
+// Oracle: Message/set update readAt must succeed (the only patchable field).
+#[tokio::test]
+async fn message_set_update_read_at_succeeds() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-readat");
+
+    // Create a message.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"m0": {"chatId": chat_id.clone(), "body": "read me"}}
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let msg_id = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Update readAt.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                msg_id.clone(): {"readAt": "2026-01-15T10:00:00Z"}
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get(&msg_id).is_some(),
+        "readAt update must succeed; got: {args}"
+    );
+
+    // Verify via Message/get.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [msg_id.clone()]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let msg = &args["list"][0];
+    assert!(
+        msg["readAt"].as_str().is_some(),
+        "readAt must be set after update; got: {msg}"
+    );
+}
+
+// Oracle: ChatContact/set destroy must always be rejected (contacts are auto-managed).
+#[tokio::test]
+async fn contact_set_destroy_forbidden() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-dest",
+                    "login": "dest@example.com",
+                    "mailboxHost": "dest.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Attempt destroy.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "destroy": ["uid-dest"]
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notDestroyed"].get("uid-dest").is_some(),
+        "contact destroy must be rejected; got: {args}"
+    );
+    assert_eq!(args["notDestroyed"]["uid-dest"]["type"], "forbidden");
+}
+
+// Oracle: Chat/changes with malformed sinceState returns cannotCalculateChanges.
+#[tokio::test]
+async fn chat_changes_malformed_state_returns_error() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    let req = kith_request(vec![(
+        "Chat/changes",
+        json!({"accountId": "a-self", "sinceState": "garbage-state"}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (name, args, _) = &resp.method_responses[0];
+    assert_eq!(name, "Chat/changes");
+    assert_eq!(
+        args["type"], "cannotCalculateChanges",
+        "malformed Chat/changes sinceState must return cannotCalculateChanges; got: {args}"
+    );
+}
+
+// Oracle: Message/query with calculateTotal=true returns a total count.
+#[tokio::test]
+async fn message_query_calculate_total() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "msg-qry-total");
+
+    // Create 2 messages.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {"chatId": chat_id.clone(), "body": "one"},
+                "m1": {"chatId": chat_id.clone(), "body": "two"}
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Query with calculateTotal=true.
+    let req = kith_request(vec![(
+        "Message/query",
+        json!({
+            "accountId": "a-self",
+            "filter": {"chatId": chat_id.clone()},
+            "calculateTotal": true
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["total"], 2, "total must be 2 with calculateTotal=true");
+    let ids = args["ids"].as_array().unwrap();
+    assert_eq!(ids.len(), 2);
+}

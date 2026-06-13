@@ -746,6 +746,56 @@ mod tests {
         assert!(chat.last_message_at.is_none());
     }
 
+    // ── unix_secs_to_rfc3339 boundary tests ──────────────────────────────
+
+    #[test]
+    fn unix_secs_to_rfc3339_leap_second_boundary() {
+        // Oracle: 2023-12-31T23:59:59Z = Unix 1704067199
+        // (verified via `date -u -d '2023-12-31 23:59:59' +%s` = 1704067199)
+        assert_eq!(unix_secs_to_rfc3339(1_704_067_199), "2023-12-31T23:59:59Z");
+    }
+
+    #[test]
+    fn unix_secs_to_rfc3339_year_2038_boundary() {
+        // Oracle: i32::MAX = 2147483647 seconds = 2038-01-19T03:14:07Z
+        // (verified via `date -u -d @2147483647` = Tue Jan 19 03:14:07 UTC 2038)
+        assert_eq!(
+            unix_secs_to_rfc3339(2_147_483_647),
+            "2038-01-19T03:14:07Z"
+        );
+    }
+
+    #[test]
+    fn unix_secs_to_rfc3339_year_2100_century_non_leap() {
+        // Oracle: 2100-03-01T00:00:00Z — 2100 is NOT a leap year (divisible by 100
+        // but not 400), so Feb has 28 days. The day after 2100-02-28 is 2100-03-01.
+        // Unix timestamp for 2100-03-01T00:00:00Z = 4107542400
+        // (verified via Python: calendar.timegm((2100,3,1,0,0,0,0,0,0)) = 4107542400)
+        assert_eq!(
+            unix_secs_to_rfc3339(4_107_542_400),
+            "2100-03-01T00:00:00Z"
+        );
+    }
+
+    // ── JMAP error helper tests ────────────────────────────────────────────
+
+    #[test]
+    fn jmap_error_forbidden_returns_correct_type() {
+        // Oracle: RFC 8620 §3.6.2 — "forbidden" error type string.
+        let e = jmap_error_forbidden();
+        assert_eq!(e.error_type, "forbidden");
+    }
+
+    #[test]
+    fn jmap_error_request_too_large_preserves_description() {
+        // Oracle: the description passed to jmap_error_request_too_large must be
+        // preserved in the returned JmapError's description field.
+        let desc = "Request body exceeds 10 MB limit";
+        let e = jmap_error_request_too_large(desc);
+        assert_eq!(e.error_type, "requestTooLarge");
+        assert_eq!(e.description, Some(desc.to_string()));
+    }
+
     #[test]
     fn sender_id_owner_and_contact_wire_format() {
         // Oracle: draft-atwood-jmap-chat-00 §Message.senderId

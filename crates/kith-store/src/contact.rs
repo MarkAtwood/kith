@@ -1347,6 +1347,209 @@ mod tests {
         assert_eq!(c.status_emoji, None);
     }
 
+    // ── Additional coverage tests ──────────────────────────────────────────
+
+    #[test]
+    fn upsert_creates_new_contact_with_all_fields_populated() {
+        // Oracle: a fresh INSERT must populate every column to the supplied values,
+        // including display_name, peer_mailbox_host, blocked=false, and first_seen_at == last_seen_at.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert(
+            "uid-full",
+            "fulltest@example.com",
+            "full.tail.ts.net",
+            Some("Full Name"),
+            5555,
+        )
+        .unwrap();
+        let c = cs.get_by_peer_user_id("uid-full").unwrap().unwrap();
+        assert_eq!(c.id, "uid-full");
+        assert_eq!(c.login, "fulltest@example.com");
+        assert_eq!(c.display_name, Some("Full Name".to_string()));
+        assert!(!c.blocked);
+        // first_seen_at == last_seen_at on initial insert
+        assert_eq!(c.first_seen_at, c.last_seen_at);
+        assert_eq!(
+            cs.get_mailbox_host("uid-full").unwrap(),
+            Some("full.tail.ts.net".to_string())
+        );
+    }
+
+    #[test]
+    fn upsert_updates_existing_contact_fields() {
+        // Oracle: ON CONFLICT DO UPDATE SET updates peer_login, peer_mailbox_host,
+        // display_name, and last_seen_at when values differ.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert(
+            "uid-upd2",
+            "old@example.com",
+            "old.tail.ts.net",
+            Some("Old Name"),
+            1000,
+        )
+        .unwrap();
+        cs.upsert(
+            "uid-upd2",
+            "new@example.com",
+            "new.tail.ts.net",
+            Some("New Name"),
+            2000,
+        )
+        .unwrap();
+        let c = cs.get_by_peer_user_id("uid-upd2").unwrap().unwrap();
+        assert_eq!(c.login, "new@example.com");
+        assert_eq!(c.display_name, Some("New Name".to_string()));
+        assert_eq!(
+            cs.get_mailbox_host("uid-upd2").unwrap(),
+            Some("new.tail.ts.net".to_string())
+        );
+        // last_seen_at updated, first_seen_at preserved
+        assert_eq!(
+            c.last_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(2000)
+        );
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
+    }
+
+    #[test]
+    fn upsert_idempotent_single_row() {
+        // Oracle: repeated identical upserts must not create duplicate rows.
+        // Only one row should exist in the table for the same peer_user_id.
+        let store = open();
+        let cs = store.contacts();
+        for _ in 0..5 {
+            cs.upsert("uid-repeat", "r@test.com", "r.ts.net", None, 1000)
+                .unwrap();
+        }
+        let all = cs.list().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, "uid-repeat");
+    }
+
+    #[test]
+    fn upsert_with_changed_data_advances_state() {
+        // Oracle: upsert with different last_seen_at on an existing contact must
+        // advance the state counter (unlike identical data which must not advance).
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-adv2", "adv2@test.com", "adv2.ts.net", None, 1000)
+            .unwrap();
+        let s1 = cs.get_state().unwrap();
+        cs.upsert("uid-adv2", "adv2@test.com", "adv2.ts.net", None, 2000)
+            .unwrap();
+        let s2 = cs.get_state().unwrap();
+        assert_ne!(s1, s2, "upsert with changed data must advance state");
+    }
+
+    #[test]
+    fn set_blocked_toggles_blocked_flag() {
+        // Oracle: set_blocked(true) sets blocked, set_blocked(false) clears it.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-tgl", "tgl@test.com", "tgl.ts.net", None, 1000)
+            .unwrap();
+        // Initially unblocked
+        let c = cs.get_by_peer_user_id("uid-tgl").unwrap().unwrap();
+        assert!(!c.blocked);
+        // Block
+        cs.set_blocked("uid-tgl", true).unwrap();
+        let c = cs.get_by_peer_user_id("uid-tgl").unwrap().unwrap();
+        assert!(c.blocked);
+        // Unblock
+        cs.set_blocked("uid-tgl", false).unwrap();
+        let c = cs.get_by_peer_user_id("uid-tgl").unwrap().unwrap();
+        assert!(!c.blocked);
+    }
+
+    #[test]
+    fn set_blocked_true_advances_state_counter() {
+        // Oracle: blocking a non-blocked contact changes the row, must advance state.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-blk2", "blk2@test.com", "blk2.ts.net", None, 1000)
+            .unwrap();
+        let s1 = cs.get_state().unwrap();
+        cs.set_blocked("uid-blk2", true).unwrap();
+        let s2 = cs.get_state().unwrap();
+        assert_ne!(s1, s2);
+        // Unblocking again must also advance
+        cs.set_blocked("uid-blk2", false).unwrap();
+        let s3 = cs.get_state().unwrap();
+        assert_ne!(s2, s3);
+    }
+
+    #[test]
+    fn is_permitted_true_for_non_blocked_known_contact() {
+        // Oracle: a known, non-blocked contact must be permitted.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-perm", "perm@test.com", "perm.ts.net", None, 1000)
+            .unwrap();
+        assert!(cs.is_permitted("uid-perm").unwrap());
+    }
+
+    #[test]
+    fn is_permitted_false_for_blocked_contact() {
+        // Oracle: a blocked contact must not be permitted.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-blkd", "blkd@test.com", "blkd.ts.net", None, 1000)
+            .unwrap();
+        cs.set_blocked("uid-blkd", true).unwrap();
+        assert!(!cs.is_permitted("uid-blkd").unwrap());
+    }
+
+    #[test]
+    fn is_permitted_false_for_unknown_contact() {
+        // Oracle: a peer_user_id not in the contacts table must not be permitted.
+        let store = open();
+        assert!(!store.contacts().is_permitted("uid-ghost").unwrap());
+    }
+
+    #[test]
+    fn get_mailbox_host_returns_stored_host() {
+        // Oracle: get_mailbox_host returns the peer_mailbox_host column value.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-host", "host@test.com", "my-host.tail.ts.net", None, 1000)
+            .unwrap();
+        assert_eq!(
+            cs.get_mailbox_host("uid-host").unwrap(),
+            Some("my-host.tail.ts.net".to_string())
+        );
+    }
+
+    #[test]
+    fn get_mailbox_host_returns_none_for_unknown_contact() {
+        // Oracle: get_mailbox_host must return None for a peer_user_id not in the table.
+        let store = open();
+        assert_eq!(store.contacts().get_mailbox_host("uid-nope").unwrap(), None);
+    }
+
+    #[test]
+    fn list_contacts_returns_ordered_by_peer_login() {
+        // Oracle: SQL ORDER BY peer_login, peer_user_id — contacts must be returned
+        // in ascending peer_login order, with peer_user_id as tiebreaker.
+        let store = open();
+        let cs = store.contacts();
+        cs.upsert("uid-z", "zzz@test.com", "z.ts.net", None, 1000)
+            .unwrap();
+        cs.upsert("uid-a", "aaa@test.com", "a.ts.net", None, 1000)
+            .unwrap();
+        cs.upsert("uid-m", "mmm@test.com", "m.ts.net", None, 1000)
+            .unwrap();
+        let all = cs.list().unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].login, "aaa@test.com");
+        assert_eq!(all[1].login, "mmm@test.com");
+        assert_eq!(all[2].login, "zzz@test.com");
+    }
+
     #[test]
     fn pre_v8_contact_upsert_classified_as_updated() {
         // Oracle: contacts migrated from before V8 have created_at_counter = 0 after V13,

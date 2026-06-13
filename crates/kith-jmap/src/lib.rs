@@ -1978,4 +1978,448 @@ mod tests {
             resp.method_responses[0].1
         );
     }
+    // ── Batch dispatch and response ordering tests ──────────────────────
+
+    // Test: dispatch_batch_with_multiple_methods returns all responses in order.
+    // Oracle: RFC 8620 §3.4 — "The response is a JSON object with the same type
+    // for the methodResponses property in the same order as the methodCalls."
+    #[tokio::test]
+    async fn dispatch_batch_with_multiple_methods_returns_in_order() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(json!({"method": "contact"}))),
+        );
+        d.register(
+            "Chat/get",
+            Box::new(EchoHandler(json!({"method": "chat"}))),
+        );
+        d.register(
+            "Message/get",
+            Box::new(EchoHandler(json!({"method": "message"}))),
+        );
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("ChatContact/get".to_string(), json!({}), "c0".to_string()),
+                ("Chat/get".to_string(), json!({}), "c1".to_string()),
+                ("Message/get".to_string(), json!({}), "c2".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(resp.method_responses.len(), 3);
+        assert_eq!(resp.method_responses[0].1["method"], "contact");
+        assert_eq!(resp.method_responses[1].1["method"], "chat");
+        assert_eq!(resp.method_responses[2].1["method"], "message");
+    }
+
+    // Test: dispatch_batch call_ids preserved in responses.
+    // Oracle: RFC 8620 §3.2 — the call_id in the response MUST match the request.
+    #[tokio::test]
+    async fn dispatch_batch_call_ids_preserved_in_responses() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(json!({}))),
+        );
+        d.register(
+            "Chat/get",
+            Box::new(EchoHandler(json!({}))),
+        );
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("ChatContact/get".to_string(), json!({}), "alpha-1".to_string()),
+                ("Chat/get".to_string(), json!({}), "beta-2".to_string()),
+                ("ChatContact/get".to_string(), json!({}), "gamma-3".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(resp.method_responses[0].2, "alpha-1");
+        assert_eq!(resp.method_responses[1].2, "beta-2");
+        assert_eq!(resp.method_responses[2].2, "gamma-3");
+    }
+
+    // Test: dispatch empty methodCalls returns empty responses.
+    // Oracle: RFC 8620 §3.3 — an empty methodCalls array is valid and must
+    // produce an empty methodResponses array.
+    #[tokio::test]
+    async fn dispatch_empty_method_calls_returns_empty_responses() {
+        let d = Dispatcher::new();
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-5".to_string())
+            .await;
+        assert!(
+            resp.method_responses.is_empty(),
+            "empty methodCalls must yield empty methodResponses"
+        );
+        assert_eq!(resp.session_state, "s-5");
+    }
+
+    // Test: handler returning accountNotFound produces correct error invocation.
+    // Oracle: RFC 8620 §3.2 — accountNotFound is a method-level error.
+    // The error type string "accountNotFound" is from RFC 8620 §7.1.
+    #[tokio::test]
+    async fn dispatch_handler_account_not_found() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "Chat/get",
+            Box::new(ErrorHandler(JmapError::account_not_found())),
+        );
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![("Chat/get".to_string(), json!({"accountId": "wrong"}), "c0".to_string())],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(resp.method_responses[0].1["type"], "accountNotFound");
+    }
+
+    // Test: handler returning accountNotFound for wrong accountId.
+    // Oracle: RFC 8620 §7.1 — if the client provides an accountId that the server
+    // does not recognize, it MUST return accountNotFound.
+    #[tokio::test]
+    async fn dispatch_wrong_account_id_returns_account_not_found() {
+        // Simulate a handler that validates accountId internally.
+        struct AccountCheckHandler;
+        impl JmapHandler for AccountCheckHandler {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                args: serde_json::Value,
+            ) -> HandlerFuture {
+                Box::pin(async move {
+                    let account_id = args
+                        .get("accountId")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    if account_id != "a-self" {
+                        return Err(JmapError::account_not_found());
+                    }
+                    Ok(json!({"list": []}))
+                })
+            }
+        }
+
+        let mut d = Dispatcher::new();
+        d.register("Chat/get", Box::new(AccountCheckHandler));
+
+        // Call with correct accountId
+        let req_ok = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![("Chat/get".to_string(), json!({"accountId": "a-self"}), "c0".to_string())],
+            None,
+        );
+        let resp_ok = d
+            .dispatch(req_ok, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert!(
+            resp_ok.method_responses[0].1.get("type").is_none(),
+            "correct accountId must succeed"
+        );
+
+        // Call with wrong accountId
+        let req_bad = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![("Chat/get".to_string(), json!({"accountId": "wrong-id"}), "c1".to_string())],
+            None,
+        );
+        let resp_bad = d
+            .dispatch(req_bad, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+        assert_eq!(
+            resp_bad.method_responses[0].1["type"], "accountNotFound",
+            "wrong accountId must produce accountNotFound"
+        );
+    }
+
+    // Test: parse_request with extremely large methodCalls array (>1000).
+    // Oracle: MAX_CALLS_IN_REQUEST is 16 (RFC 8620 maxCallsInRequest).
+    // Any array > 16 must be rejected with requestTooLarge regardless of size.
+    #[test]
+    fn parse_request_extremely_large_method_calls() {
+        let method_calls: Vec<serde_json::Value> = (0..1001)
+            .map(|i| json!(["Chat/get", {}, format!("c{i}")]))
+            .collect();
+        let body = json!({
+            "using": ["urn:ietf:params:jmap:chat"],
+            "methodCalls": method_calls
+        });
+        let result = parse_request(body);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.error_type, "requestTooLarge",
+            ">1000 method calls must be rejected as requestTooLarge"
+        );
+    }
+
+    // Test: parse_request with nested JSON in method args — accepted.
+    // Oracle: RFC 8620 §3.2 — method arguments are an arbitrary JSON object.
+    // Deeply nested objects must be accepted (no depth limit at parse level).
+    #[test]
+    fn parse_request_nested_json_args_accepted() {
+        let body = json!({
+            "using": ["urn:ietf:params:jmap:chat"],
+            "methodCalls": [
+                ["Chat/set", {
+                    "accountId": "a-self",
+                    "create": {
+                        "new-1": {
+                            "name": "test",
+                            "nested": {
+                                "deep": {
+                                    "deeper": {
+                                        "value": [1, 2, 3]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }, "c0"]
+            ]
+        });
+        let result = parse_request(body);
+        assert!(result.is_ok(), "deeply nested args must be accepted");
+        let req = result.unwrap();
+        // Verify the nested structure is preserved
+        let args = &req.method_calls[0].1;
+        assert_eq!(
+            args["create"]["new-1"]["nested"]["deep"]["deeper"]["value"],
+            json!([1, 2, 3])
+        );
+    }
+
+    // Test: response sessionState is consistent across calls in a batch.
+    // Oracle: RFC 8620 §3.4 — sessionState is a single value for the entire
+    // response, not per-method. The dispatcher sets it once for the batch.
+    #[tokio::test]
+    async fn response_session_state_consistent_across_batch() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "ChatContact/get",
+            Box::new(EchoHandler(json!({"state": "s-1"}))),
+        );
+        d.register(
+            "Chat/get",
+            Box::new(EchoHandler(json!({"state": "s-2"}))),
+        );
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("ChatContact/get".to_string(), json!({}), "c0".to_string()),
+                ("Chat/get".to_string(), json!({}), "c1".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "session-abc".to_string())
+            .await;
+        // sessionState must be the value passed to dispatch, not derived from methods
+        assert_eq!(resp.session_state, "session-abc");
+        // Serialized response must have exactly one sessionState field
+        let json_val = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json_val["sessionState"], "session-abc");
+    }
+
+    // Test: created_ids accumulated across multiple /set calls in one batch.
+    // Oracle: RFC 8620 §3.4 — createdIds maps ALL client-id → server-id
+    // pairs from all /set calls in the batch, not just the last one.
+    #[tokio::test]
+    async fn created_ids_accumulated_across_multiple_set_calls() {
+        struct SetHandler1;
+        impl JmapHandler for SetHandler1 {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+            ) -> HandlerFuture {
+                Box::pin(async move {
+                    Ok(json!({
+                        "created": {
+                            "new-chat-A": {"id": "server-A"},
+                            "new-chat-B": {"id": "server-B"}
+                        }
+                    }))
+                })
+            }
+        }
+
+        struct SetHandler2;
+        impl JmapHandler for SetHandler2 {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+            ) -> HandlerFuture {
+                Box::pin(async move {
+                    Ok(json!({
+                        "created": {
+                            "new-msg-X": {"id": "server-X"}
+                        }
+                    }))
+                })
+            }
+        }
+
+        let mut d = Dispatcher::new();
+        d.register("Chat/set", Box::new(SetHandler1));
+        d.register("Message/set", Box::new(SetHandler2));
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("Chat/set".to_string(), json!({}), "c0".to_string()),
+                ("Message/set".to_string(), json!({}), "c1".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+
+        let ids = resp.created_ids.as_ref().expect("createdIds must be present");
+        assert_eq!(ids.get("new-chat-A").map(|id| id.as_ref()), Some("server-A"));
+        assert_eq!(ids.get("new-chat-B").map(|id| id.as_ref()), Some("server-B"));
+        assert_eq!(ids.get("new-msg-X").map(|id| id.as_ref()), Some("server-X"));
+        assert_eq!(ids.len(), 3, "all createdIds from both /set calls must be accumulated");
+    }
+
+    // Test: error response for standard error types — verify JSON structure.
+    // Oracle: RFC 8620 §7.1 — method-level errors are Invocations whose args
+    // contain a "type" field with the error type string and an optional
+    // "description" field.
+    #[tokio::test]
+    async fn error_response_json_structure_for_standard_errors() {
+        let mut d = Dispatcher::new();
+        d.register(
+            "ChatContact/get",
+            Box::new(ErrorHandler(JmapError::not_found())),
+        );
+        d.register(
+            "Chat/get",
+            Box::new(ErrorHandler(JmapError::forbidden())),
+        );
+        d.register(
+            "Message/get",
+            Box::new(ErrorHandler(JmapError::server_fail("disk full"))),
+        );
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("ChatContact/get".to_string(), json!({}), "c0".to_string()),
+                ("Chat/get".to_string(), json!({}), "c1".to_string()),
+                ("Message/get".to_string(), json!({}), "c2".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+
+        // notFound
+        let err0 = &resp.method_responses[0].1;
+        assert_eq!(err0["type"], "notFound");
+        assert!(err0.get("type").unwrap().is_string());
+
+        // forbidden
+        let err1 = &resp.method_responses[1].1;
+        assert_eq!(err1["type"], "forbidden");
+
+        // serverFail with description
+        let err2 = &resp.method_responses[2].1;
+        assert_eq!(err2["type"], "serverFail");
+        assert_eq!(err2["description"], "disk full");
+    }
+
+    // Test: unknown capability in "using" — accepted per Kith's deviation from RFC 8620.
+    // Oracle: doc comment on parse_request — "Kith deliberately deviates: unknown URIs
+    // are silently accepted." Only an empty using array triggers unknownCapability.
+    #[test]
+    fn parse_request_only_unknown_capabilities_accepted() {
+        let body = json!({
+            "using": ["urn:example:totally-unknown:99"],
+            "methodCalls": [["Chat/get", {}, "c0"]]
+        });
+        let result = parse_request(body);
+        assert!(
+            result.is_ok(),
+            "Kith's RFC 8620 §3.3 deviation: unknown URIs must be silently accepted"
+        );
+    }
+
+    // Test: duplicate method calls in same batch — both execute.
+    // Oracle: RFC 8620 §3.3 — nothing prohibits calling the same method
+    // multiple times in a batch. Each invocation must execute independently.
+    #[tokio::test]
+    async fn dispatch_duplicate_method_calls_both_execute() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        struct CountingHandler(Arc<AtomicU32>);
+        impl JmapHandler for CountingHandler {
+            fn call(
+                &self,
+                _method_name: String,
+                _call_id: String,
+                _args: serde_json::Value,
+            ) -> HandlerFuture {
+                let count = self.0.fetch_add(1, Ordering::SeqCst);
+                let val = json!({"invocation_number": count});
+                Box::pin(async move { Ok(val) })
+            }
+        }
+
+        let counter = Arc::new(AtomicU32::new(0));
+        let mut d = Dispatcher::new();
+        d.register("ChatContact/get", Box::new(CountingHandler(Arc::clone(&counter))));
+
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
+                ("ChatContact/get".to_string(), json!({}), "c0".to_string()),
+                ("ChatContact/get".to_string(), json!({}), "c1".to_string()),
+                ("ChatContact/get".to_string(), json!({}), "c2".to_string()),
+            ],
+            None,
+        );
+        let resp = d
+            .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+            .await;
+
+        assert_eq!(resp.method_responses.len(), 3);
+        assert_eq!(counter.load(Ordering::SeqCst), 3, "handler must be called 3 times");
+        // Each invocation must have succeeded (no "type" error field)
+        for (i, inv) in resp.method_responses.iter().enumerate() {
+            assert!(
+                inv.1.get("type").is_none(),
+                "invocation {i} must succeed; got: {:?}",
+                inv.1
+            );
+        }
+        // Verify each got a distinct invocation number (executed sequentially)
+        assert_eq!(resp.method_responses[0].1["invocation_number"], 0);
+        assert_eq!(resp.method_responses[1].1["invocation_number"], 1);
+        assert_eq!(resp.method_responses[2].1["invocation_number"], 2);
+    }
 }

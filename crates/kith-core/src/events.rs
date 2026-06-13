@@ -60,3 +60,112 @@ pub fn parse_sse_frame(block: &str) -> SseFrame {
     }
     frame
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── StateChange tests ──────────────────────────────────────────────────
+
+    // Test: StateChange serialization round-trip.
+    // Oracle: serde Serialize + Deserialize derive on StateChange must produce
+    // an identical struct after JSON round-trip.
+    #[test]
+    fn state_change_serialization_round_trip() {
+        let original = StateChange {
+            type_name: "ChatContact".to_string(),
+            new_state: "s-42".to_string(),
+        };
+        let json_str = serde_json::to_string(&original).unwrap();
+        let deserialized: StateChange = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    // Test: StateChange type_name and new_state fields are correct in JSON.
+    // Oracle: the struct uses #[derive(Serialize, Deserialize)] with default
+    // field names (snake_case). Verify the JSON keys and values match.
+    #[test]
+    fn state_change_fields_correct_in_json() {
+        let sc = StateChange {
+            type_name: "Message".to_string(),
+            new_state: "s-99".to_string(),
+        };
+        let json_val: serde_json::Value = serde_json::to_value(&sc).unwrap();
+        assert_eq!(json_val["type_name"], "Message");
+        assert_eq!(json_val["new_state"], "s-99");
+    }
+
+    // ── parse_sse_frame tests ──────────────────────────────────────────────
+
+    // Test: parse_sse_frame with event+data+id — all fields populated.
+    // Oracle: SSE spec (WHATWG HTML Living Standard §9.2) — event, data, id
+    // are the three primary field types.
+    #[test]
+    fn parse_sse_frame_with_event_data_id() {
+        let block = "event: stateChange\ndata: {\"type\":\"Message\"}\nid: 42\n";
+        let frame = parse_sse_frame(block);
+        assert_eq!(frame.event_type, Some("stateChange".to_string()));
+        assert_eq!(frame.data, Some("{\"type\":\"Message\"}".to_string()));
+        assert_eq!(frame.id, Some("42".to_string()));
+    }
+
+    // Test: parse_sse_frame with data only (no event type).
+    // Oracle: SSE spec — the event type defaults to "message" in the browser API
+    // when not specified, but parse_sse_frame just returns None for event_type.
+    #[test]
+    fn parse_sse_frame_data_only() {
+        let block = "data: hello world\n";
+        let frame = parse_sse_frame(block);
+        assert_eq!(frame.event_type, None);
+        assert_eq!(frame.data, Some("hello world".to_string()));
+        assert_eq!(frame.id, None);
+    }
+
+    // Test: parse_sse_frame with multiple data lines joined with newline.
+    // Oracle: SSE spec §9.2.4 — "If the field name is data, append the field
+    // value to the data buffer, then append a single U+000A LINE FEED."
+    // Our implementation joins with \n.
+    #[test]
+    fn parse_sse_frame_multiple_data_lines() {
+        let block = "data: line one\ndata: line two\ndata: line three\n";
+        let frame = parse_sse_frame(block);
+        assert_eq!(frame.data, Some("line one\nline two\nline three".to_string()));
+    }
+
+    // Test: parse_sse_frame with comment lines (ignored).
+    // Oracle: SSE spec §9.2.4 — lines starting with ':' are comments and
+    // must be silently ignored.
+    #[test]
+    fn parse_sse_frame_comment_lines_ignored() {
+        let block = ": this is a comment\nevent: ping\n: another comment\ndata: pong\n";
+        let frame = parse_sse_frame(block);
+        assert_eq!(frame.event_type, Some("ping".to_string()));
+        assert_eq!(frame.data, Some("pong".to_string()));
+    }
+
+    // Test: parse_sse_frame with empty block returns default SseFrame.
+    // Oracle: SSE spec — an empty block (between two \n\n separators) means
+    // no fields were set. All fields remain at their default (None).
+    #[test]
+    fn parse_sse_frame_empty_block_returns_default() {
+        let frame = parse_sse_frame("");
+        assert_eq!(frame, SseFrame::default());
+        assert_eq!(frame.event_type, None);
+        assert_eq!(frame.data, None);
+        assert_eq!(frame.id, None);
+    }
+
+    // Test: parse_sse_frame with unknown fields (ignored).
+    // Oracle: SSE spec §9.2.4 — "If the line is not empty but does not
+    // contain a U+003A COLON character (:) ... or if the field name is not
+    // one of event/data/id/retry, the line is ignored."
+    #[test]
+    fn parse_sse_frame_unknown_fields_ignored() {
+        let block = "event: state\nretry: 3000\nfoo: bar\ndata: payload\n";
+        let frame = parse_sse_frame(block);
+        assert_eq!(frame.event_type, Some("state".to_string()));
+        assert_eq!(frame.data, Some("payload".to_string()));
+        // retry and foo are not captured by SseFrame
+        assert_eq!(frame.id, None);
+    }
+}

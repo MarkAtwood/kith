@@ -303,6 +303,19 @@ impl<'a> ChatStore<'a> {
         Ok(())
     }
 
+    /// Remove a peer participant from a group chat.
+    ///
+    /// Idempotent: DELETE affects 0 rows if the member was not present.
+    pub fn remove_member(&self, chat_id: &str, peer_user_id: &str) -> Result<(), KithError> {
+        self.conn
+            .execute(
+                "DELETE FROM chat_members WHERE chat_id = ?1 AND peer_user_id = ?2",
+                params![chat_id, peer_user_id],
+            )
+            .map_err(db_err)?;
+        Ok(())
+    }
+
     /// Return all peer participant IDs for a chat.
     ///
     /// For group chats, returns members stored in `chat_members`.
@@ -1380,6 +1393,161 @@ mod tests {
         assert!(chat_pin_strs.contains(&"msg-pin-b"));
     }
 
+    // ── Additional coverage tests ──────────────────────────────────────────
+
+    #[test]
+    fn create_direct_chat_sets_kind_and_contact_id() {
+        // Oracle: a direct chat must store kind=Direct and the supplied contact_id.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let chat = cs
+            .create("chat-dir1", "direct", Some("uid:alice"), 1_000_000)
+            .unwrap();
+        assert_eq!(chat.kind, ChatKind::Direct);
+        assert_eq!(
+            chat.contact_id.as_ref().map(|id| id.as_ref()),
+            Some("uid:alice")
+        );
+    }
+
+    #[test]
+    fn create_group_chat_sets_kind_group() {
+        // Oracle: a group chat must store kind=Group with no contact_id.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let chat = cs
+            .create("chat-grp2", "group", None, 1_000_000)
+            .unwrap();
+        assert_eq!(chat.kind, ChatKind::Group);
+        assert!(
+            chat.contact_id.is_none(),
+            "group chat must have no contact_id"
+        );
+    }
+
+    #[test]
+    fn list_ids_returns_ids_only() {
+        // Oracle: list_ids returns Vec<String> of just IDs, not full Chat objects.
+        // The count must match the number of created chats.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-id1", "direct", Some("uid:x"), 1_000_000)
+            .unwrap();
+        cs.create("chat-id2", "group", None, 1_000_001).unwrap();
+
+        let ids = cs.list_ids().unwrap();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&"chat-id1".to_string()));
+        assert!(ids.contains(&"chat-id2".to_string()));
+    }
+
+    #[test]
+    fn get_members_returns_member_user_ids() {
+        // Oracle: after add_member, get_members must return the added peer_user_ids.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-mem1", "group", None, 1_000_000).unwrap();
+        cs.add_member("chat-mem1", "uid:alice").unwrap();
+        cs.add_member("chat-mem1", "uid:bob").unwrap();
+
+        let members = cs.get_members("chat-mem1").unwrap();
+        assert_eq!(members.len(), 2);
+        assert!(members.contains(&"uid:alice".to_string()));
+        assert!(members.contains(&"uid:bob".to_string()));
+    }
+
+    #[test]
+    fn add_member_is_idempotent() {
+        // Oracle: INSERT OR IGNORE means adding the same member twice is a no-op.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-mem2", "group", None, 1_000_000).unwrap();
+        cs.add_member("chat-mem2", "uid:carol").unwrap();
+        cs.add_member("chat-mem2", "uid:carol").unwrap(); // duplicate
+
+        let members = cs.get_members("chat-mem2").unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0], "uid:carol");
+    }
+
+    #[test]
+    fn remove_member_removes_from_chat_members() {
+        // Oracle: DELETE FROM chat_members removes the specific (chat_id, peer_user_id) row.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-rm1", "group", None, 1_000_000).unwrap();
+        cs.add_member("chat-rm1", "uid:alice").unwrap();
+        cs.add_member("chat-rm1", "uid:bob").unwrap();
+
+        cs.remove_member("chat-rm1", "uid:alice").unwrap();
+
+        let members = cs.get_members("chat-rm1").unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0], "uid:bob");
+    }
+
+    #[test]
+    fn update_last_message_at_updates_timestamp_and_advances_state() {
+        // Oracle: update_last_message_at must both update the chat's last_message_at
+        // field and advance the state counter.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-lma1", "direct", Some("uid:frank"), 1_000_000)
+            .unwrap();
+        let state_before = cs.get_state().unwrap();
+
+        cs.update_last_message_at("chat-lma1", 2_000_000).unwrap();
+
+        let state_after = cs.get_state().unwrap();
+        assert_ne!(
+            state_before, state_after,
+            "state must advance after update_last_message_at"
+        );
+
+        let chat = cs.get("chat-lma1").unwrap().unwrap();
+        assert!(
+            chat.last_message_at.is_some(),
+            "last_message_at must be set"
+        );
+    }
+
+    #[test]
+    fn unread_count_returns_correct_count() {
+        // Oracle: unread_count = received + read_at IS NULL messages for that chat.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-uc1", "direct", Some("uid:greg"), 1_000_000)
+            .unwrap();
+
+        // Insert 2 received+unread, 1 received+read, 1 pending.
+        let insert = |id: &str, state: &str, read_at: Option<i64>| {
+            store
+                .conn
+                .execute(
+                    "INSERT INTO messages \
+                     (id, chat_id, sender_user_id, body, created_at, delivery_state, read_at, sender_msg_id) \
+                     VALUES (?1, 'chat-uc1', 'uid:greg', 'hi', 1000000, ?2, ?3, ?1)",
+                    params![id, state, read_at],
+                )
+                .unwrap();
+        };
+        insert("uc-r1", "received", None);
+        insert("uc-r2", "received", None);
+        insert("uc-r3", "received", Some(1_000_001));
+        insert("uc-p1", "pending", None);
+
+        let count = cs.unread_count("chat-uc1").unwrap();
+        assert_eq!(count, 2, "only received+unread messages count");
+    }
+
     #[test]
     fn pinned_messages_validation_rejects_wrong_chat() {
         // Oracle: pinning a message that belongs to a different chat must fail.
@@ -1465,5 +1633,168 @@ mod tests {
 
         let loaded = cs.get("chat-clr1").unwrap().unwrap();
         assert!(loaded.name.is_none(), "name must persist as None");
+    }
+
+    // -----------------------------------------------------------------------
+    // Additional chat store edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn create_direct_chat_same_contact_twice_returns_same_chat() {
+        // Oracle: the UNIQUE INDEX chats_direct_contact ON chats(contact_id)
+        // WHERE kind = 'direct' prevents two direct chats for the same contact.
+        // The second create call returns the existing chat (INSERT OR IGNORE).
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        let chat1 = cs
+            .create("chat-dup-a", "direct", Some("uid:same-contact"), 1_000_000)
+            .unwrap();
+
+        // Second create with a DIFFERENT chat ID but SAME contact_id.
+        let chat2 = cs
+            .create("chat-dup-b", "direct", Some("uid:same-contact"), 2_000_000)
+            .unwrap();
+
+        // Must return the same chat (the one that won the UNIQUE race).
+        assert_eq!(
+            chat1.id, chat2.id,
+            "second create with same contact must return the existing chat"
+        );
+        assert_eq!(
+            chat1.created_at, chat2.created_at,
+            "created_at must not change"
+        );
+    }
+
+    #[test]
+    fn get_nonexistent_chat_returns_none() {
+        // Oracle: get() on a chat ID not in the database returns Ok(None).
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+        let result = cs.get("totally-nonexistent").unwrap();
+        assert!(result.is_none(), "nonexistent chat must return None");
+    }
+
+    #[test]
+    fn list_chats_ordered_by_last_message_at_desc_nulls_last() {
+        // Oracle: SQL ORDER BY last_message_at DESC NULLS LAST, created_at DESC.
+        // Chat with most recent last_message_at comes first;
+        // chat with no messages (NULL) comes last.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-ord-a", "direct", Some("uid:alice-ord"), 1_000_000)
+            .unwrap();
+        cs.create("chat-ord-b", "direct", Some("uid:bob-ord"), 1_000_001)
+            .unwrap();
+        cs.create("chat-ord-c", "direct", Some("uid:carol-ord"), 1_000_002)
+            .unwrap();
+
+        cs.update_last_message_at("chat-ord-b", 5_000_000).unwrap();
+        cs.update_last_message_at("chat-ord-a", 3_000_000).unwrap();
+        // chat-ord-c has no last_message_at (NULL).
+
+        let chats = cs.list().unwrap();
+        let ids: Vec<&str> = chats.iter().map(|c| c.id.as_ref()).collect();
+
+        assert_eq!(ids[0], "chat-ord-b", "most recent last_message_at first");
+        assert_eq!(ids[1], "chat-ord-a", "second most recent next");
+        assert_eq!(ids[2], "chat-ord-c", "NULL last_message_at comes last");
+    }
+
+    #[test]
+    fn create_group_chat_add_members_verify_get_members() {
+        // Oracle: add_member inserts into chat_members; get_members returns them.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-grp-m", "group", None, 1_000_000).unwrap();
+        cs.add_member("chat-grp-m", "uid:alice").unwrap();
+        cs.add_member("chat-grp-m", "uid:bob").unwrap();
+        cs.add_member("chat-grp-m", "uid:carol").unwrap();
+
+        let members = cs.get_members("chat-grp-m").unwrap();
+        assert_eq!(members.len(), 3);
+        assert!(members.contains(&"uid:alice".to_string()));
+        assert!(members.contains(&"uid:bob".to_string()));
+        assert!(members.contains(&"uid:carol".to_string()));
+    }
+
+    #[test]
+    fn delete_chat_cascades_to_messages_and_members() {
+        // Oracle: chats table has ON DELETE CASCADE on chat_members(chat_id)
+        // and ON DELETE CASCADE on messages(chat_id) (via V16 migration).
+        // Deleting the chat row must cascade to both tables.
+        let store = Store::open_in_memory().unwrap();
+        let cs = ChatStore::new(&store.conn, None);
+
+        cs.create("chat-del-c", "group", None, 1_000_000).unwrap();
+        cs.add_member("chat-del-c", "uid:peer1").unwrap();
+
+        // Insert a message into the chat.
+        store
+            .conn
+            .execute(
+                "INSERT INTO messages \
+                 (id, chat_id, sender_user_id, body, created_at, delivery_state, sender_msg_id) \
+                 VALUES ('msg-del-c', 'chat-del-c', 'uid:peer1', 'hello', 1000, 'received', 'msg-del-c')",
+                [],
+            )
+            .unwrap();
+
+        // Verify the rows exist.
+        let member_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_members WHERE chat_id = 'chat-del-c'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(member_count, 1, "member must exist before delete");
+
+        let msg_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-del-c'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(msg_count, 1, "message must exist before delete");
+
+        // Delete the chat.
+        store
+            .conn
+            .execute("DELETE FROM chats WHERE id = 'chat-del-c'", [])
+            .unwrap();
+
+        // Oracle: cascade must remove both members and messages.
+        let member_count_after: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_members WHERE chat_id = 'chat-del-c'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            member_count_after, 0,
+            "chat_members must be cascade-deleted when chat is deleted"
+        );
+
+        let msg_count_after: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE chat_id = 'chat-del-c'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            msg_count_after, 0,
+            "messages must be cascade-deleted when chat is deleted"
+        );
     }
 }

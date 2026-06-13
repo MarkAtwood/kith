@@ -899,4 +899,198 @@ mod tests {
             changes.added
         );
     }
+    // -----------------------------------------------------------------------
+    // Additional outbox edge-case tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn enqueue_and_verify_via_get_due() {
+        // Oracle: enqueue inserts a row with next_attempt_at = now_unix.
+        // get_due(now_unix) must return it. Verify all fields.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-ev1");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-ev1", "user-c", "host-c.example.ts.net", 7777)
+            .unwrap();
+
+        let due = ob.get_due(7777).unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].message_id, "msg-ev1");
+        assert_eq!(due[0].peer_user_id, "user-c");
+        assert_eq!(due[0].peer_mailbox_host, "host-c.example.ts.net");
+        assert_eq!(due[0].kind, "message");
+        assert_eq!(due[0].next_attempt_at, 7777);
+        assert_eq!(due[0].attempt_count, 0);
+        assert!(due[0].last_error.is_none());
+        assert!(due[0].read_at_unix.is_none());
+    }
+
+    #[test]
+    fn get_due_does_not_return_future_entries() {
+        // Oracle: an entry with next_attempt_at=5000 must NOT appear in get_due(4999).
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-fut");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-fut", "user-b", "host-b.example.ts.net", 5000)
+            .unwrap();
+
+        let due = ob.get_due(4999).unwrap();
+        assert!(
+            due.is_empty(),
+            "entry with next_attempt_at=5000 must not appear at now=4999"
+        );
+    }
+
+    #[test]
+    fn mark_delivered_is_idempotent() {
+        // Oracle: calling mark_delivered on an already-delivered (already-deleted)
+        // entry must succeed without error. The DELETE WHERE clause simply matches
+        // 0 rows — no constraint violation or error.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-mdi");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-mdi", "user-b", "host-b.example.ts.net", 1000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-mdi").unwrap();
+        ob.mark_delivered(&entries[0]).unwrap();
+
+        // Second call with same entry — must not error.
+        ob.mark_delivered(&entries[0])
+            .expect("mark_delivered must be idempotent (no error on already-delivered)");
+
+        // Confirm row is still gone.
+        assert!(ob.get_by_message("msg-mdi").unwrap().is_empty());
+    }
+
+    #[test]
+    fn record_failure_stores_last_error_message() {
+        // Oracle: after record_failure, the entry's last_error field must
+        // contain the error message passed to record_failure.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-rfe");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-rfe", "user-b", "host-b.example.ts.net", 1000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-rfe").unwrap();
+        ob.record_failure(&entries[0], "TLS handshake timeout", 1000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-rfe").unwrap();
+        assert_eq!(
+            entries[0].last_error.as_deref(),
+            Some("TLS handshake timeout"),
+            "last_error must store the error message"
+        );
+    }
+
+    #[test]
+    fn record_failure_increments_attempt_count() {
+        // Oracle: after one record_failure call, attempt_count must be 1.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-rfc");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-rfc", "user-b", "host-b.example.ts.net", 1000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-rfc").unwrap();
+        assert_eq!(entries[0].attempt_count, 0);
+
+        ob.record_failure(&entries[0], "error", 1000).unwrap();
+
+        let entries = ob.get_by_message("msg-rfc").unwrap();
+        assert_eq!(
+            entries[0].attempt_count, 1,
+            "attempt_count must be 1 after one failure"
+        );
+    }
+
+    #[test]
+    fn record_failure_updates_next_attempt_at_to_future() {
+        // Oracle: after record_failure at now=1000, next_attempt_at must be > 1000.
+        // Base delay = 30s, jitter ±20% → range [24, 36]. So next >= 1024.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-rfn");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-rfn", "user-b", "host-b.example.ts.net", 1000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-rfn").unwrap();
+        ob.record_failure(&entries[0], "timeout", 1000).unwrap();
+
+        let entries = ob.get_by_message("msg-rfn").unwrap();
+        assert!(
+            entries[0].next_attempt_at > 1000,
+            "next_attempt_at must be in the future after record_failure; got {}",
+            entries[0].next_attempt_at
+        );
+        // More specifically: base=30, jitter_range=6, so delay in [24,36].
+        // next_attempt_at in [1024, 1036].
+        assert!(
+            entries[0].next_attempt_at >= 1024 && entries[0].next_attempt_at <= 1036,
+            "next_attempt_at must be in [1024, 1036] for first failure at now=1000; got {}",
+            entries[0].next_attempt_at
+        );
+    }
+
+    #[test]
+    fn enqueue_receipt_inserts_receipt_entry() {
+        // Oracle: enqueue_receipt creates a row with kind='receipt', read_at_unix set,
+        // and attempt_count=0.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-er1");
+
+        let ob = store.outbox();
+        ob.enqueue_receipt("msg-er1", "user-b", "host-b.example.ts.net", 8888, 2000)
+            .unwrap();
+
+        let entries = ob.get_by_message("msg-er1").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "receipt");
+        assert_eq!(entries[0].read_at_unix, Some(8888));
+        assert_eq!(entries[0].attempt_count, 0);
+        assert_eq!(entries[0].next_attempt_at, 2000);
+        assert_eq!(entries[0].peer_user_id, "user-b");
+    }
+
+    #[test]
+    fn get_due_ordering_oldest_first() {
+        // Oracle: get_due returns entries ORDER BY next_attempt_at ASC.
+        // Insert three entries with different next_attempt_at values;
+        // verify they come back oldest-first.
+        let store = Store::open_in_memory().unwrap();
+        insert_test_message(&store.conn, "msg-ord1");
+        insert_test_message(&store.conn, "msg-ord2");
+        insert_test_message(&store.conn, "msg-ord3");
+
+        let ob = store.outbox();
+        ob.enqueue("msg-ord3", "user-b", "host-b.example.ts.net", 3000)
+            .unwrap();
+        ob.enqueue("msg-ord1", "user-b", "host-b.example.ts.net", 1000)
+            .unwrap();
+        ob.enqueue("msg-ord2", "user-b", "host-b.example.ts.net", 2000)
+            .unwrap();
+
+        let due = ob.get_due(5000).unwrap();
+        assert_eq!(due.len(), 3);
+        assert_eq!(
+            due[0].message_id, "msg-ord1",
+            "oldest (next_attempt_at=1000) must come first"
+        );
+        assert_eq!(
+            due[1].message_id, "msg-ord2",
+            "middle (next_attempt_at=2000) must come second"
+        );
+        assert_eq!(
+            due[2].message_id, "msg-ord3",
+            "newest (next_attempt_at=3000) must come last"
+        );
+    }
 }

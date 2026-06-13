@@ -5089,4 +5089,452 @@ mod tests {
             "soft_delete must advance the state counter"
         );
     }
+    // -----------------------------------------------------------------------
+    // Edge case tests (store layer)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn insert_duplicate_id_fails_with_constraint_violation() {
+        // Oracle: SQLite PRIMARY KEY constraint rejects duplicate message IDs.
+        // The error maps to KithError::Validation (constraint violation).
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dup");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-dup",
+            "chat-dup",
+            "user-a",
+            "first",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-dup",
+        )
+        .expect("first insert");
+
+        let result = ms.insert(
+            "msg-dup",
+            "chat-dup",
+            "user-a",
+            "second",
+            "text/plain",
+            None,
+            2000,
+            &DeliveryState::Received,
+            None,
+            "msg-dup-2",
+        );
+        assert!(
+            result.is_err(),
+            "duplicate message ID must fail with constraint violation"
+        );
+        match result.unwrap_err() {
+            KithError::Validation(msg) => {
+                assert!(
+                    msg.contains("constraint"),
+                    "error must mention constraint; got: {msg}"
+                );
+            }
+            other => panic!("expected KithError::Validation, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn insert_with_nonexistent_chat_id_fails_fk_violation() {
+        // Oracle: SQLite FK constraint rejects a message referencing a chat_id
+        // not present in the chats table.
+        let store = Store::open_in_memory().expect("open");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let result = ms.insert(
+            "msg-fk1",
+            "no-such-chat",
+            "user-a",
+            "hello",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-fk1",
+        );
+        assert!(
+            result.is_err(),
+            "insert with nonexistent chat_id must fail (FK violation)"
+        );
+    }
+
+    #[test]
+    fn get_nonexistent_message_returns_none() {
+        // Oracle: get() on a missing ID returns Ok(None), not an error.
+        let store = Store::open_in_memory().expect("open");
+        let ms = MessageStore::new(&store.conn, None);
+        let result = ms.get("no-such-msg").expect("get must not error");
+        assert!(result.is_none(), "nonexistent message must return None");
+    }
+
+    #[test]
+    fn list_messages_for_empty_chat_returns_empty_vec() {
+        // Oracle: a chat with no messages must return an empty Vec, not an error.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-empty");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let msgs = ms
+            .list_by_chat("chat-empty", 100)
+            .expect("list_by_chat must not error");
+        assert!(msgs.is_empty(), "empty chat must return empty vec");
+    }
+
+    #[test]
+    fn list_by_chat_paged_offset_beyond_total_returns_empty() {
+        // Oracle: SQL OFFSET beyond the total row count returns zero rows.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-pg1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-pg1",
+            "chat-pg1",
+            "user-a",
+            "hello",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-pg1",
+        )
+        .expect("insert");
+
+        let result = ms
+            .list_by_chat_paged("chat-pg1", 10, 999)
+            .expect("paged query must not error");
+        assert!(
+            result.is_empty(),
+            "offset beyond total count must return empty vec"
+        );
+    }
+
+    #[test]
+    fn list_by_chat_paged_limit_zero_returns_empty() {
+        // Oracle: SQL LIMIT 0 always returns zero rows regardless of data.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-pg2");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-pg2",
+            "chat-pg2",
+            "user-a",
+            "hello",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-pg2",
+        )
+        .expect("insert");
+
+        let result = ms
+            .list_by_chat_paged("chat-pg2", 0, 0)
+            .expect("paged query must not error");
+        assert!(result.is_empty(), "limit=0 must return empty vec");
+    }
+
+    #[test]
+    fn update_read_at_earlier_timestamp_does_not_regress() {
+        // Oracle: the monotonicity guard `AND (read_at IS NULL OR read_at < ?1)`
+        // prevents overwriting a later read_at with an earlier one.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ra1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ra1",
+            "chat-ra1",
+            "user-a",
+            "hello",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ra1",
+        )
+        .expect("insert");
+
+        // First read_at = 5000
+        ms.update_read_at("msg-ra1", 5000).expect("first read_at");
+
+        // Attempt to set an earlier read_at = 3000 — must not regress.
+        ms.update_read_at("msg-ra1", 3000)
+            .expect("earlier read_at must succeed (idempotent)");
+
+        let msg = ms.get("msg-ra1").expect("get").expect("must exist");
+        // Oracle: read_at must still be 5000 (the later timestamp).
+        // unix 5000 = 1970-01-01T01:23:20Z
+        assert_eq!(
+            msg.read_at.as_ref().map(|d| d.as_ref()),
+            Some("1970-01-01T01:23:20Z"),
+            "read_at must not regress to earlier timestamp"
+        );
+    }
+
+    #[test]
+    fn update_read_at_on_nonexistent_message_returns_error() {
+        // Oracle: update_read_at on a missing message must return Err.
+        let store = Store::open_in_memory().expect("open");
+        let ms = MessageStore::new(&store.conn, None);
+        let result = ms.update_read_at("no-such-msg", 1000);
+        assert!(
+            result.is_err(),
+            "update_read_at on nonexistent message must return Err"
+        );
+    }
+
+    #[test]
+    fn get_changes_since_s0_returns_all_messages() {
+        // Oracle: sinceState "s-0" means "return everything created or updated
+        // after counter=0". Since all messages are inserted at counter>=1,
+        // all must appear in the result.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-cs1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-cs1",
+            "chat-cs1",
+            "user-a",
+            "first",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-cs1",
+        )
+        .expect("insert 1");
+        ms.insert(
+            "msg-cs2",
+            "chat-cs1",
+            "user-a",
+            "second",
+            "text/plain",
+            None,
+            2000,
+            &DeliveryState::Received,
+            None,
+            "msg-cs2",
+        )
+        .expect("insert 2");
+
+        let changes = ms.get_changes_since("s-0").expect("get_changes_since");
+        assert_eq!(
+            changes.added.len(),
+            2,
+            "sinceState s-0 must return all messages in added; got {:?}",
+            changes.added
+        );
+        assert!(changes.added.contains(&"msg-cs1".to_string()));
+        assert!(changes.added.contains(&"msg-cs2".to_string()));
+        assert!(changes.updated.is_empty());
+    }
+
+    #[test]
+    fn get_changes_since_current_state_returns_empty() {
+        // Oracle: when sinceState equals the current state, no changes exist.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-cs3");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-cs3",
+            "chat-cs3",
+            "user-a",
+            "hello",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-cs3",
+        )
+        .expect("insert");
+
+        let current = ms.get_state().expect("get_state");
+        let changes = ms.get_changes_since(&current).expect("get_changes_since");
+        assert!(changes.added.is_empty(), "no new messages since current state");
+        assert!(
+            changes.updated.is_empty(),
+            "no updated messages since current state"
+        );
+    }
+
+    #[test]
+    fn find_by_sender_msg_id_nonexistent_returns_none() {
+        // Oracle: find_by_sender_msg_id with a non-matching ID returns Ok(None).
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-fs1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let result = ms
+            .find_by_sender_msg_id("chat-fs1", "no-such-sender-id")
+            .expect("must not error");
+        assert!(result.is_none(), "nonexistent sender_msg_id must return None");
+    }
+
+    #[test]
+    fn find_by_sender_msg_id_dedup_returns_existing() {
+        // Oracle: after inserting a message with a given sender_msg_id,
+        // find_by_sender_msg_id returns that message. This is the idempotency
+        // check used by Peer/deliver — same sender_msg_id means duplicate delivery.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-fs2");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-fs2",
+            "chat-fs2",
+            "user-a",
+            "original",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "sender-ulid-abc",
+        )
+        .expect("insert");
+
+        let found = ms
+            .find_by_sender_msg_id("chat-fs2", "sender-ulid-abc")
+            .expect("must not error")
+            .expect("must find existing");
+        assert_eq!(found.id, "msg-fs2");
+        assert_eq!(found.body, "original");
+    }
+
+    #[test]
+    fn message_with_empty_body_accepted_by_store() {
+        // Oracle: the store layer has body TEXT NOT NULL but no CHECK(body != '').
+        // An empty string is a valid TEXT value in SQLite. The application layer
+        // (kith-chat) enforces non-empty bodies; the store does not.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-eb1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-eb1",
+            "chat-eb1",
+            "user-a",
+            "",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-eb1",
+        )
+        .expect("empty body must be accepted by the store layer");
+
+        let msg = ms.get("msg-eb1").expect("get").expect("must exist");
+        assert_eq!(msg.body, "", "empty body must round-trip");
+    }
+
+    #[test]
+    fn message_with_max_body_size_accepted() {
+        // Oracle: MAX_BODY_BYTES = 65536 (kith_core::MAX_BODY_BYTES).
+        // The store must accept a body of exactly this length without error.
+        // SQLite TEXT has no built-in length limit.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-mb1");
+
+        let large_body = "x".repeat(65536);
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-mb1",
+            "chat-mb1",
+            "user-a",
+            &large_body,
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-mb1",
+        )
+        .expect("65536-byte body must be accepted");
+
+        let msg = ms.get("msg-mb1").expect("get").expect("must exist");
+        assert_eq!(msg.body.len(), 65536, "body must round-trip at max size");
+    }
+
+    #[test]
+    fn soft_delete_cascades_pinned_messages() {
+        // Oracle: the pinned_messages table has FK on message_id with ON DELETE CASCADE.
+        // When a message is hard-deleted (DELETE FROM messages), pinned_messages rows
+        // referencing that message must be automatically removed.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-pnc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-pnc",
+            "chat-pnc",
+            "user-a",
+            "pinnable",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-pnc",
+        )
+        .expect("insert");
+
+        // Pin the message.
+        store
+            .conn
+            .execute(
+                "INSERT INTO pinned_messages (chat_id, message_id) VALUES ('chat-pnc', 'msg-pnc')",
+                [],
+            )
+            .expect("pin message");
+
+        // Verify the pin exists.
+        let pin_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM pinned_messages WHERE message_id = 'msg-pnc'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(pin_count, 1, "pin must exist before delete");
+
+        // Hard-delete the message.
+        store
+            .conn
+            .execute("DELETE FROM messages WHERE id = 'msg-pnc'", [])
+            .unwrap();
+
+        // Oracle: ON DELETE CASCADE must have removed the pinned_messages row.
+        let pin_count_after: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM pinned_messages WHERE message_id = 'msg-pnc'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            pin_count_after, 0,
+            "pinned_messages must be cascade-deleted when message is hard-deleted"
+        );
+    }
 }
