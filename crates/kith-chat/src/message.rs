@@ -3,8 +3,8 @@
 use crate::kith_to_jmap;
 use kith_attach::BlobStore;
 use kith_core::{
-    unix_secs_to_rfc3339, Attachment, DeliveryState, JmapError, Message, MAX_ATTACHMENT_BYTES,
-    MAX_BODY_BYTES, MAX_OBJECTS_IN_GET,
+    make_attachment, unix_secs_to_rfc3339, Attachment, ChatKind, DeliveryState, Id, JmapError,
+    Message, SenderId, UTCDate, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, MAX_OBJECTS_IN_GET,
 };
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
@@ -498,7 +498,7 @@ async fn process_create(
         // infinite loop on malformed data.  Cycle detection is deferred to
         // Phase 2 when a recursive UI is introduced.
         match guard.messages().get(reply_id) {
-            Ok(Some(ref referenced)) if referenced.chat_id == chat_id => {}
+            Ok(Some(ref referenced)) if referenced.chat_id == *chat_id => {}
             Ok(Some(_)) => {
                 return Err(
                     json!({"type": "invalidArguments", "description": "replyTo references a message in a different chat"}),
@@ -521,13 +521,7 @@ async fn process_create(
     // Convert ParsedAttachment -> kith_core::Attachment for the store method.
     let core_attachments: Vec<Attachment> = attachments
         .iter()
-        .map(|a| Attachment {
-            blob_id: a.blob_id.clone(),
-            filename: a.filename.clone(),
-            content_type: a.content_type.clone(),
-            size: a.size,
-            sha256: a.sha256.clone(),
-        })
+        .map(|a| make_attachment(&a.blob_id, &a.filename, &a.content_type, a.size, &a.sha256))
         .collect();
 
     // Build the outbox peer list BEFORE inserting the message so we can fail
@@ -539,11 +533,11 @@ async fn process_create(
         // Direct chat: single peer via contact_id.
         let host = guard
             .contacts()
-            .get_mailbox_host(peer_id)
+            .get_mailbox_host(peer_id.as_ref())
             .map_err(|e| json!({"type": "serverFail", "description": format!("could not look up mailbox host: {e}")}))?
             .ok_or_else(|| json!({"type": "serverFail", "description": "contact has no mailbox host — add the contact before sending"}))?;
-        outbox_peers.push((peer_id.clone(), host));
-    } else if chat.kind == "group" {
+        outbox_peers.push((peer_id.clone().into_inner(), host));
+    } else if chat.kind == ChatKind::Group {
         // Group chat: fan out to all members in chat_members.
         // Policy: all-or-nothing.  If any member has no mailbox host the
         // entire send fails with serverFail.  Best-effort fan-out (silently
@@ -624,21 +618,19 @@ async fn process_create(
     // message is already stored, causing the client to retry and create a duplicate.
     let received_at = unix_secs_to_rfc3339(now_unix.max(0) as u64);
     let sent_at_val = sent_at.unwrap_or_else(|| received_at.clone());
-    let msg = Message {
-        id: msg_id.clone(),
-        sender_msg_id: msg_id,
-        chat_id,
-        sender_id: owner_user_id.to_string(),
+    let mut msg = Message::new(
+        Id::from(msg_id.clone()),
+        Id::from(msg_id),
+        SenderId::Owner,
+        Id::from(chat_id),
         body,
         body_type,
-        attachments: core_attachments,
-        reply_to,
-        sent_at: sent_at_val,
-        received_at,
-        delivery_state: DeliveryState::Pending,
-        delivered_at: None,
-        read_at: None,
-    };
+        UTCDate::from(sent_at_val),
+        UTCDate::from(received_at),
+        DeliveryState::Pending,
+    );
+    msg.attachments = core_attachments;
+    msg.reply_to = reply_to.map(Id::from);
 
     serde_json::to_value(&msg).map_err(
         |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),
@@ -650,7 +642,7 @@ fn process_update(
     server_id: &str,
     patch: &Value,
     now_unix: i64,
-    owner_user_id: &str,
+    _owner_user_id: &str,
     old_state_out: &mut Option<String>,
     new_state_out: &mut Option<String>,
 ) -> Result<(), Value> {
@@ -728,14 +720,14 @@ fn process_update(
     // Enqueue a read receipt to the original sender for inbound messages.
     // Failures are silently ignored — receipt enqueue must not fail the readAt update.
     if let Ok(Some(msg)) = guard.messages().get(server_id) {
-        if msg.sender_id != owner_user_id {
+        if let SenderId::Contact(ref peer_user_id) = msg.sender_id {
             // Intentional: receipts are not sent to blocked senders. Marking a blocked
             // contact's message as read is a local-only operation.
-            if let Ok(true) = guard.contacts().is_permitted(&msg.sender_id) {
-                if let Ok(Some(host)) = guard.contacts().get_mailbox_host(&msg.sender_id) {
+            if let Ok(true) = guard.contacts().is_permitted(peer_user_id) {
+                if let Ok(Some(host)) = guard.contacts().get_mailbox_host(peer_user_id) {
                     let _ = guard.outbox().enqueue_receipt(
                         server_id,
-                        &msg.sender_id,
+                        peer_user_id,
                         &host,
                         read_at_unix,
                         now_unix,
@@ -1030,7 +1022,7 @@ impl JmapHandler for MessageQueryHandler {
                 .list_by_chat_paged(&chat_id, limit, position)
                 .map_err(kith_to_jmap)?;
 
-            let page_ids: Vec<String> = page_messages.into_iter().map(|m| m.id).collect();
+            let page_ids: Vec<String> = page_messages.into_iter().map(|m| m.id.into_inner()).collect();
 
             let total_count = if calculate_total {
                 guard

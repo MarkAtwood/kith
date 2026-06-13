@@ -451,17 +451,18 @@ mod tests {
             .await;
 
         let client = reqwest::Client::new();
-        let req = JmapRequest {
-            using: vec![
+        let req = JmapRequest::new(
+            vec![
                 "urn:ietf:params:jmap:core".into(),
                 "urn:ietf:params:jmap:chat".into(),
             ],
-            method_calls: vec![(
+            vec![(
                 "Chat/get".into(),
                 serde_json::json!({"accountId": "a-self"}),
                 "c0".into(),
             )],
-        };
+            None,
+        );
         let api_url = format!("{}/jmap/api", mock_server.uri());
         let result = call_jmap(&client, &api_url, &req).await;
 

@@ -6,7 +6,8 @@ use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use kith_core::{
-    unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
+    make_attachment, unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, SenderId,
+    MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
 };
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -201,18 +202,18 @@ impl PeerJmapHandler for DeliverHandler {
             //      the handler idempotent for the "peer sends with wrong/stale chatId"
             //      case and avoids a UNIQUE INDEX violation on contact_id.
             //   c) chatId unknown and no direct chat for this contact → create one.
-            let resolved_chat_id: String = match guard.chats().get(&msg.chat_id).map_err(|e| {
+            let resolved_chat_id: String = match guard.chats().get(msg.chat_id.as_ref()).map_err(|e| {
                 tracing::error!("store error looking up chat: {e}");
                 JmapError::server_fail("internal error")
             })? {
                 Some(existing) => {
-                    let sender_permitted = match existing.contact_id.as_deref() {
+                    let sender_permitted = match existing.contact_id.as_ref().map(|id| id.as_ref()) {
                         // Direct chat: sender must be the contact.
                         Some(cid) => cid == identity.user_id.as_str(),
                         // Group chat: sender must be in chat_members.
                         None => guard
                             .chats()
-                            .get_members(&existing.id)
+                            .get_members(existing.id.as_ref())
                             .map_err(|e| {
                                 tracing::error!("store error fetching members: {e}");
                                 JmapError::server_fail("internal error")
@@ -223,7 +224,7 @@ impl PeerJmapHandler for DeliverHandler {
                     if !sender_permitted {
                         return Err(JmapError::invalid_arguments("chatId sender mismatch"));
                     }
-                    existing.id
+                    existing.id.into_inner()
                 }
                 None => {
                     // Case (b): adopt an existing direct chat for this contact if
@@ -236,7 +237,7 @@ impl PeerJmapHandler for DeliverHandler {
                             JmapError::server_fail("internal error")
                         })?
                     {
-                        adopted.id
+                        adopted.id.into_inner()
                     } else {
                         // Case (c): no existing direct chat — create one.
                         // If replyTo is set, it cannot reference a message in a
@@ -249,7 +250,7 @@ impl PeerJmapHandler for DeliverHandler {
                         guard
                             .chats()
                             .create(
-                                &msg.chat_id,
+                                msg.chat_id.as_ref(),
                                 "direct",
                                 Some(identity.user_id.as_str()),
                                 now_unix,
@@ -259,6 +260,7 @@ impl PeerJmapHandler for DeliverHandler {
                                 JmapError::server_fail("internal error")
                             })?
                             .id
+                            .into_inner()
                     }
                 }
             };
@@ -269,8 +271,8 @@ impl PeerJmapHandler for DeliverHandler {
             // (cases b/c above); messages are stored under `resolved_chat_id` so a
             // check against `msg.chat_id` would never find them.
             if let Some(ref reply_id) = msg.reply_to {
-                match guard.messages().get(reply_id) {
-                    Ok(Some(ref referenced)) if referenced.chat_id == resolved_chat_id => {}
+                match guard.messages().get(reply_id.as_ref()) {
+                    Ok(Some(ref referenced)) if referenced.chat_id.as_ref() == resolved_chat_id => {}
                     Ok(Some(_)) => {
                         return Err(JmapError::invalid_arguments(
                             "replyTo references a message in a different chat",
@@ -496,7 +498,7 @@ impl PeerJmapHandler for ReceiptHandler {
             // Step g: ownership check -- only messages we sent may be updated.
             // Compare against the real owner user ID (never the literal "self").
             // Return not_found (not forbidden) to avoid distinguishing owned vs not-owned.
-            if msg.sender_id != owner_user_id {
+            if !matches!(msg.sender_id, SenderId::Contact(ref s) if s == &owner_user_id) {
                 return Err(JmapError::not_found());
             }
 
@@ -512,13 +514,13 @@ impl PeerJmapHandler for ReceiptHandler {
             // Group chats (contact_id = None) are not yet supported for Peer/receipt.
             let chat = guard
                 .chats()
-                .get(&msg.chat_id)
+                .get(msg.chat_id.as_ref())
                 .map_err(|e| {
                     tracing::error!("store error fetching chat for receipt: {e}");
                     JmapError::server_fail("internal error")
                 })?
                 .ok_or_else(JmapError::not_found)?;
-            if chat.contact_id.as_deref() != Some(identity.user_id.as_str()) {
+            if chat.contact_id.as_ref().map(|id| id.as_ref()) != Some(identity.user_id.as_str()) {
                 return Err(JmapError::not_found());
             }
 
@@ -1024,13 +1026,13 @@ fn validate_attachments(
             return Err(JmapError::invalid_arguments("invalid attachment sha256"));
         }
 
-        result.push(kith_core::Attachment {
-            blob_id: a.blob_id.clone(),
-            filename: a.filename.clone(),
-            content_type: a.content_type.clone(),
-            size: a.size,
-            sha256: a.sha256.clone(),
-        });
+        result.push(make_attachment(
+            a.blob_id.clone(),
+            a.filename.clone(),
+            a.content_type.clone(),
+            a.size,
+            a.sha256.clone(),
+        ));
     }
     Ok(result)
 }
@@ -1392,13 +1394,13 @@ pub async fn outbox_tick<C: DeliverClient>(
 
         // Build JMAP request; owner_id replaces the "self" sentinel in sender_id.
         let jmap_request = build_peer_deliver_request(
-            &message.id,
-            &message.chat_id,
+            message.id.as_ref(),
+            message.chat_id.as_ref(),
             owner_id,
             &message.body,
             &message.body_type,
-            &message.sent_at,
-            message.reply_to.as_deref(),
+            message.sent_at.as_ref(),
+            message.reply_to.as_ref().map(|id| id.as_ref()),
             message.attachments.as_slice(),
         );
 
@@ -1588,10 +1590,10 @@ mod tests {
             .unwrap()
             .expect("message must exist in store");
         assert_eq!(msg.delivery_state, DeliveryState::Received);
-        assert_eq!(msg.sender_id, "uid-bob");
+        assert_eq!(msg.sender_id, SenderId::Contact("uid-bob".to_string()));
         assert_eq!(msg.body, "Hello!");
         assert_eq!(
-            msg.sender_msg_id, msg_id,
+            msg.sender_msg_id.as_ref(), msg_id,
             "sender_msg_id must equal the sender's ULID"
         );
     }
@@ -2478,10 +2480,10 @@ mod tests {
 
         let guard = store.lock().unwrap();
         let msg = guard.messages().get("msg-rclamp").unwrap().unwrap();
-        let read_at_str = msg.read_at.expect("read_at must be set");
+        let read_at_val = msg.read_at.expect("read_at must be set");
 
         // Parse the stored RFC 3339 string back to a Unix timestamp.
-        let stored_unix: i64 = DateTime::parse_from_rfc3339(&read_at_str)
+        let stored_unix: i64 = DateTime::parse_from_rfc3339(read_at_val.as_ref())
             .expect("stored read_at must be valid RFC 3339")
             .timestamp();
 
@@ -2631,14 +2633,13 @@ mod tests {
     // literal, not from the code under test.
     #[test]
     fn build_peer_deliver_request_with_attachments() {
-        use kith_core::Attachment;
-        let attachment = Attachment {
-            blob_id: "a".repeat(64),
-            filename: "test.txt".to_string(),
-            content_type: "text/plain".to_string(),
-            size: 42,
-            sha256: "b".repeat(64),
-        };
+        let attachment = make_attachment(
+            "a".repeat(64),
+            "test.txt",
+            "text/plain",
+            42,
+            "b".repeat(64),
+        );
         let req = build_peer_deliver_request(
             "01JVWXYZ0000000000000000AB",
             &"b3d4e5f6".repeat(8),
@@ -3386,7 +3387,7 @@ mod tests {
             .expect("list_by_message must succeed");
         assert_eq!(stored.len(), 1, "exactly one attachment must be stored");
         let a = &stored[0];
-        assert_eq!(a.blob_id, "a".repeat(64));
+        assert_eq!(a.blob_id.as_ref(), "a".repeat(64));
         assert_eq!(a.filename, "doc.pdf");
         assert_eq!(a.content_type, "application/pdf");
         assert_eq!(a.size, 1024u64);
@@ -3453,7 +3454,7 @@ mod tests {
             .expect("chats().get must not error")
             .expect("chat must exist after delivery");
         assert_eq!(
-            chat.contact_id.as_deref(),
+            chat.contact_id.as_ref().map(|id| id.as_ref()),
             Some("uid:alice"),
             "contact_id must be the sender's user_id"
         );
@@ -3545,7 +3546,7 @@ mod tests {
         let chats = guard.chats().list().expect("chats list must not error");
         let direct_for_bob: Vec<_> = chats
             .iter()
-            .filter(|c| c.contact_id.as_deref() == Some("uid:bob"))
+            .filter(|c| c.contact_id.as_ref().map(|id| id.as_ref()) == Some("uid:bob"))
             .collect();
         assert_eq!(
             direct_for_bob.len(),
@@ -3557,7 +3558,7 @@ mod tests {
         // Oracle: both messages are stored (different sender_msg_id ⇒ two rows).
         let msgs = guard
             .messages()
-            .list_by_chat(&direct_for_bob[0].id, 10)
+            .list_by_chat(direct_for_bob[0].id.as_ref(), 10)
             .expect("message list must not error");
         assert_eq!(
             msgs.len(),
@@ -3665,7 +3666,7 @@ mod tests {
             .expect("find_by_sender_msg_id must not error")
             .expect("message must exist after both delivers");
         assert_eq!(
-            found.id, original_id,
+            found.id.as_ref(), original_id,
             "the stored row must have the receiver-assigned id from the first delivery"
         );
     }

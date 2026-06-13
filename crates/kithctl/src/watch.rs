@@ -783,21 +783,17 @@ mod tests {
     /// field-name test — before any code reaches production.
     #[test]
     fn message_get_response_sender_field_is_sender_id() {
-        let msg = kith_core::Message {
-            id: "m-1".to_string(),
-            sender_msg_id: "m-1".to_string(),
-            chat_id: "chat-1".to_string(),
-            sender_id: "uid-alice".to_string(),
-            body: "hello".to_string(),
-            body_type: "text/plain".to_string(),
-            attachments: vec![],
-            reply_to: None,
-            sent_at: "2026-01-01T00:00:00Z".to_string(),
-            received_at: "2026-01-01T00:00:00Z".to_string(),
-            delivery_state: kith_core::DeliveryState::Received,
-            delivered_at: None,
-            read_at: None,
-        };
+        let msg = kith_core::Message::new(
+            kith_core::Id::from("m-1"),
+            kith_core::Id::from("m-1"),
+            kith_core::SenderId::Contact("uid-alice".to_string()),
+            kith_core::Id::from("chat-1"),
+            "hello",
+            "text/plain",
+            kith_core::UTCDate::from("2026-01-01T00:00:00Z"),
+            kith_core::UTCDate::from("2026-01-01T00:00:00Z"),
+            kith_core::DeliveryState::Received,
+        );
         let json_val = serde_json::to_value(&msg).expect("Message must serialise");
 
         // Correct parse — must find the sender

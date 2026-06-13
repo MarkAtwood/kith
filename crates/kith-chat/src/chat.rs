@@ -581,6 +581,7 @@ impl JmapHandler for ChatQueryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kith_core::ChatKind;
     use kith_store::Store;
     use serde_json::json;
 
@@ -697,7 +698,7 @@ mod tests {
             .get(actual_id)
             .unwrap()
             .expect("chat must exist in store after create");
-        assert_eq!(chat.kind, "direct");
+        assert_eq!(chat.kind, ChatKind::Direct);
     }
 
     // Oracle: Chat/set create with an unknown contactId must return notCreated/notFound.

@@ -634,7 +634,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use kith_attach::BlobStore;
-    use kith_core::{auth::Role, jmap::JmapRequest, AuthError, Identity};
+    use kith_core::{auth::Role, AuthError, Identity, JmapRequest};
     use kith_events::make_channel;
     use kith_store::Store;
     use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
@@ -754,10 +754,11 @@ mod tests {
         let peer_methods = ["Peer/deliver", "Peer/receipt"];
 
         for method in owner_methods {
-            let req = JmapRequest {
-                using: vec!["urn:ietf:params:jmap:chat".to_string()],
-                method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
-            };
+            let req = JmapRequest::new(
+                vec!["urn:ietf:params:jmap:chat".to_string()],
+                vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
+                None,
+            );
             let resp = dispatcher
                 .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
                 .await;
@@ -771,10 +772,11 @@ mod tests {
         }
 
         for method in peer_methods {
-            let req = JmapRequest {
-                using: vec!["urn:ietf:params:jmap:chat".to_string()],
-                method_calls: vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
-            };
+            let req = JmapRequest::new(
+                vec!["urn:ietf:params:jmap:chat".to_string()],
+                vec![(method.to_string(), serde_json::json!({}), "r0".to_string())],
+                None,
+            );
             let resp = dispatcher
                 .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
                 .await;

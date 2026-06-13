@@ -1,5 +1,5 @@
 use crate::{attachment, db_err};
-use kith_core::{DeliveryState, JmapError, KithError, Message, StateChange};
+use kith_core::{DeliveryState, Id, JmapError, KithError, Message, SenderId, StateChange, UTCDate};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use tokio::sync::broadcast;
@@ -30,6 +30,9 @@ fn delivery_state_str(s: &DeliveryState) -> &'static str {
         DeliveryState::Delivered => "delivered",
         DeliveryState::Failed => "failed",
         DeliveryState::Received => "received",
+        // DeliveryState is #[non_exhaustive]; unknown variants are defensive-defaulted
+        // to "pending" so the DB CHECK constraint never rejects them.
+        _ => "pending",
     }
 }
 
@@ -109,21 +112,26 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         )
     })?;
 
-    Ok(Message {
-        id,
-        sender_msg_id,
-        chat_id,
-        sender_id: sender_user_id,
+    // In the DB, sender_user_id is always a peer user ID (never "self")
+    // because "self" is a display-time concept. Use Contact variant.
+    let sender_id = SenderId::Contact(sender_user_id);
+
+    let mut msg = Message::new(
+        Id::from(id),
+        Id::from(sender_msg_id),
+        sender_id,
+        Id::from(chat_id),
         body,
         body_type,
-        attachments: vec![],
-        reply_to,
-        sent_at,
-        received_at,
+        UTCDate::from(sent_at),
+        UTCDate::from(received_at),
         delivery_state,
-        delivered_at,
-        read_at,
-    })
+    );
+    msg.reply_to = reply_to.map(Id::from);
+    msg.delivered_at = delivered_at.map(UTCDate::from);
+    msg.read_at = read_at.map(UTCDate::from);
+
+    Ok(msg)
 }
 
 /// Batch-load all attachments for a set of message IDs in a single SQL query.
@@ -153,22 +161,19 @@ fn load_attachments_for_messages(
     let mut stmt = conn.prepare(&sql).map_err(db_err)?;
     let rows = stmt
         .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let blob_id: String = row.get(0)?;
+            let msg_id: String = row.get(1)?;
+            let filename: String = row.get(2)?;
+            let content_type: String = row.get(3)?;
+            let size: i64 = row.get(4)?;
+            // Negative means DB corruption; reject rather than clamp.
+            if size < 0 {
+                return Err(rusqlite::Error::IntegralValueOutOfRange(4, size));
+            }
+            let sha256: String = row.get(5)?;
             Ok((
-                row.get::<_, String>(1)?, // message_id
-                kith_core::Attachment {
-                    blob_id: row.get(0)?,
-                    filename: row.get(2)?,
-                    content_type: row.get(3)?,
-                    size: {
-                        let s: i64 = row.get(4)?;
-                        // Negative means DB corruption; reject rather than clamp.
-                        if s < 0 {
-                            return Err(rusqlite::Error::IntegralValueOutOfRange(4, s));
-                        }
-                        s as u64
-                    },
-                    sha256: row.get(5)?,
-                },
+                msg_id,
+                kith_core::make_attachment(blob_id, filename, content_type, size as u64, sha256),
             ))
         })
         .map_err(db_err)?;
@@ -271,7 +276,7 @@ impl<'a> MessageStore<'a> {
             Some(row) => {
                 let mut msg = row.map_err(db_err)?;
                 msg.attachments =
-                    attachment::AttachmentStore::new(self.conn).list_by_message(&msg.id)?;
+                    attachment::AttachmentStore::new(self.conn).list_by_message(msg.id.as_ref())?;
                 Ok(Some(msg))
             }
         }
@@ -302,10 +307,10 @@ impl<'a> MessageStore<'a> {
             return Ok(messages);
         }
 
-        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(&msg.id) {
+            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
                 msg.attachments = atts;
             }
         }
@@ -344,10 +349,10 @@ impl<'a> MessageStore<'a> {
             return Ok(messages);
         }
 
-        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(&msg.id) {
+            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
                 msg.attachments = atts;
             }
         }
@@ -392,10 +397,10 @@ impl<'a> MessageStore<'a> {
             return Ok(messages);
         }
 
-        let ids: Vec<String> = messages.iter().map(|m| m.id.clone()).collect();
+        let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(&msg.id) {
+            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
                 msg.attachments = atts;
             }
         }
@@ -487,7 +492,7 @@ impl<'a> MessageStore<'a> {
             Some(row) => {
                 let mut msg = row.map_err(db_err)?;
                 msg.attachments =
-                    attachment::AttachmentStore::new(self.conn).list_by_message(&msg.id)?;
+                    attachment::AttachmentStore::new(self.conn).list_by_message(msg.id.as_ref())?;
                 Ok(Some(msg))
             }
         }
@@ -946,10 +951,10 @@ mod tests {
         let msg = ms.get("msg-001").expect("get").expect("should exist");
         assert_eq!(msg.id, "msg-001");
         assert_eq!(msg.chat_id, "chat-001");
-        assert_eq!(msg.sender_id, "user-abc");
+        assert_eq!(msg.sender_id, SenderId::Contact("user-abc".to_string()));
         assert_eq!(msg.body, "Hello, world!");
         assert_eq!(msg.body_type, "text/plain");
-        assert_eq!(msg.sent_at, "2026-04-18T12:00:00Z");
+        assert_eq!(msg.sent_at.as_ref(), "2026-04-18T12:00:00Z");
         assert_eq!(msg.delivery_state, DeliveryState::Received);
         assert_eq!(msg.reply_to, None);
         assert_eq!(msg.delivered_at, None);
@@ -1135,7 +1140,7 @@ mod tests {
 
         // Capture the stored read_at string (independent oracle: it must equal the
         // RFC 3339 representation of unix timestamp 5000).
-        let read_at_after_first = msg_after.read_at.clone().unwrap();
+        let read_at_after_first: String = msg_after.read_at.as_ref().unwrap().as_ref().to_owned();
 
         // Second call with an earlier timestamp must be idempotent (Ok) and must NOT
         // overwrite the stored value with the smaller timestamp.
@@ -1144,7 +1149,7 @@ mod tests {
 
         let msg_final = ms.get("msg-ra").expect("get").expect("exists");
         assert_eq!(
-            msg_final.read_at.as_deref(),
+            msg_final.read_at.as_ref().map(|d| d.as_ref()),
             Some(read_at_after_first.as_str()),
             "read_at must not regress: earlier timestamp must not overwrite a later one"
         );
@@ -1178,7 +1183,7 @@ mod tests {
         ms.update_read_at("msg-rnd", 9000).expect("first update");
         let state_after_first = ms.get_state().expect("state after first update");
         let msg_after_first = ms.get("msg-rnd").expect("get").expect("exists");
-        let read_at_first = msg_after_first.read_at.clone().unwrap();
+        let read_at_first: String = msg_after_first.read_at.as_ref().unwrap().as_ref().to_owned();
 
         // Second call with a smaller timestamp (3000 < 9000).
         let result = ms.update_read_at("msg-rnd", 3000);
@@ -1191,7 +1196,7 @@ mod tests {
         // read_at must be unchanged (still the value set by the first call).
         let msg_final = ms.get("msg-rnd").expect("get").expect("exists");
         assert_eq!(
-            msg_final.read_at.as_deref(),
+            msg_final.read_at.as_ref().map(|d| d.as_ref()),
             Some(read_at_first.as_str()),
             "read_at must not regress after second call with earlier timestamp"
         );
@@ -1468,20 +1473,20 @@ mod tests {
         let blob_id_1 = "a".repeat(64);
         let blob_id_2 = "c".repeat(64);
         let attachments = vec![
-            kith_core::Attachment {
-                blob_id: blob_id_1.clone(),
-                filename: "first.txt".to_string(),
-                content_type: "text/plain".to_string(),
-                size: 42,
-                sha256: "b".repeat(64),
-            },
-            kith_core::Attachment {
-                blob_id: blob_id_2.clone(),
-                filename: "second.pdf".to_string(),
-                content_type: "application/pdf".to_string(),
-                size: 100,
-                sha256: "d".repeat(64),
-            },
+            kith_core::make_attachment(
+                blob_id_1.clone(),
+                "first.txt",
+                "text/plain",
+                42,
+                "b".repeat(64),
+            ),
+            kith_core::make_attachment(
+                blob_id_2.clone(),
+                "second.pdf",
+                "application/pdf",
+                100,
+                "d".repeat(64),
+            ),
         ];
 
         store
@@ -1504,9 +1509,9 @@ mod tests {
         let msg = ms.get("msg-att1").expect("get").expect("must exist");
 
         assert_eq!(msg.attachments.len(), 2, "must return both attachments");
-        assert_eq!(msg.attachments[0].blob_id, blob_id_1);
+        assert_eq!(msg.attachments[0].blob_id.as_ref(), blob_id_1);
         assert_eq!(msg.attachments[0].filename, "first.txt");
-        assert_eq!(msg.attachments[1].blob_id, blob_id_2);
+        assert_eq!(msg.attachments[1].blob_id.as_ref(), blob_id_2);
     }
 
     #[test]
@@ -1517,13 +1522,13 @@ mod tests {
         insert_chat(&store.conn, "chat-att2");
 
         // First message: one attachment.
-        let att = kith_core::Attachment {
-            blob_id: "e".repeat(64),
-            filename: "doc.txt".to_string(),
-            content_type: "text/plain".to_string(),
-            size: 7,
-            sha256: "f".repeat(64),
-        };
+        let att = kith_core::make_attachment(
+            "e".repeat(64),
+            "doc.txt",
+            "text/plain",
+            7,
+            "f".repeat(64),
+        );
         store
             .insert_message_with_attachments(
                 "msg-att2a",
@@ -1580,7 +1585,7 @@ mod tests {
             1,
             "message with one attachment must return it"
         );
-        assert_eq!(msg_with_att.attachments[0].blob_id, "e".repeat(64));
+        assert_eq!(msg_with_att.attachments[0].blob_id.as_ref(), "e".repeat(64));
     }
 
     #[test]

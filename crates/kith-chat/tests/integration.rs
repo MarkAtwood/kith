@@ -114,16 +114,17 @@ fn make_dispatcher(store: Arc<Mutex<kith_store::Store>>) -> (Dispatcher, tempfil
 }
 
 fn kith_request(method_calls: Vec<(&str, serde_json::Value, &str)>) -> JmapRequest {
-    JmapRequest {
-        using: vec![
+    JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".to_string(),
             "urn:ietf:params:jmap:chat".to_string(),
         ],
-        method_calls: method_calls
+        method_calls
             .into_iter()
             .map(|(m, a, c)| (m.to_string(), a, c.to_string()))
             .collect(),
-    }
+        None,
+    )
 }
 
 // ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use kith_core::{
-    Identity, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, Role,
+    Id, Identity, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, Role,
     MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, MAX_OBJECTS_IN_GET, MAX_REQUEST_BYTES,
 };
 use serde::Serialize;
@@ -34,14 +34,14 @@ pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> 
         .map_err(|e| JmapError::invalid_arguments(format!("invalid request: {e}")))?;
 
     if req.using.is_empty() {
-        return Err(JmapError::unknown_capability("using must not be empty"));
+        return Err(JmapError::unknown_capability_with_detail("using must not be empty"));
     }
 
     // Unknown capability URIs are silently accepted — see RFC 8620 §3.3 deviation note
     // in the doc comment above.
 
     if req.method_calls.len() > MAX_CALLS_IN_REQUEST {
-        return Err(JmapError::request_too_large("maxCallsInRequest is 16"));
+        return Err(kith_core::jmap_error_request_too_large("maxCallsInRequest is 16"));
     }
 
     Ok(req)
@@ -382,7 +382,7 @@ impl Dispatcher {
         // The method_name is needed by ResultReference resolution (RFC 8620 §9 name check).
         let mut prior: Vec<(String, String, serde_json::Value)> = Vec::new();
         // Accumulate client-id → server-id mappings from /set created maps (RFC 8620 §3.4).
-        let mut created_ids: HashMap<String, String> = HashMap::new();
+        let mut created_ids: HashMap<Id, Id> = HashMap::new();
 
         for (method_name, args, call_id) in request.method_calls {
             let invocation = self
@@ -402,7 +402,7 @@ impl Dispatcher {
             if let Some(created_map) = invocation.1.get("created").and_then(|v| v.as_object()) {
                 for (client_id, obj) in created_map {
                     if let Some(server_id) = obj.get("id").and_then(|v| v.as_str()) {
-                        created_ids.insert(client_id.clone(), server_id.to_string());
+                        created_ids.insert(Id::from(client_id.clone()), Id::from(server_id.to_string()));
                     }
                 }
             }
@@ -412,15 +412,15 @@ impl Dispatcher {
             responses.push(invocation);
         }
 
-        JmapResponse {
-            method_responses: responses,
-            session_state,
-            created_ids: if created_ids.is_empty() {
+        JmapResponse::new(
+            responses,
+            session_state.into(),
+            if created_ids.is_empty() {
                 None
             } else {
                 Some(created_ids)
             },
-        }
+        )
     }
 
     async fn dispatch_one(
@@ -448,7 +448,7 @@ impl Dispatcher {
         };
 
         if caller_role != required_role {
-            return error_invocation(method_name, call_id, JmapError::forbidden_method());
+            return error_invocation(method_name, call_id, JmapError::forbidden());
         }
 
         // Invariant: a method must be registered in exactly one map — never both.
@@ -996,14 +996,15 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_unknown_method() {
         let d = Dispatcher::new();
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "UnknownType/get".to_string(),
                 serde_json::Value::Null,
                 "c0".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
@@ -1018,14 +1019,15 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_owner_calls_peer_method() {
         let d = Dispatcher::new();
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "Peer/deliver".to_string(),
                 serde_json::Value::Null,
                 "c1".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
@@ -1036,14 +1038,15 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_peer_calls_owner_method() {
         let d = Dispatcher::new();
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c2".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Peer, dummy_identity(), "s-0".to_string())
             .await;
@@ -1058,14 +1061,15 @@ mod tests {
             "ChatContact/get",
             Box::new(EchoHandler(serde_json::json!({"list": []}))),
         );
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c3".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-42".to_string())
             .await;
@@ -1081,14 +1085,15 @@ mod tests {
     async fn test_dispatch_handler_error() {
         let mut d = Dispatcher::new();
         d.register("Chat/get", Box::new(ErrorHandler(JmapError::not_found())));
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "Chat/get".to_string(),
                 serde_json::Value::Null,
                 "c4".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
@@ -1103,9 +1108,9 @@ mod tests {
             "ChatContact/get",
             Box::new(EchoHandler(serde_json::json!({}))),
         );
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
                 (
                     "ChatContact/get".to_string(),
                     serde_json::Value::Null,
@@ -1122,7 +1127,8 @@ mod tests {
                     "c2".to_string(),
                 ),
             ],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
@@ -1139,14 +1145,15 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_known_method_no_handler() {
         let d = Dispatcher::new(); // no handlers registered
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c5".to_string(),
             )],
-        };
+            None,
+        );
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
             .await;
@@ -1157,10 +1164,11 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_session_state_echoed() {
         let d = Dispatcher::new();
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![],
-        };
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![],
+            None,
+        );
         let resp = d
             .dispatch(
                 req,
@@ -1365,9 +1373,9 @@ mod tests {
         );
         d.register("Chat/get", Box::new(ArgsCapture(Arc::clone(&captured))));
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
                 (
                     "ChatContact/get".to_string(),
                     json!({"accountId": "a-self"}),
@@ -1386,7 +1394,8 @@ mod tests {
                     "c1".to_string(),
                 ),
             ],
-        };
+            None,
+        );
 
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
@@ -1507,9 +1516,9 @@ mod tests {
         );
         d.register("Chat/get", Box::new(EchoHandler(json!({}))));
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![
                 (
                     "ChatContact/get".to_string(),
                     json!({"accountId": "a-self"}),
@@ -1527,7 +1536,8 @@ mod tests {
                     "c1".to_string(),
                 ),
             ],
-        };
+            None,
+        );
 
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
@@ -1695,14 +1705,15 @@ mod tests {
         let mut d = Dispatcher::new();
         d.register("Chat/set", Box::new(SetHandler));
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "Chat/set".to_string(),
                 json!({"accountId": "a-self", "create": {"new-chat": {"name": "Test"}}}),
                 "c0".to_string(),
             )],
-        };
+            None,
+        );
 
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-1".to_string())
@@ -1721,7 +1732,7 @@ mod tests {
             .as_ref()
             .expect("createdIds must be present when objects were created");
         assert_eq!(
-            created_ids.get("new-chat").map(String::as_str),
+            created_ids.get("new-chat").map(|id| id.as_ref()),
             Some("server-01"),
             "createdIds must map 'new-chat' to 'server-01'; got: {created_ids:?}"
         );
@@ -1738,14 +1749,15 @@ mod tests {
             Box::new(EchoHandler(json!({"list": [], "state": "s-0"}))),
         );
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "ChatContact/get".to_string(),
                 json!({"accountId": "a-self"}),
                 "c0".to_string(),
             )],
-        };
+            None,
+        );
 
         let resp = d
             .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
@@ -1780,14 +1792,15 @@ mod tests {
         let mut d = Dispatcher::new();
         d.register("ChatContact/get", Box::new(PanicHandler));
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "ChatContact/get".to_string(),
                 serde_json::Value::Null,
                 "c0".to_string(),
             )],
-        };
+            None,
+        );
 
         // Must not panic; must return serverFail in methodResponses.
         let resp = d
@@ -1820,14 +1833,15 @@ mod tests {
         let mut d = Dispatcher::new();
         d.register_peer("Peer/deliver", Box::new(PanicPeerHandler));
 
-        let req = JmapRequest {
-            using: vec!["urn:ietf:params:jmap:chat".to_string()],
-            method_calls: vec![(
+        let req = JmapRequest::new(
+            vec!["urn:ietf:params:jmap:chat".to_string()],
+            vec![(
                 "Peer/deliver".to_string(),
                 serde_json::Value::Null,
                 "c0".to_string(),
             )],
-        };
+            None,
+        );
 
         // Must not panic; must return serverFail in methodResponses.
         let resp = d

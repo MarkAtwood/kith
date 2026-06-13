@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Authentication and authorization errors.
@@ -18,103 +17,6 @@ pub enum AuthError {
     SenderMismatch,
 }
 
-/// JMAP method-level error, serializable for inclusion in methodResponses.
-/// See RFC 8620 §7.1 for standard error type strings.
-#[derive(Debug, Clone, Error, Serialize, Deserialize)]
-#[error("{error_type}")]
-pub struct JmapError {
-    /// Error type string per RFC 8620, e.g. "invalidArguments", "notFound".
-    #[serde(rename = "type")]
-    pub error_type: String,
-    /// Optional human-readable description. Omitted from JSON when None.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-impl JmapError {
-    pub fn invalid_arguments(desc: impl Into<String>) -> Self {
-        Self {
-            error_type: "invalidArguments".into(),
-            description: Some(desc.into()),
-        }
-    }
-
-    pub fn forbidden_method() -> Self {
-        Self {
-            error_type: "forbidden".into(),
-            description: None,
-        }
-    }
-
-    pub fn not_found() -> Self {
-        Self {
-            error_type: "notFound".into(),
-            description: None,
-        }
-    }
-
-    /// RFC 8620 §5.1: the accountId does not correspond to a valid account.
-    pub fn account_not_found() -> Self {
-        Self {
-            error_type: "accountNotFound".into(),
-            description: None,
-        }
-    }
-
-    pub fn server_fail(desc: impl Into<String>) -> Self {
-        Self {
-            error_type: "serverFail".into(),
-            description: Some(desc.into()),
-        }
-    }
-
-    pub fn cannot_calculate_changes() -> Self {
-        Self {
-            error_type: "cannotCalculateChanges".into(),
-            description: None,
-        }
-    }
-
-    pub fn state_mismatch() -> Self {
-        Self {
-            error_type: "stateMismatch".into(),
-            description: None,
-        }
-    }
-
-    pub fn unknown_capability(cap: impl Into<String>) -> Self {
-        Self {
-            error_type: "unknownCapability".into(),
-            description: Some(cap.into()),
-        }
-    }
-
-    pub fn request_too_large(desc: impl Into<String>) -> Self {
-        Self {
-            error_type: "requestTooLarge".into(),
-            description: Some(desc.into()),
-        }
-    }
-
-    pub fn unknown_method() -> Self {
-        Self {
-            error_type: "unknownMethod".into(),
-            description: None,
-        }
-    }
-
-    /// RFC 8620 §7.1: the request exceeds `maxObjectsInGet`, `maxObjectsInSet`,
-    /// or some other per-method size limit.  Distinct from `requestTooLarge`
-    /// (which is a request-level error); this is a method-level error returned
-    /// inside `methodResponses` with HTTP 200.
-    pub fn too_large() -> Self {
-        Self {
-            error_type: "tooLarge".into(),
-            description: None,
-        }
-    }
-}
-
 /// Top-level error type for the kith system.
 /// All crates convert their internal errors to KithError at boundaries.
 #[derive(Debug, Error)]
@@ -122,15 +24,15 @@ pub enum KithError {
     #[error(transparent)]
     Auth(#[from] AuthError),
     #[error(transparent)]
-    Jmap(JmapError),
+    Jmap(jmap_types::JmapError),
     #[error("storage error: {0}")]
     Store(String),
     #[error("validation error: {0}")]
     Validation(String),
 }
 
-impl From<JmapError> for KithError {
-    fn from(e: JmapError) -> Self {
+impl From<jmap_types::JmapError> for KithError {
+    fn from(e: jmap_types::JmapError) -> Self {
         KithError::Jmap(e)
     }
 }
@@ -138,14 +40,12 @@ impl From<JmapError> for KithError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Independent oracle: RFC 8620 §7.1 specifies these exact type strings.
+    use jmap_types::JmapError;
 
     #[test]
     fn jmap_error_invalid_arguments_serializes_correctly() {
         let e = JmapError::invalid_arguments("ids field is required");
         let json_str = serde_json::to_string(&e).unwrap();
-        // Must use "type" key (reserved word in Rust, handled by serde rename)
         assert!(json_str.contains("\"type\""));
         assert!(json_str.contains("\"invalidArguments\""));
         assert!(json_str.contains("\"description\""));
@@ -153,8 +53,8 @@ mod tests {
     }
 
     #[test]
-    fn jmap_error_forbidden_method_omits_description() {
-        let e = JmapError::forbidden_method();
+    fn jmap_error_forbidden_omits_description() {
+        let e = JmapError::forbidden();
         let json_str = serde_json::to_string(&e).unwrap();
         assert!(json_str.contains("\"forbidden\""));
         assert!(
@@ -172,7 +72,6 @@ mod tests {
 
     #[test]
     fn jmap_error_account_not_found() {
-        // Oracle: RFC 8620 §5.1 specifies the exact type string "accountNotFound".
         let e = JmapError::account_not_found();
         let json_str = serde_json::to_string(&e).unwrap();
         assert!(json_str.contains("\"accountNotFound\""));
@@ -212,7 +111,6 @@ mod tests {
 
     #[test]
     fn auth_error_display_non_empty() {
-        // Each variant must have a non-empty Display string
         assert!(!AuthError::NoPeerAddr.to_string().is_empty());
         assert!(!AuthError::WhoIsFailed("test".into()).to_string().is_empty());
         assert!(!AuthError::Unauthorized.to_string().is_empty());

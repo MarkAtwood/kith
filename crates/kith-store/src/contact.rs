@@ -1,6 +1,6 @@
 use crate::db_err;
 use crate::message::ChangesResult;
-use kith_core::{ChatContact, JmapError, KithError, StateChange};
+use kith_core::{ChatContact, Id, JmapError, KithError, StateChange, UTCDate};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
@@ -505,26 +505,24 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let first_seen_at: i64 = row.get(3)?;
     let last_seen_at: i64 = row.get(4)?;
     let blocked: i64 = row.get(5)?;
-    Ok(ChatContact {
-        id: peer_user_id,
-        login: peer_login,
-        display_name,
-        first_seen_at: {
-            debug_assert!(
-                first_seen_at >= 0,
-                "timestamp must be non-negative Unix seconds, got {first_seen_at}"
-            );
-            crate::util::unix_secs_to_rfc3339(first_seen_at.max(0) as u64)
-        },
-        last_seen_at: {
-            debug_assert!(
-                last_seen_at >= 0,
-                "timestamp must be non-negative Unix seconds, got {last_seen_at}"
-            );
-            crate::util::unix_secs_to_rfc3339(last_seen_at.max(0) as u64)
-        },
-        blocked: blocked != 0,
-    })
+    debug_assert!(
+        first_seen_at >= 0,
+        "timestamp must be non-negative Unix seconds, got {first_seen_at}"
+    );
+    debug_assert!(
+        last_seen_at >= 0,
+        "timestamp must be non-negative Unix seconds, got {last_seen_at}"
+    );
+    // ChatContact is #[non_exhaustive]; construct via new() then set optional fields.
+    let mut contact = ChatContact::new(
+        Id::from(peer_user_id),
+        peer_login,
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(first_seen_at.max(0) as u64)),
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(last_seen_at.max(0) as u64)),
+        blocked != 0,
+    );
+    contact.display_name = display_name;
+    Ok(contact)
 }
 
 #[cfg(test)]
@@ -559,8 +557,8 @@ mod tests {
             Some("alice-kith.tail.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Alice".into()));
-        assert_eq!(c.first_seen_at, crate::util::unix_secs_to_rfc3339(1000));
-        assert_eq!(c.last_seen_at, crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
         assert!(!c.blocked);
     }
 
@@ -679,9 +677,9 @@ mod tests {
         .unwrap();
         let c = cs.get_by_peer_user_id("uid-5").unwrap().unwrap();
         // first_seen_at must remain at the original insert time.
-        assert_eq!(c.first_seen_at, crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
         // last_seen_at must be updated.
-        assert_eq!(c.last_seen_at, crate::util::unix_secs_to_rfc3339(9999));
+        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(9999));
     }
 
     #[test]
@@ -842,7 +840,7 @@ mod tests {
             Some("bob.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Bob".to_string()));
-        assert_eq!(c.first_seen_at, crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
         assert!(!c.blocked);
     }
 
@@ -921,7 +919,7 @@ mod tests {
             .unwrap();
         let c = cs.get_by_peer_user_id("uid-bob").unwrap().unwrap();
         assert_eq!(
-            c.first_seen_at,
+            c.first_seen_at.as_ref(),
             crate::util::unix_secs_to_rfc3339(1000),
             "first_seen_at must not be overwritten on re-discovery"
         );

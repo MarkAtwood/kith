@@ -136,7 +136,7 @@ fn cmd_contacts_list(config: &Config) -> Result<(), Box<dyn std::error::Error>> 
     println!("{}", "-".repeat(80));
     for contact in &contacts {
         let login_display = if contact.login.is_empty() {
-            contact.id.as_str()
+            contact.id.as_ref()
         } else {
             contact.login.as_str()
         };

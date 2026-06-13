@@ -135,12 +135,12 @@ pub(crate) async fn load_startup_data(
     api_url: &str,
     state: &mut AppState,
 ) {
-    let req = JmapRequest {
-        using: vec![
+    let req = JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".into(),
             "urn:ietf:params:jmap:chat".into(),
         ],
-        method_calls: vec![
+        vec![
             (
                 "Chat/get".into(),
                 json!({"accountId": "a-self"}),
@@ -152,7 +152,8 @@ pub(crate) async fn load_startup_data(
                 "c1".into(),
             ),
         ],
-    };
+        None,
+    );
 
     let resp = match client::call_jmap(http_client, api_url, &req).await {
         Ok(r) => r,
@@ -349,17 +350,18 @@ pub(crate) async fn load_messages_for_chat(
     // recent message. limit=500 fetches the newest 500; if there are more,
     // a truncation notice is prepended by the caller. The TUI then re-sorts
     // the returned IDs by receivedAt ASC for oldest-first display.
-    let query_req = JmapRequest {
-        using: vec![
+    let query_req = JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".into(),
             "urn:ietf:params:jmap:chat".into(),
         ],
-        method_calls: vec![(
+        vec![(
             "Message/query".into(),
             json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 500, "calculateTotal": true}),
             "mq0".into(),
         )],
-    };
+        None,
+    );
 
     let query_resp = match client::call_jmap(http_client, api_url, &query_req).await {
         Ok(r) => r,
@@ -393,17 +395,18 @@ pub(crate) async fn load_messages_for_chat(
     }
 
     // Step B — Message/get
-    let get_req = JmapRequest {
-        using: vec![
+    let get_req = JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".into(),
             "urn:ietf:params:jmap:chat".into(),
         ],
-        method_calls: vec![(
+        vec![(
             "Message/get".into(),
             json!({"accountId": "a-self", "ids": ids}),
             "mg0".into(),
         )],
-    };
+        None,
+    );
 
     let get_resp = match client::call_jmap(http_client, api_url, &get_req).await {
         Ok(r) => r,
@@ -539,17 +542,18 @@ pub(crate) async fn send_message(
 
     let sent_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-    let req = JmapRequest {
-        using: vec![
+    let req = JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".into(),
             "urn:ietf:params:jmap:chat".into(),
         ],
-        method_calls: vec![(
+        vec![(
             "Message/set".into(),
             json!({"accountId": "a-self", "create": {"k-1": {"chatId": chat_id, "body": body, "bodyType": "text/plain", "sentAt": sent_at}}}),
             "s0".into(),
         )],
-    };
+        None,
+    );
 
     let resp = client::call_jmap(http_client, api_url, &req).await?;
 
@@ -606,17 +610,18 @@ pub(crate) async fn send_read_receipts(
         update.insert(id.clone(), json!({"readAt": read_at}));
     }
 
-    let req = JmapRequest {
-        using: vec![
+    let req = JmapRequest::new(
+        vec![
             "urn:ietf:params:jmap:core".into(),
             "urn:ietf:params:jmap:chat".into(),
         ],
-        method_calls: vec![(
+        vec![(
             "Message/set".into(),
             json!({"accountId": "a-self", "update": update}),
             "r0".into(),
         )],
-    };
+        None,
+    );
 
     let resp = client::call_jmap(http_client, api_url, &req).await?;
 
@@ -711,17 +716,18 @@ pub(crate) async fn handle_state_change(
             };
 
             // Step 1: Message/changes
-            let changes_req = JmapRequest {
-                using: vec![
+            let changes_req = JmapRequest::new(
+                vec![
                     "urn:ietf:params:jmap:core".into(),
                     "urn:ietf:params:jmap:chat".into(),
                 ],
-                method_calls: vec![(
+                vec![(
                     "Message/changes".into(),
                     json!({"accountId": "a-self", "sinceState": since_state}),
                     "mc0".into(),
                 )],
-            };
+                None,
+            );
 
             let changes_resp = match client::call_jmap(http_client, api_url, &changes_req).await {
                 Ok(r) => r,
@@ -819,17 +825,18 @@ pub(crate) async fn handle_state_change(
             }
 
             // Step 2: Message/get for new/updated IDs
-            let get_req = JmapRequest {
-                using: vec![
+            let get_req = JmapRequest::new(
+                vec![
                     "urn:ietf:params:jmap:core".into(),
                     "urn:ietf:params:jmap:chat".into(),
                 ],
-                method_calls: vec![(
+                vec![(
                     "Message/get".into(),
                     json!({"accountId": "a-self", "ids": all_ids}),
                     "mg0".into(),
                 )],
-            };
+                None,
+            );
 
             let get_resp = match client::call_jmap(http_client, api_url, &get_req).await {
                 Ok(r) => r,

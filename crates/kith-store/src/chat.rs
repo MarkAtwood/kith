@@ -1,12 +1,23 @@
 use crate::db_err;
 use crate::message::ChangesResult;
-use kith_core::{Chat, JmapError, KithError, StateChange};
+use kith_core::{Chat, ChatKind, Id, JmapError, KithError, StateChange, UTCDate};
 use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
 /// Row type returned by [`ChatStore::get_changes_since_ordered`].
 /// Fields: (chat_id, changed_at_counter, is_create).
 pub type ChatChangeRow = (String, i64, bool);
+
+/// Convert a DB kind string ("direct", "group", "channel") to the typed enum.
+/// Unknown values are preserved via `ChatKind::Other(s)`.
+fn parse_chat_kind(s: &str) -> ChatKind {
+    match s {
+        "direct" => ChatKind::Direct,
+        "group" => ChatKind::Group,
+        "channel" => ChatKind::Channel,
+        other => ChatKind::Other(other.to_owned()),
+    }
+}
 
 pub struct ChatStore<'a> {
     conn: &'a Connection,
@@ -152,26 +163,28 @@ impl<'a> ChatStore<'a> {
         }
         let (id, kind, contact_id_val, created_at_secs, last_message_at_secs, unread_count) =
             row.unwrap();
-        Ok(Some(Chat {
-            id,
-            kind,
-            contact_id: contact_id_val,
-            created_at: {
-                debug_assert!(
-                    created_at_secs >= 0,
-                    "timestamp must be non-negative Unix seconds, got {created_at_secs}"
-                );
-                crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
-            },
-            last_message_at: last_message_at_secs.map(|s| {
-                debug_assert!(
-                    s >= 0,
-                    "timestamp must be non-negative Unix seconds, got {s}"
-                );
-                crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
-            }),
-            unread_count,
-        }))
+        debug_assert!(
+            created_at_secs >= 0,
+            "timestamp must be non-negative Unix seconds, got {created_at_secs}"
+        );
+        let mut chat = Chat::new(
+            Id::from(id),
+            parse_chat_kind(&kind),
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+            unread_count as u64,
+            vec![],   // pinned_message_ids (not implemented yet)
+            false,    // muted (not implemented yet)
+            false,    // receive_typing_indicators (not implemented yet)
+        );
+        chat.contact_id = contact_id_val.map(Id::from);
+        chat.last_message_at = last_message_at_secs.map(|s| {
+            debug_assert!(
+                s >= 0,
+                "timestamp must be non-negative Unix seconds, got {s}"
+            );
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+        });
+        Ok(Some(chat))
     }
 
     /// Fetch a single chat by ID, returning None if it does not exist.
@@ -205,26 +218,28 @@ impl<'a> ChatStore<'a> {
         let (id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count) =
             row.unwrap();
 
-        Ok(Some(Chat {
-            id,
-            kind,
-            contact_id,
-            created_at: {
-                debug_assert!(
-                    created_at_secs >= 0,
-                    "timestamp must be non-negative Unix seconds, got {created_at_secs}"
-                );
-                crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
-            },
-            last_message_at: last_message_at_secs.map(|s| {
-                debug_assert!(
-                    s >= 0,
-                    "timestamp must be non-negative Unix seconds, got {s}"
-                );
-                crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
-            }),
-            unread_count,
-        }))
+        debug_assert!(
+            created_at_secs >= 0,
+            "timestamp must be non-negative Unix seconds, got {created_at_secs}"
+        );
+        let mut chat = Chat::new(
+            Id::from(id),
+            parse_chat_kind(&kind),
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+            unread_count as u64,
+            vec![],   // pinned_message_ids (not implemented yet)
+            false,    // muted (not implemented yet)
+            false,    // receive_typing_indicators (not implemented yet)
+        );
+        chat.contact_id = contact_id.map(Id::from);
+        chat.last_message_at = last_message_at_secs.map(|s| {
+            debug_assert!(
+                s >= 0,
+                "timestamp must be non-negative Unix seconds, got {s}"
+            );
+            UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+        });
+        Ok(Some(chat))
     }
 
     /// List all chats ordered by last_message_at DESC (nulls last), then created_at DESC.
@@ -262,20 +277,22 @@ impl<'a> ChatStore<'a> {
             .into_iter()
             .map(
                 |(id, kind, contact_id, created_at_secs, last_message_at_secs, unread_count)| {
-                    Chat {
-                        id,
-                        kind,
-                        contact_id,
-                        created_at: {
-                            debug_assert!(created_at_secs >= 0, "timestamp must be non-negative Unix seconds, got {created_at_secs}");
-                            crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)
-                        },
-                        last_message_at: last_message_at_secs.map(|s| {
-                            debug_assert!(s >= 0, "timestamp must be non-negative Unix seconds, got {s}");
-                            crate::util::unix_secs_to_rfc3339(s.max(0) as u64)
-                        }),
-                        unread_count,
-                    }
+                    debug_assert!(created_at_secs >= 0, "timestamp must be non-negative Unix seconds, got {created_at_secs}");
+                    let mut chat = Chat::new(
+                        Id::from(id),
+                        parse_chat_kind(&kind),
+                        UTCDate::from(crate::util::unix_secs_to_rfc3339(created_at_secs.max(0) as u64)),
+                        unread_count as u64,
+                        vec![],   // pinned_message_ids (not implemented yet)
+                        false,    // muted (not implemented yet)
+                        false,    // receive_typing_indicators (not implemented yet)
+                    );
+                    chat.contact_id = contact_id.map(Id::from);
+                    chat.last_message_at = last_message_at_secs.map(|s| {
+                        debug_assert!(s >= 0, "timestamp must be non-negative Unix seconds, got {s}");
+                        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+                    });
+                    chat
                 },
             )
             .collect();
@@ -561,8 +578,8 @@ mod tests {
             chat1.created_at, chat2.created_at,
             "created_at must not change on second call"
         );
-        assert_eq!(chat1.kind, "direct");
-        assert_eq!(chat1.contact_id, Some("uid:bob".to_string()));
+        assert_eq!(chat1.kind, ChatKind::Direct);
+        assert_eq!(chat1.contact_id.as_ref().map(|id| id.as_ref()), Some("uid:bob"));
     }
 
     #[test]
@@ -579,7 +596,7 @@ mod tests {
             .unwrap()
             .expect("must find existing direct chat");
         assert_eq!(found.id, "chat-bbb");
-        assert_eq!(found.contact_id, Some("uid:carol".to_string()));
+        assert_eq!(found.contact_id.as_ref().map(|id| id.as_ref()), Some("uid:carol"));
     }
 
     #[test]
@@ -687,8 +704,8 @@ mod tests {
 
         let chat = cs.get("chat-ccc").unwrap().unwrap();
         assert_eq!(
-            chat.last_message_at,
-            Some("2020-09-13T12:26:40Z".to_string()),
+            chat.last_message_at.as_ref().map(|d| d.as_ref()),
+            Some("2020-09-13T12:26:40Z"),
             "last_message_at must reflect the stored unix timestamp (oracle: Python 3 utcfromtimestamp(1_600_000_000))"
         );
     }

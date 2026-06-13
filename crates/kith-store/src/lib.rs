@@ -638,6 +638,9 @@ impl Store {
             DeliveryState::Delivered => "delivered",
             DeliveryState::Failed => "failed",
             DeliveryState::Received => "received",
+            // DeliveryState is #[non_exhaustive]; unknown variants default to "pending"
+            // so the DB CHECK constraint never rejects them.
+            _ => "pending",
         };
         tx.execute(
             "INSERT INTO messages \
@@ -667,7 +670,7 @@ impl Store {
                      (id, message_id, filename, content_type, size_bytes, sha256, created_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
-                    att.blob_id,
+                    att.blob_id.as_ref(),
                     id,
                     att.filename,
                     att.content_type,
@@ -753,7 +756,7 @@ impl Store {
                      (id, message_id, filename, content_type, size_bytes, sha256, created_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 rusqlite::params![
-                    att.blob_id,
+                    att.blob_id.as_ref(),
                     id,
                     att.filename,
                     att.content_type,

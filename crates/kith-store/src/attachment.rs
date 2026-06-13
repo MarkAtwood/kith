@@ -105,13 +105,14 @@ fn row_to_attachment(row: &rusqlite::Row<'_>) -> rusqlite::Result<Attachment> {
         return Err(rusqlite::Error::IntegralValueOutOfRange(3, size_bytes));
     }
     let sha256: String = row.get(4)?;
-    Ok(Attachment {
+    // Attachment is #[non_exhaustive]; construct via kith_core helper.
+    Ok(kith_core::make_attachment(
         blob_id,
         filename,
         content_type,
-        size: size_bytes as u64,
+        size_bytes as u64,
         sha256,
-    })
+    ))
 }
 
 #[cfg(test)]
@@ -199,7 +200,7 @@ mod tests {
 
         let list = as_.list_by_message("msg-1").unwrap();
         assert_eq!(list.len(), 2);
-        let ids: Vec<&str> = list.iter().map(|a| a.blob_id.as_str()).collect();
+        let ids: Vec<&str> = list.iter().map(|a| a.blob_id.as_ref()).collect();
         assert!(ids.contains(&"blob-1"));
         assert!(ids.contains(&"blob-2"));
     }
