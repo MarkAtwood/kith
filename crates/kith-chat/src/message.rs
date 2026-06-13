@@ -652,6 +652,39 @@ async fn process_create(
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?
         .ok_or_else(|| json!({"type": "notFound", "description": "chatId not found"}))?;
 
+    // Enforce Space permissions for channel chats (draft-atwood-jmap-chat-00 §6.1).
+    let channel_space_id = guard
+        .chats()
+        .get_space_id(&chat_id)
+        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+    if let Some(ref space_id) = channel_space_id {
+        // Check "send" permission for the sender.
+        let can_send = crate::permission::resolve_permission(
+            &guard, space_id, &chat_id, owner_user_id, "send",
+        )
+        .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+        if !can_send {
+            return Err(json!({
+                "type": "forbidden",
+                "description": "sender lacks 'send' permission in this channel"
+            }));
+        }
+
+        // Check "mention_broadcast" if the message contains broadcast mentions.
+        if crate::permission::has_broadcast_mentions(obj, &body_type, &body) {
+            let can_mention_broadcast = crate::permission::resolve_permission(
+                &guard, space_id, &chat_id, owner_user_id, "mention_broadcast",
+            )
+            .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
+            if !can_mention_broadcast {
+                return Err(json!({
+                    "type": "forbidden",
+                    "description": "sender lacks 'mention_broadcast' permission in this channel"
+                }));
+            }
+        }
+    }
+
     // Validate replyTo if present.
     if let Some(ref reply_id) = reply_to {
         // Validates existence and same-chat membership but does NOT walk the
@@ -700,8 +733,8 @@ async fn process_create(
             .map_err(|e| json!({"type": "serverFail", "description": format!("could not look up mailbox host: {e}")}))?
             .ok_or_else(|| json!({"type": "serverFail", "description": "contact has no mailbox host — add the contact before sending"}))?;
         outbox_peers.push((peer_id.clone().into_inner(), host));
-    } else if chat.kind == ChatKind::Group {
-        // Group chat: fan out to all members in chat_members.
+    } else if chat.kind == ChatKind::Group || chat.kind == ChatKind::Channel {
+        // Group/channel chat: fan out to all members in chat_members.
         // Policy: all-or-nothing.  If any member has no mailbox host the
         // entire send fails with serverFail.  Best-effort fan-out (silently
         // skipping members with no host) is worse: the sender believes the
@@ -3551,6 +3584,333 @@ mod tests {
         assert!(
             not_found.is_empty(),
             "notFound must be empty when ids=null; got: {not_found:?}"
+        );
+    }
+
+    // --- Space permission enforcement in Message/set ---
+
+    /// Set up a Space with @everyone role, a channel chat, and a member.
+    /// Returns the chat_id.
+    fn setup_channel_with_member(
+        store: &Arc<Mutex<Store>>,
+        space_id: &str,
+        chat_id: &str,
+        user_id: &str,
+        everyone_perms: &[&str],
+        extra_role_id: Option<&str>,
+        extra_role_perms: &[&str],
+        member_role_ids: &[&str],
+    ) {
+        let guard = store.lock().unwrap();
+
+        // Create the space.
+        guard
+            .spaces()
+            .create_space(space_id, "Test Space", None, None, false, false, 1_000_000)
+            .expect("create space");
+
+        // Add @everyone role (position 0).
+        guard
+            .spaces()
+            .add_everyone_role(space_id, "role-everyone", everyone_perms)
+            .expect("add @everyone role");
+
+        // Optional extra role.
+        if let Some(rid) = extra_role_id {
+            guard
+                .spaces()
+                .add_role(space_id, rid, "Extra", None, extra_role_perms, 1)
+                .expect("add extra role");
+        }
+
+        // Create a bare chat, then link it as a channel.
+        guard
+            .chats()
+            .create(chat_id, "group", None, 1_000_000)
+            .expect("create chat");
+        guard
+            .spaces()
+            .create_channel(space_id, chat_id, "general")
+            .expect("create channel");
+
+        // Add the user as a member with specified roles.
+        guard
+            .spaces()
+            .add_member(space_id, user_id, None, 1_000_000, member_role_ids)
+            .expect("add member");
+
+        // Channel chats also need outbox targets.  Add a peer contact + chat member
+        // so the outbox can fan out.
+        guard
+            .contacts()
+            .upsert(
+                "peer-ch-uid",
+                "peer@example.com",
+                "peer.tail.ts.net",
+                None,
+                1000,
+            )
+            .expect("upsert contact");
+        // Add peer as chat member so group fan-out works.
+        guard
+            .chats()
+            .add_member(chat_id, "peer-ch-uid")
+            .expect("add chat member");
+    }
+
+    // Oracle: Sender with "send" permission in a channel chat should succeed.
+    // The oracle is the role permissions inserted — "send" is present in @everyone.
+    #[tokio::test]
+    async fn test_message_set_channel_with_send_permission_succeeds() {
+        let store = make_store();
+        let owner_uid = "uid-channel-owner";
+        setup_channel_with_member(
+            &store,
+            "sp-send-ok",
+            "ch-send-ok",
+            owner_uid,
+            &["view", "send"],
+            None,
+            &[],
+            &[],
+        );
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(
+            Arc::clone(&store),
+            blob_store,
+            owner_uid.to_string(),
+        );
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "ch-send-ok",
+                    "body": "Hello from channel!",
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        assert!(
+            result["created"]["m0"].is_object(),
+            "created.m0 must be present; response: {result}"
+        );
+    }
+
+    // Oracle: Sender without "send" permission in a channel chat must be rejected
+    // with "forbidden". The oracle: @everyone has only "view", no "send".
+    #[tokio::test]
+    async fn test_message_set_channel_without_send_permission_forbidden() {
+        let store = make_store();
+        let owner_uid = "uid-channel-noperm";
+        setup_channel_with_member(
+            &store,
+            "sp-send-no",
+            "ch-send-no",
+            owner_uid,
+            &["view"], // no "send"
+            None,
+            &[],
+            &[],
+        );
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(
+            Arc::clone(&store),
+            blob_store,
+            owner_uid.to_string(),
+        );
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "ch-send-no",
+                    "body": "Should be forbidden",
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed (JMAP envelope, not transport error)");
+
+        let not_created = &result["notCreated"]["m0"];
+        assert!(
+            not_created.is_object(),
+            "notCreated.m0 must be present; response: {result}"
+        );
+        assert_eq!(
+            not_created["type"], "forbidden",
+            "must be forbidden; got: {not_created}"
+        );
+    }
+
+    // Oracle: broadcastMentions in a channel with mention_broadcast permission
+    // must succeed. The oracle: @everyone has "send" and "mention_broadcast".
+    #[tokio::test]
+    async fn test_message_set_channel_broadcast_with_permission_succeeds() {
+        let store = make_store();
+        let owner_uid = "uid-broadcast-ok";
+        setup_channel_with_member(
+            &store,
+            "sp-bc-ok",
+            "ch-bc-ok",
+            owner_uid,
+            &["view", "send", "mention_broadcast"],
+            None,
+            &[],
+            &[],
+        );
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(
+            Arc::clone(&store),
+            blob_store,
+            owner_uid.to_string(),
+        );
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "ch-bc-ok",
+                    "body": "@everyone hello!",
+                    "broadcastMentions": [
+                        {"scope": "everyone", "offset": 0, "length": 9}
+                    ]
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        assert!(
+            result["created"]["m0"].is_object(),
+            "created.m0 must be present; response: {result}"
+        );
+    }
+
+    // Oracle: broadcastMentions in a channel WITHOUT mention_broadcast permission
+    // must be rejected with "forbidden".
+    #[tokio::test]
+    async fn test_message_set_channel_broadcast_without_permission_forbidden() {
+        let store = make_store();
+        let owner_uid = "uid-broadcast-no";
+        setup_channel_with_member(
+            &store,
+            "sp-bc-no",
+            "ch-bc-no",
+            owner_uid,
+            &["view", "send"], // no "mention_broadcast"
+            None,
+            &[],
+            &[],
+        );
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(
+            Arc::clone(&store),
+            blob_store,
+            owner_uid.to_string(),
+        );
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "ch-bc-no",
+                    "body": "@everyone hello!",
+                    "broadcastMentions": [
+                        {"scope": "everyone", "offset": 0, "length": 9}
+                    ]
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed (JMAP envelope)");
+
+        let not_created = &result["notCreated"]["m0"];
+        assert!(
+            not_created.is_object(),
+            "notCreated.m0 must be present; response: {result}"
+        );
+        assert_eq!(
+            not_created["type"], "forbidden",
+            "must be forbidden; got: {not_created}"
+        );
+    }
+
+    // Oracle: broadcastMentions in a group chat (no Space) must always succeed.
+    // Per spec, group chats without a Space have no permission graph.
+    #[tokio::test]
+    async fn test_message_set_group_chat_broadcast_always_succeeds() {
+        let store = make_store();
+        let chat_id = "chat-group-bc";
+        let peer_uid = "peer-group-bc";
+        setup_chat_and_contact(&store, chat_id, peer_uid, "peer.tail.ts.net");
+
+        // Create a proper group chat (setup_chat_and_contact above created
+        // a direct chat which we do not use).
+        let group_chat_id = "chat-group-bc-2";
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create(group_chat_id, "group", None, 1_000_000)
+                .expect("create group chat");
+            guard
+                .contacts()
+                .upsert(
+                    "peer-group-uid",
+                    "p2@example.com",
+                    "peer2.tail.ts.net",
+                    None,
+                    1000,
+                )
+                .expect("upsert contact");
+            guard
+                .chats()
+                .add_member(group_chat_id, "peer-group-uid")
+                .expect("add chat member");
+        }
+
+        let (blob_store, _blob_dir) = make_blob_store();
+        let handler = MessageSetHandler::new(
+            Arc::clone(&store),
+            blob_store,
+            "uid-group-owner".to_string(),
+        );
+        let args = json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": group_chat_id,
+                    "body": "@everyone hello!",
+                    "broadcastMentions": [
+                        {"scope": "everyone", "offset": 0, "length": 9}
+                    ]
+                }
+            }
+        });
+
+        let result = handler
+            .call("Message/set".to_string(), "c0".to_string(), args)
+            .await
+            .expect("should succeed");
+
+        assert!(
+            result["created"]["m0"].is_object(),
+            "group chat broadcast must succeed without Space; response: {result}"
         );
     }
 }

@@ -885,6 +885,261 @@ fn space_set_destroy(
 }
 
 // ---------------------------------------------------------------------------
+// Space/query
+// ---------------------------------------------------------------------------
+
+/// Handler for the `Space/query` JMAP method.
+///
+/// Standard JMAP /query per RFC 8620 §5.5.  Filters by `name` (substring)
+/// and `isPublic` (boolean).  Default sort: name ascending.
+pub struct SpaceQueryHandler {
+    store: Arc<Mutex<kith_store::Store>>,
+}
+
+impl SpaceQueryHandler {
+    pub fn new(store: Arc<Mutex<kith_store::Store>>) -> Self {
+        Self { store }
+    }
+}
+
+impl JmapHandler for SpaceQueryHandler {
+    fn call(
+        &self,
+        _method_name: String,
+        _call_id: String,
+        args: serde_json::Value,
+    ) -> HandlerFuture {
+        let store = Arc::clone(&self.store);
+
+        Box::pin(async move {
+            let account_id = args
+                .get("accountId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?
+                .to_string();
+
+            if account_id != "a-self" {
+                return Err(JmapError::account_not_found());
+            }
+
+            // Parse filter.
+            let filter = args.get("filter");
+            let filter_name: Option<String> = filter
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let filter_public: Option<bool> = filter
+                .and_then(|f| f.get("isPublic"))
+                .and_then(|v| v.as_bool());
+
+            // Parse pagination.
+            let position: u32 = match args.get("position") {
+                None | Some(Value::Null) => 0,
+                Some(v) => v
+                    .as_u64()
+                    .ok_or_else(|| JmapError::invalid_arguments("position must be a number"))?
+                    as u32,
+            };
+
+            let limit: Option<u32> = match args.get("limit") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    v.as_u64()
+                        .ok_or_else(|| JmapError::invalid_arguments("limit must be a number"))?
+                        as u32,
+                ),
+            };
+
+            let calculate_total: bool = args
+                .get("calculateTotal")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // Query store.
+            let guard = store
+                .lock()
+                .map_err(|_| JmapError::server_fail("internal error"))?;
+
+            let all_ids = guard
+                .spaces()
+                .query_spaces(filter_name.as_deref(), filter_public)
+                .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+            let total = all_ids.len() as u64;
+
+            // Apply position + limit.
+            let start = (position as usize).min(all_ids.len());
+            let end = match limit {
+                Some(l) => (start + l as usize).min(all_ids.len()),
+                None => all_ids.len(),
+            };
+            let page: Vec<&str> = all_ids[start..end].iter().map(|s| s.as_str()).collect();
+
+            let query_state = guard
+                .spaces()
+                .get_state()
+                .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+            drop(guard);
+
+            Ok(json!({
+                "accountId": "a-self",
+                "queryState": query_state,
+                "canCalculateChanges": false,
+                "position": position,
+                "ids": page,
+                "total": if calculate_total { json!(total) } else { Value::Null },
+            }))
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Space/join
+// ---------------------------------------------------------------------------
+
+/// Handler for the `Space/join` JMAP method.
+///
+/// Accepts exactly one of `inviteCode` or `spaceId` (not both, not neither).
+/// Via inviteCode: resolve invite, check validity/ban, add member, increment uses.
+/// Via spaceId: check isPublic/ban, add member.
+pub struct SpaceJoinHandler {
+    store: Arc<Mutex<kith_store::Store>>,
+    owner_user_id: String,
+}
+
+impl SpaceJoinHandler {
+    pub fn new(store: Arc<Mutex<kith_store::Store>>, owner_user_id: String) -> Self {
+        Self {
+            store,
+            owner_user_id,
+        }
+    }
+}
+
+impl JmapHandler for SpaceJoinHandler {
+    fn call(
+        &self,
+        _method_name: String,
+        _call_id: String,
+        args: serde_json::Value,
+    ) -> HandlerFuture {
+        let store = Arc::clone(&self.store);
+        let owner_user_id = self.owner_user_id.clone();
+
+        Box::pin(async move {
+            let account_id = args
+                .get("accountId")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| JmapError::invalid_arguments("accountId is required"))?
+                .to_string();
+
+            if account_id != "a-self" {
+                return Err(JmapError::account_not_found());
+            }
+
+            let invite_code = args.get("inviteCode").and_then(|v| v.as_str());
+            let space_id_arg = args.get("spaceId").and_then(|v| v.as_str());
+
+            // Exactly one of inviteCode or spaceId must be provided.
+            match (invite_code, space_id_arg) {
+                (Some(_), Some(_)) => {
+                    return Err(JmapError::invalid_arguments(
+                        "exactly one of inviteCode or spaceId must be provided, not both",
+                    ));
+                }
+                (None, None) => {
+                    return Err(JmapError::invalid_arguments(
+                        "exactly one of inviteCode or spaceId is required",
+                    ));
+                }
+                _ => {}
+            }
+
+            let now_unix = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
+            let guard = store
+                .lock()
+                .map_err(|_| JmapError::server_fail("internal error"))?;
+
+            let joined_space_id = if let Some(code) = invite_code {
+                // --- Join via invite code ---
+                let invite = guard
+                    .spaces()
+                    .resolve_invite_by_code(code)
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?
+                    .ok_or_else(|| JmapError::not_found())?;
+
+                if !kith_store::space::SpaceStore::is_invite_valid(&invite, now_unix) {
+                    return Err(JmapError::invalid_arguments("invite is expired or exhausted"));
+                }
+
+                let sid: String = invite.space_id.as_ref().to_string();
+
+                if guard
+                    .spaces()
+                    .is_banned(&sid, &owner_user_id, now_unix)
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?
+                {
+                    return Err(JmapError::forbidden());
+                }
+
+                guard
+                    .spaces()
+                    .add_member(&sid, &owner_user_id, None, now_unix, &[])
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                let invite_id: String = invite.id.as_ref().to_string();
+                guard
+                    .spaces()
+                    .increment_invite_uses(&invite_id)
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                sid
+            } else {
+                // --- Join via spaceId ---
+                let sid = space_id_arg.expect("spaceId guaranteed present");
+
+                let space = guard
+                    .spaces()
+                    .get_space(sid)
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?
+                    .ok_or_else(|| JmapError::not_found())?;
+
+                if !space.is_public {
+                    return Err(JmapError::forbidden());
+                }
+
+                if guard
+                    .spaces()
+                    .is_banned(sid, &owner_user_id, now_unix)
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?
+                {
+                    return Err(JmapError::forbidden());
+                }
+
+                guard
+                    .spaces()
+                    .add_member(sid, &owner_user_id, None, now_unix, &[])
+                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
+
+                sid.to_string()
+            };
+
+            drop(guard);
+
+            Ok(json!({
+                "accountId": "a-self",
+                "joined": joined_space_id,
+            }))
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SpaceInvite/get
 // ---------------------------------------------------------------------------
 
@@ -3114,5 +3369,289 @@ mod tests {
             "changes with old sinceState must error"
         );
         assert_eq!(changes_err.unwrap_err().error_type, "cannotCalculateChanges");
+    }
+
+    // ── Space/query tests ─────────────────────────────────────────────
+
+    // Oracle: Space/query with no filter returns all space IDs, sorted by name.
+    #[tokio::test]
+    async fn test_space_query_returns_all() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .spaces()
+                .create_space("sp-b", "Bravo", None, None, false, false, 1_000_000)
+                .expect("create space b");
+            guard
+                .spaces()
+                .create_space("sp-a", "Alpha", None, None, false, false, 1_000_001)
+                .expect("create space a");
+            guard
+                .spaces()
+                .create_space("sp-c", "Charlie", None, None, true, false, 1_000_002)
+                .expect("create space c");
+        }
+
+        let handler = SpaceQueryHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Space/query".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self"}),
+            )
+            .await
+            .expect("Space/query must succeed");
+
+        let ids = result["ids"].as_array().expect("ids must be array");
+        assert_eq!(ids.len(), 3, "must return all 3 spaces");
+        // Sorted by name ascending: Alpha, Bravo, Charlie
+        assert_eq!(ids[0], "sp-a");
+        assert_eq!(ids[1], "sp-b");
+        assert_eq!(ids[2], "sp-c");
+        assert_eq!(result["canCalculateChanges"], false);
+    }
+
+    // Oracle: Space/query with name filter returns only matching spaces.
+    #[tokio::test]
+    async fn test_space_query_name_filter() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .spaces()
+                .create_space("sp-1", "Engineering", None, None, false, false, 1_000_000)
+                .expect("create space 1");
+            guard
+                .spaces()
+                .create_space("sp-2", "Marketing", None, None, false, false, 1_000_001)
+                .expect("create space 2");
+            guard
+                .spaces()
+                .create_space("sp-3", "Engineering Ops", None, None, false, false, 1_000_002)
+                .expect("create space 3");
+        }
+
+        let handler = SpaceQueryHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Space/query".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "filter": {"name": "Engineering"}}),
+            )
+            .await
+            .expect("Space/query must succeed");
+
+        let ids = result["ids"].as_array().expect("ids must be array");
+        assert_eq!(ids.len(), 2, "must return 2 matching spaces; got: {ids:?}");
+        assert!(ids.contains(&json!("sp-1")));
+        assert!(ids.contains(&json!("sp-3")));
+    }
+
+    // Oracle: Space/query with position+limit returns a page of IDs.
+    #[tokio::test]
+    async fn test_space_query_pagination() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .spaces()
+                .create_space("sp-a", "Alpha", None, None, false, false, 1_000_000)
+                .expect("create space a");
+            guard
+                .spaces()
+                .create_space("sp-b", "Bravo", None, None, false, false, 1_000_001)
+                .expect("create space b");
+            guard
+                .spaces()
+                .create_space("sp-c", "Charlie", None, None, false, false, 1_000_002)
+                .expect("create space c");
+            guard
+                .spaces()
+                .create_space("sp-d", "Delta", None, None, false, false, 1_000_003)
+                .expect("create space d");
+        }
+
+        let handler = SpaceQueryHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Space/query".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "position": 1,
+                    "limit": 2,
+                    "calculateTotal": true,
+                }),
+            )
+            .await
+            .expect("Space/query must succeed");
+
+        let ids = result["ids"].as_array().expect("ids must be array");
+        assert_eq!(ids.len(), 2, "page must contain 2 IDs; got: {ids:?}");
+        // Sorted by name: Alpha(0), Bravo(1), Charlie(2), Delta(3)
+        assert_eq!(ids[0], "sp-b");
+        assert_eq!(ids[1], "sp-c");
+        assert_eq!(result["total"], 4);
+    }
+
+    // ── Space/join tests ──────────────────────────────────────────────
+
+    /// Helper: create a space and an invite for it, returning the invite code.
+    fn create_space_with_invite(
+        store: &Arc<Mutex<kith_store::Store>>,
+        space_id: &str,
+        code: &str,
+        expires_at: Option<i64>,
+        max_uses: Option<i64>,
+    ) {
+        let guard = store.lock().unwrap();
+        guard
+            .spaces()
+            .create_space(space_id, "Test Space", None, None, false, false, 1_000_000)
+            .expect("create space");
+        guard
+            .spaces()
+            .create_invite(
+                &format!("inv-{space_id}"),
+                code,
+                space_id,
+                "creator",
+                None,
+                expires_at,
+                max_uses,
+                1_000_000,
+            )
+            .expect("create invite");
+    }
+
+    // Oracle: Space/join via inviteCode with a valid invite adds the caller
+    // as a member and returns the space ID.
+    #[tokio::test]
+    async fn test_space_join_via_invite_code() {
+        let store = make_store();
+        create_space_with_invite(&store, "sp-join1", "JOINCODE", None, None);
+
+        let handler = SpaceJoinHandler::new(Arc::clone(&store), "user-joiner".to_string());
+        let result = handler
+            .call(
+                "Space/join".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "inviteCode": "JOINCODE"}),
+            )
+            .await
+            .expect("Space/join via inviteCode must succeed");
+
+        assert_eq!(result["joined"], "sp-join1");
+
+        // Verify the user was added as member.
+        let guard = store.lock().unwrap();
+        let space = guard.spaces().get_space("sp-join1").unwrap().unwrap();
+        let member_ids: Vec<&str> = space.members.iter().map(|m| m.id.as_ref()).collect();
+        assert!(
+            member_ids.contains(&"user-joiner"),
+            "user must be in members; got: {member_ids:?}"
+        );
+    }
+
+    // Oracle: Space/join via expired inviteCode returns invalidArguments.
+    #[tokio::test]
+    async fn test_space_join_expired_invite() {
+        let store = make_store();
+        // Invite expired at Unix timestamp 100 (well in the past).
+        create_space_with_invite(&store, "sp-expired", "EXPCODE", Some(100), None);
+
+        let handler = SpaceJoinHandler::new(Arc::clone(&store), "user-late".to_string());
+        let err = handler
+            .call(
+                "Space/join".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "inviteCode": "EXPCODE"}),
+            )
+            .await;
+
+        assert!(err.is_err(), "expired invite must fail");
+        assert_eq!(err.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: Space/join via spaceId for a public space succeeds.
+    #[tokio::test]
+    async fn test_space_join_public_space() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .spaces()
+                .create_space("sp-pub", "Public Space", None, None, true, false, 1_000_000)
+                .expect("create public space");
+        }
+
+        let handler = SpaceJoinHandler::new(Arc::clone(&store), "user-pub".to_string());
+        let result = handler
+            .call(
+                "Space/join".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "spaceId": "sp-pub"}),
+            )
+            .await
+            .expect("Space/join via spaceId for public space must succeed");
+
+        assert_eq!(result["joined"], "sp-pub");
+
+        // Verify membership.
+        let guard = store.lock().unwrap();
+        let space = guard.spaces().get_space("sp-pub").unwrap().unwrap();
+        let member_ids: Vec<&str> = space.members.iter().map(|m| m.id.as_ref()).collect();
+        assert!(
+            member_ids.contains(&"user-pub"),
+            "user must be member after join"
+        );
+    }
+
+    // Oracle: Space/join via spaceId for a non-public space returns forbidden.
+    #[tokio::test]
+    async fn test_space_join_nonpublic_space_forbidden() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .spaces()
+                .create_space("sp-priv", "Private Space", None, None, false, false, 1_000_000)
+                .expect("create private space");
+        }
+
+        let handler = SpaceJoinHandler::new(Arc::clone(&store), "user-intruder".to_string());
+        let err = handler
+            .call(
+                "Space/join".to_string(),
+                "c0".to_string(),
+                json!({"accountId": "a-self", "spaceId": "sp-priv"}),
+            )
+            .await;
+
+        assert!(err.is_err(), "non-public space join must fail");
+        assert_eq!(err.unwrap_err().error_type, "forbidden");
+    }
+
+    // Oracle: Space/join with both inviteCode and spaceId returns invalidArguments.
+    #[tokio::test]
+    async fn test_space_join_both_args_invalid() {
+        let store = make_store();
+
+        let handler = SpaceJoinHandler::new(Arc::clone(&store), "user-x".to_string());
+        let err = handler
+            .call(
+                "Space/join".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "inviteCode": "SOME",
+                    "spaceId": "sp-1",
+                }),
+            )
+            .await;
+
+        assert!(err.is_err(), "both args must fail");
+        assert_eq!(err.unwrap_err().error_type, "invalidArguments");
     }
 }

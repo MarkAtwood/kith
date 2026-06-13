@@ -1,7 +1,7 @@
 use crate::db_err;
 use crate::message::ChangesResult;
 use kith_core::{Chat, ChatKind, Id, JmapError, KithError, StateChange, UTCDate};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::broadcast;
 
 /// Row type returned by [`ChatStore::get_changes_since_ordered`].
@@ -330,6 +330,24 @@ impl<'a> ChatStore<'a> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
         Ok(members)
+    }
+
+    /// Return the `space_id` for a chat, or `None` if the chat is not a channel.
+    ///
+    /// Used by the permission resolution engine to look up the Space that owns
+    /// a channel chat.
+    pub fn get_space_id(&self, chat_id: &str) -> Result<Option<String>, KithError> {
+        let space_id: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT space_id FROM chats WHERE id = ?1",
+                params![chat_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_err)?
+            .flatten();
+        Ok(space_id)
     }
 
     /// Find an existing direct chat by the peer contact's userId.

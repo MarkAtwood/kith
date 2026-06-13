@@ -283,6 +283,43 @@ impl<'a> SpaceStore<'a> {
         Ok(spaces)
     }
 
+    /// Query space IDs matching optional filters, sorted by name ascending.
+    ///
+    /// Returns the full list of matching IDs (caller handles pagination).
+    pub fn query_spaces(
+        &self,
+        filter_name: Option<&str>,
+        filter_public: Option<bool>,
+    ) -> Result<Vec<String>, KithError> {
+        let mut sql = String::from("SELECT id FROM spaces WHERE 1=1");
+        let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut param_idx = 1u32;
+
+        if let Some(name) = filter_name {
+            sql.push_str(&format!(" AND name LIKE ?{param_idx}"));
+            values.push(Box::new(format!("%{name}%")));
+            param_idx += 1;
+        }
+
+        if let Some(is_public) = filter_public {
+            sql.push_str(&format!(" AND is_public = ?{param_idx}"));
+            values.push(Box::new(is_public as i64));
+            let _ = param_idx; // suppress unused warning
+        }
+
+        sql.push_str(" ORDER BY name ASC");
+
+        let mut stmt = self.conn.prepare(&sql).map_err(db_err)?;
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            values.iter().map(|v| &**v).collect();
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |row| row.get::<_, String>(0))
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        Ok(rows)
+    }
+
     /// Update mutable Space metadata fields. Advances the state counter.
     pub fn update_space_metadata(
         &self,
@@ -503,6 +540,45 @@ impl<'a> SpaceStore<'a> {
             "INSERT INTO space_roles (id, space_id, name, color, position) \
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![role_id, space_id, name, color, pos_i64],
+        )
+        .map_err(db_err)?;
+
+        for perm in permissions {
+            tx.execute(
+                "INSERT INTO space_role_permissions (role_id, permission) VALUES (?1, ?2)",
+                params![role_id, perm],
+            )
+            .map_err(db_err)?;
+        }
+
+        let counter = crate::advance_state_counter_in_tx(&tx, "space")?;
+        tx.execute(
+            "UPDATE spaces SET changed_at_counter = ?1 WHERE id = ?2",
+            params![counter, space_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit("Space", format!("s-{counter}"));
+        Ok(())
+    }
+
+    /// Add the implicit @everyone role (position 0) to a space.
+    ///
+    /// This role is granted to all members by the permission resolution engine
+    /// (§6.1 step 1) regardless of explicit role assignments.  Separated from
+    /// [`add_role`] because that method guards `position > 0`.
+    pub fn add_everyone_role(
+        &self,
+        space_id: &str,
+        role_id: &str,
+        permissions: &[&str],
+    ) -> Result<(), KithError> {
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+
+        tx.execute(
+            "INSERT INTO space_roles (id, space_id, name, color, position) \
+             VALUES (?1, ?2, '@everyone', NULL, 0)",
+            params![role_id, space_id],
         )
         .map_err(db_err)?;
 
@@ -1070,6 +1146,62 @@ impl<'a> SpaceStore<'a> {
                 )
                 .map_err(db_err)?;
             }
+        }
+
+        tx.commit().map_err(db_err)?;
+        Ok(())
+    }
+
+    /// Add or replace a single channel permission override for one target.
+    ///
+    /// Unlike [`set_channel_permission_overrides`] (which replaces ALL
+    /// overrides for the channel), this upserts a single target's allow/deny
+    /// entries without affecting other targets.
+    pub fn set_channel_permission_override(
+        &self,
+        chat_id: &str,
+        target_id: &str,
+        target_type: &str,
+        allow: &[&str],
+        deny: &[&str],
+    ) -> Result<(), KithError> {
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+
+        // Remove any existing entries for this target in this channel.
+        tx.execute(
+            "DELETE FROM channel_permission_entries WHERE chat_id = ?1 AND target_id = ?2",
+            params![chat_id, target_id],
+        )
+        .map_err(db_err)?;
+        tx.execute(
+            "DELETE FROM channel_permissions WHERE chat_id = ?1 AND target_id = ?2",
+            params![chat_id, target_id],
+        )
+        .map_err(db_err)?;
+
+        tx.execute(
+            "INSERT INTO channel_permissions (chat_id, target_id, target_type) \
+             VALUES (?1, ?2, ?3)",
+            params![chat_id, target_id, target_type],
+        )
+        .map_err(db_err)?;
+
+        for perm in allow {
+            tx.execute(
+                "INSERT INTO channel_permission_entries \
+                 (chat_id, target_id, permission, effect) VALUES (?1, ?2, ?3, 'allow')",
+                params![chat_id, target_id, perm],
+            )
+            .map_err(db_err)?;
+        }
+
+        for perm in deny {
+            tx.execute(
+                "INSERT INTO channel_permission_entries \
+                 (chat_id, target_id, permission, effect) VALUES (?1, ?2, ?3, 'deny')",
+                params![chat_id, target_id, perm],
+            )
+            .map_err(db_err)?;
         }
 
         tx.commit().map_err(db_err)?;

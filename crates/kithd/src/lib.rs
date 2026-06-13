@@ -40,7 +40,7 @@ use kith_chat::message::{
 use kith_chat::space::{
     SpaceBanChangesHandler, SpaceBanGetHandler, SpaceBanSetHandler, SpaceChangesHandler,
     SpaceGetHandler, SpaceInviteChangesHandler, SpaceInviteGetHandler, SpaceInviteSetHandler,
-    SpaceSetHandler,
+    SpaceJoinHandler, SpaceQueryHandler, SpaceSetHandler,
 };
 use kith_core::Role;
 use kith_jmap::{build_session, parse_request, request_error, Dispatcher};
@@ -438,6 +438,17 @@ pub fn build_dispatcher(
     d.register(
         "Space/changes",
         Box::new(SpaceChangesHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "Space/query",
+        Box::new(SpaceQueryHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "Space/join",
+        Box::new(SpaceJoinHandler::new(
+            Arc::clone(&store),
+            owner_id.clone(),
+        )),
     );
 
     // SpaceInvite methods (owner-only)
