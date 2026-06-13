@@ -902,7 +902,7 @@ async fn test_message_set_wrong_chat_id() {
 // ---------------------------------------------------------------------------
 
 /// Helper: create a contact and a chat, return the chat ID.
-async fn setup_chat_for_rich_body(store: &Arc<Mutex<kith_store::Store>>, d: &Dispatcher) -> String {
+async fn setup_chat_for_rich_body(_store: &Arc<Mutex<kith_store::Store>>, d: &Dispatcher) -> String {
     let req = kith_request(vec![(
         "ChatContact/set",
         json!({
@@ -1212,4 +1212,890 @@ async fn rich_body_broadcast_span_invalid_scope_rejected() {
         "broadcast span with invalid scope must be rejected; got: {args}"
     );
     assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// ---------------------------------------------------------------------------
+// GROUP — Rich body regression tests (non-rich body types still work)
+// ---------------------------------------------------------------------------
+
+// Oracle: Message/set create with text/plain bodyType (or no bodyType, which
+// defaults to text/plain) must be accepted.  This is a regression guard to
+// ensure rich body validation does not accidentally break the default path.
+#[tokio::test]
+async fn message_create_text_plain_regression() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Set up contact and chat via store directly.
+    {
+        let guard = store.lock().unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-plain-peer",
+                "plain@example.com",
+                "plain.tail.ts.net",
+                None,
+                1000,
+            )
+            .unwrap();
+        guard
+            .chats()
+            .create("chat-plain", "direct", Some("uid-plain-peer"), 1000)
+            .unwrap();
+    }
+
+    // No bodyType → defaults to text/plain.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "chat-plain",
+                    "body": "hello plain text"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m0").is_some(),
+        "text/plain message must be accepted; got: {args}"
+    );
+
+    // Explicit bodyType=text/plain.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m1": {
+                    "chatId": "chat-plain",
+                    "body": "hello explicit plain",
+                    "bodyType": "text/plain"
+                }
+            }
+        }),
+        "m1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m1").is_some(),
+        "explicit text/plain message must be accepted; got: {args}"
+    );
+}
+
+// Oracle: Message/set create with bodyType=text/markdown must be accepted.
+// Regression guard for the rich body validation path.
+#[tokio::test]
+async fn message_create_text_markdown_regression() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    {
+        let guard = store.lock().unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-md-peer",
+                "md@example.com",
+                "md.tail.ts.net",
+                None,
+                1000,
+            )
+            .unwrap();
+        guard
+            .chats()
+            .create("chat-md", "direct", Some("uid-md-peer"), 1000)
+            .unwrap();
+    }
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "chat-md",
+                    "body": "# Hello **markdown**",
+                    "bodyType": "text/markdown"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m0").is_some(),
+        "text/markdown message must be accepted; got: {args}"
+    );
+    assert_eq!(
+        args["created"]["m0"]["bodyType"], "text/markdown",
+        "bodyType must be preserved in response"
+    );
+}
+
+// Oracle: Message/set create with an unrecognized bodyType must be rejected
+// with invalidArguments.  Supported types are: text/plain, text/markdown,
+// application/jmap-chat-rich.
+#[tokio::test]
+async fn message_create_unknown_body_type_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    {
+        let guard = store.lock().unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-unk-peer",
+                "unk@example.com",
+                "unk.tail.ts.net",
+                None,
+                1000,
+            )
+            .unwrap();
+        guard
+            .chats()
+            .create("chat-unk", "direct", Some("uid-unk-peer"), 1000)
+            .unwrap();
+    }
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": "chat-unk",
+                    "body": "hello",
+                    "bodyType": "text/html"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "unknown bodyType must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// ---------------------------------------------------------------------------
+// GROUP — Handler-level integration tests for Chat/set update
+// ---------------------------------------------------------------------------
+
+/// Helper: create a contact and a group chat (via store), return the chat ID.
+fn setup_group_chat(store: &Arc<Mutex<kith_store::Store>>, suffix: &str) -> String {
+    let guard = store.lock().unwrap();
+    let uid = format!("uid-grp-{suffix}");
+    let chat_id = format!("chat-grp-{suffix}");
+    guard
+        .contacts()
+        .upsert(
+            &uid,
+            &format!("grp-{suffix}@example.com"),
+            &format!("grp-{suffix}.tail.ts.net"),
+            None,
+            1000,
+        )
+        .unwrap();
+    guard
+        .chats()
+        .create(&chat_id, "group", None, 1000)
+        .unwrap();
+    chat_id
+}
+
+/// Helper: create a contact and a direct chat (via store), return the chat ID.
+fn setup_direct_chat(store: &Arc<Mutex<kith_store::Store>>, suffix: &str) -> String {
+    let guard = store.lock().unwrap();
+    let uid = format!("uid-dc-{suffix}");
+    let chat_id = format!("chat-dc-{suffix}");
+    guard
+        .contacts()
+        .upsert(
+            &uid,
+            &format!("dc-{suffix}@example.com"),
+            &format!("dc-{suffix}.tail.ts.net"),
+            None,
+            1000,
+        )
+        .unwrap();
+    guard
+        .chats()
+        .create(&chat_id, "direct", Some(&uid), 1000)
+        .unwrap();
+    chat_id
+}
+
+// Oracle: Chat/set update with "name" on a group chat must succeed and persist.
+// The name field is optional; setting it must update the chat metadata.
+#[tokio::test]
+async fn chat_set_update_name_on_group_chat() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_group_chat(&store, "name");
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {"name": "Team Alpha"}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    // Oracle: RFC 8620 §5.3 — updated.<id> must be null on success.
+    assert!(
+        args["updated"].get(&chat_id).is_some(),
+        "Chat/set update name must succeed; got: {args}"
+    );
+
+    // Verify via Chat/get.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let chat = &args["list"][0];
+    assert_eq!(chat["name"], "Team Alpha", "name must be persisted");
+}
+
+// Oracle: Chat/set update with "muted" toggle must succeed.
+// Default muted is false; toggling to true and back must work.
+#[tokio::test]
+async fn chat_set_update_muted_toggle() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "muted");
+
+    // Verify default is false.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"][0]["muted"], false, "default muted must be false");
+
+    // Set muted=true.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {"muted": true}
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get(&chat_id).is_some(),
+        "Chat/set update muted=true must succeed; got: {args}"
+    );
+
+    // Verify via Chat/get.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(args["list"][0]["muted"], true, "muted must be true after toggle");
+}
+
+// Oracle: Chat/set update receiveTypingIndicators must succeed.
+// Default is true; toggling to false must persist.
+#[tokio::test]
+async fn chat_set_update_receive_typing_indicators() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "typing");
+
+    // Default is true.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(
+        args["list"][0]["receiveTypingIndicators"], true,
+        "default receiveTypingIndicators must be true"
+    );
+
+    // Set to false.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {"receiveTypingIndicators": false}
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get(&chat_id).is_some(),
+        "update receiveTypingIndicators must succeed; got: {args}"
+    );
+
+    // Verify via Chat/get.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(
+        args["list"][0]["receiveTypingIndicators"], false,
+        "receiveTypingIndicators must be false after update"
+    );
+}
+
+// Oracle: Chat/set update messageExpirySeconds with a positive value must succeed.
+// The field is optional (defaults to null); setting a positive integer must persist.
+#[tokio::test]
+async fn chat_set_update_message_expiry_seconds_valid() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "expiry-ok");
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {"messageExpirySeconds": 3600}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get(&chat_id).is_some(),
+        "messageExpirySeconds=3600 must succeed; got: {args}"
+    );
+
+    // Verify via Chat/get.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(
+        args["list"][0]["messageExpirySeconds"], 3600,
+        "messageExpirySeconds must be 3600 after update"
+    );
+}
+
+// Oracle: Chat/set update messageExpirySeconds=0 must be rejected with
+// invalidArguments.  Zero is not a valid expiry (must be positive or null).
+#[tokio::test]
+async fn chat_set_update_message_expiry_seconds_zero_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "expiry-0");
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {"messageExpirySeconds": 0}
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notUpdated"].get(&chat_id).is_some(),
+        "messageExpirySeconds=0 must be rejected; got: {args}"
+    );
+    assert_eq!(args["notUpdated"][&chat_id]["type"], "invalidArguments");
+}
+
+// ---------------------------------------------------------------------------
+// GROUP — Handler-level integration tests for Message/set features
+// ---------------------------------------------------------------------------
+
+// Oracle: Message/set create with broadcastMentions and text/plain body
+// must store the mentions and return them in Message/get.
+#[tokio::test]
+async fn message_create_with_broadcast_mentions_roundtrip() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "bm-rt");
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id.clone(),
+                    "body": "@everyone hello team",
+                    "broadcastMentions": [
+                        {"scope": "everyone", "offset": 0, "length": 9}
+                    ]
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m0").is_some(),
+        "message with broadcastMentions must be accepted; got: {args}"
+    );
+    let msg_id = args["created"]["m0"]["id"]
+        .as_str()
+        .expect("message id must be a string")
+        .to_string();
+    // The created response should include broadcastMentions.
+    let bm = &args["created"]["m0"]["broadcastMentions"];
+    assert!(
+        bm.is_array(),
+        "broadcastMentions must be in created response; got: {args}"
+    );
+    assert_eq!(bm.as_array().unwrap().len(), 1);
+    assert_eq!(bm[0]["scope"], "everyone");
+
+    // Verify via Message/get: the store returns the message with mentions.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [msg_id.clone()]}),
+        "m1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let msg = &args["list"][0];
+    assert_eq!(msg["id"], msg_id);
+    // broadcastMentions persisted via the store and returned in Message/get.
+    let bm_get = &msg["broadcastMentions"];
+    assert!(
+        bm_get.is_array(),
+        "broadcastMentions must be in Message/get response; got: {msg}"
+    );
+    assert_eq!(bm_get[0]["scope"], "everyone");
+}
+
+// Oracle: Message/set destroy must return "forbidden" for all IDs.
+// Messages cannot be destroyed per the current handler (Phase 1 policy).
+#[tokio::test]
+async fn message_set_destroy_forbidden() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "destroy");
+
+    // First create a message to get a valid ID.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id.clone(),
+                    "body": "will try to destroy"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let msg_id = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Attempt to destroy.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "destroy": [msg_id.clone()]
+        }),
+        "m1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    // Oracle: notDestroyed.<id> must have type=forbidden.
+    assert!(
+        args["notDestroyed"].get(&msg_id).is_some(),
+        "destroy must be rejected; got: {args}"
+    );
+    assert_eq!(
+        args["notDestroyed"][&msg_id]["type"], "forbidden",
+        "destroy rejection must be type=forbidden"
+    );
+    // The destroyed array must be empty.
+    assert_eq!(args["destroyed"], json!([]), "destroyed must be empty");
+}
+
+// Oracle: Message/set update with a key other than "readAt" must be rejected
+// with invalidProperties.  Only readAt is patchable (Phase 1).
+#[tokio::test]
+async fn message_set_update_body_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "upd-body");
+
+    // Create a message.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id.clone(),
+                    "body": "original body"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let msg_id = resp.method_responses[0].1["created"]["m0"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Attempt to update body (not supported).
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                msg_id.clone(): {"body": "edited body"}
+            }
+        }),
+        "m1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notUpdated"].get(&msg_id).is_some(),
+        "body update must be rejected; got: {args}"
+    );
+    assert_eq!(
+        args["notUpdated"][&msg_id]["type"], "invalidProperties",
+        "body update rejection must be type=invalidProperties"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GROUP — Handler-level integration tests for ChatContact/set update
+// ---------------------------------------------------------------------------
+
+// Oracle: ChatContact/set update with "presence" must succeed.
+// Valid presence values are defined by the Presence enum.
+#[tokio::test]
+async fn contact_set_update_presence() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create a contact first.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-pres",
+                    "login": "pres@example.com",
+                    "mailboxHost": "pres.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    assert!(
+        resp.method_responses[0].1["created"].get("c0").is_some(),
+        "contact create must succeed"
+    );
+
+    // Update presence to "away".
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                "uid-pres": {"presence": "away"}
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get("uid-pres").is_some(),
+        "presence update must succeed; got: {args}"
+    );
+
+    // Verify via ChatContact/get.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-pres"]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(
+        args["list"][0]["presence"], "away",
+        "presence must be 'away' after update"
+    );
+}
+
+// Oracle: ChatContact/set update with "statusText" must succeed and persist.
+#[tokio::test]
+async fn contact_set_update_status_text() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+
+    // Create a contact.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-stat",
+                    "login": "stat@example.com",
+                    "mailboxHost": "stat.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    // Update statusText.
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                "uid-stat": {"statusText": "On vacation"}
+            }
+        }),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get("uid-stat").is_some(),
+        "statusText update must succeed; got: {args}"
+    );
+
+    // Verify via ChatContact/get.
+    let req = kith_request(vec![(
+        "ChatContact/get",
+        json!({"accountId": "a-self", "ids": ["uid-stat"]}),
+        "c2",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert_eq!(
+        args["list"][0]["statusText"], "On vacation",
+        "statusText must be persisted after update"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GROUP — Chat/get returns new fields, Message/get returns mentions
+// ---------------------------------------------------------------------------
+
+// Oracle: Chat/get must include muted, name, receiveTypingIndicators, and
+// messageExpirySeconds fields when they have been set via Chat/set update.
+#[tokio::test]
+async fn chat_get_returns_metadata_fields() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_group_chat(&store, "getfields");
+
+    // Update multiple metadata fields.
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "update": {
+                chat_id.clone(): {
+                    "name": "Engineering",
+                    "muted": true,
+                    "receiveTypingIndicators": false,
+                    "messageExpirySeconds": 86400
+                }
+            }
+        }),
+        "c0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["updated"].get(&chat_id).is_some(),
+        "multi-field update must succeed; got: {args}"
+    );
+
+    // Chat/get must return all fields.
+    let req = kith_request(vec![(
+        "Chat/get",
+        json!({"accountId": "a-self", "ids": [chat_id.clone()]}),
+        "c1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let chat = &args["list"][0];
+    assert_eq!(chat["name"], "Engineering", "name must be returned");
+    assert_eq!(chat["muted"], true, "muted must be returned");
+    assert_eq!(
+        chat["receiveTypingIndicators"], false,
+        "receiveTypingIndicators must be returned"
+    );
+    assert_eq!(
+        chat["messageExpirySeconds"], 86400,
+        "messageExpirySeconds must be returned"
+    );
+}
+
+// Oracle: Message/get must include broadcastMentions when they were set at
+// create time.  This verifies the store round-trip at the handler level.
+#[tokio::test]
+async fn message_get_returns_broadcast_mentions() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_direct_chat(&store, "bm-get");
+
+    // Create a message with broadcastMentions.
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id.clone(),
+                    "body": "@here standup time",
+                    "broadcastMentions": [
+                        {"scope": "here", "offset": 0, "length": 5}
+                    ]
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let msg_id = args["created"]["m0"]["id"]
+        .as_str()
+        .expect("message id must exist")
+        .to_string();
+
+    // Message/get must return broadcastMentions.
+    let req = kith_request(vec![(
+        "Message/get",
+        json!({"accountId": "a-self", "ids": [msg_id.clone()]}),
+        "m1",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    let msg = &args["list"][0];
+    assert_eq!(msg["id"], msg_id);
+    let bm = &msg["broadcastMentions"];
+    assert!(
+        bm.is_array(),
+        "broadcastMentions must be present in Message/get; got: {msg}"
+    );
+    let bm_arr = bm.as_array().unwrap();
+    assert_eq!(bm_arr.len(), 1, "must have one broadcast mention");
+    assert_eq!(bm_arr[0]["scope"], "here");
+    assert_eq!(bm_arr[0]["offset"], 0);
+    assert_eq!(bm_arr[0]["length"], 5);
 }

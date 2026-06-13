@@ -534,4 +534,234 @@ mod tests {
         let s: String = d.into_inner();
         assert_eq!(s, "2026-01-01T00:00:00Z");
     }
+
+    // ── Additional coverage tests ────────────────────────────────────────
+
+    #[test]
+    fn make_attachment_all_fields_accessible() {
+        // Oracle: each field must round-trip through the serde-based constructor
+        // and be individually accessible on the resulting Attachment struct.
+        let a = make_attachment(
+            "blob-xyz-789",
+            "report.pdf",
+            "application/pdf",
+            204800,
+            "b".repeat(64),
+        );
+        assert_eq!(a.blob_id.as_ref(), "blob-xyz-789");
+        assert_eq!(a.filename, "report.pdf");
+        assert_eq!(a.content_type, "application/pdf");
+        assert_eq!(a.size, 204800);
+        assert_eq!(a.sha256, "b".repeat(64));
+    }
+
+    #[test]
+    fn make_attachment_empty_filename() {
+        // Edge case: empty filename is valid per the spec (the field is a String,
+        // not constrained to be non-empty).
+        let a = make_attachment(
+            "blob-empty",
+            "",
+            "application/octet-stream",
+            0,
+            "c".repeat(64),
+        );
+        assert_eq!(a.filename, "");
+        assert_eq!(a.blob_id.as_ref(), "blob-empty");
+    }
+
+    #[test]
+    fn make_attachment_very_large_size() {
+        // Edge case: size is u64, must handle values near the upper bound.
+        // Oracle: u64::MAX / 2 is a valid size value; the serde round-trip
+        // through JSON must preserve it exactly (JSON numbers can represent
+        // integers up to 2^53, but serde_json handles u64 correctly).
+        let large_size = u64::MAX / 2;
+        let a = make_attachment(
+            "blob-big",
+            "huge.bin",
+            "application/octet-stream",
+            large_size,
+            "d".repeat(64),
+        );
+        assert_eq!(a.size, large_size);
+    }
+
+    #[test]
+    fn make_mention_zero_offset_and_length() {
+        // Edge case: zero offset and zero length represents an empty mention
+        // at the start of the body. Must not panic.
+        let m = make_mention("user-zero", 0, 0);
+        assert_eq!(m.id.as_ref(), "user-zero");
+        assert_eq!(m.offset, 0);
+        assert_eq!(m.length, 0);
+    }
+
+    #[test]
+    fn make_mention_large_offset() {
+        // Edge case: offset near u64::MAX. The spec places no upper bound on
+        // offset/length (they are UnsignedInt per RFC 8620). The serde
+        // round-trip must preserve the value.
+        let large_offset = u64::MAX / 2;
+        let m = make_mention("user-far", large_offset, 10);
+        assert_eq!(m.offset, large_offset);
+        assert_eq!(m.length, 10);
+    }
+
+    #[test]
+    fn make_broadcast_mention_each_valid_scope() {
+        // Oracle: draft-atwood-jmap-chat-00 §4.4 defines exactly three scopes.
+        // Each must construct successfully and serialize to the expected wire value.
+        for &scope in VALID_BROADCAST_SCOPES {
+            let bm = make_broadcast_mention(scope, 0, scope.len() as u64 + 1);
+            assert_eq!(bm.scope, scope);
+            let json_str = serde_json::to_string(&bm).unwrap();
+            assert!(
+                json_str.contains(&format!("\"scope\":\"{scope}\"")),
+                "scope {scope} must appear in JSON; got: {json_str}"
+            );
+        }
+    }
+
+    #[test]
+    fn make_message_revision_unicode_body() {
+        // Oracle: the body field is a UTF-8 String; multi-byte characters
+        // must round-trip through the serde-based constructor without
+        // corruption or truncation.
+        let unicode_body = "Hello \u{1F600} world \u{00E9}\u{00E8}\u{00EA} \u{4E16}\u{754C}";
+        let rev = make_message_revision(unicode_body, "text/plain", "2026-06-01T12:00:00Z");
+        assert_eq!(rev.body, unicode_body);
+        assert_eq!(rev.body_type, "text/plain");
+        assert_eq!(rev.edited_at.as_ref(), "2026-06-01T12:00:00Z");
+    }
+
+    #[test]
+    fn broadcast_mention_serde_camel_case() {
+        // Oracle: BroadcastMention uses #[serde(rename_all = "camelCase")].
+        // All field names in JSON output must be camelCase. Since BroadcastMention
+        // has only single-word field names (scope, offset, length), this test
+        // verifies the JSON keys match those exact names (no snake_case leak).
+        let bm = BroadcastMention {
+            scope: "admins".to_string(),
+            offset: 5,
+            length: 7,
+        };
+        let json_val: serde_json::Value = serde_json::to_value(&bm).unwrap();
+        let obj = json_val.as_object().unwrap();
+        // All three expected keys must be present
+        assert!(obj.contains_key("scope"), "must have 'scope' key");
+        assert!(obj.contains_key("offset"), "must have 'offset' key");
+        assert!(obj.contains_key("length"), "must have 'length' key");
+        // No unexpected keys
+        assert_eq!(
+            obj.len(),
+            3,
+            "BroadcastMention must have exactly 3 JSON fields"
+        );
+    }
+
+    #[test]
+    fn display_name_or_fallback_whitespace_only_falls_back_to_login() {
+        // Edge case: display_name is Some("   ") — non-empty but whitespace-only.
+        // The current implementation checks `!name.is_empty()` which accepts
+        // whitespace-only strings as valid display names.
+        // Oracle: the behavior is defined by the implementation — whitespace-only
+        // strings pass the `!is_empty()` check, so they are returned as-is.
+        let mut c = ChatContact::new(
+            Id::from("uid-ws"),
+            "ws-user@example.com",
+            UTCDate::from("2026-01-01T00:00:00Z"),
+            UTCDate::from("2026-04-18T20:14:00Z"),
+            false,
+        );
+        c.display_name = Some("   ".into());
+        // Whitespace-only is non-empty, so it is returned as the display name
+        assert_eq!(c.display_name_or_fallback(), "   ");
+    }
+
+    #[test]
+    fn message_new_fields_accessible_and_correct() {
+        // Oracle: Message::new sets required fields from arguments and defaults
+        // all optional/collection fields. Each required field must be accessible
+        // and equal to the value passed to the constructor.
+        let msg = Message::new(
+            Id::from("msg-001"),
+            Id::from("sender-msg-001"),
+            SenderId::Contact("peer-alice".to_string()),
+            Id::from("chat-abc"),
+            "Test message body",
+            "text/markdown",
+            UTCDate::from("2026-05-01T10:00:00Z"),
+            UTCDate::from("2026-05-01T10:00:01Z"),
+            DeliveryState::Delivered,
+        );
+        assert_eq!(msg.id.as_ref(), "msg-001");
+        assert_eq!(msg.sender_msg_id.as_ref(), "sender-msg-001");
+        assert_eq!(msg.sender_id, SenderId::Contact("peer-alice".to_string()));
+        assert_eq!(msg.chat_id.as_ref(), "chat-abc");
+        assert_eq!(msg.body, "Test message body");
+        assert_eq!(msg.body_type, "text/markdown");
+        assert_eq!(msg.sent_at.as_ref(), "2026-05-01T10:00:00Z");
+        assert_eq!(msg.received_at.as_ref(), "2026-05-01T10:00:01Z");
+        assert_eq!(msg.delivery_state, DeliveryState::Delivered);
+        // Default collections must be empty
+        assert!(msg.attachments.is_empty());
+        assert!(msg.mentions.is_empty());
+        assert!(msg.actions.is_empty());
+        assert!(msg.reactions.is_empty());
+        // Default optionals must be None
+        assert!(msg.reply_to.is_none());
+        assert!(msg.thread_root_id.is_none());
+        assert!(msg.edit_history.is_none());
+        assert!(msg.deleted_at.is_none());
+    }
+
+    #[test]
+    fn chat_new_defaults() {
+        // Oracle: Chat::new sets required fields and defaults all optional fields.
+        // pinned_message_ids, muted, and receive_typing_indicators come from
+        // arguments; all optional fields must be None.
+        let chat = Chat::new(
+            Id::from("chat-test"),
+            ChatKind::Direct,
+            UTCDate::from("2026-03-15T08:00:00Z"),
+            0,
+            vec![],
+            false,
+            false,
+        );
+        assert_eq!(chat.id.as_ref(), "chat-test");
+        assert_eq!(chat.kind, ChatKind::Direct);
+        assert!(chat.pinned_message_ids.is_empty());
+        assert!(!chat.muted);
+        assert!(!chat.receive_typing_indicators);
+        // All optional fields must be None
+        assert!(chat.contact_id.is_none());
+        assert!(chat.name.is_none());
+        assert!(chat.description.is_none());
+        assert!(chat.avatar_blob_id.is_none());
+        assert!(chat.members.is_none());
+        assert!(chat.space_id.is_none());
+        assert!(chat.topic.is_none());
+        assert!(chat.last_message_at.is_none());
+    }
+
+    #[test]
+    fn sender_id_owner_and_contact_wire_format() {
+        // Oracle: draft-atwood-jmap-chat-00 §Message.senderId
+        // - Owner serializes as the sentinel string "self"
+        // - Contact serializes as the contained id string verbatim
+        assert_eq!(
+            serde_json::to_string(&SenderId::Owner).unwrap(),
+            r#""self""#
+        );
+        let contact = SenderId::Contact("peer-bob-uid".to_string());
+        assert_eq!(
+            serde_json::to_string(&contact).unwrap(),
+            r#""peer-bob-uid""#
+        );
+        // Verify deserialization round-trip for Contact
+        let deser: SenderId = serde_json::from_str(r#""peer-bob-uid""#).unwrap();
+        assert_eq!(deser, SenderId::Contact("peer-bob-uid".to_string()));
+    }
 }

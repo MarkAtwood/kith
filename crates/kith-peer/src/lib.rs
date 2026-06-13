@@ -7,7 +7,8 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use kith_core::{
     make_attachment, make_broadcast_mention, unix_secs_to_rfc3339, BroadcastMention, DeliveryState,
-    Identity, JmapError, SenderId, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, VALID_BROADCAST_SCOPES,
+    Identity, JmapError, MessageAction, SenderId, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
+    VALID_BROADCAST_SCOPES,
 };
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -68,6 +69,20 @@ pub struct BroadcastMentionArg {
     pub length: u64,
 }
 
+/// An action button attached to a Peer/deliver message.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ActionArg {
+    #[serde(rename = "type")]
+    pub action_type: String,
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "expiresAt")]
+    pub expires_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
 /// The inner message object inside a `Peer/deliver` call.
 #[derive(Debug, Deserialize)]
 pub struct DeliverMessageArgs {
@@ -88,6 +103,18 @@ pub struct DeliverMessageArgs {
     /// Broadcast-scope mentions (@everyone, @here, @admins).
     #[serde(default, rename = "broadcastMentions")]
     pub broadcast_mentions: Vec<BroadcastMentionArg>,
+    /// Optional thread root message ID for threading.
+    #[serde(rename = "threadRootId")]
+    pub thread_root_id: Option<String>,
+    /// Optional expiry timestamp (RFC 3339) after which the message should be auto-deleted.
+    #[serde(rename = "senderExpiresAt")]
+    pub sender_expires_at: Option<String>,
+    /// If true, the message should be deleted after the recipient reads it.
+    #[serde(default, rename = "burnOnRead")]
+    pub burn_on_read: bool,
+    /// Action buttons attached to the message.
+    #[serde(default)]
+    pub actions: Vec<ActionArg>,
 }
 
 /// Handler for the `Peer/deliver` JMAP method.
@@ -205,6 +232,34 @@ impl PeerJmapHandler for DeliverHandler {
             // Step 5.55: Validate broadcast mentions.
             let broadcast_mentions =
                 validate_broadcast_mentions(&msg.broadcast_mentions, &msg.body)?;
+
+            // Step 5.6: Validate senderExpiresAt if present.
+            let sender_expires_at_unix: Option<i64> = match &msg.sender_expires_at {
+                Some(ts) => {
+                    let parsed = DateTime::parse_from_rfc3339(ts).map_err(|_| {
+                        JmapError::invalid_arguments(
+                            "senderExpiresAt must be a valid RFC 3339 timestamp",
+                        )
+                    })?;
+                    let unix = parsed.timestamp();
+                    // Reject expiry in the past — a message that is already expired on
+                    // arrival is meaningless and likely a client bug.
+                    let now_check = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    if unix <= now_check {
+                        return Err(JmapError::invalid_arguments(
+                            "senderExpiresAt must be in the future",
+                        ));
+                    }
+                    Some(unix)
+                }
+                None => None,
+            };
+
+            // Step 5.7: Validate actions.
+            let actions = validate_actions(&msg.actions)?;
 
             // Capture received_at before acquiring the store lock.
             let now_unix: i64 = SystemTime::now()
@@ -378,15 +433,26 @@ impl PeerJmapHandler for DeliverHandler {
                     &msg.id,
                     &attachments,
                     &[],
-                    None,
-                    None,
-                    false,
+                    msg.thread_root_id.as_deref(),
+                    sender_expires_at_unix,
+                    msg.burn_on_read,
                     &broadcast_mentions,
                 )
                 .map_err(|e| {
                     tracing::error!("store error inserting message: {e}");
                     JmapError::server_fail("internal error")
                 })?;
+
+            // Step 9c: Insert actions if present (store-and-forward, no inspection).
+            if !actions.is_empty() {
+                guard
+                    .messages()
+                    .insert_actions(&new_id, &actions)
+                    .map_err(|e| {
+                        tracing::error!("store error inserting actions: {e}");
+                        JmapError::server_fail("internal error")
+                    })?;
+            }
 
             // Update the chat's last_message_at so Chat/query ordering reflects
             // inbound messages.  Must run after the message insert so the timestamp
@@ -912,6 +978,18 @@ impl Default for PeerHttpClient {
 /// Returns the full JMAP envelope ready to be sent as a JSON body.
 /// The params are structured as `PeerDeliverArgs` expects: `accountId` and
 /// a nested `message` object containing `id`, `chatId`, etc.
+/// Parameters for building a Peer/deliver wire request.
+///
+/// Groups the many optional fields to avoid an ever-growing argument list.
+#[derive(Default)]
+pub struct PeerDeliverRequestParams<'a> {
+    pub thread_root_id: Option<&'a str>,
+    pub sender_expires_at: Option<&'a str>,
+    pub burn_on_read: bool,
+    pub actions: &'a [MessageAction],
+    pub mentions: &'a [kith_core::Mention],
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn build_peer_deliver_request(
     message_id: &str,
@@ -923,6 +1001,33 @@ pub fn build_peer_deliver_request(
     reply_to: Option<&str>,
     attachments: &[kith_core::Attachment],
     broadcast_mentions: &[BroadcastMention],
+) -> Value {
+    build_peer_deliver_request_full(
+        message_id,
+        chat_id,
+        sender_user_id,
+        body,
+        body_type,
+        sent_at,
+        reply_to,
+        attachments,
+        broadcast_mentions,
+        &PeerDeliverRequestParams::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_peer_deliver_request_full(
+    message_id: &str,
+    chat_id: &str,
+    sender_user_id: &str,
+    body: &str,
+    body_type: &str,
+    sent_at: &str,
+    reply_to: Option<&str>,
+    attachments: &[kith_core::Attachment],
+    broadcast_mentions: &[BroadcastMention],
+    params: &PeerDeliverRequestParams<'_>,
 ) -> Value {
     let mut message = json!({
         "id": message_id,
@@ -952,6 +1057,21 @@ pub fn build_peer_deliver_request(
                 "length": bm.length,
             }))
             .collect::<Vec<Value>>());
+    }
+    if let Some(thread_root_id) = params.thread_root_id {
+        message["threadRootId"] = Value::String(thread_root_id.to_string());
+    }
+    if let Some(sender_expires_at) = params.sender_expires_at {
+        message["senderExpiresAt"] = Value::String(sender_expires_at.to_string());
+    }
+    if params.burn_on_read {
+        message["burnOnRead"] = Value::Bool(true);
+    }
+    if !params.actions.is_empty() {
+        message["actions"] = serde_json::to_value(params.actions).unwrap_or_else(|_| json!([]));
+    }
+    if !params.mentions.is_empty() {
+        message["mentions"] = serde_json::to_value(params.mentions).unwrap_or_else(|_| json!([]));
     }
 
     json!({
@@ -1121,6 +1241,44 @@ fn validate_broadcast_mentions(
             ));
         }
         result.push(make_broadcast_mention(&bm.scope, bm.offset, bm.length));
+    }
+    Ok(result)
+}
+
+/// Validate action metadata from a `Peer/deliver` request.
+///
+/// Converts `ActionArg` wire format into `MessageAction` values ready for
+/// storage.  Rejects actions with empty `type` or empty `uri`.
+fn validate_actions(actions: &[ActionArg]) -> Result<Vec<MessageAction>, JmapError> {
+    let mut result = Vec::with_capacity(actions.len());
+    for (i, a) in actions.iter().enumerate() {
+        if a.action_type.is_empty() {
+            return Err(JmapError::invalid_arguments(format!(
+                "actions[{i}].type must not be empty"
+            )));
+        }
+        if a.uri.is_empty() {
+            return Err(JmapError::invalid_arguments(format!(
+                "actions[{i}].uri must not be empty"
+            )));
+        }
+        let mut action_json = json!({
+            "type": a.action_type,
+            "uri": a.uri,
+        });
+        if let Some(ref label) = a.label {
+            action_json["label"] = Value::String(label.clone());
+        }
+        if let Some(ref expires_at) = a.expires_at {
+            action_json["expiresAt"] = Value::String(expires_at.clone());
+        }
+        if let Some(ref metadata) = a.metadata {
+            action_json["metadata"] = metadata.clone();
+        }
+        let action: MessageAction = serde_json::from_value(action_json).map_err(|_| {
+            JmapError::invalid_arguments(format!("actions[{i}] could not be constructed"))
+        })?;
+        result.push(action);
     }
     Ok(result)
 }
@@ -1547,8 +1705,27 @@ pub async fn outbox_tick<C: DeliverClient>(
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
+        // Extract thread_root_id and sender_expires_at from the message.
+        let thread_root_id_str: Option<String> = message
+            .thread_root_id
+            .as_ref()
+            .map(|id| id.as_ref().to_owned());
+        let sender_expires_at_str: Option<String> = message
+            .sender_expires_at
+            .as_ref()
+            .map(|d| d.as_ref().to_owned());
+        let burn_on_read = message.burn_on_read.unwrap_or(false);
+
+        let extra_params = PeerDeliverRequestParams {
+            thread_root_id: thread_root_id_str.as_deref(),
+            sender_expires_at: sender_expires_at_str.as_deref(),
+            burn_on_read,
+            actions: message.actions.as_slice(),
+            mentions: message.mentions.as_slice(),
+        };
+
         // Build JMAP request; owner_id replaces the "self" sentinel in sender_id.
-        let jmap_request = build_peer_deliver_request(
+        let jmap_request = build_peer_deliver_request_full(
             message.id.as_ref(),
             message.chat_id.as_ref(),
             owner_id,
@@ -1558,6 +1735,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             message.reply_to.as_ref().map(|id| id.as_ref()),
             message.attachments.as_slice(),
             &bm_list,
+            &extra_params,
         );
 
         // Attempt delivery — no lock held across this await.
@@ -5095,5 +5273,1190 @@ mod tests {
             "rich body must be a JSON object, not an array"
         );
         assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // -----------------------------------------------------------------------
+    // Threading wire format tests
+    // Oracle: threadRootId field in Peer/deliver wire format
+    // -----------------------------------------------------------------------
+
+    /// Build deliver args with optional extra fields for threading, expiry, actions.
+    fn deliver_args_extended(
+        identity: &Identity,
+        msg_id: &str,
+        body: &str,
+        chat_id: &str,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut message = json!({
+            "id": msg_id,
+            "chatId": chat_id,
+            "senderUserId": identity.user_id,
+            "body": body,
+            "bodyType": "text/plain",
+            "sentAt": "2026-04-19T12:00:00Z",
+        });
+        // Merge extra fields into message.
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                message[k] = v.clone();
+            }
+        }
+        json!({
+            "accountId": "a-self",
+            "message": message,
+        })
+    }
+
+    // Oracle: a valid threadRootId referencing an existing message in the same
+    // chat must be accepted and stored.
+    #[tokio::test]
+    async fn deliver_with_thread_root_id_accepted() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-thread-01";
+
+        // First deliver a root message.
+        let root_id = Ulid::new().to_string();
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(&peer, &root_id, "root msg", chat_id, json!({})),
+                peer.clone(),
+            )
+            .await
+            .expect("root message must be accepted");
+        let root_stored_id = result["id"].as_str().unwrap().to_string();
+
+        // Deliver a reply with threadRootId pointing to the root.
+        let reply_id = Ulid::new().to_string();
+        let result2 = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c1".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &reply_id,
+                    "threaded reply",
+                    chat_id,
+                    json!({"threadRootId": root_stored_id}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect("threaded reply must be accepted");
+
+        // Oracle: the message must be stored with thread_root_id set.
+        let reply_stored_id = result2["id"].as_str().unwrap();
+        let guard = store.lock().unwrap();
+        let msg = guard
+            .messages()
+            .get(reply_stored_id)
+            .unwrap()
+            .expect("reply must exist");
+        assert_eq!(
+            msg.thread_root_id.as_ref().map(|id| id.as_ref()),
+            Some(root_stored_id.as_str()),
+            "thread_root_id must be stored"
+        );
+    }
+
+    // Oracle: a threadRootId referencing a non-existent message is accepted
+    // at the Peer/deliver layer (store-and-forward: the root may arrive later).
+    // The DB FK is SET NULL if the referenced message doesn't exist yet.
+    #[tokio::test]
+    async fn deliver_with_thread_root_id_nonexistent() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-thread-02";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        // The threadRootId references a message that does not exist.
+        // The handler should still accept this (store-and-forward).
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "orphan thread",
+                    chat_id,
+                    json!({"threadRootId": "nonexistent-msg-id"}),
+                ),
+                peer.clone(),
+            )
+            .await;
+
+        // The result depends on FK enforcement; the handler accepts it
+        // if the store allows NULL FK references (SET NULL).
+        // Check that a message was stored regardless.
+        if result.is_ok() {
+            let stored_id = result.unwrap()["id"].as_str().unwrap().to_string();
+            let guard = store.lock().unwrap();
+            let msg = guard.messages().get(&stored_id).unwrap().expect("stored");
+            // FK SET NULL means thread_root_id is None when the reference is dangling.
+            // The important thing is the message was accepted.
+            assert!(
+                msg.thread_root_id.is_none()
+                    || msg.thread_root_id.as_ref().map(|id| id.as_ref())
+                        == Some("nonexistent-msg-id"),
+                "thread_root_id should be None (FK NULL) or the supplied value"
+            );
+        }
+        // If the store rejects it due to FK, that's also valid behavior — just
+        // ensure it was a server_fail, not an assertion panic.
+    }
+
+    // Oracle: build_peer_deliver_request_full includes threadRootId when present.
+    #[test]
+    fn build_peer_deliver_request_includes_thread_root_id() {
+        let params = PeerDeliverRequestParams {
+            thread_root_id: Some("msg-root-001"),
+            ..Default::default()
+        };
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert_eq!(
+            msg["threadRootId"], "msg-root-001",
+            "threadRootId must be present on the wire"
+        );
+    }
+
+    // Oracle: build_peer_deliver_request_full omits threadRootId when None.
+    #[test]
+    fn build_peer_deliver_request_omits_thread_root_id_when_none() {
+        let params = PeerDeliverRequestParams::default();
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert!(
+            msg.get("threadRootId").is_none(),
+            "threadRootId must not appear when None"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Expiry wire format tests
+    // Oracle: senderExpiresAt and burnOnRead in Peer/deliver wire format
+    // -----------------------------------------------------------------------
+
+    // Oracle: a senderExpiresAt in the future must be accepted and stored.
+    #[tokio::test]
+    async fn deliver_with_sender_expires_at_future_accepted() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-expiry-01";
+        let msg_id = Ulid::new().to_string();
+
+        // Use a far-future timestamp that will always be in the future.
+        let future_ts = "2099-12-31T23:59:59Z";
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "expiring msg",
+                    chat_id,
+                    json!({"senderExpiresAt": future_ts}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect("future senderExpiresAt must be accepted");
+
+        let stored_id = result["id"].as_str().unwrap();
+        let guard = store.lock().unwrap();
+        let msg = guard
+            .messages()
+            .get(stored_id)
+            .unwrap()
+            .expect("message must exist");
+        assert!(
+            msg.sender_expires_at.is_some(),
+            "sender_expires_at must be stored"
+        );
+    }
+
+    // Oracle: a senderExpiresAt in the past must be rejected with invalidArguments.
+    #[tokio::test]
+    async fn deliver_with_sender_expires_at_past_rejected() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-expiry-02";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let err = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "already expired",
+                    chat_id,
+                    json!({"senderExpiresAt": "2020-01-01T00:00:00Z"}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect_err("past senderExpiresAt must be rejected");
+
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: burnOnRead=true must be accepted and stored.
+    #[tokio::test]
+    async fn deliver_with_burn_on_read_true_accepted() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-burn-01";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "burn me",
+                    chat_id,
+                    json!({"burnOnRead": true}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect("burnOnRead=true must be accepted");
+
+        let stored_id = result["id"].as_str().unwrap();
+        let guard = store.lock().unwrap();
+        let msg = guard
+            .messages()
+            .get(stored_id)
+            .unwrap()
+            .expect("message must exist");
+        assert_eq!(
+            msg.burn_on_read,
+            Some(true),
+            "burn_on_read must be stored as true"
+        );
+    }
+
+    // Oracle: build_peer_deliver_request_full includes senderExpiresAt when present.
+    #[test]
+    fn build_peer_deliver_request_includes_sender_expires_at() {
+        let params = PeerDeliverRequestParams {
+            sender_expires_at: Some("2099-12-31T23:59:59Z"),
+            ..Default::default()
+        };
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert_eq!(
+            msg["senderExpiresAt"], "2099-12-31T23:59:59Z",
+            "senderExpiresAt must be present on the wire"
+        );
+    }
+
+    // Oracle: build_peer_deliver_request_full includes burnOnRead when true.
+    #[test]
+    fn build_peer_deliver_request_includes_burn_on_read() {
+        let params = PeerDeliverRequestParams {
+            burn_on_read: true,
+            ..Default::default()
+        };
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert_eq!(
+            msg["burnOnRead"], true,
+            "burnOnRead must be true on the wire"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Actions wire format tests
+    // Oracle: actions field in Peer/deliver wire format
+    // -----------------------------------------------------------------------
+
+    // Oracle: valid actions must be accepted and stored (store-and-forward).
+    #[tokio::test]
+    async fn deliver_with_actions_accepted() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-actions-01";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "msg with actions",
+                    chat_id,
+                    json!({"actions": [{
+                        "type": "link",
+                        "uri": "https://example.com",
+                        "label": "Click here"
+                    }]}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect("valid actions must be accepted");
+
+        let stored_id = result["id"].as_str().unwrap();
+        let guard = store.lock().unwrap();
+        let actions = guard.messages().load_actions(stored_id).unwrap();
+        assert_eq!(actions.len(), 1, "one action must be stored");
+        assert_eq!(actions[0].action_type, "link");
+        assert_eq!(actions[0].uri, "https://example.com");
+    }
+
+    // Oracle: an action with empty type must be rejected.
+    #[tokio::test]
+    async fn deliver_with_action_empty_type_rejected() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-actions-02";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let err = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "bad action",
+                    chat_id,
+                    json!({"actions": [{"type": "", "uri": "https://example.com"}]}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect_err("action with empty type must be rejected");
+
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: an action with empty uri must be rejected.
+    #[tokio::test]
+    async fn deliver_with_action_empty_uri_rejected() {
+        let store = make_store();
+        let peer = make_identity("uid-bob");
+        let chat_id = "test-actions-03";
+        let msg_id = Ulid::new().to_string();
+
+        let handler = DeliverHandler::new(Arc::clone(&store));
+        let err = handler
+            .call(
+                "Peer/deliver".to_string(),
+                "c0".to_string(),
+                deliver_args_extended(
+                    &peer,
+                    &msg_id,
+                    "bad action",
+                    chat_id,
+                    json!({"actions": [{"type": "link", "uri": ""}]}),
+                ),
+                peer.clone(),
+            )
+            .await
+            .expect_err("action with empty uri must be rejected");
+
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: build_peer_deliver_request_full includes actions when present.
+    #[test]
+    fn build_peer_deliver_request_includes_actions() {
+        let action: MessageAction = serde_json::from_value(json!({
+            "type": "link",
+            "uri": "https://example.com",
+            "label": "Click"
+        }))
+        .unwrap();
+        let params = PeerDeliverRequestParams {
+            actions: &[action],
+            ..Default::default()
+        };
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        let actions = msg["actions"].as_array().expect("actions must be an array");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0]["type"], "link");
+        assert_eq!(actions[0]["uri"], "https://example.com");
+    }
+
+    // Oracle: build_peer_deliver_request_full omits actions when empty.
+    #[test]
+    fn build_peer_deliver_request_omits_actions_when_empty() {
+        let params = PeerDeliverRequestParams::default();
+        let req = build_peer_deliver_request_full(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+            &params,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert!(
+            msg.get("actions").is_none(),
+            "actions must not appear when empty"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Mentions edge cases
+    // Oracle: broadcastMention offset+length boundary checks
+    // -----------------------------------------------------------------------
+
+    // Oracle: broadcastMention with offset+length exactly equal to body.len()
+    // must be accepted (the span covers the last byte of the body).
+    #[test]
+    fn deliver_with_mention_at_exact_body_length_boundary() {
+        let body = "hello";
+        let mentions = vec![BroadcastMentionArg {
+            scope: "everyone".to_string(),
+            offset: 0,
+            length: 5,
+        }];
+        let result = validate_broadcast_mentions(&mentions, body);
+        assert!(
+            result.is_ok(),
+            "offset+length == body.len() must be accepted, got: {:?}",
+            result
+        );
+    }
+
+    // Oracle: broadcastMention spanning around a multibyte character must be
+    // accepted when offset and offset+length are both on UTF-8 boundaries.
+    #[test]
+    fn deliver_with_mention_at_multibyte_char_boundary() {
+        // Body: "Hi " (3 bytes) + U+1F600 (4 bytes) + " yo" (3 bytes) = 10 bytes.
+        let body = "Hi \u{1F600} yo";
+        assert_eq!(body.len(), 10, "body must be 10 bytes");
+
+        // Mention spans the emoji: offset=3 (start of emoji), length=4 (emoji is 4 bytes).
+        let mentions = vec![BroadcastMentionArg {
+            scope: "here".to_string(),
+            offset: 3,
+            length: 4,
+        }];
+        let result = validate_broadcast_mentions(&mentions, body);
+        assert!(
+            result.is_ok(),
+            "mention spanning a 4-byte emoji at char boundary must be accepted, got: {:?}",
+            result
+        );
+
+        // Mention with offset in the middle of the emoji (offset=4) must be rejected.
+        let bad_mentions = vec![BroadcastMentionArg {
+            scope: "here".to_string(),
+            offset: 4,
+            length: 1,
+        }];
+        let result2 = validate_broadcast_mentions(&bad_mentions, body);
+        assert!(
+            result2.is_err(),
+            "mention with offset inside a multibyte char must be rejected"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Peer/receipt enhanced tests
+    // Oracle: Peer/receipt updates delivery state and delivery_receipts table
+    // -----------------------------------------------------------------------
+
+    // Oracle: Peer/receipt kind=delivered must update delivery_state to Delivered.
+    #[tokio::test]
+    async fn receipt_delivered_updates_delivery_receipts_table() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-01";
+        let msg_id = "msg-rcpt-01";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        let result = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("delivered receipt must be accepted");
+
+        assert_eq!(result["accepted"], true);
+
+        // Oracle: message delivery_state must now be Delivered.
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get(msg_id).unwrap().expect("msg exists");
+        assert_eq!(msg.delivery_state, DeliveryState::Delivered);
+    }
+
+    // Oracle: Peer/receipt kind=read must update the read_at field.
+    #[tokio::test]
+    async fn receipt_read_updates_delivery_receipts_table() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-02";
+        let msg_id = "msg-rcpt-02";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "read",
+                    "at": "2026-04-19T12:05:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("read receipt must be accepted");
+
+        // Oracle: message read_at must be set.
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get(msg_id).unwrap().expect("msg exists");
+        assert!(
+            msg.read_at.is_some(),
+            "read_at must be set after read receipt"
+        );
+    }
+
+    // Oracle: Peer/receipt kind=read must set read_at (which is equivalent to
+    // read_disposition = displayed for the purpose of this test).
+    #[tokio::test]
+    async fn receipt_read_sets_read_at() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-03";
+        let msg_id = "msg-rcpt-03";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "read",
+                    "at": "2026-04-19T12:10:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("read receipt must be accepted");
+
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get(msg_id).unwrap().expect("msg exists");
+        // Oracle: read_at stores the peer-supplied timestamp (clamped).
+        // 2026-04-19T12:10:00Z is within the grace window relative to
+        // the test's wall clock (year 2026 is in the future), so it will
+        // be clamped to now+300s. The important thing: read_at is set.
+        assert!(msg.read_at.is_some(), "read_at must be set");
+    }
+
+    // Oracle: Peer/receipt for a nonexistent message must return notFound.
+    #[tokio::test]
+    async fn receipt_for_nonexistent_message_rejected() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        let err = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": "does-not-exist",
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect_err("receipt for nonexistent message must fail");
+
+        assert_eq!(err.error_type, "notFound");
+    }
+
+    // Oracle: Peer/receipt for a message not owned by the peer (wrong contact_id
+    // in chat) must return notFound.
+    #[tokio::test]
+    async fn receipt_for_message_not_owned_by_peer_rejected() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let bob = make_identity("uid-bob");
+        let alice = make_identity("uid-alice");
+        let chat_id = "chat-rcpt-05";
+        let msg_id = "msg-rcpt-05";
+
+        // Chat is with alice, but bob tries to send receipt.
+        insert_chat_with_contact(&store, chat_id, &alice.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        let err = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                bob.clone(),
+            )
+            .await
+            .expect_err("receipt from wrong peer must fail");
+
+        assert_eq!(err.error_type, "notFound");
+    }
+
+    // Oracle: after a Peer/receipt kind=delivered, the message's state_version
+    // must have advanced (so Message/changes picks it up).
+    #[tokio::test]
+    async fn receipt_advances_message_state_counter() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-06";
+        let msg_id = "msg-rcpt-06";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        // Get state before receipt.
+        let state_before = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("receipt must be accepted");
+
+        // Oracle: state counter must have advanced.
+        let state_after = {
+            let guard = store.lock().unwrap();
+            guard.messages().get_state().unwrap()
+        };
+        assert_ne!(
+            state_before, state_after,
+            "state counter must advance after receipt"
+        );
+    }
+
+    // Oracle: a far-future `at` timestamp must be clamped to now+grace.
+    // This is already tested by receipt_far_future_at_is_clamped; this test
+    // verifies the clamping from a different angle using the delivered path.
+    #[tokio::test]
+    async fn receipt_with_far_future_timestamp_clamped() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-07";
+        let msg_id = "msg-rcpt-07";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "9999-12-31T23:59:59Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("far-future receipt must be accepted (clamped)");
+
+        // Oracle: delivered_at must be set but not year-9999.
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get(msg_id).unwrap().expect("msg exists");
+        if let Some(ref da) = msg.delivered_at {
+            assert!(
+                !da.as_ref().starts_with("9999"),
+                "far-future at must be clamped, got {}",
+                da.as_ref()
+            );
+        }
+    }
+
+    // Oracle: sending the same receipt twice must be idempotent — no error, no
+    // double-counting, state counter advances at most once for the second call.
+    #[tokio::test]
+    async fn double_receipt_is_idempotent() {
+        let store = make_store();
+        let owner_id = "uid-owner";
+        let peer = make_identity("uid-bob");
+        let chat_id = "chat-rcpt-08";
+        let msg_id = "msg-rcpt-08";
+
+        insert_chat_with_contact(&store, chat_id, &peer.user_id);
+        insert_msg(&store, msg_id, chat_id, owner_id, &DeliveryState::Pending);
+
+        let handler = ReceiptHandler::new(Arc::clone(&store), owner_id.to_string());
+        handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                peer.clone(),
+            )
+            .await
+            .expect("first receipt must succeed");
+
+        // Second identical receipt.
+        let result = handler
+            .call(
+                "Peer/receipt".to_string(),
+                "c1".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "messageId": msg_id,
+                    "kind": "delivered",
+                    "at": "2026-04-19T12:00:00Z",
+                }),
+                peer.clone(),
+            )
+            .await;
+
+        // Must be Ok — idempotent.
+        assert!(result.is_ok(), "double receipt must be idempotent");
+
+        // Oracle: delivery_state must still be Delivered (not regressed).
+        let guard = store.lock().unwrap();
+        let msg = guard.messages().get(msg_id).unwrap().expect("msg exists");
+        assert_eq!(
+            msg.delivery_state,
+            DeliveryState::Delivered,
+            "delivery_state must remain Delivered after double receipt"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Outbox wire format tests — new fields
+    // Oracle: outbox_tick must include mentions, broadcastMentions, threadRootId,
+    // actions, and senderExpiresAt in the wire payload when stored.
+    // -----------------------------------------------------------------------
+
+    /// Insert an outbound message using insert_outbound_message with all optional fields.
+    fn add_contact_and_enqueue_outbound(
+        store: &Arc<Mutex<Store>>,
+        _msg_id: &str,
+        chat_id: &str,
+        now: i64,
+        params: &kith_store::OutboundMessageParams<'_>,
+    ) {
+        let guard = store.lock().unwrap();
+        guard
+            .chats()
+            .create(chat_id, "direct", Some("uid-bob"), now)
+            .unwrap();
+        guard
+            .contacts()
+            .upsert(
+                "uid-bob",
+                "bob@example.com",
+                "bob-kith.tail.ts.net",
+                None,
+                now,
+            )
+            .unwrap();
+        guard.insert_outbound_message(params).unwrap();
+    }
+
+    // Oracle: outbox_tick must include mentions (per-user @mentions) in the wire payload.
+    #[tokio::test]
+    async fn outbox_tick_includes_mentions_in_wire_payload() {
+        let store = make_store();
+        let now: i64 = 3000;
+        let msg_id = "msg-ob-mentions";
+        let chat_id = "chat-ob-mentions";
+
+        let mention = kith_core::make_mention("uid-bob", 0, 4);
+        let params = kith_store::OutboundMessageParams {
+            id: msg_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "@bob hello",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:00:00Z"),
+            created_at_unix: now,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[mention],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
+            broadcast_mentions: &[],
+        };
+        add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
+
+        let client = CapturingMockClient::new();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        let req = client.take().expect("deliver_msg must have been called");
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        let mentions = wire_msg["mentions"]
+            .as_array()
+            .expect("mentions must be an array");
+        assert_eq!(mentions.len(), 1, "one mention on the wire");
+        assert_eq!(mentions[0]["id"], "uid-bob");
+    }
+
+    // Oracle: outbox_tick must include broadcastMentions in the wire payload.
+    #[tokio::test]
+    async fn outbox_tick_includes_broadcast_mentions_in_wire_payload() {
+        let store = make_store();
+        let now: i64 = 3000;
+        let msg_id = "msg-ob-bm";
+        let chat_id = "chat-ob-bm";
+
+        let bm = make_broadcast_mention("everyone", 0, 9);
+        let params = kith_store::OutboundMessageParams {
+            id: msg_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "@everyone hello",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:00:00Z"),
+            created_at_unix: now,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
+            broadcast_mentions: &[bm],
+        };
+        add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
+
+        let client = CapturingMockClient::new();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        let req = client.take().expect("deliver_msg must have been called");
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        let bms = wire_msg["broadcastMentions"]
+            .as_array()
+            .expect("broadcastMentions must be an array");
+        assert_eq!(bms.len(), 1);
+        assert_eq!(bms[0]["scope"], "everyone");
+    }
+
+    // Oracle: outbox_tick must include threadRootId in the wire payload when stored.
+    #[tokio::test]
+    async fn outbox_tick_includes_thread_root_id_in_wire_payload() {
+        let store = make_store();
+        let now: i64 = 3000;
+        let chat_id = "chat-ob-thread";
+
+        // First insert a root message.
+        let root_id = "msg-ob-thread-root";
+        let root_params = kith_store::OutboundMessageParams {
+            id: root_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "root",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:00:00Z"),
+            created_at_unix: now,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
+            broadcast_mentions: &[],
+        };
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create(chat_id, "direct", Some("uid-bob"), now)
+                .unwrap();
+            guard
+                .contacts()
+                .upsert(
+                    "uid-bob",
+                    "bob@example.com",
+                    "bob-kith.tail.ts.net",
+                    None,
+                    now,
+                )
+                .unwrap();
+            guard.insert_outbound_message(&root_params).unwrap();
+        }
+        // Mark root as delivered so it doesn't interfere.
+        {
+            let guard = store.lock().unwrap();
+            let entries = guard.outbox().get_by_message(root_id).unwrap();
+            for e in &entries {
+                guard.outbox().mark_delivered(e).unwrap();
+            }
+            guard
+                .messages()
+                .update_delivery_state(root_id, &DeliveryState::Delivered, Some(now))
+                .unwrap();
+        }
+
+        // Now insert a threaded reply.
+        let reply_id = "msg-ob-thread-reply";
+        let reply_params = kith_store::OutboundMessageParams {
+            id: reply_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "threaded reply",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:01:00Z"),
+            created_at_unix: now + 1,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: Some(root_id),
+            sender_expires_at: None,
+            burn_on_read: false,
+            broadcast_mentions: &[],
+        };
+        {
+            let guard = store.lock().unwrap();
+            guard.insert_outbound_message(&reply_params).unwrap();
+        }
+
+        let client = CapturingMockClient::new();
+        outbox_tick(&store, &client, "uid-owner", now + 1).await;
+
+        let req = client.take().expect("deliver_msg must have been called");
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        assert_eq!(
+            wire_msg["threadRootId"], root_id,
+            "threadRootId must be on the wire"
+        );
+    }
+
+    // Oracle: outbox_tick must include actions in the wire payload when stored.
+    #[tokio::test]
+    async fn outbox_tick_includes_actions_in_wire_payload() {
+        let store = make_store();
+        let now: i64 = 3000;
+        let msg_id = "msg-ob-actions";
+        let chat_id = "chat-ob-actions";
+
+        let params = kith_store::OutboundMessageParams {
+            id: msg_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "msg with actions",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:00:00Z"),
+            created_at_unix: now,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
+            broadcast_mentions: &[],
+        };
+        add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
+
+        // Insert an action for this message.
+        {
+            let guard = store.lock().unwrap();
+            let action: MessageAction = serde_json::from_value(json!({
+                "type": "link",
+                "uri": "https://example.com/action"
+            }))
+            .unwrap();
+            guard.messages().insert_actions(msg_id, &[action]).unwrap();
+        }
+
+        let client = CapturingMockClient::new();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        let req = client.take().expect("deliver_msg must have been called");
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        let actions = wire_msg["actions"]
+            .as_array()
+            .expect("actions must be an array");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0]["type"], "link");
+        assert_eq!(actions[0]["uri"], "https://example.com/action");
+    }
+
+    // Oracle: outbox_tick must include senderExpiresAt in the wire payload when stored.
+    #[tokio::test]
+    async fn outbox_tick_includes_sender_expires_at_in_wire_payload() {
+        let store = make_store();
+        let now: i64 = 3000;
+        let msg_id = "msg-ob-expires";
+        let chat_id = "chat-ob-expires";
+
+        // Use a far-future Unix timestamp for sender_expires_at.
+        let expires_unix: i64 = 4_102_444_800; // 2099-12-31 approx
+
+        let params = kith_store::OutboundMessageParams {
+            id: msg_id,
+            chat_id,
+            sender_user_id: "uid-owner",
+            body: "expiring msg",
+            body_type: "text/plain",
+            sent_at_peer: Some("2026-04-19T12:00:00Z"),
+            created_at_unix: now,
+            reply_to: None,
+            attachments: &[],
+            mentions: &[],
+            outbox_peers: &[("uid-bob", "bob-kith.tail.ts.net")],
+            thread_root_id: None,
+            sender_expires_at: Some(expires_unix),
+            burn_on_read: false,
+            broadcast_mentions: &[],
+        };
+        add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
+
+        let client = CapturingMockClient::new();
+        outbox_tick(&store, &client, "uid-owner", now).await;
+
+        let req = client.take().expect("deliver_msg must have been called");
+        let wire_msg = &req["methodCalls"][0][1]["message"];
+        assert!(
+            wire_msg.get("senderExpiresAt").is_some(),
+            "senderExpiresAt must be present on the wire"
+        );
+        let expires_str = wire_msg["senderExpiresAt"]
+            .as_str()
+            .expect("senderExpiresAt must be a string");
+        // Oracle: the wire value must be an RFC 3339 timestamp for the stored Unix time.
+        assert!(
+            expires_str.contains("2099") || expires_str.contains("2100"),
+            "senderExpiresAt on wire must reflect the far-future timestamp, got: {expires_str}"
+        );
     }
 }

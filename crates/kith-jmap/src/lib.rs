@@ -1819,6 +1819,125 @@ mod tests {
         );
     }
 
+    // ── Additional coverage tests ────────────────────────────────────────
+
+    // Test: missing "using" field entirely → invalidArguments (deserialization failure)
+    // Oracle: RFC 8620 §3.3 — "using" is a required field in the Request object.
+    // A missing required field causes serde deserialization to fail, which
+    // parse_request maps to invalidArguments.
+    #[test]
+    fn test_parse_request_missing_using_field() {
+        let body = json!({
+            "methodCalls": [["ChatContact/get", {}, "0"]]
+        });
+        let result = parse_request(body);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Test: methodCalls value is not an array → invalidArguments
+    // Oracle: RFC 8620 §3.3 — methodCalls is "Invocation[]", an array.
+    // A non-array value causes serde deserialization to fail.
+    #[test]
+    fn test_parse_request_method_calls_not_array() {
+        let body = json!({
+            "using": ["urn:ietf:params:jmap:chat"],
+            "methodCalls": "not-an-array"
+        });
+        let result = parse_request(body);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Test: empty methodCalls array is valid (RFC 8620 §3.3 does not require
+    // at least one method call; the array MAY be empty).
+    #[test]
+    fn test_parse_request_empty_method_calls_succeeds() {
+        let body = json!({
+            "using": ["urn:ietf:params:jmap:chat"],
+            "methodCalls": []
+        });
+        let result = parse_request(body);
+        assert!(result.is_ok());
+        let req = result.unwrap();
+        assert!(req.method_calls.is_empty());
+    }
+
+    // Test: MAX_REQUEST_BYTES constant has expected value (10 MiB).
+    // Oracle: kith spec and RFC 8620 §2 — maxSizeRequest is advertised in
+    // the Session object. The constant must equal 10 * 1024 * 1024 = 10485760.
+    // This guards against accidental changes to the constant.
+    #[test]
+    fn test_max_request_bytes_value() {
+        assert_eq!(MAX_REQUEST_BYTES, 10 * 1024 * 1024);
+    }
+
+    // Test: session object supportedBodyTypes contains all three spec types.
+    // Oracle: draft-atwood-jmap-chat-00 §Message bodyType — the three canonical
+    // MIME types are text/plain, text/markdown, application/jmap-chat-rich.
+    #[test]
+    fn test_session_supported_body_types() {
+        let identity = dummy_identity();
+        let session = build_session(
+            kith_core::Role::Owner,
+            &identity,
+            "https://kith.ts.net",
+            "s-0".to_string(),
+            "uid-test".to_string(),
+            "test@example.com".to_string(),
+        );
+        let types = &session.capabilities.kith_chat.supported_body_types;
+        assert_eq!(types.len(), 3);
+        assert!(types.contains(&"text/plain".to_string()));
+        assert!(types.contains(&"text/markdown".to_string()));
+        assert!(types.contains(&"application/jmap-chat-rich".to_string()));
+    }
+
+    // Test: session object maxBodyBytes matches MAX_BODY_BYTES constant.
+    // Oracle: kith spec — maxBodyBytes is 65536 (64 KiB).
+    #[test]
+    fn test_session_max_body_bytes() {
+        let identity = dummy_identity();
+        let session = build_session(
+            kith_core::Role::Owner,
+            &identity,
+            "https://kith.ts.net",
+            "s-0".to_string(),
+            "uid-test".to_string(),
+            "test@example.com".to_string(),
+        );
+        assert_eq!(
+            session.capabilities.kith_chat.max_body_bytes,
+            MAX_BODY_BYTES as u64
+        );
+        assert_eq!(session.capabilities.kith_chat.max_body_bytes, 65_536);
+    }
+
+    // Test: session object maxAttachmentBytes matches MAX_ATTACHMENT_BYTES constant.
+    // Oracle: kith spec — maxAttachmentBytes is 104857600 (100 MiB).
+    #[test]
+    fn test_session_max_attachment_bytes() {
+        let identity = dummy_identity();
+        let session = build_session(
+            kith_core::Role::Owner,
+            &identity,
+            "https://kith.ts.net",
+            "s-0".to_string(),
+            "uid-test".to_string(),
+            "test@example.com".to_string(),
+        );
+        assert_eq!(
+            session.capabilities.kith_chat.max_attachment_bytes,
+            MAX_ATTACHMENT_BYTES as u64
+        );
+        assert_eq!(
+            session.capabilities.kith_chat.max_attachment_bytes,
+            104_857_600
+        );
+    }
+
     // Test: panicking peer handler returns serverFail, not a task panic.
     #[tokio::test]
     async fn test_dispatch_panicking_peer_handler_returns_server_fail() {

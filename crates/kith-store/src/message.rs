@@ -3003,4 +3003,2090 @@ mod tests {
             "broadcast mention must be cascade-deleted with message"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Reactions tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: construct a Reaction via serde (type is #[non_exhaustive]).
+    fn make_reaction(emoji: &str, sender_id: &str, sent_at: &str) -> Reaction {
+        serde_json::from_value(serde_json::json!({
+            "emoji": emoji,
+            "senderId": sender_id,
+            "sentAt": sent_at,
+        }))
+        .expect("valid reaction")
+    }
+
+    /// Helper: construct a Reaction with a custom emoji ID.
+    fn make_reaction_with_custom(
+        emoji: &str,
+        sender_id: &str,
+        sent_at: &str,
+        custom_emoji_id: &str,
+    ) -> Reaction {
+        serde_json::from_value(serde_json::json!({
+            "emoji": emoji,
+            "senderId": sender_id,
+            "sentAt": sent_at,
+            "customEmojiId": custom_emoji_id,
+        }))
+        .expect("valid reaction with custom emoji")
+    }
+
+    /// Helper: construct a DeliveryReceipt via serde (type is #[non_exhaustive]).
+    fn make_receipt(delivered_at: Option<&str>) -> DeliveryReceipt {
+        let mut json = serde_json::json!({});
+        if let Some(da) = delivered_at {
+            json["deliveredAt"] = serde_json::Value::String(da.to_string());
+        }
+        serde_json::from_value(json).expect("valid receipt")
+    }
+
+    /// Helper: construct a DeliveryReceipt with read_at and read_disposition.
+    fn make_receipt_full(
+        delivered_at: Option<&str>,
+        read_at: Option<&str>,
+        read_disposition: Option<&str>,
+    ) -> DeliveryReceipt {
+        let mut json = serde_json::json!({});
+        if let Some(da) = delivered_at {
+            json["deliveredAt"] = serde_json::Value::String(da.to_string());
+        }
+        if let Some(ra) = read_at {
+            json["readAt"] = serde_json::Value::String(ra.to_string());
+        }
+        if let Some(rd) = read_disposition {
+            json["readDisposition"] = serde_json::Value::String(rd.to_string());
+        }
+        serde_json::from_value(json).expect("valid receipt")
+    }
+
+    /// Helper: construct a MessageAction via serde (type is #[non_exhaustive]).
+    fn make_action(action_type: &str, uri: &str, label: Option<&str>) -> MessageAction {
+        let mut json = serde_json::json!({
+            "type": action_type,
+            "uri": uri,
+        });
+        if let Some(l) = label {
+            json["label"] = serde_json::Value::String(l.to_string());
+        }
+        serde_json::from_value(json).expect("valid action")
+    }
+
+    /// Helper: insert a test message and return the MessageStore.
+    fn setup_with_message<'a>(
+        store: &'a Store,
+        chat_id: &str,
+        msg_id: &str,
+    ) -> MessageStore<'a> {
+        insert_chat(&store.conn, chat_id);
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            msg_id,
+            chat_id,
+            "user-sender",
+            "test body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            msg_id,
+        )
+        .expect("insert test message");
+        ms
+    }
+
+    #[test]
+    fn reaction_insert_and_load_round_trip() {
+        // Oracle: insert a reaction, load it, verify emoji/sender/sent_at match input.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx1", "msg-rx1");
+
+        let reaction = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx1", "rxn-001", &reaction)
+            .expect("insert_reaction");
+
+        let reactions = ms.load_reactions("msg-rx1").expect("load_reactions");
+        assert_eq!(reactions.len(), 1);
+        let loaded = reactions.get("rxn-001").expect("rxn-001 must exist");
+        assert_eq!(loaded.emoji, "\u{1F44D}");
+        assert_eq!(
+            loaded.sender_id,
+            SenderId::Contact("user-bob".to_string())
+        );
+        assert_eq!(loaded.sent_at.as_ref(), "2026-06-13T12:00:00Z");
+    }
+
+    #[test]
+    fn reaction_with_custom_emoji_id() {
+        // Oracle: custom_emoji_id round-trips through insert/load.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx2", "msg-rx2");
+
+        let reaction = make_reaction_with_custom(
+            ":party_parrot:",
+            "user-carol",
+            "2026-06-13T12:01:00Z",
+            "custom-emoji-42",
+        );
+        ms.insert_reaction("msg-rx2", "rxn-002", &reaction)
+            .expect("insert_reaction");
+
+        let reactions = ms.load_reactions("msg-rx2").expect("load_reactions");
+        let loaded = reactions.get("rxn-002").expect("rxn-002 must exist");
+        assert_eq!(loaded.emoji, ":party_parrot:");
+        assert!(
+            loaded.custom_emoji_id.is_some(),
+            "custom_emoji_id must be preserved"
+        );
+        assert_eq!(loaded.custom_emoji_id.as_ref().unwrap().as_ref(), "custom-emoji-42");
+    }
+
+    #[test]
+    fn reaction_replace_existing_same_sender_reaction_id() {
+        // Oracle: INSERT OR REPLACE on same (message_id, sender_reaction_id)
+        // must overwrite the previous reaction.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx3", "msg-rx3");
+
+        let r1 = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx3", "rxn-003", &r1)
+            .expect("insert first");
+
+        let r2 = make_reaction("\u{2764}", "user-bob", "2026-06-13T12:01:00Z");
+        ms.insert_reaction("msg-rx3", "rxn-003", &r2)
+            .expect("insert replacement");
+
+        let reactions = ms.load_reactions("msg-rx3").expect("load");
+        assert_eq!(reactions.len(), 1, "should still have exactly one reaction");
+        let loaded = reactions.get("rxn-003").expect("rxn-003");
+        assert_eq!(loaded.emoji, "\u{2764}", "emoji must be the replacement value");
+    }
+
+    #[test]
+    fn reaction_multiple_from_different_senders() {
+        // Oracle: different sender_reaction_ids are independent entries.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx4", "msg-rx4");
+
+        let r1 = make_reaction("\u{1F44D}", "user-alice", "2026-06-13T12:00:00Z");
+        let r2 = make_reaction("\u{1F602}", "user-bob", "2026-06-13T12:00:01Z");
+        let r3 = make_reaction("\u{2764}", "user-carol", "2026-06-13T12:00:02Z");
+        ms.insert_reaction("msg-rx4", "rxn-a", &r1).expect("insert r1");
+        ms.insert_reaction("msg-rx4", "rxn-b", &r2).expect("insert r2");
+        ms.insert_reaction("msg-rx4", "rxn-c", &r3).expect("insert r3");
+
+        let reactions = ms.load_reactions("msg-rx4").expect("load");
+        assert_eq!(reactions.len(), 3);
+        assert!(reactions.contains_key("rxn-a"));
+        assert!(reactions.contains_key("rxn-b"));
+        assert!(reactions.contains_key("rxn-c"));
+    }
+
+    #[test]
+    fn reaction_delete_removes_it() {
+        // Oracle: after delete_reaction, load_reactions must not contain the removed key.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx5", "msg-rx5");
+
+        let r = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx5", "rxn-del", &r).expect("insert");
+        assert_eq!(ms.load_reactions("msg-rx5").expect("load").len(), 1);
+
+        ms.delete_reaction("msg-rx5", "rxn-del").expect("delete");
+        let reactions = ms.load_reactions("msg-rx5").expect("load after delete");
+        assert!(reactions.is_empty(), "reaction must be gone after delete");
+    }
+
+    #[test]
+    fn reaction_delete_idempotent() {
+        // Oracle: deleting a non-existent reaction must return Ok(()) without error.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx6", "msg-rx6");
+
+        let result = ms.delete_reaction("msg-rx6", "no-such-rxn");
+        assert!(result.is_ok(), "delete_reaction on missing must be idempotent");
+
+        // Second delete on same key also OK.
+        let r = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx6", "rxn-once", &r).expect("insert");
+        ms.delete_reaction("msg-rx6", "rxn-once").expect("first delete");
+        let result2 = ms.delete_reaction("msg-rx6", "rxn-once");
+        assert!(result2.is_ok(), "second delete must also be Ok");
+    }
+
+    #[test]
+    fn reaction_load_empty_for_no_reactions() {
+        // Oracle: a message with no reactions must return an empty HashMap.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx7", "msg-rx7");
+
+        let reactions = ms.load_reactions("msg-rx7").expect("load");
+        assert!(reactions.is_empty(), "no reactions must yield empty map");
+    }
+
+    #[test]
+    fn reaction_batch_load_for_messages() {
+        // Oracle: load_reactions_for_messages returns reactions keyed by message_id.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rx8");
+        let ms = MessageStore::new(&store.conn, None);
+
+        ms.insert("msg-rx8a", "chat-rx8", "user-a", "a", "text/plain", None, 100, &DeliveryState::Received, None, "msg-rx8a").expect("insert a");
+        ms.insert("msg-rx8b", "chat-rx8", "user-a", "b", "text/plain", None, 200, &DeliveryState::Received, None, "msg-rx8b").expect("insert b");
+
+        let r1 = make_reaction("\u{1F44D}", "user-x", "2026-06-13T12:00:00Z");
+        let r2 = make_reaction("\u{2764}", "user-y", "2026-06-13T12:00:01Z");
+        ms.insert_reaction("msg-rx8a", "rxn-1", &r1).expect("insert r1");
+        ms.insert_reaction("msg-rx8b", "rxn-2", &r2).expect("insert r2");
+
+        let ids = vec!["msg-rx8a".to_string(), "msg-rx8b".to_string()];
+        let map = load_reactions_for_messages(&store.conn, &ids).expect("batch load");
+        assert_eq!(map.len(), 2);
+        assert!(map.get("msg-rx8a").unwrap().contains_key("rxn-1"));
+        assert!(map.get("msg-rx8b").unwrap().contains_key("rxn-2"));
+    }
+
+    #[test]
+    fn reaction_insert_advances_state_counter() {
+        // Oracle: state counter before insert_reaction must be strictly less
+        // than state counter after.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx9", "msg-rx9");
+
+        let state_before = ms.get_state().expect("state before");
+        let r = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx9", "rxn-sc", &r).expect("insert");
+        let state_after = ms.get_state().expect("state after");
+
+        assert_ne!(state_before, state_after, "state counter must advance on insert_reaction");
+    }
+
+    #[test]
+    fn reaction_delete_advances_state_counter() {
+        // Oracle: when delete_reaction actually removes a row, the state counter
+        // must advance. When it does not remove a row (idempotent), counter must not.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx10", "msg-rx10");
+
+        let r = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx10", "rxn-dsc", &r).expect("insert");
+        let state_before_delete = ms.get_state().expect("state before delete");
+
+        ms.delete_reaction("msg-rx10", "rxn-dsc").expect("delete");
+        let state_after_delete = ms.get_state().expect("state after delete");
+        assert_ne!(
+            state_before_delete, state_after_delete,
+            "state counter must advance when delete actually removes a row"
+        );
+
+        // Idempotent delete must NOT advance counter.
+        let state_before_noop = ms.get_state().expect("state before noop");
+        ms.delete_reaction("msg-rx10", "rxn-dsc").expect("noop delete");
+        let state_after_noop = ms.get_state().expect("state after noop");
+        assert_eq!(
+            state_before_noop, state_after_noop,
+            "state counter must not advance on noop delete"
+        );
+    }
+
+    #[test]
+    fn reaction_empty_emoji_rejected() {
+        // Oracle: insert_reaction must reject empty emoji with a Validation error.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx11", "msg-rx11");
+
+        let reaction: Reaction = serde_json::from_value(serde_json::json!({
+            "emoji": "",
+            "senderId": "user-bob",
+            "sentAt": "2026-06-13T12:00:00Z",
+        }))
+        .expect("construct reaction");
+        let result = ms.insert_reaction("msg-rx11", "rxn-empty", &reaction);
+        assert!(result.is_err(), "empty emoji must be rejected");
+    }
+
+    #[test]
+    fn reaction_appears_in_get_via_populate_message_extras() {
+        // Oracle: get() calls populate_message_extras which must surface reactions.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx12", "msg-rx12");
+
+        let r = make_reaction("\u{1F680}", "user-dan", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx12", "rxn-get", &r).expect("insert");
+
+        let msg = ms.get("msg-rx12").expect("get").expect("must exist");
+        assert_eq!(msg.reactions.len(), 1, "reactions must be populated by get()");
+        let loaded = msg.reactions.get("rxn-get").expect("rxn-get key");
+        assert_eq!(loaded.emoji, "\u{1F680}");
+    }
+
+    #[test]
+    fn reaction_cascade_deletes_when_message_deleted() {
+        // Oracle: ON DELETE CASCADE on reactions FK means deleting the message
+        // must remove its reactions from the reactions table.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-rx13", "msg-rx13");
+
+        let r = make_reaction("\u{1F44D}", "user-bob", "2026-06-13T12:00:00Z");
+        ms.insert_reaction("msg-rx13", "rxn-casc", &r).expect("insert");
+
+        // Verify reaction exists.
+        let count: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM reactions WHERE message_id = 'msg-rx13'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "reaction must exist before message delete");
+
+        // Hard-delete the message row.
+        store.conn
+            .execute("DELETE FROM messages WHERE id = 'msg-rx13'", [])
+            .unwrap();
+
+        let count_after: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM reactions WHERE message_id = 'msg-rx13'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_after, 0, "reaction must be cascade-deleted with message");
+    }
+
+    // -----------------------------------------------------------------------
+    // Delivery receipts tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn receipt_upsert_and_load_round_trip() {
+        // Oracle: upsert a delivery receipt, load it, verify delivered_at matches.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr1", "msg-dr1");
+
+        let receipt = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr1", "recipient-alice", &receipt)
+            .expect("upsert");
+
+        let receipts = ms.load_delivery_receipts("msg-dr1").expect("load");
+        assert_eq!(receipts.len(), 1);
+        let loaded = receipts.get("recipient-alice").expect("recipient-alice");
+        assert_eq!(
+            loaded.delivered_at.as_ref().map(|d| d.as_ref()),
+            Some("2026-06-13T14:00:00Z")
+        );
+    }
+
+    #[test]
+    fn receipt_upsert_with_read_at_and_disposition() {
+        // Oracle: all optional fields round-trip through upsert/load.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr2", "msg-dr2");
+
+        let receipt = make_receipt_full(
+            Some("2026-06-13T14:00:00Z"),
+            Some("2026-06-13T14:05:00Z"),
+            Some("displayed"),
+        );
+        ms.upsert_delivery_receipt("msg-dr2", "recipient-bob", &receipt)
+            .expect("upsert");
+
+        let receipts = ms.load_delivery_receipts("msg-dr2").expect("load");
+        let loaded = receipts.get("recipient-bob").expect("recipient-bob");
+        assert_eq!(
+            loaded.delivered_at.as_ref().map(|d| d.as_ref()),
+            Some("2026-06-13T14:00:00Z")
+        );
+        assert_eq!(
+            loaded.read_at.as_ref().map(|d| d.as_ref()),
+            Some("2026-06-13T14:05:00Z")
+        );
+        assert_eq!(loaded.read_disposition, Some(ReadDisposition::Displayed));
+    }
+
+    #[test]
+    fn receipt_upsert_updates_existing() {
+        // Oracle: upserting the same recipient_id must overwrite the previous receipt.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr3", "msg-dr3");
+
+        let r1 = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr3", "recipient-carol", &r1)
+            .expect("first upsert");
+
+        let r2 = make_receipt_full(
+            Some("2026-06-13T14:00:00Z"),
+            Some("2026-06-13T14:10:00Z"),
+            Some("displayed"),
+        );
+        ms.upsert_delivery_receipt("msg-dr3", "recipient-carol", &r2)
+            .expect("second upsert");
+
+        let receipts = ms.load_delivery_receipts("msg-dr3").expect("load");
+        assert_eq!(receipts.len(), 1, "still one receipt for same recipient");
+        let loaded = receipts.get("recipient-carol").expect("recipient-carol");
+        assert!(
+            loaded.read_at.is_some(),
+            "read_at must be set after second upsert"
+        );
+    }
+
+    #[test]
+    fn receipt_upsert_idempotent() {
+        // Oracle: upserting the same data twice must succeed without error.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr4", "msg-dr4");
+
+        let receipt = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr4", "recipient-dan", &receipt)
+            .expect("first upsert");
+        let result = ms.upsert_delivery_receipt("msg-dr4", "recipient-dan", &receipt);
+        assert!(result.is_ok(), "identical upsert must succeed");
+    }
+
+    #[test]
+    fn receipt_load_empty_for_no_receipts() {
+        // Oracle: a message with no delivery receipts must return an empty HashMap.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr5", "msg-dr5");
+
+        let receipts = ms.load_delivery_receipts("msg-dr5").expect("load");
+        assert!(receipts.is_empty(), "no receipts must yield empty map");
+    }
+
+    #[test]
+    fn receipt_batch_load_across_messages() {
+        // Oracle: load_delivery_receipts_for_messages returns receipts keyed by message_id.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dr6");
+        let ms = MessageStore::new(&store.conn, None);
+
+        ms.insert("msg-dr6a", "chat-dr6", "user-a", "a", "text/plain", None, 100, &DeliveryState::Received, None, "msg-dr6a").expect("insert a");
+        ms.insert("msg-dr6b", "chat-dr6", "user-a", "b", "text/plain", None, 200, &DeliveryState::Received, None, "msg-dr6b").expect("insert b");
+
+        let r1 = make_receipt(Some("2026-06-13T14:00:00Z"));
+        let r2 = make_receipt(Some("2026-06-13T14:01:00Z"));
+        ms.upsert_delivery_receipt("msg-dr6a", "alice", &r1).expect("upsert r1");
+        ms.upsert_delivery_receipt("msg-dr6b", "bob", &r2).expect("upsert r2");
+
+        let ids = vec!["msg-dr6a".to_string(), "msg-dr6b".to_string()];
+        let map = load_delivery_receipts_for_messages(&store.conn, &ids).expect("batch load");
+        assert_eq!(map.len(), 2);
+        assert!(map.get("msg-dr6a").unwrap().contains_key("alice"));
+        assert!(map.get("msg-dr6b").unwrap().contains_key("bob"));
+    }
+
+    #[test]
+    fn receipt_upsert_advances_state_counter() {
+        // Oracle: state counter must advance on upsert_delivery_receipt.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr7", "msg-dr7");
+
+        let state_before = ms.get_state().expect("state before");
+        let receipt = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr7", "recipient-x", &receipt)
+            .expect("upsert");
+        let state_after = ms.get_state().expect("state after");
+
+        assert_ne!(state_before, state_after, "state counter must advance on upsert");
+    }
+
+    #[test]
+    fn receipt_appears_in_get_via_populate_message_extras() {
+        // Oracle: get() calls populate_message_extras which must surface delivery_receipts.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr8", "msg-dr8");
+
+        let receipt = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr8", "recipient-eve", &receipt)
+            .expect("upsert");
+
+        let msg = ms.get("msg-dr8").expect("get").expect("must exist");
+        assert!(
+            msg.delivery_receipts.is_some(),
+            "delivery_receipts must be populated by get()"
+        );
+        let dr_map = msg.delivery_receipts.as_ref().unwrap();
+        assert_eq!(dr_map.len(), 1);
+        assert!(dr_map.contains_key("recipient-eve"));
+    }
+
+    #[test]
+    fn receipt_read_disposition_values() {
+        // Oracle: all three known ReadDisposition values must round-trip correctly.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dr9");
+        let ms = MessageStore::new(&store.conn, None);
+
+        let cases = [
+            ("msg-dr9a", "displayed"),
+            ("msg-dr9b", "deleted"),
+            ("msg-dr9c", "processed"),
+        ];
+
+        for (msg_id, disp) in &cases {
+            ms.insert(msg_id, "chat-dr9", "user-a", "body", "text/plain", None, 1000, &DeliveryState::Received, None, msg_id)
+                .expect("insert");
+            let receipt = make_receipt_full(
+                Some("2026-06-13T14:00:00Z"),
+                Some("2026-06-13T14:05:00Z"),
+                Some(disp),
+            );
+            ms.upsert_delivery_receipt(msg_id, "recipient", &receipt)
+                .expect("upsert");
+        }
+
+        let expected_dispositions = [
+            ReadDisposition::Displayed,
+            ReadDisposition::Deleted,
+            ReadDisposition::Processed,
+        ];
+        for ((msg_id, _), expected) in cases.iter().zip(expected_dispositions.iter()) {
+            let receipts = ms.load_delivery_receipts(msg_id).expect("load");
+            let loaded = receipts.get("recipient").expect("recipient");
+            assert_eq!(
+                loaded.read_disposition.as_ref(),
+                Some(expected),
+                "read_disposition must round-trip for {msg_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn receipt_cascade_deletes_when_message_deleted() {
+        // Oracle: ON DELETE CASCADE on delivery_receipts FK means deleting the
+        // message must remove its receipts.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-dr10", "msg-dr10");
+
+        let receipt = make_receipt(Some("2026-06-13T14:00:00Z"));
+        ms.upsert_delivery_receipt("msg-dr10", "recipient-z", &receipt)
+            .expect("upsert");
+
+        let count: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM delivery_receipts WHERE message_id = 'msg-dr10'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "receipt must exist before message delete");
+
+        store.conn
+            .execute("DELETE FROM messages WHERE id = 'msg-dr10'", [])
+            .unwrap();
+
+        let count_after: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM delivery_receipts WHERE message_id = 'msg-dr10'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_after, 0, "receipt must be cascade-deleted with message");
+    }
+
+    // -----------------------------------------------------------------------
+    // Message actions tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn action_insert_and_load_round_trip() {
+        // Oracle: insert actions, load them, verify type/uri/label match input.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma1", "msg-ma1");
+
+        let action = make_action("button", "https://example.com/approve", Some("Approve"));
+        ms.insert_actions("msg-ma1", &[action]).expect("insert_actions");
+
+        let actions = ms.load_actions("msg-ma1").expect("load_actions");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action_type, "button");
+        assert_eq!(actions[0].uri, "https://example.com/approve");
+        assert_eq!(actions[0].label.as_deref(), Some("Approve"));
+    }
+
+    #[test]
+    fn action_insert_multiple_on_one_message() {
+        // Oracle: multiple actions on one message must all be retrievable.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma2", "msg-ma2");
+
+        let actions = vec![
+            make_action("button", "https://example.com/yes", Some("Yes")),
+            make_action("button", "https://example.com/no", Some("No")),
+            make_action("link", "https://example.com/details", Some("Details")),
+        ];
+        ms.insert_actions("msg-ma2", &actions).expect("insert");
+
+        let loaded = ms.load_actions("msg-ma2").expect("load");
+        assert_eq!(loaded.len(), 3);
+        assert_eq!(loaded[0].label.as_deref(), Some("Yes"));
+        assert_eq!(loaded[1].label.as_deref(), Some("No"));
+        assert_eq!(loaded[2].label.as_deref(), Some("Details"));
+    }
+
+    #[test]
+    fn action_empty_list_is_noop() {
+        // Oracle: inserting an empty actions list must not create any rows.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma3", "msg-ma3");
+
+        ms.insert_actions("msg-ma3", &[]).expect("insert empty");
+        let actions = ms.load_actions("msg-ma3").expect("load");
+        assert!(actions.is_empty(), "empty insert must produce no rows");
+    }
+
+    #[test]
+    fn action_with_expires_at_and_metadata() {
+        // Oracle: expires_at and metadata round-trip through insert/load.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma4", "msg-ma4");
+
+        let action: MessageAction = serde_json::from_value(serde_json::json!({
+            "type": "button",
+            "uri": "https://example.com/vote",
+            "label": "Vote",
+            "expiresAt": "2026-06-14T00:00:00Z",
+            "metadata": {"poll_id": "poll-123", "option": 2}
+        }))
+        .expect("construct action");
+
+        ms.insert_actions("msg-ma4", &[action]).expect("insert");
+
+        let loaded = ms.load_actions("msg-ma4").expect("load");
+        assert_eq!(loaded.len(), 1);
+        assert!(loaded[0].expires_at.is_some(), "expires_at must round-trip");
+        assert_eq!(loaded[0].expires_at.as_ref().unwrap().as_ref(), "2026-06-14T00:00:00Z");
+        assert!(loaded[0].metadata.is_some(), "metadata must round-trip");
+        let meta = loaded[0].metadata.as_ref().unwrap();
+        assert_eq!(meta["poll_id"], "poll-123");
+        assert_eq!(meta["option"], 2);
+    }
+
+    #[test]
+    fn action_appears_in_get_via_populate_message_extras() {
+        // Oracle: get() calls populate_message_extras which must surface actions.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma5", "msg-ma5");
+
+        let action = make_action("button", "https://example.com/click", Some("Click"));
+        ms.insert_actions("msg-ma5", &[action]).expect("insert");
+
+        let msg = ms.get("msg-ma5").expect("get").expect("must exist");
+        assert_eq!(msg.actions.len(), 1, "actions must be populated by get()");
+        assert_eq!(msg.actions[0].action_type, "button");
+    }
+
+    #[test]
+    fn action_batch_loading() {
+        // Oracle: load_actions_for_messages returns actions keyed by message_id.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ma6");
+        let ms = MessageStore::new(&store.conn, None);
+
+        ms.insert("msg-ma6a", "chat-ma6", "user-a", "a", "text/plain", None, 100, &DeliveryState::Received, None, "msg-ma6a").expect("insert a");
+        ms.insert("msg-ma6b", "chat-ma6", "user-a", "b", "text/plain", None, 200, &DeliveryState::Received, None, "msg-ma6b").expect("insert b");
+
+        let a1 = make_action("button", "https://a.com", Some("A"));
+        let a2 = make_action("link", "https://b.com", Some("B"));
+        ms.insert_actions("msg-ma6a", &[a1]).expect("insert a1");
+        ms.insert_actions("msg-ma6b", &[a2]).expect("insert a2");
+
+        let ids = vec!["msg-ma6a".to_string(), "msg-ma6b".to_string()];
+        let map = load_actions_for_messages(&store.conn, &ids).expect("batch load");
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("msg-ma6a").unwrap().len(), 1);
+        assert_eq!(map.get("msg-ma6b").unwrap().len(), 1);
+        assert_eq!(map.get("msg-ma6a").unwrap()[0].action_type, "button");
+        assert_eq!(map.get("msg-ma6b").unwrap()[0].action_type, "link");
+    }
+
+    #[test]
+    fn action_cascade_deletes_when_message_deleted() {
+        // Oracle: ON DELETE CASCADE on message_actions FK means deleting the
+        // message must remove its actions.
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma7", "msg-ma7");
+
+        let action = make_action("button", "https://example.com", Some("Go"));
+        ms.insert_actions("msg-ma7", &[action]).expect("insert");
+
+        let count: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM message_actions WHERE message_id = 'msg-ma7'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "action must exist before message delete");
+
+        store.conn
+            .execute("DELETE FROM messages WHERE id = 'msg-ma7'", [])
+            .unwrap();
+
+        let count_after: i64 = store.conn
+            .query_row(
+                "SELECT COUNT(*) FROM message_actions WHERE message_id = 'msg-ma7'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count_after, 0, "action must be cascade-deleted with message");
+    }
+
+    #[test]
+    fn action_ordering_preserved_by_action_index() {
+        // Oracle: actions must be returned in the order they were inserted,
+        // determined by the action_index column (0, 1, 2...).
+        let store = Store::open_in_memory().expect("open");
+        let ms = setup_with_message(&store, "chat-ma8", "msg-ma8");
+
+        let actions = vec![
+            make_action("button", "https://first.com", Some("First")),
+            make_action("link", "https://second.com", Some("Second")),
+            make_action("button", "https://third.com", Some("Third")),
+        ];
+        ms.insert_actions("msg-ma8", &actions).expect("insert");
+
+        let loaded = ms.load_actions("msg-ma8").expect("load");
+        assert_eq!(loaded.len(), 3);
+        assert_eq!(loaded[0].label.as_deref(), Some("First"));
+        assert_eq!(loaded[1].label.as_deref(), Some("Second"));
+        assert_eq!(loaded[2].label.as_deref(), Some("Third"));
+
+        // Also verify via batch load preserves order.
+        let ids = vec!["msg-ma8".to_string()];
+        let map = load_actions_for_messages(&store.conn, &ids).expect("batch load");
+        let batch_loaded = map.get("msg-ma8").expect("msg-ma8");
+        assert_eq!(batch_loaded[0].label.as_deref(), Some("First"));
+        assert_eq!(batch_loaded[1].label.as_deref(), Some("Second"));
+        assert_eq!(batch_loaded[2].label.as_deref(), Some("Third"));
+    }
+
+
+    // -----------------------------------------------------------------------
+    // Threading tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn thread_root_id_round_trip_via_get() {
+        // Oracle: a message inserted with thread_root_id must return that same
+        // value when retrieved via get(). The FK points at the root message.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-thr1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        // Insert root message first (no thread_root_id).
+        ms.insert_full(
+            "msg-root-1",
+            "chat-thr1",
+            "user-a",
+            "root message",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-root-1",
+            None,
+            None,
+            false,
+        )
+        .expect("insert root");
+
+        // Insert reply with thread_root_id pointing to root.
+        ms.insert_full(
+            "msg-reply-1",
+            "chat-thr1",
+            "user-b",
+            "reply in thread",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            Some("msg-root-1"),
+            "msg-reply-1",
+            Some("msg-root-1"),
+            None,
+            false,
+        )
+        .expect("insert reply");
+
+        let reply = ms.get("msg-reply-1").expect("get").expect("must exist");
+        assert_eq!(
+            reply.thread_root_id.as_ref().map(|id| id.as_ref()),
+            Some("msg-root-1"),
+            "thread_root_id must round-trip through get()"
+        );
+
+        let root = ms.get("msg-root-1").expect("get").expect("must exist");
+        assert!(
+            root.thread_root_id.is_none(),
+            "root message must have no thread_root_id"
+        );
+    }
+
+    #[test]
+    fn reply_count_computed_correctly() {
+        // Oracle: create root + 3 replies using reply_to, verify root.reply_count == 3.
+        // populate_reply_counts counts messages whose reply_to points to the root.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rc1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-rc-root",
+            "chat-rc1",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-rc-root",
+        )
+        .expect("insert root");
+
+        for i in 1..=3 {
+            ms.insert(
+                &format!("msg-rc-reply-{i}"),
+                "chat-rc1",
+                "user-b",
+                &format!("reply {i}"),
+                "text/plain",
+                None,
+                1000 + i64::from(i),
+                &DeliveryState::Received,
+                Some("msg-rc-root"),
+                &format!("msg-rc-reply-{i}"),
+            )
+            .expect("insert reply");
+        }
+
+        let root = ms.get("msg-rc-root").expect("get").expect("must exist");
+        assert_eq!(
+            root.reply_count,
+            Some(3),
+            "root must have reply_count == 3"
+        );
+    }
+
+    #[test]
+    fn unread_reply_count_excludes_read_replies() {
+        // Oracle: of 3 replies, mark 1 as read. unread_reply_count must be 2,
+        // total reply_count must still be 3.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-urc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-urc-root",
+            "chat-urc",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-urc-root",
+        )
+        .expect("insert root");
+
+        for i in 1..=3 {
+            ms.insert(
+                &format!("msg-urc-reply-{i}"),
+                "chat-urc",
+                "user-b",
+                &format!("reply {i}"),
+                "text/plain",
+                None,
+                1000 + i64::from(i),
+                &DeliveryState::Received,
+                Some("msg-urc-root"),
+                &format!("msg-urc-reply-{i}"),
+            )
+            .expect("insert reply");
+        }
+
+        // Mark one reply as read.
+        ms.update_read_at("msg-urc-reply-2", 5000)
+            .expect("mark read");
+
+        let root = ms.get("msg-urc-root").expect("get").expect("must exist");
+        assert_eq!(root.reply_count, Some(3), "total reply_count must be 3");
+        assert_eq!(
+            root.unread_reply_count,
+            Some(2),
+            "unread_reply_count must be 2 after marking one read"
+        );
+    }
+
+    #[test]
+    fn reply_count_zero_for_messages_with_no_replies() {
+        // Oracle: a message with no replies must have reply_count = None (not Some(0)).
+        // populate_reply_counts only sets counts for messages that have entries in the
+        // GROUP BY result; messages with zero replies get no entry.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rc0");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-rc0",
+            "chat-rc0",
+            "user-a",
+            "no replies",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-rc0",
+        )
+        .expect("insert");
+
+        let msg = ms.get("msg-rc0").expect("get").expect("must exist");
+        assert!(
+            msg.reply_count.is_none(),
+            "message with no replies must have reply_count = None, got {:?}",
+            msg.reply_count
+        );
+        assert!(
+            msg.unread_reply_count.is_none(),
+            "message with no replies must have unread_reply_count = None"
+        );
+    }
+
+    #[test]
+    fn reply_count_not_set_on_reply_messages() {
+        // Oracle: a reply message should not have reply_count set if nobody
+        // replied to it. reply_count is based on reply_to references pointing
+        // at a message, not on being a reply itself.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rcnr");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-rcnr-root",
+            "chat-rcnr",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-rcnr-root",
+        )
+        .expect("insert root");
+
+        ms.insert(
+            "msg-rcnr-reply",
+            "chat-rcnr",
+            "user-b",
+            "reply",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            Some("msg-rcnr-root"),
+            "msg-rcnr-reply",
+        )
+        .expect("insert reply");
+
+        let reply = ms.get("msg-rcnr-reply").expect("get").expect("must exist");
+        assert!(
+            reply.reply_count.is_none(),
+            "reply with no sub-replies must have reply_count = None"
+        );
+    }
+
+    #[test]
+    fn thread_root_id_on_delete_set_null() {
+        // Oracle: V24 schema declares thread_root_id with ON DELETE SET NULL.
+        // Deleting the root message must set thread_root_id to NULL on replies,
+        // not cascade-delete them.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-tds");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert_full(
+            "msg-tds-root",
+            "chat-tds",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-tds-root",
+            None,
+            None,
+            false,
+        )
+        .expect("insert root");
+
+        ms.insert_full(
+            "msg-tds-reply",
+            "chat-tds",
+            "user-b",
+            "reply",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            None,
+            "msg-tds-reply",
+            Some("msg-tds-root"),
+            None,
+            false,
+        )
+        .expect("insert reply");
+
+        // Verify thread_root_id is set before delete.
+        let before = ms.get("msg-tds-reply").expect("get").expect("exists");
+        assert_eq!(
+            before.thread_root_id.as_ref().map(|id| id.as_ref()),
+            Some("msg-tds-root")
+        );
+
+        // Hard-delete the root message.
+        store
+            .conn
+            .execute("DELETE FROM messages WHERE id = 'msg-tds-root'", [])
+            .expect("delete root");
+
+        // Reply must still exist with thread_root_id set to NULL.
+        let after = ms.get("msg-tds-reply").expect("get").expect("must still exist");
+        assert!(
+            after.thread_root_id.is_none(),
+            "thread_root_id must be NULL after root is deleted (ON DELETE SET NULL)"
+        );
+    }
+
+    #[test]
+    fn thread_root_id_fk_rejects_nonexistent_parent() {
+        // Oracle: thread_root_id REFERENCES messages(id), so inserting a message
+        // with a thread_root_id that does not exist must fail with an FK violation.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-tfk");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let result = ms.insert_full(
+            "msg-tfk",
+            "chat-tfk",
+            "user-a",
+            "orphan reply",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-tfk",
+            Some("nonexistent-root"),
+            None,
+            false,
+        );
+        assert!(
+            result.is_err(),
+            "inserting with nonexistent thread_root_id must fail: FK constraint"
+        );
+    }
+
+    #[test]
+    fn thread_root_id_in_list_by_chat_results() {
+        // Oracle: list_by_chat must populate thread_root_id on returned messages.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-tlbc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert_full(
+            "msg-tlbc-root",
+            "chat-tlbc",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-tlbc-root",
+            None,
+            None,
+            false,
+        )
+        .expect("insert root");
+
+        ms.insert_full(
+            "msg-tlbc-reply",
+            "chat-tlbc",
+            "user-b",
+            "reply",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            None,
+            "msg-tlbc-reply",
+            Some("msg-tlbc-root"),
+            None,
+            false,
+        )
+        .expect("insert reply");
+
+        let msgs = ms.list_by_chat("chat-tlbc", 10).expect("list");
+        let reply = msgs
+            .iter()
+            .find(|m| m.id == "msg-tlbc-reply")
+            .expect("reply in list");
+        assert_eq!(
+            reply.thread_root_id.as_ref().map(|id| id.as_ref()),
+            Some("msg-tlbc-root"),
+            "thread_root_id must appear in list_by_chat results"
+        );
+    }
+
+    #[test]
+    fn multiple_threads_in_same_chat_counted_independently() {
+        // Oracle: two root messages in the same chat, each with different reply
+        // counts. populate_reply_counts must count them independently.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-mt");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-mt-root-a",
+            "chat-mt",
+            "user-a",
+            "root A",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-mt-root-a",
+        )
+        .expect("insert root A");
+
+        ms.insert(
+            "msg-mt-root-b",
+            "chat-mt",
+            "user-a",
+            "root B",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            None,
+            "msg-mt-root-b",
+        )
+        .expect("insert root B");
+
+        // 2 replies to root A.
+        for i in 1..=2 {
+            ms.insert(
+                &format!("msg-mt-a-reply-{i}"),
+                "chat-mt",
+                "user-b",
+                &format!("reply to A #{i}"),
+                "text/plain",
+                None,
+                2000 + i64::from(i),
+                &DeliveryState::Received,
+                Some("msg-mt-root-a"),
+                &format!("msg-mt-a-reply-{i}"),
+            )
+            .expect("insert reply to A");
+        }
+
+        // 1 reply to root B.
+        ms.insert(
+            "msg-mt-b-reply-1",
+            "chat-mt",
+            "user-b",
+            "reply to B #1",
+            "text/plain",
+            None,
+            3000,
+            &DeliveryState::Received,
+            Some("msg-mt-root-b"),
+            "msg-mt-b-reply-1",
+        )
+        .expect("insert reply to B");
+
+        let msgs = ms.list_by_chat("chat-mt", 10).expect("list");
+        let root_a = msgs
+            .iter()
+            .find(|m| m.id == "msg-mt-root-a")
+            .expect("root A");
+        let root_b = msgs
+            .iter()
+            .find(|m| m.id == "msg-mt-root-b")
+            .expect("root B");
+
+        assert_eq!(
+            root_a.reply_count,
+            Some(2),
+            "root A must have 2 replies"
+        );
+        assert_eq!(
+            root_b.reply_count,
+            Some(1),
+            "root B must have 1 reply"
+        );
+    }
+
+    #[test]
+    fn thread_root_id_in_find_by_sender_msg_id() {
+        // Oracle: find_by_sender_msg_id must return thread_root_id on the result.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-fsmi");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert_full(
+            "msg-fsmi-root",
+            "chat-fsmi",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "sender-root-id",
+            None,
+            None,
+            false,
+        )
+        .expect("insert root");
+
+        ms.insert_full(
+            "msg-fsmi-reply",
+            "chat-fsmi",
+            "user-b",
+            "reply",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            None,
+            "sender-reply-id",
+            Some("msg-fsmi-root"),
+            None,
+            false,
+        )
+        .expect("insert reply");
+
+        let found = ms
+            .find_by_sender_msg_id("chat-fsmi", "sender-reply-id")
+            .expect("find")
+            .expect("must exist");
+        assert_eq!(
+            found.thread_root_id.as_ref().map(|id| id.as_ref()),
+            Some("msg-fsmi-root"),
+            "find_by_sender_msg_id must return thread_root_id"
+        );
+    }
+
+    #[test]
+    fn reply_count_in_list_by_chat() {
+        // Oracle: list_by_chat must populate reply_count via populate_reply_counts.
+        // This verifies the batch path (not just get()).
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-rclbc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-rclbc-root",
+            "chat-rclbc",
+            "user-a",
+            "root",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-rclbc-root",
+        )
+        .expect("insert root");
+
+        ms.insert(
+            "msg-rclbc-reply",
+            "chat-rclbc",
+            "user-b",
+            "reply",
+            "text/plain",
+            None,
+            1001,
+            &DeliveryState::Received,
+            Some("msg-rclbc-root"),
+            "msg-rclbc-reply",
+        )
+        .expect("insert reply");
+
+        let msgs = ms.list_by_chat("chat-rclbc", 10).expect("list");
+        let root = msgs
+            .iter()
+            .find(|m| m.id == "msg-rclbc-root")
+            .expect("root");
+        assert_eq!(
+            root.reply_count,
+            Some(1),
+            "list_by_chat must populate reply_count"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Expiry tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sender_expires_at_round_trip() {
+        // Oracle: a message inserted with sender_expires_at must return
+        // that value when retrieved via get().
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-exp1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let expiry_ts: i64 = 2000000000; // well in the future
+        ms.insert_full(
+            "msg-exp1",
+            "chat-exp1",
+            "user-a",
+            "ephemeral",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-exp1",
+            None,
+            Some(expiry_ts),
+            false,
+        )
+        .expect("insert");
+
+        let msg = ms.get("msg-exp1").expect("get").expect("must exist");
+        assert!(
+            msg.sender_expires_at.is_some(),
+            "sender_expires_at must be set"
+        );
+        // Verify the timestamp round-trips: the stored RFC3339 string must
+        // correspond to the Unix timestamp we inserted.
+        let expected_rfc3339 = crate::util::unix_secs_to_rfc3339(expiry_ts as u64);
+        assert_eq!(
+            msg.sender_expires_at.as_ref().unwrap().as_ref(),
+            &expected_rfc3339,
+            "sender_expires_at must round-trip as RFC3339"
+        );
+    }
+
+    #[test]
+    fn burn_on_read_round_trip() {
+        // Oracle: a message inserted with burn_on_read=true must return
+        // burn_on_read=Some(true) when retrieved via get().
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-bor1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert_full(
+            "msg-bor1",
+            "chat-bor1",
+            "user-a",
+            "read and burn",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-bor1",
+            None,
+            None,
+            true,
+        )
+        .expect("insert");
+
+        let msg = ms.get("msg-bor1").expect("get").expect("must exist");
+        assert_eq!(
+            msg.burn_on_read,
+            Some(true),
+            "burn_on_read must be Some(true)"
+        );
+    }
+
+    #[test]
+    fn delete_expired_removes_past_messages() {
+        // Oracle: messages with sender_expires_at <= now must be deleted by
+        // delete_expired. Messages with future expiry must remain.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dexp");
+
+        let ms = MessageStore::new(&store.conn, None);
+        // Expired message (expires at t=500, now=1000).
+        ms.insert_full(
+            "msg-dexp-old",
+            "chat-dexp",
+            "user-a",
+            "expired",
+            "text/plain",
+            None,
+            100,
+            &DeliveryState::Received,
+            None,
+            "msg-dexp-old",
+            None,
+            Some(500),
+            false,
+        )
+        .expect("insert expired");
+
+        // Future message (expires at t=9999).
+        ms.insert_full(
+            "msg-dexp-future",
+            "chat-dexp",
+            "user-a",
+            "not expired",
+            "text/plain",
+            None,
+            100,
+            &DeliveryState::Received,
+            None,
+            "msg-dexp-future",
+            None,
+            Some(9999),
+            false,
+        )
+        .expect("insert future");
+
+        let deleted = ms.delete_expired(1000).expect("delete_expired");
+        assert_eq!(deleted, 1, "must delete exactly 1 expired message");
+
+        assert!(
+            ms.get("msg-dexp-old").expect("get").is_none(),
+            "expired message must be gone"
+        );
+        assert!(
+            ms.get("msg-dexp-future").expect("get").is_some(),
+            "future message must remain"
+        );
+    }
+
+    #[test]
+    fn delete_expired_leaves_future_messages() {
+        // Oracle: when all messages have future expiry, delete_expired must
+        // delete 0 and all messages must remain.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dxf");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert_full(
+            "msg-dxf",
+            "chat-dxf",
+            "user-a",
+            "not expired",
+            "text/plain",
+            None,
+            100,
+            &DeliveryState::Received,
+            None,
+            "msg-dxf",
+            None,
+            Some(9999),
+            false,
+        )
+        .expect("insert");
+
+        let deleted = ms.delete_expired(1000).expect("delete_expired");
+        assert_eq!(deleted, 0, "no messages should be deleted");
+        assert!(
+            ms.get("msg-dxf").expect("get").is_some(),
+            "message must remain"
+        );
+    }
+
+    #[test]
+    fn delete_expired_returns_count() {
+        // Oracle: delete_expired must return the exact count of deleted messages.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dxc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        for i in 1..=4 {
+            ms.insert_full(
+                &format!("msg-dxc-{i}"),
+                "chat-dxc",
+                "user-a",
+                "ephemeral",
+                "text/plain",
+                None,
+                100,
+                &DeliveryState::Received,
+                None,
+                &format!("msg-dxc-{i}"),
+                None,
+                Some(500), // all expire at t=500
+                false,
+            )
+            .expect("insert");
+        }
+
+        let count = ms.delete_expired(1000).expect("delete_expired");
+        assert_eq!(count, 4, "must return exact count of deleted messages");
+    }
+
+    #[test]
+    fn delete_expired_returns_zero_when_none_expired() {
+        // Oracle: when no messages are expired, delete_expired must return 0.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dxz");
+
+        let ms = MessageStore::new(&store.conn, None);
+        // Message with no expiry.
+        ms.insert(
+            "msg-dxz",
+            "chat-dxz",
+            "user-a",
+            "permanent",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-dxz",
+        )
+        .expect("insert");
+
+        let count = ms.delete_expired(9999).expect("delete_expired");
+        assert_eq!(count, 0, "no messages expired, count must be 0");
+    }
+
+    #[test]
+    fn delete_expired_advances_state_only_when_deleted() {
+        // Oracle: delete_expired must advance the state counter only when it
+        // actually deletes messages. When count is 0, state must not advance.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-dxs");
+
+        let ms = MessageStore::new(&store.conn, None);
+        // Insert one expired message.
+        ms.insert_full(
+            "msg-dxs-exp",
+            "chat-dxs",
+            "user-a",
+            "ephemeral",
+            "text/plain",
+            None,
+            100,
+            &DeliveryState::Received,
+            None,
+            "msg-dxs-exp",
+            None,
+            Some(500),
+            false,
+        )
+        .expect("insert");
+
+        let state_before = ms.get_state().expect("state before");
+
+        // Delete the expired message.
+        let deleted = ms.delete_expired(1000).expect("delete_expired");
+        assert_eq!(deleted, 1);
+
+        let state_after_delete = ms.get_state().expect("state after delete");
+        assert_ne!(
+            state_before, state_after_delete,
+            "state must advance when messages are deleted"
+        );
+
+        // Now call again — nothing to delete.
+        let deleted_again = ms.delete_expired(1000).expect("delete_expired again");
+        assert_eq!(deleted_again, 0);
+
+        let state_after_noop = ms.get_state().expect("state after noop");
+        assert_eq!(
+            state_after_delete, state_after_noop,
+            "state must NOT advance when no messages were deleted"
+        );
+    }
+
+    #[test]
+    fn messages_without_expiry_never_expired() {
+        // Oracle: messages with sender_expires_at = NULL must never be removed
+        // by delete_expired, regardless of the now_unix value.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-nxp");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-nxp",
+            "chat-nxp",
+            "user-a",
+            "permanent",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-nxp",
+        )
+        .expect("insert");
+
+        // Use a very large now_unix — far in the future.
+        let count = ms.delete_expired(i64::MAX).expect("delete_expired");
+        assert_eq!(count, 0, "message without expiry must not be deleted");
+        assert!(
+            ms.get("msg-nxp").expect("get").is_some(),
+            "permanent message must still exist"
+        );
+    }
+
+    #[test]
+    fn burn_on_read_persists_through_list() {
+        // Oracle: burn_on_read set via insert_message_with_attachments must be
+        // visible in list_by_chat results, not just get().
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-borl");
+
+        store
+            .insert_message_with_attachments(
+                "msg-borl",
+                "chat-borl",
+                "user-a",
+                "burn me",
+                "text/plain",
+                None,
+                1000,
+                &DeliveryState::Received,
+                None,
+                "msg-borl",
+                &[],
+                &[],
+                None,
+                None,
+                true,
+                &[],
+            )
+            .expect("insert");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let msgs = ms.list_by_chat("chat-borl", 10).expect("list");
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(
+            msgs[0].burn_on_read,
+            Some(true),
+            "burn_on_read must persist through list_by_chat"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Deletion + edit history tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn soft_delete_clears_body() {
+        // Oracle: after soft_delete, the message body must be empty string
+        // and deleted_at must be set.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sd1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-sd1",
+            "chat-sd1",
+            "user-a",
+            "original body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-sd1",
+        )
+        .expect("insert");
+
+        ms.soft_delete("msg-sd1", false, 2000).expect("soft_delete");
+
+        let msg = ms.get("msg-sd1").expect("get").expect("must exist");
+        assert_eq!(msg.body, "", "body must be empty after soft_delete");
+    }
+
+    #[test]
+    fn soft_delete_sets_deleted_at() {
+        // Oracle: soft_delete must set deleted_at to the provided timestamp.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sd2");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-sd2",
+            "chat-sd2",
+            "user-a",
+            "will be deleted",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-sd2",
+        )
+        .expect("insert");
+
+        let delete_ts: i64 = 2000;
+        ms.soft_delete("msg-sd2", false, delete_ts)
+            .expect("soft_delete");
+
+        let msg = ms.get("msg-sd2").expect("get").expect("must exist");
+        assert!(msg.deleted_at.is_some(), "deleted_at must be set");
+        let expected_rfc3339 = crate::util::unix_secs_to_rfc3339(delete_ts as u64);
+        assert_eq!(
+            msg.deleted_at.as_ref().unwrap().as_ref(),
+            &expected_rfc3339,
+            "deleted_at must match the provided timestamp"
+        );
+    }
+
+    #[test]
+    fn soft_delete_with_deleted_for_all() {
+        // Oracle: soft_delete with deleted_for_all=true must set the flag.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sd3");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-sd3",
+            "chat-sd3",
+            "user-a",
+            "delete for all",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-sd3",
+        )
+        .expect("insert");
+
+        ms.soft_delete("msg-sd3", true, 2000).expect("soft_delete");
+
+        let msg = ms.get("msg-sd3").expect("get").expect("must exist");
+        assert_eq!(
+            msg.deleted_for_all,
+            Some(true),
+            "deleted_for_all must be true"
+        );
+    }
+
+    #[test]
+    fn soft_delete_idempotent_no_re_advance() {
+        // Oracle: calling soft_delete twice must be idempotent. The second call
+        // must return Ok but must NOT advance the state counter.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sdi");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-sdi",
+            "chat-sdi",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-sdi",
+        )
+        .expect("insert");
+
+        ms.soft_delete("msg-sdi", false, 2000)
+            .expect("first soft_delete");
+        let state_after_first = ms.get_state().expect("state after first");
+
+        ms.soft_delete("msg-sdi", false, 3000)
+            .expect("second soft_delete");
+        let state_after_second = ms.get_state().expect("state after second");
+
+        assert_eq!(
+            state_after_first, state_after_second,
+            "second soft_delete must not advance state counter (idempotent)"
+        );
+    }
+
+    #[test]
+    fn soft_delete_cascade_removes_attachments() {
+        // Oracle: soft_delete must DELETE FROM attachments for the message.
+        // After soft_delete, get() must return empty attachments.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sdca");
+
+        let att = kith_core::make_attachment(
+            "a".repeat(64),
+            "file.txt",
+            "text/plain",
+            42,
+            "b".repeat(64),
+        );
+        store
+            .insert_message_with_attachments(
+                "msg-sdca",
+                "chat-sdca",
+                "user-a",
+                "has attachment",
+                "text/plain",
+                None,
+                1000,
+                &DeliveryState::Received,
+                None,
+                "msg-sdca",
+                &[att],
+                &[],
+                None,
+                None,
+                false,
+                &[],
+            )
+            .expect("insert with attachment");
+
+        // Verify attachment exists.
+        let before = MessageStore::new(&store.conn, None)
+            .get("msg-sdca")
+            .expect("get")
+            .expect("exists");
+        assert_eq!(before.attachments.len(), 1, "attachment must exist before delete");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.soft_delete("msg-sdca", false, 2000)
+            .expect("soft_delete");
+
+        // Verify attachment row is actually gone from the table.
+        let att_count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM attachments WHERE message_id = 'msg-sdca'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count attachments");
+        assert_eq!(
+            att_count, 0,
+            "attachment rows must be deleted by soft_delete"
+        );
+    }
+
+    #[test]
+    fn update_body_pushes_revision() {
+        // Oracle: update_body must push the old body as a revision. After one edit,
+        // edit_history must contain exactly one revision with the original body.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ub1");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ub1",
+            "chat-ub1",
+            "user-a",
+            "original body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ub1",
+        )
+        .expect("insert");
+
+        ms.update_body("msg-ub1", "edited body", "text/plain", 2000)
+            .expect("update_body");
+
+        let msg = ms.get("msg-ub1").expect("get").expect("must exist");
+        assert_eq!(msg.body, "edited body", "body must be updated");
+
+        let history = msg.edit_history.expect("edit_history must be Some");
+        assert_eq!(history.len(), 1, "one revision after one edit");
+        // The revision stores the OLD body.
+        let rev_json = serde_json::to_value(&history[0]).expect("serialize revision");
+        assert_eq!(
+            rev_json["body"], "original body",
+            "revision must contain the old body"
+        );
+    }
+
+    #[test]
+    fn update_body_twice_creates_two_ordered_revisions() {
+        // Oracle: two edits must produce two revisions in chronological order.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ub2");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ub2",
+            "chat-ub2",
+            "user-a",
+            "version 1",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ub2",
+        )
+        .expect("insert");
+
+        ms.update_body("msg-ub2", "version 2", "text/plain", 2000)
+            .expect("first edit");
+        ms.update_body("msg-ub2", "version 3", "text/plain", 3000)
+            .expect("second edit");
+
+        let msg = ms.get("msg-ub2").expect("get").expect("must exist");
+        assert_eq!(msg.body, "version 3", "body must be latest version");
+
+        let history = msg.edit_history.expect("edit_history must be Some");
+        assert_eq!(history.len(), 2, "two revisions after two edits");
+
+        // Revisions ordered by revision_index ASC: first revision = "version 1",
+        // second revision = "version 2".
+        let rev0 = serde_json::to_value(&history[0]).expect("serialize");
+        let rev1 = serde_json::to_value(&history[1]).expect("serialize");
+        assert_eq!(rev0["body"], "version 1", "first revision = original body");
+        assert_eq!(rev1["body"], "version 2", "second revision = first edit");
+    }
+
+    #[test]
+    fn update_body_sets_edited_at() {
+        // Oracle: after update_body, the message's edited_at must be set to the
+        // provided timestamp (as RFC3339).
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ubea");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ubea",
+            "chat-ubea",
+            "user-a",
+            "original",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ubea",
+        )
+        .expect("insert");
+
+        let edit_ts: i64 = 2000;
+        ms.update_body("msg-ubea", "edited", "text/plain", edit_ts)
+            .expect("update_body");
+
+        let msg = ms.get("msg-ubea").expect("get").expect("must exist");
+        assert!(msg.edited_at.is_some(), "edited_at must be set");
+        let expected_rfc3339 = crate::util::unix_secs_to_rfc3339(edit_ts as u64);
+        assert_eq!(
+            msg.edited_at.as_ref().unwrap().as_ref(),
+            &expected_rfc3339,
+            "edited_at must match the edit timestamp"
+        );
+    }
+
+    #[test]
+    fn update_body_on_deleted_message_returns_error() {
+        // Oracle: editing a soft-deleted message must return an error.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ubdel");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ubdel",
+            "chat-ubdel",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ubdel",
+        )
+        .expect("insert");
+
+        ms.soft_delete("msg-ubdel", false, 2000)
+            .expect("soft_delete");
+
+        let result = ms.update_body("msg-ubdel", "new body", "text/plain", 3000);
+        assert!(
+            result.is_err(),
+            "update_body on deleted message must return Err"
+        );
+    }
+
+    #[test]
+    fn edit_history_loaded_in_list_by_chat() {
+        // Oracle: list_by_chat must populate edit_history via batch loader.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-ehlbc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-ehlbc",
+            "chat-ehlbc",
+            "user-a",
+            "original",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-ehlbc",
+        )
+        .expect("insert");
+
+        ms.update_body("msg-ehlbc", "edited", "text/plain", 2000)
+            .expect("update_body");
+
+        let msgs = ms.list_by_chat("chat-ehlbc", 10).expect("list");
+        assert_eq!(msgs.len(), 1);
+        let history = msgs[0]
+            .edit_history
+            .as_ref()
+            .expect("edit_history must be Some in list_by_chat");
+        assert_eq!(history.len(), 1, "one revision in list_by_chat result");
+    }
+
+    #[test]
+    fn soft_delete_advances_state_counter() {
+        // Oracle: soft_delete must advance the state counter (first call only).
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-sdsc");
+
+        let ms = MessageStore::new(&store.conn, None);
+        ms.insert(
+            "msg-sdsc",
+            "chat-sdsc",
+            "user-a",
+            "body",
+            "text/plain",
+            None,
+            1000,
+            &DeliveryState::Received,
+            None,
+            "msg-sdsc",
+        )
+        .expect("insert");
+
+        let state_before = ms.get_state().expect("state before");
+        ms.soft_delete("msg-sdsc", false, 2000)
+            .expect("soft_delete");
+        let state_after = ms.get_state().expect("state after");
+
+        assert_ne!(
+            state_before, state_after,
+            "soft_delete must advance the state counter"
+        );
+    }
 }
