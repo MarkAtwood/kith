@@ -1,7 +1,8 @@
 use crate::{attachment, db_err};
 use kith_core::{
-    make_message_revision, DeliveryReceipt, DeliveryState, Id, JmapError, KithError, Message,
-    MessageAction, MessageRevision, Reaction, ReadDisposition, SenderId, StateChange, UTCDate,
+    make_broadcast_mention, make_message_revision, BroadcastMention, DeliveryReceipt,
+    DeliveryState, Id, JmapError, KithError, Message, MessageAction, MessageRevision, Reaction,
+    ReadDisposition, SenderId, StateChange, UTCDate,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
@@ -537,9 +538,77 @@ fn load_actions_for_messages(
     Ok(map)
 }
 
-/// Populate reactions, delivery_receipts, and actions on a slice of messages.
+/// Batch-load all broadcast mentions for a set of message IDs in a single SQL query.
 ///
-/// Batch-loads all three associated tables for the given message IDs and
+/// Returns a `HashMap` keyed by `message_id`. Each value is the ordered list
+/// of broadcast mentions for that message.  Callers merge the map into their
+/// message list by removing entries by ID.
+///
+/// When `msg_ids` is empty the function returns an empty map without touching
+/// the database.
+fn load_broadcast_mentions_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, Vec<BroadcastMention>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, scope, byte_offset, byte_length \
+         FROM broadcast_mentions WHERE message_id IN ({placeholders}) ORDER BY byte_offset"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let scope: String = row.get(1)?;
+            let offset: i64 = row.get(2)?;
+            let length: i64 = row.get(3)?;
+            if offset < 0 || length < 0 {
+                return Err(rusqlite::Error::IntegralValueOutOfRange(
+                    2,
+                    offset.min(length),
+                ));
+            }
+            Ok((
+                msg_id,
+                make_broadcast_mention(scope, offset as u64, length as u64),
+            ))
+        })
+        .map_err(db_err)?;
+
+    let mut bm_map: HashMap<String, Vec<BroadcastMention>> = HashMap::new();
+    for row in rows {
+        let (msg_id, bm) = row.map_err(db_err)?;
+        bm_map.entry(msg_id).or_default().push(bm);
+    }
+
+    Ok(bm_map)
+}
+
+/// Insert broadcast mentions for a single message into the `extra` map
+/// of each message so they appear as `broadcastMentions` in the wire JSON.
+fn populate_broadcast_mentions(
+    msgs: &mut [Message],
+    bm_map: &mut HashMap<String, Vec<BroadcastMention>>,
+) {
+    for msg in msgs {
+        if let Some(bms) = bm_map.remove(msg.id.as_ref()) {
+            if !bms.is_empty() {
+                if let Ok(val) = serde_json::to_value(&bms) {
+                    msg.extra.insert("broadcastMentions".to_string(), val);
+                }
+            }
+        }
+    }
+}
+
+/// Populate reactions, delivery_receipts, actions, and broadcast mentions on a
+/// slice of messages.
+///
+/// Batch-loads all four associated tables for the given message IDs and
 /// merges the results into the messages.  This avoids N+1 queries.
 fn populate_message_extras(conn: &Connection, messages: &mut [Message]) -> Result<(), KithError> {
     if messages.is_empty() {
@@ -551,6 +620,7 @@ fn populate_message_extras(conn: &Connection, messages: &mut [Message]) -> Resul
     let mut reaction_map = load_reactions_for_messages(conn, &ids)?;
     let mut receipt_map = load_delivery_receipts_for_messages(conn, &ids)?;
     let mut action_map = load_actions_for_messages(conn, &ids)?;
+    let mut bm_map = load_broadcast_mentions_for_messages(conn, &ids)?;
 
     for msg in messages.iter_mut() {
         let id = msg.id.as_ref();
@@ -564,6 +634,7 @@ fn populate_message_extras(conn: &Connection, messages: &mut [Message]) -> Resul
             msg.actions = actions;
         }
     }
+    populate_broadcast_mentions(messages, &mut bm_map);
 
     Ok(())
 }
@@ -2464,6 +2535,7 @@ mod tests {
                 None,
                 None,
                 false,
+                &[],
             )
             .expect("insert_message_with_attachments");
 
@@ -2503,6 +2575,7 @@ mod tests {
                 None,
                 None,
                 false,
+                &[],
             )
             .expect("insert msg with attachment");
 
@@ -2524,6 +2597,7 @@ mod tests {
                 None,
                 None,
                 false,
+                &[],
             )
             .expect("insert msg without attachment");
 
@@ -2708,6 +2782,225 @@ mod tests {
             result.updated.contains(&"msg-upd".to_string()),
             "updated message must appear in updated[]; updated={:?}",
             result.updated
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Broadcast mentions tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn broadcast_mentions_store_round_trip() {
+        // Oracle: broadcast mentions stored via insert_message_with_attachments
+        // must be retrievable via get() in the message's extra field.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-bm1");
+
+        let bms = vec![
+            kith_core::make_broadcast_mention("everyone", 0, 9),
+            kith_core::make_broadcast_mention("here", 15, 5),
+        ];
+
+        store
+            .insert_message_with_attachments(
+                "msg-bm1",
+                "chat-bm1",
+                "user-a",
+                "Hey @everyone and @here!",
+                "text/plain",
+                None,
+                1000,
+                &DeliveryState::Received,
+                None,
+                "msg-bm1",
+                &[],
+                &[],
+                None,
+                None,
+                false,
+                &bms,
+            )
+            .expect("insert with broadcast mentions");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let msg = ms.get("msg-bm1").expect("get").expect("must exist");
+
+        // broadcastMentions must appear in the extra map.
+        let bm_val = msg
+            .extra
+            .get("broadcastMentions")
+            .expect("broadcastMentions must be in extra");
+        let bm_arr = bm_val.as_array().expect("must be an array");
+        assert_eq!(bm_arr.len(), 2);
+        assert_eq!(bm_arr[0]["scope"], "everyone");
+        assert_eq!(bm_arr[0]["offset"], 0);
+        assert_eq!(bm_arr[0]["length"], 9);
+        assert_eq!(bm_arr[1]["scope"], "here");
+        assert_eq!(bm_arr[1]["offset"], 15);
+        assert_eq!(bm_arr[1]["length"], 5);
+    }
+
+    #[test]
+    fn broadcast_mentions_empty_not_in_extra() {
+        // Oracle: when no broadcast mentions are stored, the extra map must
+        // NOT contain a broadcastMentions key.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-bm2");
+
+        store
+            .insert_message_with_attachments(
+                "msg-bm2",
+                "chat-bm2",
+                "user-a",
+                "no mentions here",
+                "text/plain",
+                None,
+                1000,
+                &DeliveryState::Received,
+                None,
+                "msg-bm2",
+                &[],
+                &[],
+                None,
+                None,
+                false,
+                &[],
+            )
+            .expect("insert without broadcast mentions");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let msg = ms.get("msg-bm2").expect("get").expect("must exist");
+        assert!(
+            msg.extra.get("broadcastMentions").is_none(),
+            "broadcastMentions must not appear in extra when empty"
+        );
+    }
+
+    #[test]
+    fn broadcast_mentions_batch_load_in_list() {
+        // Oracle: list_by_chat must populate broadcastMentions for all messages
+        // via the batch loader.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-bm3");
+
+        let bms1 = vec![kith_core::make_broadcast_mention("admins", 0, 7)];
+        store
+            .insert_message_with_attachments(
+                "msg-bm3a",
+                "chat-bm3",
+                "user-a",
+                "@admins alert",
+                "text/plain",
+                None,
+                100,
+                &DeliveryState::Received,
+                None,
+                "msg-bm3a",
+                &[],
+                &[],
+                None,
+                None,
+                false,
+                &bms1,
+            )
+            .expect("insert msg with broadcast mention");
+
+        store
+            .insert_message_with_attachments(
+                "msg-bm3b",
+                "chat-bm3",
+                "user-a",
+                "no mentions",
+                "text/plain",
+                None,
+                200,
+                &DeliveryState::Received,
+                None,
+                "msg-bm3b",
+                &[],
+                &[],
+                None,
+                None,
+                false,
+                &[],
+            )
+            .expect("insert msg without broadcast mention");
+
+        let ms = MessageStore::new(&store.conn, None);
+        let msgs = ms.list_by_chat("chat-bm3", 10).expect("list");
+        assert_eq!(msgs.len(), 2);
+
+        let msg_with = msgs.iter().find(|m| m.id == "msg-bm3a").expect("msg-bm3a");
+        let msg_without = msgs.iter().find(|m| m.id == "msg-bm3b").expect("msg-bm3b");
+
+        assert!(
+            msg_with.extra.get("broadcastMentions").is_some(),
+            "message with broadcast mentions must have them in extra"
+        );
+        assert!(
+            msg_without.extra.get("broadcastMentions").is_none(),
+            "message without broadcast mentions must not have them in extra"
+        );
+    }
+
+    #[test]
+    fn broadcast_mentions_cascade_delete() {
+        // Oracle: deleting a message must cascade-delete its broadcast mentions.
+        // This tests the ON DELETE CASCADE FK constraint.
+        let store = Store::open_in_memory().expect("open");
+        insert_chat(&store.conn, "chat-bm4");
+
+        let bms = vec![kith_core::make_broadcast_mention("everyone", 0, 9)];
+        store
+            .insert_message_with_attachments(
+                "msg-bm4",
+                "chat-bm4",
+                "user-a",
+                "@everyone!",
+                "text/plain",
+                None,
+                1000,
+                &DeliveryState::Received,
+                None,
+                "msg-bm4",
+                &[],
+                &[],
+                None,
+                None,
+                false,
+                &bms,
+            )
+            .expect("insert");
+
+        // Verify broadcast mention exists.
+        let count: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM broadcast_mentions WHERE message_id = 'msg-bm4'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "broadcast mention must exist before delete");
+
+        // Delete the message.
+        store
+            .conn
+            .execute("DELETE FROM messages WHERE id = 'msg-bm4'", [])
+            .unwrap();
+
+        // Broadcast mention must be cascade-deleted.
+        let count_after: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM broadcast_mentions WHERE message_id = 'msg-bm4'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count_after, 0,
+            "broadcast mention must be cascade-deleted with message"
         );
     }
 }

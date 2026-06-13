@@ -3,8 +3,9 @@
 use crate::kith_to_jmap;
 use kith_attach::BlobStore;
 use kith_core::{
-    make_attachment, unix_secs_to_rfc3339, Attachment, ChatKind, DeliveryState, Id, JmapError,
-    Message, SenderId, UTCDate, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, MAX_OBJECTS_IN_GET,
+    make_attachment, make_broadcast_mention, unix_secs_to_rfc3339, Attachment, BroadcastMention,
+    ChatKind, DeliveryState, Id, JmapError, Message, SenderId, UTCDate, MAX_ATTACHMENT_BYTES,
+    MAX_BODY_BYTES, MAX_OBJECTS_IN_GET, VALID_BROADCAST_SCOPES,
 };
 use kith_jmap::{HandlerFuture, JmapHandler};
 use kith_store::OutboundMessageParams;
@@ -173,6 +174,75 @@ async fn parse_attachments(
             size,
             sha256,
         });
+    }
+    Ok(result)
+}
+
+/// Parse and validate `broadcastMentions` from a Message/set create request.
+///
+/// Validates:
+/// - Each entry has a valid `scope` ("everyone", "here", or "admins")
+/// - `offset + length` does not exceed the body byte length
+/// - `offset` is on a UTF-8 character boundary
+/// - `offset + length` is on a UTF-8 character boundary
+fn parse_broadcast_mentions(
+    obj: &serde_json::Map<String, Value>,
+    body: &str,
+) -> Result<Vec<BroadcastMention>, Value> {
+    let arr = match obj.get("broadcastMentions") {
+        None | Some(Value::Null) => return Ok(vec![]),
+        Some(Value::Array(a)) => a,
+        Some(_) => {
+            return Err(
+                json!({"type": "invalidArguments", "description": "broadcastMentions must be an array"}),
+            );
+        }
+    };
+    let body_len = body.len() as u64;
+    let mut result = Vec::with_capacity(arr.len());
+    for (i, item) in arr.iter().enumerate() {
+        let bm = item.as_object().ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("broadcastMentions[{i}] must be an object")})
+        })?;
+        let scope = bm.get("scope").and_then(|v| v.as_str()).ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("broadcastMentions[{i}].scope is required")})
+        })?;
+        if !VALID_BROADCAST_SCOPES.contains(&scope) {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("broadcastMentions[{i}].scope must be one of: everyone, here, admins")
+            }));
+        }
+        let offset = bm.get("offset").and_then(|v| v.as_u64()).ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("broadcastMentions[{i}].offset must be a non-negative integer")})
+        })?;
+        let length = bm.get("length").and_then(|v| v.as_u64()).ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("broadcastMentions[{i}].length must be a non-negative integer")})
+        })?;
+        // Check bounds: offset + length must not exceed body byte length.
+        let end = offset.checked_add(length).ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("broadcastMentions[{i}]: offset + length overflow")})
+        })?;
+        if end > body_len {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("broadcastMentions[{i}]: offset + length exceeds body byte length")
+            }));
+        }
+        // Validate UTF-8 boundaries.
+        if !body.is_char_boundary(offset as usize) {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("broadcastMentions[{i}].offset is not on a UTF-8 character boundary")
+            }));
+        }
+        if !body.is_char_boundary(end as usize) {
+            return Err(json!({
+                "type": "invalidArguments",
+                "description": format!("broadcastMentions[{i}]: offset + length is not on a UTF-8 character boundary")
+            }));
+        }
+        result.push(make_broadcast_mention(scope, offset, length));
     }
     Ok(result)
 }
@@ -467,6 +537,9 @@ async fn process_create(
     // Parse and validate attachments BEFORE acquiring the store lock.
     let attachments = parse_attachments(obj, blob_store).await?;
 
+    // Parse and validate broadcastMentions.
+    let broadcast_mentions = parse_broadcast_mentions(obj, &body)?;
+
     // Acquire the store lock for all DB operations.
     let guard = store
         .lock()
@@ -595,6 +668,7 @@ async fn process_create(
             thread_root_id: None,
             sender_expires_at: None,
             burn_on_read: false,
+            broadcast_mentions: &broadcast_mentions,
         })
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 
@@ -635,6 +709,13 @@ async fn process_create(
     );
     msg.attachments = core_attachments;
     msg.reply_to = reply_to.map(Id::from);
+    // broadcastMentions is not yet in jmap-chat-types Message; inject via extra.
+    if !broadcast_mentions.is_empty() {
+        let bm_value = serde_json::to_value(&broadcast_mentions).map_err(
+            |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),
+        )?;
+        msg.extra.insert("broadcastMentions".to_string(), bm_value);
+    }
 
     serde_json::to_value(&msg).map_err(
         |e| json!({"type": "serverFail", "description": format!("serialization error: {e}")}),

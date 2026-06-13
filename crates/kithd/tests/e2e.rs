@@ -957,6 +957,7 @@ async fn peer_receipt_wrong_contact_returns_not_found() {
                 thread_root_id: None,
                 sender_expires_at: None,
                 burn_on_read: false,
+                broadcast_mentions: &[],
             })
             .expect("insert outbound message must succeed");
     }
@@ -1201,6 +1202,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
         "text/plain",
         "2026-04-24T00:00:00Z",
         None,
+        &[],
         &[],
     );
 

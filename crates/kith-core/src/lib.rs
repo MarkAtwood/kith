@@ -3,6 +3,8 @@ pub mod auth;
 pub mod error;
 pub mod events;
 
+use serde::{Deserialize, Serialize};
+
 // ── Re-exports from jmap-types (RFC 8620 primitives) ──
 pub use jmap_types::{
     Argument, Id, Invocation, JmapError, JmapRequest, JmapResponse, ResultReference, State, UTCDate,
@@ -71,6 +73,23 @@ pub fn make_attachment(
     )
 }
 
+/// Valid scopes for broadcast mentions (draft-atwood-jmap-chat-00 §4.4).
+pub const VALID_BROADCAST_SCOPES: &[&str] = &["everyone", "here", "admins"];
+
+/// A broadcast-scope mention within a [`Message`] body (@everyone, @here, @admins).
+///
+/// Not yet present in jmap-chat-types; defined here until the upstream crate
+/// adds it.  The wire format matches the spec (draft-atwood-jmap-chat-00 §4.4):
+/// `scope` is one of `"everyone"`, `"here"`, or `"admins"`;
+/// `offset` and `length` are byte positions into the body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BroadcastMention {
+    pub scope: String,
+    pub offset: u64,
+    pub length: u64,
+}
+
 /// Construct a [`Mention`] from validated fields.
 ///
 /// # Panics
@@ -85,6 +104,23 @@ pub fn make_mention(id: impl AsRef<str>, offset: u64, length: u64) -> Mention {
         "make_mention: valid fields must produce valid Mention; \
          this is a bug in kith-core if it fires",
     )
+}
+
+/// Construct a [`BroadcastMention`] from validated fields.
+///
+/// Unlike [`make_mention`] and [`make_attachment`], BroadcastMention is defined
+/// in kith-core (not in jmap-chat-types) so direct construction is possible.
+/// This helper exists for symmetry with the other `make_*` functions.
+pub fn make_broadcast_mention(
+    scope: impl Into<String>,
+    offset: u64,
+    length: u64,
+) -> BroadcastMention {
+    BroadcastMention {
+        scope: scope.into(),
+        offset,
+        length,
+    }
 }
 
 /// Construct a [`MessageRevision`] from validated fields.
@@ -397,6 +433,38 @@ mod tests {
         assert!(json_str.contains("\"user-alice\""));
         assert!(json_str.contains("\"offset\":6"));
         assert!(json_str.contains("\"length\":6"));
+    }
+
+    #[test]
+    fn make_broadcast_mention_produces_valid_json() {
+        let bm = make_broadcast_mention("everyone", 0, 9);
+        let json_str = serde_json::to_string(&bm).unwrap();
+        assert!(json_str.contains("\"scope\":\"everyone\""));
+        assert!(json_str.contains("\"offset\":0"));
+        assert!(json_str.contains("\"length\":9"));
+    }
+
+    #[test]
+    fn broadcast_mention_roundtrip() {
+        // Oracle: a BroadcastMention serialized to JSON and deserialized back
+        // must produce the same struct.
+        let bm = BroadcastMention {
+            scope: "here".to_string(),
+            offset: 10,
+            length: 5,
+        };
+        let json = serde_json::to_string(&bm).unwrap();
+        let bm2: BroadcastMention = serde_json::from_str(&json).unwrap();
+        assert_eq!(bm, bm2);
+    }
+
+    #[test]
+    fn valid_broadcast_scopes_contains_expected_values() {
+        // Oracle: spec defines exactly these three scopes.
+        assert_eq!(VALID_BROADCAST_SCOPES.len(), 3);
+        assert!(VALID_BROADCAST_SCOPES.contains(&"everyone"));
+        assert!(VALID_BROADCAST_SCOPES.contains(&"here"));
+        assert!(VALID_BROADCAST_SCOPES.contains(&"admins"));
     }
 
     #[test]

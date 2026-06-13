@@ -5,7 +5,7 @@ pub mod message;
 pub mod outbox;
 mod util;
 
-use kith_core::{Attachment, DeliveryState, KithError, Mention, StateChange};
+use kith_core::{Attachment, BroadcastMention, DeliveryState, KithError, Mention, StateChange};
 use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 use tokio::sync::broadcast;
@@ -53,6 +53,8 @@ pub struct OutboundMessageParams<'a> {
     pub sender_expires_at: Option<i64>,
     /// If true, the message should be deleted after the recipient reads it.
     pub burn_on_read: bool,
+    /// Broadcast-scope mentions (@everyone, @here, @admins).
+    pub broadcast_mentions: &'a [BroadcastMention],
 }
 
 /// Wraps a rusqlite connection and owns the database handle for this mailbox.
@@ -538,6 +540,20 @@ CREATE TABLE IF NOT EXISTS message_actions (
 );
 ";
 
+// V26: Add broadcast_mentions table for broadcast-scope mentions
+// (@everyone, @here, @admins).  Each row links a message to a broadcast
+// mention with its scope and byte position in the body.
+const SCHEMA_V26: &str = "
+CREATE TABLE IF NOT EXISTS broadcast_mentions (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL,
+    byte_offset INTEGER NOT NULL,
+    byte_length INTEGER NOT NULL,
+    PRIMARY KEY (message_id, scope, byte_offset)
+);
+CREATE INDEX IF NOT EXISTS idx_broadcast_mentions_message ON broadcast_mentions(message_id);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -569,6 +585,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (23, SCHEMA_V23),
     (24, SCHEMA_V24),
     (25, SCHEMA_V25),
+    (26, SCHEMA_V26),
 ];
 
 impl Store {
@@ -763,6 +780,7 @@ impl Store {
         thread_root_id: Option<&str>,
         sender_expires_at: Option<i64>,
         burn_on_read: bool,
+        broadcast_mentions: &[BroadcastMention],
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = advance_state_counter_in_tx(&tx, "message")?;
@@ -830,6 +848,21 @@ impl Store {
             )
             .map_err(db_err)?;
         }
+        for bm in broadcast_mentions {
+            let offset_i64 = i64::try_from(bm.offset).map_err(|_| {
+                KithError::Store("broadcast mention offset exceeds i64::MAX".into())
+            })?;
+            let length_i64 = i64::try_from(bm.length).map_err(|_| {
+                KithError::Store("broadcast mention length exceeds i64::MAX".into())
+            })?;
+            tx.execute(
+                "INSERT INTO broadcast_mentions \
+                     (message_id, scope, byte_offset, byte_length) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, bm.scope, offset_i64, length_i64],
+            )
+            .map_err(db_err)?;
+        }
         tx.commit().map_err(db_err)?;
         if let Some(ref tx_ch) = self.events_tx {
             let _ = tx_ch.send(StateChange {
@@ -869,6 +902,7 @@ impl Store {
             thread_root_id,
             sender_expires_at,
             burn_on_read,
+            broadcast_mentions,
         } = params;
         // Callers must resolve and validate all outbox peers before calling
         // this function.  An empty slice would commit a Pending message with
@@ -933,6 +967,21 @@ impl Store {
                 "INSERT INTO mentions (message_id, contact_id, byte_offset, byte_length) \
                  VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![id, m.id.as_ref(), offset, length],
+            )
+            .map_err(db_err)?;
+        }
+        for bm in *broadcast_mentions {
+            let offset_i64 = i64::try_from(bm.offset).map_err(|_| {
+                KithError::Store("broadcast mention offset exceeds i64::MAX".into())
+            })?;
+            let length_i64 = i64::try_from(bm.length).map_err(|_| {
+                KithError::Store("broadcast mention length exceeds i64::MAX".into())
+            })?;
+            tx.execute(
+                "INSERT INTO broadcast_mentions \
+                     (message_id, scope, byte_offset, byte_length) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, bm.scope, offset_i64, length_i64],
             )
             .map_err(db_err)?;
         }
@@ -1120,8 +1169,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has twenty-five entries (versions 1-25), so user_version must be 25 after open.
-        assert_eq!(version, 25);
+        assert_eq!(version, 26);
     }
 
     #[test]
@@ -1185,7 +1233,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 25, "migration 25 must be applied");
+        assert_eq!(v1, 26, "migration 26 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1217,6 +1265,7 @@ mod tests {
 
         for expected in &[
             "attachments",
+            "broadcast_mentions",
             "chat_members",
             "chats",
             "contacts",
@@ -1278,7 +1327,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 25, "migration v25 must set user_version to 25");
+        assert_eq!(v, 26, "migration v26 must set user_version to 26");
     }
 
     #[test]
@@ -1930,6 +1979,7 @@ mod tests {
             thread_root_id: None,
             sender_expires_at: None,
             burn_on_read: false,
+            broadcast_mentions: &[],
         });
         assert!(
             result.is_err(),

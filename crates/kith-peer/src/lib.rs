@@ -6,8 +6,8 @@ use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use kith_core::{
-    make_attachment, unix_secs_to_rfc3339, DeliveryState, Identity, JmapError, SenderId,
-    MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES,
+    make_attachment, make_broadcast_mention, unix_secs_to_rfc3339, BroadcastMention, DeliveryState,
+    Identity, JmapError, SenderId, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES, VALID_BROADCAST_SCOPES,
 };
 use kith_jmap::{HandlerFuture, PeerJmapHandler};
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
@@ -58,6 +58,15 @@ pub struct AttachmentArg {
     pub sha256: String,
 }
 
+/// Broadcast mention metadata as received in the Peer/deliver wire format.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BroadcastMentionArg {
+    pub scope: String,
+    pub offset: u64,
+    pub length: u64,
+}
+
 /// The inner message object inside a `Peer/deliver` call.
 #[derive(Debug, Deserialize)]
 pub struct DeliverMessageArgs {
@@ -75,6 +84,9 @@ pub struct DeliverMessageArgs {
     pub sent_at: String,
     #[serde(default)]
     pub attachments: Vec<AttachmentArg>,
+    /// Broadcast-scope mentions (@everyone, @here, @admins).
+    #[serde(default, rename = "broadcastMentions")]
+    pub broadcast_mentions: Vec<BroadcastMentionArg>,
 }
 
 /// Handler for the `Peer/deliver` JMAP method.
@@ -177,6 +189,10 @@ impl PeerJmapHandler for DeliverHandler {
 
             // Step 5.5: Validate attachment metadata (before lock acquisition).
             let attachments = validate_attachments(&msg.attachments)?;
+
+            // Step 5.55: Validate broadcast mentions.
+            let broadcast_mentions =
+                validate_broadcast_mentions(&msg.broadcast_mentions, &msg.body)?;
 
             // Capture received_at before acquiring the store lock.
             let now_unix: i64 = SystemTime::now()
@@ -353,6 +369,7 @@ impl PeerJmapHandler for DeliverHandler {
                     None,
                     None,
                     false,
+                    &broadcast_mentions,
                 )
                 .map_err(|e| {
                     tracing::error!("store error inserting message: {e}");
@@ -893,6 +910,7 @@ pub fn build_peer_deliver_request(
     sent_at: &str,
     reply_to: Option<&str>,
     attachments: &[kith_core::Attachment],
+    broadcast_mentions: &[BroadcastMention],
 ) -> Value {
     let mut message = json!({
         "id": message_id,
@@ -912,6 +930,16 @@ pub fn build_peer_deliver_request(
 
     if let Some(reply_id) = reply_to {
         message["replyTo"] = Value::String(reply_id.to_string());
+    }
+    if !broadcast_mentions.is_empty() {
+        message["broadcastMentions"] = json!(broadcast_mentions
+            .iter()
+            .map(|bm| json!({
+                "scope": bm.scope,
+                "offset": bm.offset,
+                "length": bm.length,
+            }))
+            .collect::<Vec<Value>>());
     }
 
     json!({
@@ -1042,6 +1070,45 @@ fn validate_attachments(
             a.size,
             a.sha256.clone(),
         ));
+    }
+    Ok(result)
+}
+
+/// Validate broadcast mention metadata from a `Peer/deliver` request.
+///
+/// Returns validated `BroadcastMention` values ready for storage, or an
+/// `invalidArguments` error describing the first violation found.
+fn validate_broadcast_mentions(
+    mentions: &[BroadcastMentionArg],
+    body: &str,
+) -> Result<Vec<BroadcastMention>, JmapError> {
+    let body_len = body.len() as u64;
+    let mut result = Vec::with_capacity(mentions.len());
+    for bm in mentions {
+        if !VALID_BROADCAST_SCOPES.contains(&bm.scope.as_str()) {
+            return Err(JmapError::invalid_arguments(
+                "broadcastMention scope must be one of: everyone, here, admins",
+            ));
+        }
+        let end = bm.offset.checked_add(bm.length).ok_or_else(|| {
+            JmapError::invalid_arguments("broadcastMention offset + length overflow")
+        })?;
+        if end > body_len {
+            return Err(JmapError::invalid_arguments(
+                "broadcastMention offset + length exceeds body byte length",
+            ));
+        }
+        if !body.is_char_boundary(bm.offset as usize) {
+            return Err(JmapError::invalid_arguments(
+                "broadcastMention offset is not on a UTF-8 character boundary",
+            ));
+        }
+        if !body.is_char_boundary(end as usize) {
+            return Err(JmapError::invalid_arguments(
+                "broadcastMention offset + length is not on a UTF-8 character boundary",
+            ));
+        }
+        result.push(make_broadcast_mention(&bm.scope, bm.offset, bm.length));
     }
     Ok(result)
 }
@@ -1401,6 +1468,13 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
         };
 
+        // Extract broadcastMentions from the message's extra map.
+        let bm_list: Vec<BroadcastMention> = message
+            .extra
+            .get("broadcastMentions")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
         // Build JMAP request; owner_id replaces the "self" sentinel in sender_id.
         let jmap_request = build_peer_deliver_request(
             message.id.as_ref(),
@@ -1411,6 +1485,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             message.sent_at.as_ref(),
             message.reply_to.as_ref().map(|id| id.as_ref()),
             message.attachments.as_slice(),
+            &bm_list,
         );
 
         // Attempt delivery — no lock held across this await.
@@ -2539,6 +2614,7 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[],
+            &[],
         );
         let result = client.deliver("http://127.0.0.1:1/jmap", req).await;
         assert!(
@@ -2565,6 +2641,7 @@ mod tests {
             "text/plain",
             "2026-04-18T20:14:00Z",
             None,
+            &[],
             &[],
         );
 
@@ -2630,6 +2707,7 @@ mod tests {
             "2026-04-18T20:14:00Z",
             Some("01JVWXYZ0000000000000000AA"),
             &[],
+            &[],
         );
         let msg = &req["methodCalls"][0][1]["message"];
         assert_eq!(
@@ -2654,6 +2732,7 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[attachment],
+            &[],
         );
         let msg = &req["methodCalls"][0][1]["message"];
         let attachments = msg["attachments"].as_array().unwrap();
@@ -2676,6 +2755,7 @@ mod tests {
             "text/plain",
             "2026-04-18T20:14:00Z",
             None,
+            &[],
             &[],
         );
         let attachments = req["methodCalls"][0][1]["message"]["attachments"]
@@ -3730,6 +3810,7 @@ mod tests {
             "2026-04-18T20:14:00Z",
             None,
             &[],
+            &[],
         );
         let msg = &req["methodCalls"][0][1]["message"];
         assert_eq!(msg["chatId"], "b3d4e5f6".repeat(8));
@@ -3758,6 +3839,160 @@ mod tests {
         }"#;
         let args: PeerDeliverArgs = serde_json::from_str(json).unwrap();
         assert!(args.message.attachments.is_empty());
+        assert!(args.message.broadcast_mentions.is_empty());
+    }
+
+    // Oracle: serde default — a JSON payload without "broadcastMentions" must
+    // deserialize into an empty vec, not an error.
+    #[test]
+    fn deliver_message_args_deserializes_without_broadcast_mentions() {
+        let json = r#"{
+            "accountId": "a-self",
+            "message": {
+                "id": "01JVWXYZ0000000000000000AB",
+                "chatId": "b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6",
+                "senderUserId": "uid:alice@example.com",
+                "body": "hello",
+                "bodyType": "text/plain",
+                "sentAt": "2026-04-18T20:14:00Z"
+            }
+        }"#;
+        let args: PeerDeliverArgs = serde_json::from_str(json).unwrap();
+        assert!(args.message.broadcast_mentions.is_empty());
+    }
+
+    // Oracle: broadcastMentions in Peer/deliver JSON must deserialize correctly.
+    #[test]
+    fn deliver_message_args_deserializes_with_broadcast_mentions() {
+        let json = r#"{
+            "accountId": "a-self",
+            "message": {
+                "id": "01JVWXYZ0000000000000000AB",
+                "chatId": "b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6b3d4e5f6",
+                "senderUserId": "uid:alice@example.com",
+                "body": "@everyone hello",
+                "bodyType": "text/plain",
+                "sentAt": "2026-04-18T20:14:00Z",
+                "broadcastMentions": [
+                    {"scope": "everyone", "offset": 0, "length": 9}
+                ]
+            }
+        }"#;
+        let args: PeerDeliverArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.message.broadcast_mentions.len(), 1);
+        assert_eq!(args.message.broadcast_mentions[0].scope, "everyone");
+        assert_eq!(args.message.broadcast_mentions[0].offset, 0);
+        assert_eq!(args.message.broadcast_mentions[0].length, 9);
+    }
+
+    // Oracle: validate_broadcast_mentions rejects invalid scope values.
+    #[test]
+    fn validate_broadcast_mentions_invalid_scope_rejected() {
+        let mentions = vec![BroadcastMentionArg {
+            scope: "invalid".to_string(),
+            offset: 0,
+            length: 5,
+        }];
+        let result = validate_broadcast_mentions(&mentions, "hello");
+        assert!(result.is_err(), "invalid scope must be rejected");
+        let err = result.unwrap_err();
+        assert_eq!(err.error_type, "invalidArguments");
+    }
+
+    // Oracle: validate_broadcast_mentions accepts all three valid scopes.
+    #[test]
+    fn validate_broadcast_mentions_valid_scopes_accepted() {
+        for scope in &["everyone", "here", "admins"] {
+            let mentions = vec![BroadcastMentionArg {
+                scope: scope.to_string(),
+                offset: 0,
+                length: 5,
+            }];
+            let result = validate_broadcast_mentions(&mentions, "hello");
+            assert!(
+                result.is_ok(),
+                "valid scope '{scope}' must be accepted, got: {:?}",
+                result
+            );
+        }
+    }
+
+    // Oracle: validate_broadcast_mentions rejects offset+length exceeding body length.
+    #[test]
+    fn validate_broadcast_mentions_bounds_check() {
+        let mentions = vec![BroadcastMentionArg {
+            scope: "everyone".to_string(),
+            offset: 3,
+            length: 10,
+        }];
+        let result = validate_broadcast_mentions(&mentions, "hello"); // 5 bytes
+        assert!(
+            result.is_err(),
+            "offset + length exceeding body length must be rejected"
+        );
+    }
+
+    // Oracle: validate_broadcast_mentions rejects offset not on UTF-8 boundary.
+    #[test]
+    fn validate_broadcast_mentions_utf8_boundary() {
+        // "hëllo" — 'ë' is 2 bytes (0xC3 0xAB), so byte offset 2 is mid-character.
+        let body = "h\u{00EB}llo";
+        let mentions = vec![BroadcastMentionArg {
+            scope: "everyone".to_string(),
+            offset: 2,
+            length: 1,
+        }];
+        let result = validate_broadcast_mentions(&mentions, body);
+        assert!(
+            result.is_err(),
+            "offset at mid-UTF8 character must be rejected"
+        );
+    }
+
+    // Oracle: build_peer_deliver_request includes broadcastMentions when non-empty.
+    #[test]
+    fn build_peer_deliver_request_with_broadcast_mentions() {
+        let bms = vec![make_broadcast_mention("everyone", 0, 9)];
+        let req = build_peer_deliver_request(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "@everyone hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &bms,
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        let bm_arr = msg["broadcastMentions"]
+            .as_array()
+            .expect("broadcastMentions must be present");
+        assert_eq!(bm_arr.len(), 1);
+        assert_eq!(bm_arr[0]["scope"], "everyone");
+        assert_eq!(bm_arr[0]["offset"], 0);
+        assert_eq!(bm_arr[0]["length"], 9);
+    }
+
+    // Oracle: build_peer_deliver_request omits broadcastMentions when empty.
+    #[test]
+    fn build_peer_deliver_request_empty_broadcast_mentions() {
+        let req = build_peer_deliver_request(
+            "01JVWXYZ0000000000000000AB",
+            &"b3d4e5f6".repeat(8),
+            "uid:alice@example.com",
+            "hello",
+            "text/plain",
+            "2026-04-18T20:14:00Z",
+            None,
+            &[],
+            &[],
+        );
+        let msg = &req["methodCalls"][0][1]["message"];
+        assert!(
+            msg.get("broadcastMentions").is_none(),
+            "broadcastMentions must not appear in wire format when empty"
+        );
     }
 
     // ---------------------------------------------------------------------------
