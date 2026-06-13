@@ -517,7 +517,9 @@ fn row_to_contact(row: &rusqlite::Row<'_>) -> rusqlite::Result<ChatContact> {
     let mut contact = ChatContact::new(
         Id::from(peer_user_id),
         peer_login,
-        UTCDate::from(crate::util::unix_secs_to_rfc3339(first_seen_at.max(0) as u64)),
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(
+            first_seen_at.max(0) as u64
+        )),
         UTCDate::from(crate::util::unix_secs_to_rfc3339(last_seen_at.max(0) as u64)),
         blocked != 0,
     );
@@ -557,8 +559,14 @@ mod tests {
             Some("alice-kith.tail.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Alice".into()));
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
-        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
+        assert_eq!(
+            c.last_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         assert!(!c.blocked);
     }
 
@@ -677,9 +685,15 @@ mod tests {
         .unwrap();
         let c = cs.get_by_peer_user_id("uid-5").unwrap().unwrap();
         // first_seen_at must remain at the original insert time.
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         // last_seen_at must be updated.
-        assert_eq!(c.last_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(9999));
+        assert_eq!(
+            c.last_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(9999)
+        );
     }
 
     #[test]
@@ -840,7 +854,10 @@ mod tests {
             Some("bob.ts.net".to_string())
         );
         assert_eq!(c.display_name, Some("Bob".to_string()));
-        assert_eq!(c.first_seen_at.as_ref(), crate::util::unix_secs_to_rfc3339(1000));
+        assert_eq!(
+            c.first_seen_at.as_ref(),
+            crate::util::unix_secs_to_rfc3339(1000)
+        );
         assert!(!c.blocked);
     }
 

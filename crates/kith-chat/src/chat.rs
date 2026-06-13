@@ -1,5 +1,6 @@
 use kith_core::{JmapError, MAX_OBJECTS_IN_GET};
 use kith_jmap::{HandlerFuture, JmapHandler};
+use kith_store::chat::ChatMetadataUpdate;
 use serde_json::{json, Map, Value};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -126,7 +127,8 @@ impl JmapHandler for ChatGetHandler {
 /// Handler for the `Chat/set` JMAP method.
 ///
 /// Supports creating direct chats by referencing a known contact.
-/// Update and destroy operations are rejected (chats are immutable records).
+/// Supports updating chat metadata (name, description, muted, etc.).
+/// Destroy operations are rejected (chats persist).
 pub struct ChatSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -210,13 +212,15 @@ impl JmapHandler for ChatSetHandler {
                 .as_secs() as i64;
 
             // Step 3+5: Acquire the store lock once, capture old_state and new_state
-            // atomically with the create batch.  Both state values are read inside the
-            // same lock scope so no concurrent write can slip in between them — which
-            // would cause newState to include changes not part of this Set call,
-            // causing clients that update sinceState to silently miss those changes
-            // (RFC 8620 §5.3).
+            // atomically with the create and update batches.  Both state values are
+            // read inside the same lock scope so no concurrent write can slip in
+            // between them — which would cause newState to include changes not part
+            // of this Set call, causing clients that update sinceState to silently
+            // miss those changes (RFC 8620 §5.3).
             let mut created: Map<String, Value> = Map::new();
             let mut not_created: Map<String, Value> = Map::new();
+            let mut updated: Map<String, Value> = Map::new();
+            let mut not_updated: Map<String, Value> = Map::new();
 
             let (old_state, new_state) = {
                 let guard = store
@@ -301,8 +305,254 @@ impl JmapHandler for ChatSetHandler {
                     }
                 }
 
-                // Capture new_state after all creates, still inside the same lock scope,
-                // so newState reflects exactly this Set's changes and nothing else.
+                // Step 6: Process updates — apply metadata changes to existing chats.
+                if let Some(update_map) = update {
+                    for (chat_id, patch) in update_map {
+                        let patch_obj = match patch.as_object() {
+                            Some(o) => o,
+                            None => {
+                                not_updated.insert(
+                                    chat_id,
+                                    json!({"type": "invalidArguments", "description": "update value must be an object"}),
+                                );
+                                continue;
+                            }
+                        };
+
+                        // Verify the chat exists.
+                        let existing = guard
+                            .chats()
+                            .get(&chat_id)
+                            .map_err(|e| JmapError::server_fail(e.to_string()))?;
+                        if existing.is_none() {
+                            not_updated.insert(
+                                chat_id,
+                                json!({"type": "notFound", "description": "chat not found"}),
+                            );
+                            continue;
+                        }
+
+                        // Build the metadata update from the patch object.
+                        // Store owned Strings for lifetimes.
+                        let name_str: Option<String>;
+                        let desc_str: Option<String>;
+                        let avatar_str: Option<String>;
+                        let mute_until_str: Option<String>;
+                        let mut meta_update = ChatMetadataUpdate::default();
+                        let mut had_error = false;
+
+                        if let Some(v) = patch_obj.get("name") {
+                            if v.is_null() {
+                                meta_update.name = Some(None);
+                            } else if let Some(s) = v.as_str() {
+                                name_str = Some(s.to_owned());
+                                meta_update.name = Some(name_str.as_deref());
+                            } else {
+                                not_updated.insert(
+                                    chat_id,
+                                    json!({"type": "invalidArguments", "description": "name must be a string or null"}),
+                                );
+                                continue;
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("description") {
+                            if v.is_null() {
+                                meta_update.description = Some(None);
+                            } else if let Some(s) = v.as_str() {
+                                desc_str = Some(s.to_owned());
+                                meta_update.description = Some(desc_str.as_deref());
+                            } else {
+                                not_updated.insert(
+                                    chat_id,
+                                    json!({"type": "invalidArguments", "description": "description must be a string or null"}),
+                                );
+                                continue;
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("avatarBlobId") {
+                            if v.is_null() {
+                                meta_update.avatar_blob_id = Some(None);
+                            } else if let Some(s) = v.as_str() {
+                                // Validate blob exists.
+                                let exists = guard
+                                    .chats()
+                                    .blob_exists(s)
+                                    .map_err(|e| JmapError::server_fail(e.to_string()))?;
+                                if !exists {
+                                    not_updated.insert(
+                                        chat_id,
+                                        json!({"type": "invalidArguments", "description": "avatarBlobId references a nonexistent blob"}),
+                                    );
+                                    continue;
+                                }
+                                avatar_str = Some(s.to_owned());
+                                meta_update.avatar_blob_id = Some(avatar_str.as_deref());
+                            } else {
+                                not_updated.insert(
+                                    chat_id,
+                                    json!({"type": "invalidArguments", "description": "avatarBlobId must be a string or null"}),
+                                );
+                                continue;
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("muted") {
+                            match v.as_bool() {
+                                Some(b) => meta_update.muted = Some(b),
+                                None => {
+                                    not_updated.insert(
+                                        chat_id,
+                                        json!({"type": "invalidArguments", "description": "muted must be a boolean"}),
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("muteUntil") {
+                            if v.is_null() {
+                                meta_update.mute_until = Some(None);
+                            } else if let Some(s) = v.as_str() {
+                                mute_until_str = Some(s.to_owned());
+                                meta_update.mute_until = Some(mute_until_str.as_deref());
+                            } else {
+                                not_updated.insert(
+                                    chat_id,
+                                    json!({"type": "invalidArguments", "description": "muteUntil must be a string or null"}),
+                                );
+                                continue;
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("receiveTypingIndicators") {
+                            match v.as_bool() {
+                                Some(b) => meta_update.receive_typing_indicators = Some(b),
+                                None => {
+                                    not_updated.insert(
+                                        chat_id,
+                                        json!({"type": "invalidArguments", "description": "receiveTypingIndicators must be a boolean"}),
+                                    );
+                                    continue;
+                                }
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("receiptSharing") {
+                            if v.is_null() {
+                                meta_update.receipt_sharing = Some(None);
+                            } else {
+                                match v.as_bool() {
+                                    Some(b) => meta_update.receipt_sharing = Some(Some(b)),
+                                    None => {
+                                        not_updated.insert(
+                                            chat_id,
+                                            json!({"type": "invalidArguments", "description": "receiptSharing must be a boolean or null"}),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(v) = patch_obj.get("messageExpirySeconds") {
+                            if v.is_null() {
+                                meta_update.message_expiry_seconds = Some(None);
+                            } else {
+                                match v.as_u64() {
+                                    Some(n) if n > 0 => {
+                                        meta_update.message_expiry_seconds = Some(Some(n));
+                                    }
+                                    Some(_) => {
+                                        not_updated.insert(
+                                            chat_id,
+                                            json!({"type": "invalidArguments", "description": "messageExpirySeconds must be positive"}),
+                                        );
+                                        continue;
+                                    }
+                                    None => {
+                                        not_updated.insert(
+                                            chat_id,
+                                            json!({"type": "invalidArguments", "description": "messageExpirySeconds must be a positive integer or null"}),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Apply metadata update.
+                        match guard.chats().update_metadata(&chat_id, &meta_update) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                not_updated.insert(
+                                    chat_id.clone(),
+                                    json!({"type": "serverFail", "description": e.to_string()}),
+                                );
+                                had_error = true;
+                            }
+                        }
+
+                        // Handle pinnedMessageIds separately.
+                        if !had_error {
+                            if let Some(v) = patch_obj.get("pinnedMessageIds") {
+                                match v.as_array() {
+                                    Some(arr) => {
+                                        let mut pin_ids: Vec<String> = Vec::new();
+                                        let mut pin_valid = true;
+                                        for item in arr {
+                                            match item.as_str() {
+                                                Some(s) => pin_ids.push(s.to_owned()),
+                                                None => {
+                                                    not_updated.insert(
+                                                        chat_id.clone(),
+                                                        json!({"type": "invalidArguments", "description": "pinnedMessageIds must be an array of strings"}),
+                                                    );
+                                                    pin_valid = false;
+                                                    had_error = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if pin_valid {
+                                            let pin_refs: Vec<&str> =
+                                                pin_ids.iter().map(|s| s.as_str()).collect();
+                                            match guard
+                                                .chats()
+                                                .set_pinned_messages(&chat_id, &pin_refs)
+                                            {
+                                                Ok(_) => {}
+                                                Err(e) => {
+                                                    not_updated.insert(
+                                                        chat_id.clone(),
+                                                        json!({"type": "invalidArguments", "description": e.to_string()}),
+                                                    );
+                                                    had_error = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        not_updated.insert(
+                                            chat_id.clone(),
+                                            json!({"type": "invalidArguments", "description": "pinnedMessageIds must be an array"}),
+                                        );
+                                        had_error = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if !had_error {
+                            updated.insert(chat_id, json!(null));
+                        }
+                    }
+                }
+
+                // Capture new_state after all creates and updates, still inside the
+                // same lock scope, so newState reflects exactly this Set's changes
+                // and nothing else.
                 let new_state = guard
                     .chats()
                     .get_state()
@@ -310,17 +560,6 @@ impl JmapHandler for ChatSetHandler {
 
                 (old_state, new_state)
             };
-
-            // Step 6: All updates are forbidden.
-            let mut not_updated: Map<String, Value> = Map::new();
-            if let Some(update_map) = update {
-                for (id, _) in update_map {
-                    not_updated.insert(
-                        id,
-                        json!({"type": "forbidden", "description": "chats cannot be updated"}),
-                    );
-                }
-            }
 
             // Step 7: All destroys are forbidden.
             let mut not_destroyed: Map<String, Value> = Map::new();
@@ -338,7 +577,7 @@ impl JmapHandler for ChatSetHandler {
                 "oldState": old_state,
                 "newState": new_state,
                 "created": created,
-                "updated": {},
+                "updated": updated,
                 "destroyed": [],
                 "notCreated": not_created,
                 "notUpdated": not_updated,
@@ -1182,6 +1421,216 @@ mod tests {
             not_created["c1"]["existingId"], existing_id,
             "existingId must point to the original chat; got: {:?}",
             not_created["c1"]
+        );
+    }
+
+    // Oracle: Chat/set update with name change must succeed and persist the change.
+    // The updated map must contain the chat ID with a null value (RFC 8620 §5.3).
+    #[tokio::test]
+    async fn test_chat_set_update_name() {
+        let store = make_store();
+
+        // Create a group chat directly (bypassing the handler's contact requirement).
+        let chat_id = {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-upd-name", "group", None, 1_000_000)
+                .unwrap();
+            "chat-upd-name".to_string()
+        };
+
+        let handler = ChatSetHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "update": {
+                        chat_id: {"name": "New Group Name"}
+                    }
+                }),
+            )
+            .await
+            .expect("Chat/set update must succeed");
+
+        // Oracle: RFC 8620 §5.3 — updated must contain the chat ID.
+        let updated = result["updated"]
+            .as_object()
+            .expect("updated must be object");
+        assert!(
+            updated.contains_key("chat-upd-name"),
+            "chat-upd-name must appear in updated; got: {updated:?}"
+        );
+
+        // Verify the name persisted.
+        let guard = store.lock().unwrap();
+        let chat = guard
+            .chats()
+            .get("chat-upd-name")
+            .unwrap()
+            .expect("chat must exist");
+        assert_eq!(
+            chat.name.as_deref(),
+            Some("New Group Name"),
+            "name must be updated"
+        );
+    }
+
+    // Oracle: Chat/set update with muted toggle must succeed and persist.
+    #[tokio::test]
+    async fn test_chat_set_update_muted() {
+        let store = make_store();
+
+        let chat_id = {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-upd-mute", "direct", Some("uid-alice"), 1_000_000)
+                .unwrap();
+            "chat-upd-mute".to_string()
+        };
+
+        let handler = ChatSetHandler::new(Arc::clone(&store));
+
+        // Mute the chat.
+        let result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "update": {
+                        chat_id: {"muted": true}
+                    }
+                }),
+            )
+            .await
+            .expect("Chat/set update must succeed");
+
+        let updated = result["updated"]
+            .as_object()
+            .expect("updated must be object");
+        assert!(
+            updated.contains_key("chat-upd-mute"),
+            "chat-upd-mute must appear in updated"
+        );
+
+        // Verify muted=true persisted.
+        {
+            let guard = store.lock().unwrap();
+            let chat = guard
+                .chats()
+                .get("chat-upd-mute")
+                .unwrap()
+                .expect("chat must exist");
+            assert!(chat.muted, "muted must be true after update");
+        }
+
+        // Unmute the chat.
+        let result2 = handler
+            .call(
+                "Chat/set".to_string(),
+                "c1".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "update": {
+                        "chat-upd-mute": {"muted": false}
+                    }
+                }),
+            )
+            .await
+            .expect("Chat/set unmute must succeed");
+
+        let updated2 = result2["updated"]
+            .as_object()
+            .expect("updated must be object");
+        assert!(
+            updated2.contains_key("chat-upd-mute"),
+            "chat-upd-mute must appear in updated after unmute"
+        );
+
+        let guard = store.lock().unwrap();
+        let chat = guard
+            .chats()
+            .get("chat-upd-mute")
+            .unwrap()
+            .expect("chat must exist");
+        assert!(!chat.muted, "muted must be false after unmute");
+    }
+
+    // Oracle: Chat/set update on a nonexistent chat must return notUpdated/notFound.
+    #[tokio::test]
+    async fn test_chat_set_update_nonexistent() {
+        let store = make_store();
+        let handler = ChatSetHandler::new(Arc::clone(&store));
+
+        let result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "update": {
+                        "no-such-chat": {"muted": true}
+                    }
+                }),
+            )
+            .await
+            .expect("Chat/set must succeed at method level");
+
+        let not_updated = result["notUpdated"]
+            .as_object()
+            .expect("notUpdated must be object");
+        assert!(
+            not_updated.contains_key("no-such-chat"),
+            "no-such-chat must be in notUpdated"
+        );
+        assert_eq!(
+            not_updated["no-such-chat"]["type"], "notFound",
+            "error type must be notFound"
+        );
+    }
+
+    // Oracle: Chat/set update with invalid messageExpirySeconds (zero) must return
+    // notUpdated/invalidArguments.
+    #[tokio::test]
+    async fn test_chat_set_update_invalid_expiry() {
+        let store = make_store();
+        {
+            let guard = store.lock().unwrap();
+            guard
+                .chats()
+                .create("chat-upd-exp", "group", None, 1_000_000)
+                .unwrap();
+        }
+
+        let handler = ChatSetHandler::new(Arc::clone(&store));
+        let result = handler
+            .call(
+                "Chat/set".to_string(),
+                "c0".to_string(),
+                json!({
+                    "accountId": "a-self",
+                    "update": {
+                        "chat-upd-exp": {"messageExpirySeconds": 0}
+                    }
+                }),
+            )
+            .await
+            .expect("Chat/set must succeed at method level");
+
+        let not_updated = result["notUpdated"]
+            .as_object()
+            .expect("notUpdated must be object");
+        assert!(
+            not_updated.contains_key("chat-upd-exp"),
+            "chat-upd-exp must be in notUpdated"
+        );
+        assert_eq!(
+            not_updated["chat-upd-exp"]["type"], "invalidArguments",
+            "error type must be invalidArguments for zero expiry"
         );
     }
 }

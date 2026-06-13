@@ -34,14 +34,18 @@ pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError> 
         .map_err(|e| JmapError::invalid_arguments(format!("invalid request: {e}")))?;
 
     if req.using.is_empty() {
-        return Err(JmapError::unknown_capability_with_detail("using must not be empty"));
+        return Err(JmapError::unknown_capability_with_detail(
+            "using must not be empty",
+        ));
     }
 
     // Unknown capability URIs are silently accepted — see RFC 8620 §3.3 deviation note
     // in the doc comment above.
 
     if req.method_calls.len() > MAX_CALLS_IN_REQUEST {
-        return Err(kith_core::jmap_error_request_too_large("maxCallsInRequest is 16"));
+        return Err(kith_core::jmap_error_request_too_large(
+            "maxCallsInRequest is 16",
+        ));
     }
 
     Ok(req)
@@ -402,7 +406,8 @@ impl Dispatcher {
             if let Some(created_map) = invocation.1.get("created").and_then(|v| v.as_object()) {
                 for (client_id, obj) in created_map {
                     if let Some(server_id) = obj.get("id").and_then(|v| v.as_str()) {
-                        created_ids.insert(Id::from(client_id.clone()), Id::from(server_id.to_string()));
+                        created_ids
+                            .insert(Id::from(client_id.clone()), Id::from(server_id.to_string()));
                     }
                 }
             }
@@ -1164,11 +1169,7 @@ mod tests {
     #[tokio::test]
     async fn test_dispatch_session_state_echoed() {
         let d = Dispatcher::new();
-        let req = JmapRequest::new(
-            vec!["urn:ietf:params:jmap:chat".to_string()],
-            vec![],
-            None,
-        );
+        let req = JmapRequest::new(vec!["urn:ietf:params:jmap:chat".to_string()], vec![], None);
         let resp = d
             .dispatch(
                 req,

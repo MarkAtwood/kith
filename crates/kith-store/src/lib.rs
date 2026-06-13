@@ -415,6 +415,33 @@ const SCHEMA_V19: &str = "
 UPDATE chats SET created_at_counter = -1 WHERE changed_at_counter > 0;
 ";
 
+// V20: Chat group metadata and per-chat preferences (KITH-21vh, KITH-arm0).
+//
+// Adds optional columns for group chat metadata (name, description, avatar) and
+// per-chat user preferences (muted, mute_until, typing indicators, read receipts,
+// message expiry).  Also adds a pinned_messages junction table.
+//
+// All new columns have defaults that preserve existing behavior:
+// - muted defaults to 0 (false), matching the Chat::new() constructor
+// - receive_typing_indicators defaults to 1 (true), matching the spec default
+// - Text/nullable columns default to NULL (Option::None)
+const SCHEMA_V20: &str = "
+ALTER TABLE chats ADD COLUMN name TEXT;
+ALTER TABLE chats ADD COLUMN description TEXT;
+ALTER TABLE chats ADD COLUMN avatar_blob_id TEXT;
+ALTER TABLE chats ADD COLUMN muted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE chats ADD COLUMN mute_until TEXT;
+ALTER TABLE chats ADD COLUMN receive_typing_indicators INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE chats ADD COLUMN receipt_sharing INTEGER;
+ALTER TABLE chats ADD COLUMN message_expiry_seconds INTEGER;
+
+CREATE TABLE IF NOT EXISTS pinned_messages (
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    PRIMARY KEY (chat_id, message_id)
+);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -440,6 +467,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (17, SCHEMA_V17),
     (18, SCHEMA_V18),
     (19, SCHEMA_V19),
+    (20, SCHEMA_V20),
 ];
 
 impl Store {
@@ -951,8 +979,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has nineteen entries (versions 1-19), so user_version must be 19 after open.
-        assert_eq!(version, 19);
+        // MIGRATIONS has twenty entries (versions 1-20), so user_version must be 20 after open.
+        assert_eq!(version, 20);
     }
 
     #[test]
@@ -1016,7 +1044,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 19, "migration 19 must be applied");
+        assert_eq!(v1, 20, "migration 20 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1053,6 +1081,7 @@ mod tests {
             "contacts",
             "messages",
             "outbox",
+            "pinned_messages",
             "self",
             "state_counters",
         ] {
@@ -1103,7 +1132,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 19, "migration v19 must set user_version to 19");
+        assert_eq!(v, 20, "migration v20 must set user_version to 20");
     }
 
     #[test]

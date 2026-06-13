@@ -1183,7 +1183,12 @@ mod tests {
         ms.update_read_at("msg-rnd", 9000).expect("first update");
         let state_after_first = ms.get_state().expect("state after first update");
         let msg_after_first = ms.get("msg-rnd").expect("get").expect("exists");
-        let read_at_first: String = msg_after_first.read_at.as_ref().unwrap().as_ref().to_owned();
+        let read_at_first: String = msg_after_first
+            .read_at
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .to_owned();
 
         // Second call with a smaller timestamp (3000 < 9000).
         let result = ms.update_read_at("msg-rnd", 3000);
@@ -1522,13 +1527,8 @@ mod tests {
         insert_chat(&store.conn, "chat-att2");
 
         // First message: one attachment.
-        let att = kith_core::make_attachment(
-            "e".repeat(64),
-            "doc.txt",
-            "text/plain",
-            7,
-            "f".repeat(64),
-        );
+        let att =
+            kith_core::make_attachment("e".repeat(64), "doc.txt", "text/plain", 7, "f".repeat(64));
         store
             .insert_message_with_attachments(
                 "msg-att2a",
