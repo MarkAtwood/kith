@@ -896,3 +896,320 @@ async fn test_message_set_wrong_chat_id() {
         "unknown chatId must produce notFound; got: {args}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// GROUP — Rich body (application/jmap-chat-rich) tests
+// ---------------------------------------------------------------------------
+
+/// Helper: create a contact and a chat, return the chat ID.
+async fn setup_chat_for_rich_body(store: &Arc<Mutex<kith_store::Store>>, d: &Dispatcher) -> String {
+    let req = kith_request(vec![(
+        "ChatContact/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "c0": {
+                    "id": "uid-rich-peer",
+                    "login": "rich@example.com",
+                    "mailboxHost": "rich-kith.tail.ts.net"
+                }
+            }
+        }),
+        "c0",
+    )]);
+    d.dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+
+    let req = kith_request(vec![(
+        "Chat/set",
+        json!({
+            "accountId": "a-self",
+            "create": {"ch0": {"contactId": "uid-rich-peer"}}
+        }),
+        "ch0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    resp.method_responses[0].1["created"]["ch0"]["id"]
+        .as_str()
+        .expect("chat id must be a string")
+        .to_string()
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich and valid
+// spans must be accepted.  The body is a JSON object with a "spans" array
+// containing spans with "type" and "text" fields.  The expected result is
+// created.m0 present with the correct bodyType.
+#[tokio::test]
+async fn rich_body_valid_spans_accepted() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let rich_body = serde_json::json!({
+        "spans": [
+            {"type": "text", "text": "Hello "},
+            {"type": "bold", "text": "world"}
+        ]
+    })
+    .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": rich_body,
+                    "bodyType": "application/jmap-chat-rich"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m0").is_some(),
+        "valid rich body must be accepted; got: {args}"
+    );
+    assert_eq!(
+        args["created"]["m0"]["bodyType"], "application/jmap-chat-rich",
+        "bodyType must be preserved in response"
+    );
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich and invalid
+// JSON body must be rejected with invalidArguments.
+#[tokio::test]
+async fn rich_body_invalid_json_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": "not valid json {{{",
+                    "bodyType": "application/jmap-chat-rich"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "invalid JSON rich body must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich and body
+// missing the "spans" key must be rejected with invalidArguments.
+#[tokio::test]
+async fn rich_body_missing_spans_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let body_no_spans = serde_json::json!({"other": "stuff"}).to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": body_no_spans,
+                    "bodyType": "application/jmap-chat-rich"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "rich body without spans must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich containing
+// unrecognized span types must be accepted (forward compatibility per spec:
+// "Servers MUST NOT reject messages solely because they contain unrecognized span types").
+#[tokio::test]
+async fn rich_body_unrecognized_span_types_accepted() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let rich_body = serde_json::json!({
+        "spans": [
+            {"type": "text", "text": "Hello"},
+            {"type": "custom-widget-v9", "text": "fancy stuff"},
+            {"type": "unknown-future-type", "text": "forward compat"}
+        ]
+    })
+    .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": rich_body,
+                    "bodyType": "application/jmap-chat-rich"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["created"].get("m0").is_some(),
+        "unrecognized span types must be accepted; got: {args}"
+    );
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich and a
+// non-empty mentions array must be rejected with invalidArguments.
+// Rich body carries mentions inline as spans.
+#[tokio::test]
+async fn rich_body_nonempty_mentions_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let rich_body = serde_json::json!({
+        "spans": [{"type": "text", "text": "Hello"}]
+    })
+    .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": rich_body,
+                    "bodyType": "application/jmap-chat-rich",
+                    "mentions": [{"userId": "uid-someone", "offset": 0, "length": 5}]
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "non-empty mentions with rich body must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich and a
+// non-empty broadcastMentions array must be rejected with invalidArguments.
+// Rich body carries broadcast mentions inline as spans.
+#[tokio::test]
+async fn rich_body_nonempty_broadcast_mentions_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let rich_body = serde_json::json!({
+        "spans": [{"type": "text", "text": "Hello"}]
+    })
+    .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": rich_body,
+                    "bodyType": "application/jmap-chat-rich",
+                    "broadcastMentions": [{"scope": "everyone", "offset": 0, "length": 5}]
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "non-empty broadcastMentions with rich body must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}
+
+// Oracle: Message/set create with bodyType=application/jmap-chat-rich containing
+// a broadcast span with an invalid scope must be rejected with invalidArguments.
+// Valid scopes are "everyone", "here", "admins" (case-sensitive).
+#[tokio::test]
+async fn rich_body_broadcast_span_invalid_scope_rejected() {
+    let store = make_store();
+    let (d, _blob_dir) = make_dispatcher(Arc::clone(&store));
+    let chat_id = setup_chat_for_rich_body(&store, &d).await;
+
+    let rich_body = serde_json::json!({
+        "spans": [
+            {"type": "broadcast", "text": "@channel", "scope": "channel"}
+        ]
+    })
+    .to_string();
+
+    let req = kith_request(vec![(
+        "Message/set",
+        json!({
+            "accountId": "a-self",
+            "create": {
+                "m0": {
+                    "chatId": chat_id,
+                    "body": rich_body,
+                    "bodyType": "application/jmap-chat-rich"
+                }
+            }
+        }),
+        "m0",
+    )]);
+    let resp = d
+        .dispatch(req, Role::Owner, dummy_identity(), "s-0".to_string())
+        .await;
+    let (_, args, _) = &resp.method_responses[0];
+    assert!(
+        args["notCreated"].get("m0").is_some(),
+        "broadcast span with invalid scope must be rejected; got: {args}"
+    );
+    assert_eq!(args["notCreated"]["m0"]["type"], "invalidArguments");
+}

@@ -222,7 +222,11 @@ pub fn build_session(
             kith_chat: KithChatCapability {
                 max_body_bytes: MAX_BODY_BYTES as u64,
                 max_attachment_bytes: MAX_ATTACHMENT_BYTES as u64,
-                supported_body_types: vec!["text/plain".to_string(), "text/markdown".to_string()],
+                supported_body_types: vec![
+                    "text/plain".to_string(),
+                    "text/markdown".to_string(),
+                    "application/jmap-chat-rich".to_string(),
+                ],
             },
         },
         accounts,

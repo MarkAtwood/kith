@@ -16,7 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ulid::Ulid;
 
 const MAX_ATTACHMENTS: usize = 20;
-const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
+const SUPPORTED_BODY_TYPES: &[&str] =
+    &["text/plain", "text/markdown", "application/jmap-chat-rich"];
 
 struct ParsedAttachment {
     blob_id: String,
@@ -245,6 +246,70 @@ fn parse_broadcast_mentions(
         result.push(make_broadcast_mention(scope, offset, length));
     }
     Ok(result)
+}
+
+/// Validate a rich body (`application/jmap-chat-rich`).
+///
+/// The body must be valid JSON containing an object with a `"spans"` key whose
+/// value is an array.  Each span must have `"type"` (String) and `"text"`
+/// (String) fields.  Unrecognized span types are accepted (forward-compatible).
+/// Broadcast spans with an unrecognized `scope` are rejected.
+fn validate_rich_body(body: &str) -> Result<(), Value> {
+    let parsed: Value = serde_json::from_str(body).map_err(|e| {
+        json!({"type": "invalidArguments", "description": format!("rich body is not valid JSON: {e}")})
+    })?;
+    let obj = parsed.as_object().ok_or_else(
+        || json!({"type": "invalidArguments", "description": "rich body must be a JSON object"}),
+    )?;
+    let spans = obj
+        .get("spans")
+        .ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": "rich body must contain a \"spans\" key"})
+        })?
+        .as_array()
+        .ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": "rich body \"spans\" must be an array"})
+        })?;
+    for (i, span) in spans.iter().enumerate() {
+        let span_obj = span.as_object().ok_or_else(|| {
+            json!({"type": "invalidArguments", "description": format!("spans[{i}] must be an object")})
+        })?;
+        let span_type = span_obj
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                json!({"type": "invalidArguments", "description": format!("spans[{i}].type must be a string")})
+            })?;
+        // "text" field is required on every span.
+        span_obj
+            .get("text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                json!({"type": "invalidArguments", "description": format!("spans[{i}].text must be a string")})
+            })?;
+        // Broadcast spans: reject unrecognized scope values.
+        if span_type == "broadcast" {
+            let scope = span_obj
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    json!({"type": "invalidArguments", "description": format!("spans[{i}].scope must be a string for broadcast spans")})
+                })?;
+            if !VALID_BROADCAST_SCOPES.contains(&scope) {
+                return Err(json!({
+                    "type": "invalidArguments",
+                    "description": format!("spans[{i}].scope must be one of: everyone, here, admins")
+                }));
+            }
+        }
+        // Spec: "Servers MUST NOT reject messages solely because they contain
+        // unrecognized span types" — so we do NOT reject unknown types.
+    }
+    debug_assert!(
+        spans.iter().all(|s| s.is_object()),
+        "all spans validated as objects"
+    );
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +597,31 @@ async fn process_create(
     // Validate bodyType.
     if !SUPPORTED_BODY_TYPES.contains(&body_type.as_str()) {
         return Err(json!({"type": "invalidArguments", "description": "unsupported bodyType"}));
+    }
+
+    // Rich body validation: when bodyType is application/jmap-chat-rich, the body
+    // must be valid JSON with a "spans" array, and mentions/broadcastMentions must
+    // be empty (mentions are carried inline as spans).
+    if body_type == "application/jmap-chat-rich" {
+        validate_rich_body(&body)?;
+        // mentions array must be empty for rich body.
+        if let Some(Value::Array(arr)) = obj.get("mentions") {
+            if !arr.is_empty() {
+                return Err(json!({
+                    "type": "invalidArguments",
+                    "description": "mentions must be empty for application/jmap-chat-rich; use inline spans instead"
+                }));
+            }
+        }
+        // broadcastMentions array must be empty for rich body.
+        if let Some(Value::Array(arr)) = obj.get("broadcastMentions") {
+            if !arr.is_empty() {
+                return Err(json!({
+                    "type": "invalidArguments",
+                    "description": "broadcastMentions must be empty for application/jmap-chat-rich; use inline spans instead"
+                }));
+            }
+        }
     }
 
     // Parse and validate attachments BEFORE acquiring the store lock.

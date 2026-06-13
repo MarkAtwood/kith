@@ -205,7 +205,7 @@ senderMsgId:   String                  // ULID assigned by the sending mailbox;
 chatId:        String                  // references Chat
 senderId:      String                  // ChatContact id; "self" for outgoing
 body:          String                  // UTF-8, bounded by maxBodyBytes
-bodyType:      String                  // "text/plain" | "text/markdown"
+bodyType:      String                  // "text/plain" | "text/markdown" | "application/jmap-chat-rich"
 attachments:   Attachment[]            // embedded; blobIds resolved via downloadUrl
 replyTo:       String|null             // Message id
 sentAt:        UTCDate                 // sender's clock

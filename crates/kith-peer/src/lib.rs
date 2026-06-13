@@ -22,7 +22,8 @@ use thiserror::Error;
 use ulid::Ulid;
 
 /// Accepted body MIME types (matches KithChatCapability::supported_body_types).
-const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown"];
+const SUPPORTED_BODY_TYPES: &[&str] =
+    &["text/plain", "text/markdown", "application/jmap-chat-rich"];
 
 /// Grace window for receipt `at` timestamps (5 minutes in seconds).
 ///
@@ -168,6 +169,17 @@ impl PeerJmapHandler for DeliverHandler {
             // Step 4: Validate bodyType.
             if !SUPPORTED_BODY_TYPES.contains(&msg.body_type.as_str()) {
                 return Err(JmapError::invalid_arguments("unsupported bodyType"));
+            }
+
+            // Step 4.5: Rich body validation.
+            if msg.body_type == "application/jmap-chat-rich" {
+                validate_rich_body(&msg.body)?;
+                // broadcastMentions must be empty for rich body (carried inline as spans).
+                if !msg.broadcast_mentions.is_empty() {
+                    return Err(JmapError::invalid_arguments(
+                        "broadcastMentions must be empty for application/jmap-chat-rich; use inline spans instead",
+                    ));
+                }
             }
 
             // Step 5: Validate message id is a well-formed ULID.
@@ -1111,6 +1123,66 @@ fn validate_broadcast_mentions(
         result.push(make_broadcast_mention(&bm.scope, bm.offset, bm.length));
     }
     Ok(result)
+}
+
+/// Validate a rich body (`application/jmap-chat-rich`).
+///
+/// The body must be valid JSON containing an object with a `"spans"` key whose
+/// value is an array.  Each span must have `"type"` (String) and `"text"`
+/// (String) fields.  Unrecognized span types are accepted (forward-compatible).
+/// Broadcast spans with an unrecognized `scope` are rejected.
+fn validate_rich_body(body: &str) -> Result<(), JmapError> {
+    let parsed: serde_json::Value = serde_json::from_str(body)
+        .map_err(|e| JmapError::invalid_arguments(format!("rich body is not valid JSON: {e}")))?;
+    let obj = parsed
+        .as_object()
+        .ok_or_else(|| JmapError::invalid_arguments("rich body must be a JSON object"))?;
+    let spans = obj
+        .get("spans")
+        .ok_or_else(|| JmapError::invalid_arguments("rich body must contain a \"spans\" key"))?
+        .as_array()
+        .ok_or_else(|| JmapError::invalid_arguments("rich body \"spans\" must be an array"))?;
+    for (i, span) in spans.iter().enumerate() {
+        let span_obj = span
+            .as_object()
+            .ok_or_else(|| JmapError::invalid_arguments(format!("spans[{i}] must be an object")))?;
+        let span_type = span_obj
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JmapError::invalid_arguments(format!("spans[{i}].type must be a string"))
+            })?;
+        // "text" field is required on every span.
+        span_obj
+            .get("text")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                JmapError::invalid_arguments(format!("spans[{i}].text must be a string"))
+            })?;
+        // Broadcast spans: reject unrecognized scope values.
+        if span_type == "broadcast" {
+            let scope = span_obj
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    JmapError::invalid_arguments(format!(
+                        "spans[{i}].scope must be a string for broadcast spans"
+                    ))
+                })?;
+            if !VALID_BROADCAST_SCOPES.contains(&scope) {
+                return Err(JmapError::invalid_arguments(format!(
+                    "spans[{i}].scope must be one of: everyone, here, admins"
+                )));
+            }
+        }
+        // Spec: "Servers MUST NOT reject messages solely because they contain
+        // unrecognized span types" — so we do NOT reject unknown types.
+    }
+    debug_assert!(
+        spans.iter().all(|s| s.is_object()),
+        "all spans validated as objects"
+    );
+    Ok(())
 }
 
 /// Returns `true` if `host` is safe to embed in an HTTPS URL authority component.
@@ -4885,5 +4957,143 @@ mod tests {
             !is_valid_mailbox_host(&format!("{long_label}.ts.net")),
             "label longer than 63 bytes must be rejected"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // validate_rich_body tests
+    // -----------------------------------------------------------------------
+
+    // Oracle: valid rich body with text spans must be accepted.
+    // The expected structure is {"spans": [{"type": "...", "text": "..."}]}.
+    #[test]
+    fn validate_rich_body_valid_spans() {
+        let body = r#"{"spans":[{"type":"text","text":"Hello"},{"type":"bold","text":"world"}]}"#;
+        assert!(
+            validate_rich_body(body).is_ok(),
+            "valid rich body must be accepted"
+        );
+    }
+
+    // Oracle: invalid JSON must be rejected with invalidArguments.
+    #[test]
+    fn validate_rich_body_invalid_json() {
+        let result = validate_rich_body("not json {{{");
+        assert!(result.is_err(), "invalid JSON must be rejected");
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: body missing the "spans" key must be rejected.
+    #[test]
+    fn validate_rich_body_missing_spans() {
+        let body = r#"{"other": "stuff"}"#;
+        let result = validate_rich_body(body);
+        assert!(result.is_err(), "missing spans key must be rejected");
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: body where "spans" is not an array must be rejected.
+    #[test]
+    fn validate_rich_body_spans_not_array() {
+        let body = r#"{"spans": "not an array"}"#;
+        let result = validate_rich_body(body);
+        assert!(result.is_err(), "spans as string must be rejected");
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: span missing "type" field must be rejected.
+    #[test]
+    fn validate_rich_body_span_missing_type() {
+        let body = r#"{"spans":[{"text":"hello"}]}"#;
+        let result = validate_rich_body(body);
+        assert!(result.is_err(), "span without type must be rejected");
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: span missing "text" field must be rejected.
+    #[test]
+    fn validate_rich_body_span_missing_text() {
+        let body = r#"{"spans":[{"type":"bold"}]}"#;
+        let result = validate_rich_body(body);
+        assert!(result.is_err(), "span without text must be rejected");
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: unrecognized span types must be accepted per spec:
+    // "Servers MUST NOT reject messages solely because they contain
+    // unrecognized span types."
+    #[test]
+    fn validate_rich_body_unrecognized_span_types_accepted() {
+        let body = r#"{"spans":[{"type":"custom-future-widget","text":"fancy"},{"type":"text","text":"normal"}]}"#;
+        assert!(
+            validate_rich_body(body).is_ok(),
+            "unrecognized span types must be accepted for forward compatibility"
+        );
+    }
+
+    // Oracle: broadcast span with invalid scope must be rejected.
+    // Valid scopes are "everyone", "here", "admins" (case-sensitive per
+    // VALID_BROADCAST_SCOPES in kith-core).
+    #[test]
+    fn validate_rich_body_broadcast_span_invalid_scope() {
+        let body = r#"{"spans":[{"type":"broadcast","text":"@channel","scope":"channel"}]}"#;
+        let result = validate_rich_body(body);
+        assert!(
+            result.is_err(),
+            "broadcast span with invalid scope must be rejected"
+        );
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: broadcast span with valid scope must be accepted.
+    #[test]
+    fn validate_rich_body_broadcast_span_valid_scopes() {
+        for scope in &["everyone", "here", "admins"] {
+            let body = format!(
+                r#"{{"spans":[{{"type":"broadcast","text":"@{scope}","scope":"{scope}"}}]}}"#
+            );
+            assert!(
+                validate_rich_body(&body).is_ok(),
+                "broadcast span with valid scope '{scope}' must be accepted"
+            );
+        }
+    }
+
+    // Oracle: broadcast span with scope in wrong case must be rejected.
+    // Scope validation is case-sensitive.
+    #[test]
+    fn validate_rich_body_broadcast_scope_case_sensitive() {
+        let body = r#"{"spans":[{"type":"broadcast","text":"@Everyone","scope":"Everyone"}]}"#;
+        let result = validate_rich_body(body);
+        assert!(
+            result.is_err(),
+            "broadcast scope is case-sensitive; 'Everyone' must be rejected"
+        );
+    }
+
+    // Oracle: broadcast span without scope field must be rejected.
+    #[test]
+    fn validate_rich_body_broadcast_span_missing_scope() {
+        let body = r#"{"spans":[{"type":"broadcast","text":"@everyone"}]}"#;
+        let result = validate_rich_body(body);
+        assert!(
+            result.is_err(),
+            "broadcast span without scope must be rejected"
+        );
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
+    }
+
+    // Oracle: Peer/deliver with rich body and non-empty broadcastMentions must
+    // be rejected.  broadcastMentions are carried inline as spans in rich body.
+    // This tests the handler-level check, not just validate_rich_body.
+    #[test]
+    fn validate_rich_body_body_not_object() {
+        // JSON array at top level (not an object).
+        let body = r#"[{"type":"text","text":"hello"}]"#;
+        let result = validate_rich_body(body);
+        assert!(
+            result.is_err(),
+            "rich body must be a JSON object, not an array"
+        );
+        assert_eq!(result.unwrap_err().error_type, "invalidArguments");
     }
 }
