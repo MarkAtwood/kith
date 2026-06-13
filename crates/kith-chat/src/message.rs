@@ -590,7 +590,11 @@ async fn process_create(
             created_at_unix: now_unix,
             reply_to: reply_to.as_deref(),
             attachments: &core_attachments,
+            mentions: &[],
             outbox_peers: &peer_refs,
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
         })
         .map_err(|e| json!({"type": "serverFail", "description": e.to_string()}))?;
 

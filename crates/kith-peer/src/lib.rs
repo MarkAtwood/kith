@@ -349,6 +349,10 @@ impl PeerJmapHandler for DeliverHandler {
                     msg.reply_to.as_deref(),
                     &msg.id,
                     &attachments,
+                    &[],
+                    None,
+                    None,
+                    false,
                 )
                 .map_err(|e| {
                     tracing::error!("store error inserting message: {e}");

@@ -952,7 +952,11 @@ async fn peer_receipt_wrong_contact_returns_not_found() {
                 created_at_unix: 1_000_003,
                 reply_to: None,
                 attachments: &[],
+                mentions: &[],
                 outbox_peers: &[(PEER_BOB_ID, "bob-kith.tail.ts.net")],
+                thread_root_id: None,
+                sender_expires_at: None,
+                burn_on_read: false,
             })
             .expect("insert outbound message must succeed");
     }

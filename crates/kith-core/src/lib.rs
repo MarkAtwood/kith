@@ -87,6 +87,26 @@ pub fn make_mention(id: impl AsRef<str>, offset: u64, length: u64) -> Mention {
     )
 }
 
+/// Construct a [`MessageRevision`] from validated fields.
+///
+/// # Panics
+/// Panics if fields cannot produce valid MessageRevision JSON (logic error).
+pub fn make_message_revision(
+    body: impl Into<String>,
+    body_type: impl Into<String>,
+    edited_at: impl Into<String>,
+) -> MessageRevision {
+    let json = serde_json::json!({
+        "body": body.into(),
+        "bodyType": body_type.into(),
+        "editedAt": edited_at.into(),
+    });
+    serde_json::from_value(json).expect(
+        "make_message_revision: valid fields must produce valid MessageRevision; \
+         this is a bug in kith-core if it fires",
+    )
+}
+
 // ── Extension traits for kith-specific methods ──
 
 /// Extension methods for [`ChatContact`] that are kith-specific

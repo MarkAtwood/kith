@@ -1,5 +1,8 @@
 use crate::{attachment, db_err};
-use kith_core::{DeliveryState, Id, JmapError, KithError, Message, SenderId, StateChange, UTCDate};
+use kith_core::{
+    make_message_revision, DeliveryReceipt, DeliveryState, Id, JmapError, KithError, Message,
+    MessageAction, MessageRevision, Reaction, ReadDisposition, SenderId, StateChange, UTCDate,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use tokio::sync::broadcast;
@@ -48,8 +51,7 @@ fn parse_delivery_state(s: &str) -> Result<DeliveryState, KithError> {
 
 /// Deserialize a rusqlite row into a `Message`.
 ///
-/// Column order must match the SELECT list used in both `get()` and
-/// `list_by_chat()`:
+/// Column order must match the SELECT list `MESSAGE_COLUMNS`:
 ///   0  id               TEXT
 ///   1  chat_id          TEXT
 ///   2  sender_user_id   TEXT
@@ -62,6 +64,12 @@ fn parse_delivery_state(s: &str) -> Result<DeliveryState, KithError> {
 ///   9  read_at          INTEGER NULL (Unix seconds)
 ///   10 reply_to         TEXT NULL
 ///   11 sender_msg_id    TEXT NULL
+///   12 deleted_at       INTEGER NULL (Unix seconds)
+///   13 deleted_for_all  INTEGER NULL (0 or 1)
+///   14 edited_at        INTEGER NULL (Unix seconds)
+///   15 thread_root_id   TEXT NULL
+///   16 sender_expires_at INTEGER NULL (Unix seconds)
+///   17 burn_on_read     INTEGER NULL (0 or 1)
 fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let id: String = row.get(0)?;
     let chat_id: String = row.get(1)?;
@@ -75,6 +83,12 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let read_at_unix: Option<i64> = row.get(9)?;
     let reply_to: Option<String> = row.get(10)?;
     let sender_msg_id: Option<String> = row.get(11)?;
+    let deleted_at_unix: Option<i64> = row.get(12)?;
+    let deleted_for_all_raw: Option<i64> = row.get(13)?;
+    let edited_at_unix: Option<i64> = row.get(14)?;
+    let thread_root_id: Option<String> = row.get(15)?;
+    let sender_expires_at_unix: Option<i64> = row.get(16)?;
+    let burn_on_read_raw: Option<i64> = row.get(17)?;
 
     let delivery_state = parse_delivery_state(&delivery_state_raw).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(7, rusqlite::types::Type::Text, Box::new(e))
@@ -112,16 +126,30 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         )
     })?;
 
+    let is_deleted = deleted_at_unix.is_some();
+
     // In the DB, sender_user_id is always a peer user ID (never "self")
     // because "self" is a display-time concept. Use Contact variant.
     let sender_id = SenderId::Contact(sender_user_id);
+
+    // When deleted_at is set, body should be cleared and attachments should be empty.
+    let effective_body = if is_deleted { String::new() } else { body };
+
+    let sender_expires_at = sender_expires_at_unix.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+    });
+    let burn_on_read = burn_on_read_raw.map(|v| v != 0);
 
     let mut msg = Message::new(
         Id::from(id),
         Id::from(sender_msg_id),
         sender_id,
         Id::from(chat_id),
-        body,
+        effective_body,
         body_type,
         UTCDate::from(sent_at),
         UTCDate::from(received_at),
@@ -131,8 +159,44 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     msg.delivered_at = delivered_at.map(UTCDate::from);
     msg.read_at = read_at.map(UTCDate::from);
 
+    // Populate deletion fields.
+    msg.deleted_at = deleted_at_unix.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+    });
+    msg.deleted_for_all = deleted_for_all_raw.map(|v| v != 0);
+
+    // Populate edited_at.
+    msg.edited_at = edited_at_unix.map(|s| {
+        debug_assert!(
+            s >= 0,
+            "timestamp must be non-negative Unix seconds, got {s}"
+        );
+        UTCDate::from(crate::util::unix_secs_to_rfc3339(s.max(0) as u64))
+    });
+
+    // Threading + expiry fields.
+    msg.thread_root_id = thread_root_id.map(Id::from);
+    msg.sender_expires_at = sender_expires_at;
+    msg.burn_on_read = burn_on_read;
+
     Ok(msg)
 }
+
+/// The standard SELECT column list for message queries.
+///
+/// All queries that use `row_to_message` must SELECT exactly these columns
+/// in this order.  Centralised here to avoid column-order drift across the
+/// five query sites (get, list, list_by_chat, list_by_chat_paged,
+/// find_by_sender_msg_id).
+const MESSAGE_COLUMNS: &str = "id, chat_id, sender_user_id, body, body_type, \
+                                sent_at_peer, created_at, delivery_state, \
+                                delivered_at, read_at, reply_to, sender_msg_id, \
+                                deleted_at, deleted_for_all, edited_at, \
+                                thread_root_id, sender_expires_at, burn_on_read";
 
 /// Batch-load all attachments for a set of message IDs in a single SQL query.
 ///
@@ -187,6 +251,323 @@ fn load_attachments_for_messages(
     Ok(att_map)
 }
 
+/// Batch-load all mentions for a set of message IDs in a single SQL query.
+fn load_mentions_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, Vec<kith_core::Mention>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, contact_id, byte_offset, byte_length \
+         FROM mentions WHERE message_id IN ({placeholders}) ORDER BY byte_offset"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let contact_id: String = row.get(1)?;
+            let offset: i64 = row.get(2)?;
+            let length: i64 = row.get(3)?;
+            if offset < 0 || length < 0 {
+                return Err(rusqlite::Error::IntegralValueOutOfRange(
+                    2,
+                    offset.min(length),
+                ));
+            }
+            Ok((
+                msg_id,
+                kith_core::make_mention(contact_id, offset as u64, length as u64),
+            ))
+        })
+        .map_err(db_err)?;
+
+    let mut mention_map: HashMap<String, Vec<kith_core::Mention>> = HashMap::new();
+    for row in rows {
+        let (msg_id, mention) = row.map_err(db_err)?;
+        mention_map.entry(msg_id).or_default().push(mention);
+    }
+
+    Ok(mention_map)
+}
+
+/// Load the edit history for a single message from the `message_revisions` table.
+///
+/// Returns `None` if no revisions exist (message was never edited).
+/// Returns `Some(vec)` with revisions ordered by `revision_index ASC`.
+fn load_edit_history(
+    conn: &Connection,
+    message_id: &str,
+) -> Result<Option<Vec<MessageRevision>>, KithError> {
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT body, body_type, edited_at FROM message_revisions \
+             WHERE message_id = ?1 ORDER BY revision_index ASC",
+        )
+        .map_err(db_err)?;
+
+    let rows: Vec<MessageRevision> = stmt
+        .query_map(params![message_id], |row| {
+            let body: String = row.get(0)?;
+            let body_type: String = row.get(1)?;
+            let edited_at: String = row.get(2)?;
+
+            Ok(make_message_revision(body, body_type, edited_at))
+        })
+        .map_err(db_err)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(db_err)?;
+
+    if rows.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(rows))
+    }
+}
+
+/// Batch-load edit history for a set of message IDs in a single SQL query.
+fn load_edit_history_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, Vec<MessageRevision>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, body, body_type, edited_at \
+         FROM message_revisions WHERE message_id IN ({placeholders}) \
+         ORDER BY message_id, revision_index ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let body: String = row.get(1)?;
+            let body_type: String = row.get(2)?;
+            let edited_at: String = row.get(3)?;
+            Ok((msg_id, make_message_revision(body, body_type, edited_at)))
+        })
+        .map_err(db_err)?;
+
+    let mut rev_map: HashMap<String, Vec<MessageRevision>> = HashMap::new();
+    for row in rows {
+        let (msg_id, rev) = row.map_err(db_err)?;
+        rev_map.entry(msg_id).or_default().push(rev);
+    }
+
+    Ok(rev_map)
+}
+
+/// Batch-load all reactions for a set of message IDs in a single SQL query.
+fn load_reactions_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, HashMap<String, Reaction>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, sender_reaction_id, emoji, custom_emoji_id, sender_id, sent_at \
+         FROM reactions WHERE message_id IN ({placeholders}) ORDER BY sent_at"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let sender_reaction_id: String = row.get(1)?;
+            let emoji: String = row.get(2)?;
+            let custom_emoji_id: Option<String> = row.get(3)?;
+            let sender_id_str: String = row.get(4)?;
+            let sent_at: String = row.get(5)?;
+            Ok((
+                msg_id,
+                sender_reaction_id,
+                emoji,
+                custom_emoji_id,
+                sender_id_str,
+                sent_at,
+            ))
+        })
+        .map_err(db_err)?;
+
+    let mut map: HashMap<String, HashMap<String, Reaction>> = HashMap::new();
+    for row in rows {
+        let (msg_id, sender_reaction_id, emoji, custom_emoji_id, sender_id_str, sent_at) =
+            row.map_err(db_err)?;
+
+        let mut json = serde_json::json!({
+            "emoji": emoji,
+            "senderId": sender_id_str,
+            "sentAt": sent_at,
+        });
+        if let Some(ref cei) = custom_emoji_id {
+            json["customEmojiId"] = serde_json::Value::String(cei.clone());
+        }
+        let reaction: Reaction = serde_json::from_value(json)
+            .map_err(|e| KithError::Store(format!("failed to construct Reaction: {e}")))?;
+
+        map.entry(msg_id)
+            .or_default()
+            .insert(sender_reaction_id, reaction);
+    }
+
+    Ok(map)
+}
+
+/// Batch-load all delivery receipts for a set of message IDs in a single SQL query.
+fn load_delivery_receipts_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, HashMap<String, DeliveryReceipt>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, recipient_id, delivered_at, device_delivered_at, read_at, read_disposition \
+         FROM delivery_receipts WHERE message_id IN ({placeholders})"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let recipient_id: String = row.get(1)?;
+            let delivered_at: Option<String> = row.get(2)?;
+            let device_delivered_at: Option<String> = row.get(3)?;
+            let read_at: Option<String> = row.get(4)?;
+            let read_disposition: Option<String> = row.get(5)?;
+            Ok((
+                msg_id,
+                recipient_id,
+                delivered_at,
+                device_delivered_at,
+                read_at,
+                read_disposition,
+            ))
+        })
+        .map_err(db_err)?;
+
+    let mut map: HashMap<String, HashMap<String, DeliveryReceipt>> = HashMap::new();
+    for row in rows {
+        let (msg_id, recipient_id, delivered_at, device_delivered_at, read_at, read_disposition) =
+            row.map_err(db_err)?;
+
+        let mut json = serde_json::json!({});
+        if let Some(ref da) = delivered_at {
+            json["deliveredAt"] = serde_json::Value::String(da.clone());
+        }
+        if let Some(ref dda) = device_delivered_at {
+            json["deviceDeliveredAt"] = serde_json::Value::String(dda.clone());
+        }
+        if let Some(ref ra) = read_at {
+            json["readAt"] = serde_json::Value::String(ra.clone());
+        }
+        if let Some(ref rd) = read_disposition {
+            json["readDisposition"] = serde_json::Value::String(rd.clone());
+        }
+        let receipt: DeliveryReceipt = serde_json::from_value(json)
+            .map_err(|e| KithError::Store(format!("failed to construct DeliveryReceipt: {e}")))?;
+
+        map.entry(msg_id).or_default().insert(recipient_id, receipt);
+    }
+
+    Ok(map)
+}
+
+/// Batch-load all actions for a set of message IDs in a single SQL query.
+fn load_actions_for_messages(
+    conn: &Connection,
+    msg_ids: &[String],
+) -> Result<HashMap<String, Vec<MessageAction>>, KithError> {
+    if msg_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders = msg_ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT message_id, action_type, uri, label, expires_at, metadata \
+         FROM message_actions WHERE message_id IN ({placeholders}) ORDER BY action_index"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(db_err)?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(msg_ids.iter()), |row| {
+            let msg_id: String = row.get(0)?;
+            let action_type: String = row.get(1)?;
+            let uri: String = row.get(2)?;
+            let label: Option<String> = row.get(3)?;
+            let expires_at: Option<String> = row.get(4)?;
+            let metadata_str: Option<String> = row.get(5)?;
+            Ok((msg_id, action_type, uri, label, expires_at, metadata_str))
+        })
+        .map_err(db_err)?;
+
+    let mut map: HashMap<String, Vec<MessageAction>> = HashMap::new();
+    for row in rows {
+        let (msg_id, action_type, uri, label, expires_at, metadata_str) = row.map_err(db_err)?;
+
+        let mut json = serde_json::json!({
+            "type": action_type,
+            "uri": uri,
+        });
+        if let Some(ref l) = label {
+            json["label"] = serde_json::Value::String(l.clone());
+        }
+        if let Some(ref ea) = expires_at {
+            json["expiresAt"] = serde_json::Value::String(ea.clone());
+        }
+        if let Some(ref ms) = metadata_str {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(ms) {
+                json["metadata"] = parsed;
+            }
+        }
+        let action: MessageAction = serde_json::from_value(json)
+            .map_err(|e| KithError::Store(format!("failed to construct MessageAction: {e}")))?;
+
+        map.entry(msg_id).or_default().push(action);
+    }
+
+    Ok(map)
+}
+
+/// Populate reactions, delivery_receipts, and actions on a slice of messages.
+///
+/// Batch-loads all three associated tables for the given message IDs and
+/// merges the results into the messages.  This avoids N+1 queries.
+fn populate_message_extras(conn: &Connection, messages: &mut [Message]) -> Result<(), KithError> {
+    if messages.is_empty() {
+        return Ok(());
+    }
+
+    let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
+
+    let mut reaction_map = load_reactions_for_messages(conn, &ids)?;
+    let mut receipt_map = load_delivery_receipts_for_messages(conn, &ids)?;
+    let mut action_map = load_actions_for_messages(conn, &ids)?;
+
+    for msg in messages.iter_mut() {
+        let id = msg.id.as_ref();
+        if let Some(reactions) = reaction_map.remove(id) {
+            msg.reactions = reactions;
+        }
+        if let Some(receipts) = receipt_map.remove(id) {
+            msg.delivery_receipts = Some(receipts);
+        }
+        if let Some(actions) = action_map.remove(id) {
+            msg.actions = actions;
+        }
+    }
+
+    Ok(())
+}
+
 impl<'a> MessageStore<'a> {
     pub fn new(
         conn: &'a Connection,
@@ -204,15 +585,301 @@ impl<'a> MessageStore<'a> {
         }
     }
 
+    // ── Mentions ──────────────────────────────────────────────────────────
+
+    /// Batch-insert mention rows for a given message.
+    ///
+    /// Callers are responsible for ensuring `message_id` references an existing
+    /// message; a FK violation will return `KithError::Validation`.
+    pub fn insert_mentions(
+        &self,
+        message_id: &str,
+        mentions: &[kith_core::Mention],
+    ) -> Result<(), KithError> {
+        if mentions.is_empty() {
+            return Ok(());
+        }
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "INSERT INTO mentions (message_id, contact_id, byte_offset, byte_length) \
+                 VALUES (?1, ?2, ?3, ?4)",
+            )
+            .map_err(db_err)?;
+        for m in mentions {
+            let offset = i64::try_from(m.offset)
+                .map_err(|_| KithError::Store("mention offset overflow".into()))?;
+            let length = i64::try_from(m.length)
+                .map_err(|_| KithError::Store("mention length overflow".into()))?;
+            stmt.execute(params![message_id, m.id.as_ref(), offset, length])
+                .map_err(db_err)?;
+        }
+        Ok(())
+    }
+
+    /// Load all mentions for a single message, ordered by byte offset.
+    pub fn load_mentions(&self, message_id: &str) -> Result<Vec<kith_core::Mention>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT contact_id, byte_offset, byte_length \
+                 FROM mentions WHERE message_id = ?1 ORDER BY byte_offset",
+            )
+            .map_err(db_err)?;
+        let rows = stmt
+            .query_map(params![message_id], |row| {
+                let contact_id: String = row.get(0)?;
+                let offset: i64 = row.get(1)?;
+                let length: i64 = row.get(2)?;
+                if offset < 0 || length < 0 {
+                    return Err(rusqlite::Error::IntegralValueOutOfRange(
+                        1,
+                        offset.min(length),
+                    ));
+                }
+                Ok(kith_core::make_mention(
+                    contact_id,
+                    offset as u64,
+                    length as u64,
+                ))
+            })
+            .map_err(db_err)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(db_err)
+    }
+
+    // ── Reactions ─────────────────────────────────────────────────────────
+
+    /// Load all reactions for a single message.
+    pub fn load_reactions(&self, message_id: &str) -> Result<HashMap<String, Reaction>, KithError> {
+        let ids = vec![message_id.to_owned()];
+        let mut map = load_reactions_for_messages(self.conn, &ids)?;
+        Ok(map.remove(message_id).unwrap_or_default())
+    }
+
+    /// Insert a single reaction, advancing the message state counter.
+    pub fn insert_reaction(
+        &self,
+        message_id: &str,
+        sender_reaction_id: &str,
+        reaction: &Reaction,
+    ) -> Result<(), KithError> {
+        if reaction.emoji.is_empty() {
+            return Err(KithError::Validation("emoji must not be empty".into()));
+        }
+        if sender_reaction_id.is_empty() {
+            return Err(KithError::Validation(
+                "sender_reaction_id must not be empty".into(),
+            ));
+        }
+
+        let sender_id_str = match &reaction.sender_id {
+            SenderId::Owner => "self".to_string(),
+            SenderId::Contact(id) => id.clone(),
+            _ => "self".to_string(),
+        };
+        let custom_emoji_id: Option<String> = reaction
+            .custom_emoji_id
+            .as_ref()
+            .map(|id| id.as_ref().to_owned());
+
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO reactions \
+             (message_id, sender_reaction_id, emoji, custom_emoji_id, sender_id, sent_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                message_id,
+                sender_reaction_id,
+                reaction.emoji,
+                custom_emoji_id,
+                sender_id_str,
+                reaction.sent_at.as_ref(),
+            ],
+        )
+        .map_err(db_err)?;
+        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+        tx.execute(
+            "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+            params![version, message_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{version}"));
+        Ok(())
+    }
+
+    /// Delete a single reaction by message_id + sender_reaction_id.
+    ///
+    /// Advances the message state counter if a row was actually deleted.
+    /// Returns `Ok(())` even if the reaction did not exist (idempotent).
+    pub fn delete_reaction(
+        &self,
+        message_id: &str,
+        sender_reaction_id: &str,
+    ) -> Result<(), KithError> {
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        let affected = tx
+            .execute(
+                "DELETE FROM reactions WHERE message_id = ?1 AND sender_reaction_id = ?2",
+                params![message_id, sender_reaction_id],
+            )
+            .map_err(db_err)?;
+        if affected == 0 {
+            return Ok(());
+        }
+        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+        tx.execute(
+            "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+            params![version, message_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{version}"));
+        Ok(())
+    }
+
+    // ── Delivery Receipts ────────────────────────────────────────────────
+
+    /// Load all delivery receipts for a single message.
+    pub fn load_delivery_receipts(
+        &self,
+        message_id: &str,
+    ) -> Result<HashMap<String, DeliveryReceipt>, KithError> {
+        let ids = vec![message_id.to_owned()];
+        let mut map = load_delivery_receipts_for_messages(self.conn, &ids)?;
+        Ok(map.remove(message_id).unwrap_or_default())
+    }
+
+    /// Insert or update a delivery receipt for a specific recipient.
+    pub fn upsert_delivery_receipt(
+        &self,
+        message_id: &str,
+        recipient_id: &str,
+        receipt: &DeliveryReceipt,
+    ) -> Result<(), KithError> {
+        if recipient_id.is_empty() {
+            return Err(KithError::Validation(
+                "recipient_id must not be empty".into(),
+            ));
+        }
+
+        if let Some(ref rd) = receipt.read_disposition {
+            match rd {
+                ReadDisposition::Displayed
+                | ReadDisposition::Deleted
+                | ReadDisposition::Processed => {}
+                _ => {
+                    return Err(KithError::Validation(format!(
+                        "unknown read_disposition: {rd:?}"
+                    )));
+                }
+            }
+        }
+
+        let delivered_at: Option<String> =
+            receipt.delivered_at.as_ref().map(|d| d.as_ref().to_owned());
+        let device_delivered_at: Option<String> = receipt
+            .device_delivered_at
+            .as_ref()
+            .map(|d| d.as_ref().to_owned());
+        let read_at: Option<String> = receipt.read_at.as_ref().map(|d| d.as_ref().to_owned());
+        let read_disposition: Option<String> = receipt.read_disposition.as_ref().map(|rd| {
+            serde_json::to_value(rd)
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_default()
+        });
+
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute(
+            "INSERT OR REPLACE INTO delivery_receipts \
+             (message_id, recipient_id, delivered_at, device_delivered_at, read_at, read_disposition) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                message_id,
+                recipient_id,
+                delivered_at,
+                device_delivered_at,
+                read_at,
+                read_disposition,
+            ],
+        )
+        .map_err(db_err)?;
+        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+        tx.execute(
+            "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+            params![version, message_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{version}"));
+        Ok(())
+    }
+
+    // ── Message Actions ──────────────────────────────────────────────────
+
+    /// Load all actions for a single message, ordered by action_index.
+    pub fn load_actions(&self, message_id: &str) -> Result<Vec<MessageAction>, KithError> {
+        let ids = vec![message_id.to_owned()];
+        let mut map = load_actions_for_messages(self.conn, &ids)?;
+        Ok(map.remove(message_id).unwrap_or_default())
+    }
+
+    /// Insert a list of actions for a message (store-and-forward: no inspection).
+    pub fn insert_actions(
+        &self,
+        message_id: &str,
+        actions: &[MessageAction],
+    ) -> Result<(), KithError> {
+        if actions.is_empty() {
+            return Ok(());
+        }
+
+        for (i, action) in actions.iter().enumerate() {
+            if action.action_type.is_empty() {
+                return Err(KithError::Validation(format!(
+                    "actions[{i}].type must not be empty"
+                )));
+            }
+            if action.uri.is_empty() {
+                return Err(KithError::Validation(format!(
+                    "actions[{i}].uri must not be empty"
+                )));
+            }
+        }
+
+        for (i, action) in actions.iter().enumerate() {
+            let metadata_str: Option<String> = action
+                .metadata
+                .as_ref()
+                .map(|m| serde_json::to_string(m).unwrap_or_default());
+            let expires_at: Option<String> =
+                action.expires_at.as_ref().map(|d| d.as_ref().to_owned());
+            self.conn
+                .execute(
+                    "INSERT INTO message_actions \
+                     (message_id, action_index, action_type, uri, label, expires_at, metadata) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        message_id,
+                        i as i64,
+                        action.action_type,
+                        action.uri,
+                        action.label,
+                        expires_at,
+                        metadata_str,
+                    ],
+                )
+                .map_err(db_err)?;
+        }
+
+        Ok(())
+    }
+
+    // ── Insert ───────────────────────────────────────────────────────────
+
     /// Insert a new message row. Advances the message state counter and stores
     /// the resulting counter value in `state_version`.
-    ///
-    /// # state_version invariant
-    /// The counter increment and the INSERT are wrapped in a single transaction
-    /// so that a failed INSERT (e.g., FK violation, duplicate ID) does not leave
-    /// a permanent hole in the state_version sequence. After a successful commit,
-    /// `get_changes_since("s-N")` returns this message for any `N` less than the
-    /// new counter value.
     #[allow(clippy::too_many_arguments)]
     pub fn insert(
         &self,
@@ -227,14 +894,50 @@ impl<'a> MessageStore<'a> {
         reply_to: Option<&str>,
         sender_msg_id: &str,
     ) -> Result<(), KithError> {
+        self.insert_full(
+            id,
+            chat_id,
+            sender_user_id,
+            body,
+            body_type,
+            sent_at_peer,
+            created_at_unix,
+            delivery_state,
+            reply_to,
+            sender_msg_id,
+            None,
+            None,
+            false,
+        )
+    }
+
+    /// Insert with all fields including threading and expiry.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_full(
+        &self,
+        id: &str,
+        chat_id: &str,
+        sender_user_id: &str,
+        body: &str,
+        body_type: &str,
+        sent_at_peer: Option<&str>,
+        created_at_unix: i64,
+        delivery_state: &DeliveryState,
+        reply_to: Option<&str>,
+        sender_msg_id: &str,
+        thread_root_id: Option<&str>,
+        sender_expires_at: Option<i64>,
+        burn_on_read: bool,
+    ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = crate::advance_state_counter_in_tx(&tx, "message")?;
         let state_str = delivery_state_str(delivery_state);
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id, \
+              thread_root_id, sender_expires_at, burn_on_read) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 id,
                 chat_id,
@@ -247,6 +950,9 @@ impl<'a> MessageStore<'a> {
                 state_str,
                 reply_to,
                 sender_msg_id,
+                thread_root_id,
+                sender_expires_at,
+                burn_on_read as i64,
             ],
         )
         .map_err(db_err)?;
@@ -255,17 +961,12 @@ impl<'a> MessageStore<'a> {
         Ok(())
     }
 
+    // ── Query ────────────────────────────────────────────────────────────
+
     /// Retrieve a message by its ID. Returns `None` if not found.
     pub fn get(&self, id: &str) -> Result<Option<Message>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT id, chat_id, sender_user_id, body, body_type, \
-                        sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to, sender_msg_id \
-                 FROM messages WHERE id = ?1",
-            )
-            .map_err(db_err)?;
+        let sql = format!("SELECT {MESSAGE_COLUMNS} FROM messages WHERE id = ?1");
+        let mut stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
 
         let mut rows = stmt
             .query_map(params![id], row_to_message)
@@ -275,27 +976,26 @@ impl<'a> MessageStore<'a> {
             None => Ok(None),
             Some(row) => {
                 let mut msg = row.map_err(db_err)?;
-                msg.attachments =
-                    attachment::AttachmentStore::new(self.conn).list_by_message(msg.id.as_ref())?;
+                let msg_id_ref = msg.id.as_ref();
+                // When deleted, suppress attachments (return empty vec).
+                if msg.deleted_at.is_none() {
+                    msg.attachments =
+                        attachment::AttachmentStore::new(self.conn).list_by_message(msg_id_ref)?;
+                }
+                msg.mentions = self.load_mentions(msg_id_ref)?;
+                msg.edit_history = load_edit_history(self.conn, msg_id_ref)?;
+                self.populate_reply_counts(std::slice::from_mut(&mut msg))?;
+                populate_message_extras(self.conn, std::slice::from_mut(&mut msg))?;
                 Ok(Some(msg))
             }
         }
     }
 
     /// List all messages across all chats, ordered by created_at DESC, id DESC.
-    ///
-    /// Used by `Message/get` when `ids=null` (RFC 8620 §5.1: null means return all).
     pub fn list(&self) -> Result<Vec<Message>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT id, chat_id, sender_user_id, body, body_type, \
-                        sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to, sender_msg_id \
-                 FROM messages \
-                 ORDER BY created_at DESC, id DESC",
-            )
-            .map_err(db_err)?;
+        let sql =
+            format!("SELECT {MESSAGE_COLUMNS} FROM messages ORDER BY created_at DESC, id DESC");
+        let mut stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
 
         let rows = stmt.query_map([], row_to_message).map_err(db_err)?;
 
@@ -309,33 +1009,37 @@ impl<'a> MessageStore<'a> {
 
         let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
+        let mut mention_map = load_mentions_for_messages(self.conn, &ids)?;
+        let mut rev_map = load_edit_history_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
-                msg.attachments = atts;
+            let mid = msg.id.as_ref();
+            if msg.deleted_at.is_none() {
+                if let Some(atts) = att_map.remove(mid) {
+                    msg.attachments = atts;
+                }
+            }
+            if let Some(mentions) = mention_map.remove(mid) {
+                msg.mentions = mentions;
+            }
+            if let Some(revs) = rev_map.remove(mid) {
+                msg.edit_history = Some(revs);
             }
         }
+        self.populate_reply_counts(&mut messages)?;
+        populate_message_extras(self.conn, &mut messages)?;
 
         Ok(messages)
     }
 
     /// List messages for a chat, newest first, up to `limit` rows.
     pub fn list_by_chat(&self, chat_id: &str, limit: u32) -> Result<Vec<Message>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT id, chat_id, sender_user_id, body, body_type, \
-                        sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to, sender_msg_id \
-                 FROM messages \
-                 WHERE chat_id = ?1 \
-                 ORDER BY created_at DESC, id DESC \
-                 LIMIT ?2",
-                // id DESC is a correct tie-break because message IDs are ULIDs:
-                // Ulid::new().to_string() always produces uppercase Crockford
-                // Base32, so lexicographic order equals time order for equal
-                // created_at values.
-            )
-            .map_err(db_err)?;
+        let sql = format!(
+            "SELECT {MESSAGE_COLUMNS} FROM messages \
+             WHERE chat_id = ?1 \
+             ORDER BY created_at DESC, id DESC \
+             LIMIT ?2"
+        );
+        let mut stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
 
         let rows = stmt
             .query_map(params![chat_id, limit], row_to_message)
@@ -351,39 +1055,42 @@ impl<'a> MessageStore<'a> {
 
         let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
+        let mut mention_map = load_mentions_for_messages(self.conn, &ids)?;
+        let mut rev_map = load_edit_history_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
-                msg.attachments = atts;
+            let mid = msg.id.as_ref();
+            if msg.deleted_at.is_none() {
+                if let Some(atts) = att_map.remove(mid) {
+                    msg.attachments = atts;
+                }
+            }
+            if let Some(mentions) = mention_map.remove(mid) {
+                msg.mentions = mentions;
+            }
+            if let Some(revs) = rev_map.remove(mid) {
+                msg.edit_history = Some(revs);
             }
         }
+        self.populate_reply_counts(&mut messages)?;
+        populate_message_extras(self.conn, &mut messages)?;
 
         Ok(messages)
     }
 
     /// List messages for a chat with SQL-level pagination.
-    ///
-    /// Returns up to `limit` messages starting at 0-based `offset`, newest first.
-    /// Both `limit` and `offset` are applied in SQL via `LIMIT ? OFFSET ?`.
     pub fn list_by_chat_paged(
         &self,
         chat_id: &str,
         limit: u32,
         offset: u32,
     ) -> Result<Vec<Message>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT id, chat_id, sender_user_id, body, body_type, \
-                        sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to, sender_msg_id \
-                 FROM messages \
-                 WHERE chat_id = ?1 \
-                 ORDER BY created_at DESC, id DESC \
-                 LIMIT ?2 OFFSET ?3",
-                // id DESC tie-break is correct because ULID strings are always
-                // uppercase Crockford Base32, so text order equals time order.
-            )
-            .map_err(db_err)?;
+        let sql = format!(
+            "SELECT {MESSAGE_COLUMNS} FROM messages \
+             WHERE chat_id = ?1 \
+             ORDER BY created_at DESC, id DESC \
+             LIMIT ?2 OFFSET ?3"
+        );
+        let mut stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
 
         let rows = stmt
             .query_map(params![chat_id, limit, offset], row_to_message)
@@ -399,11 +1106,24 @@ impl<'a> MessageStore<'a> {
 
         let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
         let mut att_map = load_attachments_for_messages(self.conn, &ids)?;
+        let mut mention_map = load_mentions_for_messages(self.conn, &ids)?;
+        let mut rev_map = load_edit_history_for_messages(self.conn, &ids)?;
         for msg in &mut messages {
-            if let Some(atts) = att_map.remove(msg.id.as_ref()) {
-                msg.attachments = atts;
+            let mid = msg.id.as_ref();
+            if msg.deleted_at.is_none() {
+                if let Some(atts) = att_map.remove(mid) {
+                    msg.attachments = atts;
+                }
+            }
+            if let Some(mentions) = mention_map.remove(mid) {
+                msg.mentions = mentions;
+            }
+            if let Some(revs) = rev_map.remove(mid) {
+                msg.edit_history = Some(revs);
             }
         }
+        self.populate_reply_counts(&mut messages)?;
+        populate_message_extras(self.conn, &mut messages)?;
 
         Ok(messages)
     }
@@ -473,15 +1193,10 @@ impl<'a> MessageStore<'a> {
         chat_id: &str,
         sender_msg_id: &str,
     ) -> Result<Option<Message>, KithError> {
-        let mut stmt = self
-            .conn
-            .prepare_cached(
-                "SELECT id, chat_id, sender_user_id, body, body_type, \
-                        sent_at_peer, created_at, delivery_state, \
-                        delivered_at, read_at, reply_to, sender_msg_id \
-                 FROM messages WHERE chat_id = ?1 AND sender_msg_id = ?2",
-            )
-            .map_err(db_err)?;
+        let sql = format!(
+            "SELECT {MESSAGE_COLUMNS} FROM messages WHERE chat_id = ?1 AND sender_msg_id = ?2"
+        );
+        let mut stmt = self.conn.prepare_cached(&sql).map_err(db_err)?;
 
         let mut rows = stmt
             .query_map(params![chat_id, sender_msg_id], row_to_message)
@@ -491,8 +1206,14 @@ impl<'a> MessageStore<'a> {
             None => Ok(None),
             Some(row) => {
                 let mut msg = row.map_err(db_err)?;
-                msg.attachments =
-                    attachment::AttachmentStore::new(self.conn).list_by_message(msg.id.as_ref())?;
+                let msg_id_ref = msg.id.as_ref();
+                if msg.deleted_at.is_none() {
+                    msg.attachments =
+                        attachment::AttachmentStore::new(self.conn).list_by_message(msg_id_ref)?;
+                }
+                msg.mentions = self.load_mentions(msg_id_ref)?;
+                msg.edit_history = load_edit_history(self.conn, msg_id_ref)?;
+                populate_message_extras(self.conn, std::slice::from_mut(&mut msg))?;
                 Ok(Some(msg))
             }
         }
@@ -880,6 +1601,238 @@ impl<'a> MessageStore<'a> {
         let result: Vec<(String, u64)> = rows.into_iter().map(|(id, idx, _)| (id, idx)).collect();
         Ok((result, has_more, new_state))
     }
+
+    // ── Soft-delete + Edit history ──────────────────────────────────────
+
+    /// Soft-delete a message: set `deleted_at`, clear body/attachments in the DB,
+    /// and advance the state counter.
+    pub fn soft_delete(
+        &self,
+        message_id: &str,
+        deleted_for_all: bool,
+        now_unix: i64,
+    ) -> Result<(), KithError> {
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+
+        let existing: Option<Option<i64>> = tx
+            .query_row(
+                "SELECT deleted_at FROM messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(db_err)?;
+
+        match existing {
+            None => return Err(KithError::Store(format!("message not found: {message_id}"))),
+            Some(Some(_)) => {
+                return Ok(());
+            }
+            Some(None) => {}
+        }
+
+        let deleted_for_all_int: i64 = if deleted_for_all { 1 } else { 0 };
+
+        tx.execute(
+            "UPDATE messages SET deleted_at = ?1, deleted_for_all = ?2, body = '' \
+             WHERE id = ?3",
+            params![now_unix, deleted_for_all_int, message_id],
+        )
+        .map_err(db_err)?;
+
+        tx.execute(
+            "DELETE FROM attachments WHERE message_id = ?1",
+            params![message_id],
+        )
+        .map_err(db_err)?;
+
+        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+        tx.execute(
+            "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+            params![version, message_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{version}"));
+        Ok(())
+    }
+
+    /// Push a revision (prior body) to the `message_revisions` table.
+    pub fn push_revision(
+        &self,
+        message_id: &str,
+        old_body: &str,
+        old_body_type: &str,
+        edited_at_rfc3339: &str,
+    ) -> Result<(), KithError> {
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get::<_, i64>(0).map(|c| c > 0),
+            )
+            .map_err(db_err)?;
+        if !exists {
+            return Err(KithError::Store(format!("message not found: {message_id}")));
+        }
+
+        let next_idx: i64 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(revision_index), -1) + 1 FROM message_revisions \
+                 WHERE message_id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+
+        debug_assert!(
+            next_idx >= 0,
+            "revision_index must be non-negative, got {next_idx}"
+        );
+
+        self.conn
+            .execute(
+                "INSERT INTO message_revisions \
+                 (message_id, revision_index, body, body_type, edited_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    message_id,
+                    next_idx,
+                    old_body,
+                    old_body_type,
+                    edited_at_rfc3339
+                ],
+            )
+            .map_err(db_err)?;
+
+        Ok(())
+    }
+
+    /// Update a message's body: push a revision of the old body, then update
+    /// body/bodyType and set edited_at. Advances the state counter.
+    pub fn update_body(
+        &self,
+        message_id: &str,
+        new_body: &str,
+        new_body_type: &str,
+        now_unix: i64,
+    ) -> Result<(), KithError> {
+        let (old_body, old_body_type): (String, String) = self
+            .conn
+            .query_row(
+                "SELECT body, body_type FROM messages WHERE id = ?1",
+                params![message_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(db_err)?
+            .ok_or_else(|| KithError::Store(format!("message not found: {message_id}")))?;
+
+        let deleted: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT deleted_at FROM messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        if deleted.is_some() {
+            return Err(KithError::Validation(
+                "cannot edit a deleted message".to_string(),
+            ));
+        }
+
+        let edited_at_rfc3339 = crate::util::unix_secs_to_rfc3339(now_unix.max(0) as u64);
+
+        self.push_revision(message_id, &old_body, &old_body_type, &edited_at_rfc3339)?;
+
+        let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+        tx.execute(
+            "UPDATE messages SET body = ?1, body_type = ?2, edited_at = ?3 \
+             WHERE id = ?4",
+            params![new_body, new_body_type, now_unix, message_id],
+        )
+        .map_err(db_err)?;
+        let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+        tx.execute(
+            "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+            params![version, message_id],
+        )
+        .map_err(db_err)?;
+        tx.commit().map_err(db_err)?;
+        self.emit(format!("s-{version}"));
+        Ok(())
+    }
+
+    // ── Expiry ───────────────────────────────────────────────────────────
+
+    /// Delete all messages whose `sender_expires_at` is in the past.
+    ///
+    /// Returns the number of messages deleted.
+    pub fn delete_expired(&self, now_unix: i64) -> Result<u64, KithError> {
+        let deleted = self
+            .conn
+            .execute(
+                "DELETE FROM messages WHERE sender_expires_at IS NOT NULL AND sender_expires_at <= ?1",
+                params![now_unix],
+            )
+            .map_err(db_err)?;
+        if deleted > 0 {
+            let tx = self.conn.unchecked_transaction().map_err(db_err)?;
+            let version = crate::advance_state_counter_in_tx(&tx, "message")?;
+            tx.commit().map_err(db_err)?;
+            self.emit(format!("s-{version}"));
+        }
+        Ok(deleted as u64)
+    }
+
+    // ── Reply counts ─────────────────────────────────────────────────────
+
+    /// Populate `reply_count` and `unread_reply_count` on each message that
+    /// has replies (i.e., other messages reference it via `reply_to`).
+    fn populate_reply_counts(&self, messages: &mut [Message]) -> Result<(), KithError> {
+        if messages.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<String> = messages.iter().map(|m| m.id.as_ref().to_owned()).collect();
+        let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+        let sql = format!(
+            "SELECT reply_to, \
+                    COUNT(*) AS total, \
+                    SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) AS unread \
+             FROM messages \
+             WHERE reply_to IN ({placeholders}) \
+             GROUP BY reply_to"
+        );
+        let mut stmt = self.conn.prepare(&sql).map_err(db_err)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                let parent_id: String = row.get(0)?;
+                let total: u64 = row.get(1)?;
+                let unread: u64 = row.get(2)?;
+                Ok((parent_id, total, unread))
+            })
+            .map_err(db_err)?;
+
+        let mut counts: HashMap<String, (u64, u64)> = HashMap::new();
+        for row in rows {
+            let (parent_id, total, unread) = row.map_err(db_err)?;
+            counts.insert(parent_id, (total, unread));
+        }
+
+        for msg in messages {
+            if let Some(&(total, unread)) = counts.get(msg.id.as_ref()) {
+                msg.reply_count = Some(total);
+                msg.unread_reply_count = Some(unread);
+            }
+        }
+
+        Ok(())
+    }
+
+    // ── State ────────────────────────────────────────────────────────────
 
     /// Return the current state token for messages.
     pub fn get_state(&self) -> Result<String, KithError> {
@@ -1507,6 +2460,10 @@ mod tests {
                 None,
                 "msg-att1",
                 &attachments,
+                &[],
+                None,
+                None,
+                false,
             )
             .expect("insert_message_with_attachments");
 
@@ -1542,6 +2499,10 @@ mod tests {
                 None,
                 "msg-att2a",
                 &[att],
+                &[],
+                None,
+                None,
+                false,
             )
             .expect("insert msg with attachment");
 
@@ -1559,6 +2520,10 @@ mod tests {
                 None,
                 "msg-att2b",
                 &[],
+                &[],
+                None,
+                None,
+                false,
             )
             .expect("insert msg without attachment");
 

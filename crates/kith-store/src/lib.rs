@@ -5,7 +5,7 @@ pub mod message;
 pub mod outbox;
 mod util;
 
-use kith_core::{Attachment, DeliveryState, KithError, StateChange};
+use kith_core::{Attachment, DeliveryState, KithError, Mention, StateChange};
 use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 use tokio::sync::broadcast;
@@ -43,8 +43,16 @@ pub struct OutboundMessageParams<'a> {
     pub created_at_unix: i64,
     pub reply_to: Option<&'a str>,
     pub attachments: &'a [Attachment],
+    pub mentions: &'a [Mention],
     /// `(peer_user_id, peer_mailbox_host)` pairs.  Must be non-empty.
     pub outbox_peers: &'a [(&'a str, &'a str)],
+    /// Optional thread root message ID.  Must reference a top-level message
+    /// (one without its own thread_root_id) in the same chat.
+    pub thread_root_id: Option<&'a str>,
+    /// Optional Unix timestamp after which the message should be auto-deleted.
+    pub sender_expires_at: Option<i64>,
+    /// If true, the message should be deleted after the recipient reads it.
+    pub burn_on_read: bool,
 }
 
 /// Wraps a rusqlite connection and owns the database handle for this mailbox.
@@ -441,6 +449,95 @@ CREATE TABLE IF NOT EXISTS pinned_messages (
 );
 ";
 
+// V22: Mentions table for @-mentions in messages.
+const SCHEMA_V22: &str = "
+CREATE TABLE IF NOT EXISTS mentions (
+    message_id  TEXT    NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    contact_id  TEXT    NOT NULL,
+    byte_offset INTEGER NOT NULL,
+    byte_length INTEGER NOT NULL,
+    PRIMARY KEY (message_id, contact_id, byte_offset)
+);
+CREATE INDEX IF NOT EXISTS idx_mentions_message ON mentions(message_id);
+";
+
+// V23: Soft-delete and edit history for messages.
+//
+// deleted_at — Unix timestamp when the message was soft-deleted (NULL = not deleted).
+// deleted_for_all — whether the deletion is broadcast to all participants.
+// edited_at — Unix timestamp of the most recent body edit.
+// message_revisions — stores prior body versions for edit history.
+const SCHEMA_V23: &str = "
+ALTER TABLE messages ADD COLUMN deleted_at INTEGER;
+ALTER TABLE messages ADD COLUMN deleted_for_all INTEGER DEFAULT 0;
+ALTER TABLE messages ADD COLUMN edited_at INTEGER;
+
+CREATE TABLE IF NOT EXISTS message_revisions (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    revision_index INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    body_type TEXT NOT NULL,
+    edited_at TEXT NOT NULL,
+    PRIMARY KEY (message_id, revision_index)
+);
+";
+
+// V24: Threading and expiry columns on messages.
+//
+// thread_root_id — optional reference to the root message of a thread.
+//   Must itself be a top-level message (not threaded), enforced at the
+//   application layer.  FK references messages(id) ON DELETE SET NULL so
+//   deleting the root unlinks replies rather than cascading.
+//
+// sender_expires_at — optional Unix timestamp after which the message should
+//   be deleted.  Nullable; NULL means the message never expires.
+//
+// burn_on_read — boolean flag (0/1).  When true, the server should delete
+//   the message after the recipient reads it.  Immutable after creation.
+//   Default 0 (false).
+const SCHEMA_V24: &str = "
+ALTER TABLE messages ADD COLUMN thread_root_id TEXT REFERENCES messages(id) ON DELETE SET NULL;
+ALTER TABLE messages ADD COLUMN sender_expires_at INTEGER;
+ALTER TABLE messages ADD COLUMN burn_on_read INTEGER DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_messages_thread_root ON messages(thread_root_id) WHERE thread_root_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_expires ON messages(sender_expires_at) WHERE sender_expires_at IS NOT NULL;
+";
+
+// V25: Reactions, delivery receipts, and message actions.
+const SCHEMA_V25: &str = "
+CREATE TABLE IF NOT EXISTS reactions (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    sender_reaction_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    custom_emoji_id TEXT,
+    sender_id TEXT NOT NULL,
+    sent_at TEXT NOT NULL,
+    PRIMARY KEY (message_id, sender_reaction_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(message_id);
+
+CREATE TABLE IF NOT EXISTS delivery_receipts (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    recipient_id TEXT NOT NULL,
+    delivered_at TEXT,
+    device_delivered_at TEXT,
+    read_at TEXT,
+    read_disposition TEXT,
+    PRIMARY KEY (message_id, recipient_id)
+);
+
+CREATE TABLE IF NOT EXISTS message_actions (
+    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    action_index INTEGER NOT NULL,
+    action_type TEXT NOT NULL,
+    uri TEXT NOT NULL,
+    label TEXT,
+    expires_at TEXT,
+    metadata TEXT,
+    PRIMARY KEY (message_id, action_index)
+);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -468,6 +565,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (19, SCHEMA_V19),
     (20, SCHEMA_V20),
     (21, SCHEMA_V21),
+    (22, SCHEMA_V22),
+    (23, SCHEMA_V23),
+    (24, SCHEMA_V24),
+    (25, SCHEMA_V25),
 ];
 
 impl Store {
@@ -658,6 +759,10 @@ impl Store {
         reply_to: Option<&str>,
         sender_msg_id: &str,
         attachments: &[Attachment],
+        mentions: &[Mention],
+        thread_root_id: Option<&str>,
+        sender_expires_at: Option<i64>,
+        burn_on_read: bool,
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         let version = advance_state_counter_in_tx(&tx, "message")?;
@@ -673,8 +778,9 @@ impl Store {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id, \
+              thread_root_id, sender_expires_at, burn_on_read) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 id,
                 chat_id,
@@ -686,7 +792,10 @@ impl Store {
                 version,
                 state_str,
                 reply_to,
-                sender_msg_id
+                sender_msg_id,
+                thread_root_id,
+                sender_expires_at,
+                burn_on_read as i64,
             ],
         )
         .map_err(db_err)?;
@@ -706,6 +815,18 @@ impl Store {
                     att.sha256,
                     created_at_unix
                 ],
+            )
+            .map_err(db_err)?;
+        }
+        for m in mentions {
+            let offset = i64::try_from(m.offset)
+                .map_err(|_| KithError::Store("mention offset overflow".into()))?;
+            let length = i64::try_from(m.length)
+                .map_err(|_| KithError::Store("mention length overflow".into()))?;
+            tx.execute(
+                "INSERT INTO mentions (message_id, contact_id, byte_offset, byte_length) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, m.id.as_ref(), offset, length],
             )
             .map_err(db_err)?;
         }
@@ -743,7 +864,11 @@ impl Store {
             created_at_unix,
             reply_to,
             attachments,
+            mentions,
             outbox_peers,
+            thread_root_id,
+            sender_expires_at,
+            burn_on_read,
         } = params;
         // Callers must resolve and validate all outbox peers before calling
         // this function.  An empty slice would commit a Pending message with
@@ -761,8 +886,9 @@ impl Store {
         tx.execute(
             "INSERT INTO messages \
              (id, chat_id, sender_user_id, body, body_type, sent_at_peer, \
-              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'pending', ?9, ?1)",
+              created_at, state_version, created_at_version, delivery_state, reply_to, sender_msg_id, \
+              thread_root_id, sender_expires_at, burn_on_read) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, 'pending', ?9, ?1, ?10, ?11, ?12)",
             rusqlite::params![
                 id,
                 chat_id,
@@ -773,6 +899,9 @@ impl Store {
                 created_at_unix,
                 version,
                 reply_to,
+                thread_root_id,
+                sender_expires_at,
+                *burn_on_read as i64,
             ],
         )
         .map_err(db_err)?;
@@ -792,6 +921,18 @@ impl Store {
                     att.sha256,
                     created_at_unix
                 ],
+            )
+            .map_err(db_err)?;
+        }
+        for m in *mentions {
+            let offset = i64::try_from(m.offset)
+                .map_err(|_| KithError::Store("mention offset overflow".into()))?;
+            let length = i64::try_from(m.length)
+                .map_err(|_| KithError::Store("mention length overflow".into()))?;
+            tx.execute(
+                "INSERT INTO mentions (message_id, contact_id, byte_offset, byte_length) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, m.id.as_ref(), offset, length],
             )
             .map_err(db_err)?;
         }
@@ -979,8 +1120,8 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        // MIGRATIONS has twenty entries (versions 1-20), so user_version must be 20 after open.
-        assert_eq!(version, 20);
+        // MIGRATIONS has twenty-five entries (versions 1-25), so user_version must be 25 after open.
+        assert_eq!(version, 25);
     }
 
     #[test]
@@ -1044,7 +1185,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 20, "migration 20 must be applied");
+        assert_eq!(v1, 25, "migration 25 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1079,9 +1220,14 @@ mod tests {
             "chat_members",
             "chats",
             "contacts",
+            "delivery_receipts",
+            "mentions",
+            "message_actions",
+            "message_revisions",
             "messages",
             "outbox",
             "pinned_messages",
+            "reactions",
             "self",
             "state_counters",
         ] {
@@ -1132,7 +1278,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 20, "migration v20 must set user_version to 20");
+        assert_eq!(v, 25, "migration v25 must set user_version to 25");
     }
 
     #[test]
@@ -1779,7 +1925,11 @@ mod tests {
             created_at_unix: 1000,
             reply_to: None,
             attachments: &[],
+            mentions: &[],
             outbox_peers: &[],
+            thread_root_id: None,
+            sender_expires_at: None,
+            burn_on_read: false,
         });
         assert!(
             result.is_err(),
