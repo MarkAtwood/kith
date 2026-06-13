@@ -18,6 +18,11 @@ pub use jmap_chat_types::message::{
     MessageRevision, Reaction, ReadDisposition, SenderId,
 };
 pub use jmap_chat_types::presence::Presence;
+pub use jmap_chat_types::space::{Category, Space, SpaceBan, SpaceInvite, SpaceMember, SpaceRole};
+pub use jmap_chat_types::space_set::{
+    CategoryPatch, ChannelCreate, ChannelPatch, MemberCreate, MemberPatch, RolePatch,
+    SpaceMetadataPatch, SpacePatchOp,
+};
 
 // ── kith-specific re-exports ──
 pub use auth::{Identity, Role};
@@ -142,6 +147,95 @@ pub fn make_message_revision(
          this is a bug in kith-core if it fires",
     )
 }
+
+// ── Space-layer serde construction helpers ──
+//
+// SpaceRole, SpaceMember, and Category are #[non_exhaustive] without new()
+// constructors. Construct via serde (the intentional API pattern).
+
+/// Construct a [`SpaceRole`] from validated fields.
+pub fn make_space_role(
+    id: impl AsRef<str>,
+    name: impl Into<String>,
+    permissions: Vec<String>,
+    position: u64,
+) -> SpaceRole {
+    let json = serde_json::json!({
+        "id": id.as_ref(),
+        "name": name.into(),
+        "permissions": permissions,
+        "position": position,
+    });
+    serde_json::from_value(json).expect(
+        "make_space_role: valid fields must produce valid SpaceRole",
+    )
+}
+
+/// Construct a [`SpaceMember`] from validated fields.
+pub fn make_space_member(
+    id: impl AsRef<str>,
+    role_ids: Vec<String>,
+    joined_at: impl Into<String>,
+) -> SpaceMember {
+    let json = serde_json::json!({
+        "id": id.as_ref(),
+        "roleIds": role_ids,
+        "joinedAt": joined_at.into(),
+    });
+    serde_json::from_value(json).expect(
+        "make_space_member: valid fields must produce valid SpaceMember",
+    )
+}
+
+/// Construct a [`Category`] from validated fields.
+pub fn make_category(
+    id: impl AsRef<str>,
+    name: impl Into<String>,
+    position: u64,
+    channel_ids: Vec<String>,
+) -> Category {
+    let json = serde_json::json!({
+        "id": id.as_ref(),
+        "name": name.into(),
+        "position": position,
+        "channelIds": channel_ids,
+    });
+    serde_json::from_value(json).expect(
+        "make_category: valid fields must produce valid Category",
+    )
+}
+
+/// Construct a [`ChannelPermission`] from validated fields.
+pub fn make_channel_permission(
+    target_id: impl AsRef<str>,
+    target_type: impl Into<String>,
+    allow: Vec<String>,
+    deny: Vec<String>,
+) -> ChannelPermission {
+    let json = serde_json::json!({
+        "targetId": target_id.as_ref(),
+        "targetType": target_type.into(),
+        "allow": allow,
+        "deny": deny,
+    });
+    serde_json::from_value(json).expect(
+        "make_channel_permission: valid fields must produce valid ChannelPermission",
+    )
+}
+
+/// Spec-defined permission names (draft-atwood-jmap-chat-00 §4.20).
+pub const SPACE_PERMISSION_NAMES: &[&str] = &[
+    "view",
+    "send",
+    "pin",
+    "manage_channels",
+    "manage_members",
+    "manage_roles",
+    "manage_space",
+    "ban",
+    "mention_broadcast",
+    "start_call",
+];
 
 // ── Extension traits for kith-specific methods ──
 

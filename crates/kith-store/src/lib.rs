@@ -3,6 +3,7 @@ pub mod chat;
 pub mod contact;
 pub mod message;
 pub mod outbox;
+pub mod space;
 mod util;
 
 use kith_core::{Attachment, BroadcastMention, DeliveryState, KithError, Mention, StateChange};
@@ -554,6 +555,130 @@ CREATE TABLE IF NOT EXISTS broadcast_mentions (
 CREATE INDEX IF NOT EXISTS idx_broadcast_mentions_message ON broadcast_mentions(message_id);
 ";
 
+// V27: Space-layer tables (draft-atwood-jmap-chat-00 §4.20-4.27).
+//
+// spaces — top-level Space container.
+// space_roles — named roles with permission sets and hierarchy position.
+// space_role_permissions — junction: which permissions each role grants.
+// space_members — who belongs to a Space.
+// space_member_roles — junction: which roles each member holds.
+// categories — named channel groupings within a Space.
+// category_channels — ordered channel assignments within categories.
+// channel_permissions — per-channel permission overrides for roles/members.
+// channel_permission_entries — individual allow/deny permission entries.
+// space_invites — bearer invite codes with optional expiry and use limits.
+// space_bans — banned users per Space with optional expiry.
+//
+// Also adds space_id to chats (nullable, set only for kind='channel').
+const SCHEMA_V27: &str = "
+CREATE TABLE IF NOT EXISTS spaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    icon_blob_id TEXT,
+    is_public INTEGER NOT NULL DEFAULT 0,
+    is_publicly_previewable INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    changed_at_counter INTEGER NOT NULL DEFAULT 0,
+    created_at_counter INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS space_roles (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    color TEXT,
+    position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_space_roles_space ON space_roles(space_id);
+
+CREATE TABLE IF NOT EXISTS space_role_permissions (
+    role_id TEXT NOT NULL REFERENCES space_roles(id) ON DELETE CASCADE,
+    permission TEXT NOT NULL,
+    PRIMARY KEY (role_id, permission)
+);
+
+CREATE TABLE IF NOT EXISTS space_members (
+    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    nick TEXT,
+    joined_at INTEGER NOT NULL,
+    PRIMARY KEY (space_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS space_member_roles (
+    space_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role_id TEXT NOT NULL REFERENCES space_roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (space_id, user_id, role_id),
+    FOREIGN KEY (space_id, user_id) REFERENCES space_members(space_id, user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS categories (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_categories_space ON categories(space_id);
+
+CREATE TABLE IF NOT EXISTS category_channels (
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (category_id, chat_id)
+);
+
+CREATE TABLE IF NOT EXISTS channel_permissions (
+    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('role', 'member')),
+    PRIMARY KEY (chat_id, target_id)
+);
+
+CREATE TABLE IF NOT EXISTS channel_permission_entries (
+    chat_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    permission TEXT NOT NULL,
+    effect TEXT NOT NULL CHECK(effect IN ('allow', 'deny')),
+    PRIMARY KEY (chat_id, target_id, permission),
+    FOREIGN KEY (chat_id, target_id) REFERENCES channel_permissions(chat_id, target_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS space_invites (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    default_channel_id TEXT,
+    created_by TEXT NOT NULL,
+    expires_at INTEGER,
+    max_uses INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_space_invites_space ON space_invites(space_id);
+CREATE INDEX IF NOT EXISTS idx_space_invites_code ON space_invites(code);
+
+CREATE TABLE IF NOT EXISTS space_bans (
+    id TEXT PRIMARY KEY,
+    space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    banned_by TEXT NOT NULL,
+    reason TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    UNIQUE(space_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_space_bans_space ON space_bans(space_id);
+
+ALTER TABLE chats ADD COLUMN space_id TEXT REFERENCES spaces(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_chats_space ON chats(space_id) WHERE space_id IS NOT NULL;
+
+INSERT OR IGNORE INTO state_counters (type_name, counter) VALUES ('space', 0);
+INSERT OR IGNORE INTO state_counters (type_name, counter) VALUES ('space_invite', 0);
+INSERT OR IGNORE INTO state_counters (type_name, counter) VALUES ('space_ban', 0);
+";
+
 // MIGRATIONS must be sorted in ascending order by version number.
 // Each entry is (target_user_version, sql). The runner applies all
 // migrations whose target version exceeds the current PRAGMA user_version.
@@ -586,6 +711,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (24, SCHEMA_V24),
     (25, SCHEMA_V25),
     (26, SCHEMA_V26),
+    (27, SCHEMA_V27),
 ];
 
 impl Store {
@@ -700,6 +826,11 @@ impl Store {
     /// Return an OutboxStore view over this connection.
     pub fn outbox(&self) -> outbox::OutboxStore<'_> {
         outbox::OutboxStore::new(&self.conn, self.events_tx.as_ref())
+    }
+
+    /// Return a SpaceStore view over this connection.
+    pub fn spaces(&self) -> space::SpaceStore<'_> {
+        space::SpaceStore::new(&self.conn, self.events_tx.as_ref())
     }
 
     /// Look up the peer mailbox host and attachment metadata for a given blob_id.
@@ -1169,7 +1300,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 26);
+        assert_eq!(version, 27);
     }
 
     #[test]
@@ -1233,7 +1364,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v1, 26, "migration 26 must be applied");
+        assert_eq!(v1, 27, "migration 27 must be applied");
         assert_eq!(v1, v2, "migrate must be idempotent across opens");
     }
 
@@ -1266,6 +1397,10 @@ mod tests {
         for expected in &[
             "attachments",
             "broadcast_mentions",
+            "categories",
+            "category_channels",
+            "channel_permission_entries",
+            "channel_permissions",
             "chat_members",
             "chats",
             "contacts",
@@ -1278,6 +1413,13 @@ mod tests {
             "pinned_messages",
             "reactions",
             "self",
+            "space_bans",
+            "space_invites",
+            "space_member_roles",
+            "space_members",
+            "space_role_permissions",
+            "space_roles",
+            "spaces",
             "state_counters",
         ] {
             assert!(
@@ -1327,7 +1469,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(v, 26, "migration v26 must set user_version to 26");
+        assert_eq!(v, 27, "migration v27 must set user_version to 27");
     }
 
     #[test]
