@@ -1130,6 +1130,49 @@ impl<'a> SpaceStore<'a> {
 
     // ── SpaceInvite CRUD ────────────────────────────────────────────────
 
+    /// Return the current space_invite state counter as a string token.
+    pub fn get_invite_state(&self) -> Result<String, KithError> {
+        let counter: i64 = self
+            .conn
+            .query_row(
+                "SELECT counter FROM state_counters WHERE type_name = 'space_invite'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(format!("s-{counter}"))
+    }
+
+    /// List all invites across all spaces.
+    pub fn list_all_invites(&self) -> Result<Vec<SpaceInvite>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, code, space_id, created_by, default_channel_id, \
+                        expires_at, max_uses, uses, created_at \
+                 FROM space_invites ORDER BY created_at",
+            )
+            .map_err(db_err)?;
+        let rows: Vec<InviteRow> = stmt
+            .query_map([], |row| {
+                Ok(InviteRow {
+                    id: row.get(0)?,
+                    code: row.get(1)?,
+                    space_id: row.get(2)?,
+                    created_by: row.get(3)?,
+                    default_channel_id: row.get(4)?,
+                    expires_at: row.get(5)?,
+                    max_uses: row.get(6)?,
+                    uses: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        Ok(rows.into_iter().map(build_space_invite).collect())
+    }
+
     /// Create a new space invite.
     #[allow(clippy::too_many_arguments)]
     pub fn create_invite(
@@ -1292,6 +1335,46 @@ impl<'a> SpaceStore<'a> {
     }
 
     // ── SpaceBan CRUD ───────────────────────────────────────────────────
+
+    /// Return the current space_ban state counter as a string token.
+    pub fn get_ban_state(&self) -> Result<String, KithError> {
+        let counter: i64 = self
+            .conn
+            .query_row(
+                "SELECT counter FROM state_counters WHERE type_name = 'space_ban'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(db_err)?;
+        Ok(format!("s-{counter}"))
+    }
+
+    /// List all bans across all spaces.
+    pub fn list_all_bans(&self) -> Result<Vec<SpaceBan>, KithError> {
+        let mut stmt = self
+            .conn
+            .prepare_cached(
+                "SELECT id, space_id, user_id, banned_by, reason, created_at, expires_at \
+                 FROM space_bans ORDER BY created_at",
+            )
+            .map_err(db_err)?;
+        let rows: Vec<BanRow> = stmt
+            .query_map([], |row| {
+                Ok(BanRow {
+                    id: row.get(0)?,
+                    space_id: row.get(1)?,
+                    user_id: row.get(2)?,
+                    banned_by: row.get(3)?,
+                    reason: row.get(4)?,
+                    created_at: row.get(5)?,
+                    expires_at: row.get(6)?,
+                })
+            })
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?;
+        Ok(rows.into_iter().map(build_space_ban).collect())
+    }
 
     /// Create a new space ban.
     #[allow(clippy::too_many_arguments)]

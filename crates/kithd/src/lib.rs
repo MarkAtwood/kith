@@ -37,7 +37,11 @@ use kith_chat::message::{
     MessageChangesHandler, MessageGetHandler, MessageQueryChangesHandler, MessageQueryHandler,
     MessageSetHandler,
 };
-use kith_chat::space::{SpaceChangesHandler, SpaceGetHandler};
+use kith_chat::space::{
+    SpaceBanChangesHandler, SpaceBanGetHandler, SpaceBanSetHandler, SpaceChangesHandler,
+    SpaceGetHandler, SpaceInviteChangesHandler, SpaceInviteGetHandler, SpaceInviteSetHandler,
+    SpaceSetHandler,
+};
 use kith_core::Role;
 use kith_jmap::{build_session, parse_request, request_error, Dispatcher};
 use kith_peer::{DeliverHandler, ReceiptHandler};
@@ -425,8 +429,43 @@ pub fn build_dispatcher(
         Box::new(SpaceGetHandler::new(Arc::clone(&store))),
     );
     d.register(
+        "Space/set",
+        Box::new(SpaceSetHandler::new(
+            Arc::clone(&store),
+            owner_id.clone(),
+        )),
+    );
+    d.register(
         "Space/changes",
         Box::new(SpaceChangesHandler::new(Arc::clone(&store))),
+    );
+
+    // SpaceInvite methods (owner-only)
+    d.register(
+        "SpaceInvite/get",
+        Box::new(SpaceInviteGetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "SpaceInvite/set",
+        Box::new(SpaceInviteSetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "SpaceInvite/changes",
+        Box::new(SpaceInviteChangesHandler::new(Arc::clone(&store))),
+    );
+
+    // SpaceBan methods (owner-only)
+    d.register(
+        "SpaceBan/get",
+        Box::new(SpaceBanGetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "SpaceBan/set",
+        Box::new(SpaceBanSetHandler::new(Arc::clone(&store))),
+    );
+    d.register(
+        "SpaceBan/changes",
+        Box::new(SpaceBanChangesHandler::new(Arc::clone(&store))),
     );
 
     // Peer methods — use register_peer so the dispatcher passes the verified
@@ -762,7 +801,14 @@ mod tests {
             "Message/query",
             "Message/queryChanges",
             "Space/get",
+            "Space/set",
             "Space/changes",
+            "SpaceInvite/get",
+            "SpaceInvite/set",
+            "SpaceInvite/changes",
+            "SpaceBan/get",
+            "SpaceBan/set",
+            "SpaceBan/changes",
         ];
         let peer_methods = ["Peer/deliver", "Peer/receipt"];
 
