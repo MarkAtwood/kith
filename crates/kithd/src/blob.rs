@@ -117,7 +117,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use kith_attach::BlobStore;
-    use kith_core::{AuthError, FederationTransport, Identity};
+    use kith_core::{AuthError, ConnectionContext, FederationTransport, Identity, IdentityProvider};
     use kith_events::make_channel;
     use kith_store::Store;
     use sha2::{Digest, Sha256};
@@ -132,15 +132,17 @@ mod tests {
 
     struct MockTransport(Identity);
 
-    impl FederationTransport for MockTransport {
+    impl IdentityProvider for MockTransport {
         fn identify_caller(
             &self,
-            _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            _ctx: &ConnectionContext,
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
             let result = Ok(self.0.clone());
             async move { result }
         }
+    }
 
+    impl FederationTransport for MockTransport {
         fn discover_peers(
             &self,
             _port: u16,

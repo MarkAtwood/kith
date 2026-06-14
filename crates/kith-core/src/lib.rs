@@ -28,7 +28,7 @@ pub use jmap_chat_types::space_set::{
 pub use auth::{Identity, Role};
 pub use error::{AuthError, KithError};
 pub use events::{parse_sse_frame, SseFrame, StateChange};
-pub use transport::{DiscoveredPeer, FederationTransport};
+pub use transport::{ConnectionContext, DiscoveredPeer, FederationTransport, IdentityProvider};
 
 // ── Constants ──
 

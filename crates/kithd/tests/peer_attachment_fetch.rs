@@ -29,7 +29,7 @@ mod inner {
     use kith_core::AuthError;
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_core::{FederationTransport, Identity};
+    use kith_core::{ConnectionContext, FederationTransport, Identity, IdentityProvider};
     
     use kithd::build_app;
     use kithd::build_dispatcher;
@@ -87,15 +87,17 @@ mod inner {
 
     pub(super) struct MockTransport(pub(super) Identity);
 
-    impl FederationTransport for MockTransport {
+    impl IdentityProvider for MockTransport {
         fn identify_caller(
             &self,
-            _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            _ctx: &ConnectionContext,
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
             let result = Ok(self.0.clone());
             async move { result }
         }
+    }
 
+    impl FederationTransport for MockTransport {
         fn discover_peers(
             &self,
             _port: u16,

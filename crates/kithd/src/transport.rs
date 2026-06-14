@@ -11,12 +11,12 @@
 
 use kith_core::auth::Identity;
 use kith_core::error::AuthError;
-use kith_core::transport::{DiscoveredPeer, FederationTransport};
+use kith_core::transport::{ConnectionContext, DiscoveredPeer, FederationTransport, IdentityProvider};
 use kith_tslocal::LocalApiClient;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, Error as TlsError, SignatureScheme};
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::sync::Arc;
 
 /// Maximum number of peer probes running concurrently per discovery round.
@@ -131,18 +131,63 @@ impl TailscaleTransport {
     }
 }
 
-impl FederationTransport for TailscaleTransport {
-    /// Identify a peer from their inbound connection address via Tailscale WhoIs.
-    async fn identify_caller(&self, addr: SocketAddr) -> Result<Identity, AuthError> {
-        let who = self.client.whois(addr).await?;
-        Ok(Identity {
-            user_id: who.user_profile.id,
-            login_name: who.user_profile.login_name,
-            display_name: who.user_profile.display_name,
-            node_name: who.node.name,
-        })
-    }
+// ---------------------------------------------------------------------------
+// TailscaleIdentityProvider
+// ---------------------------------------------------------------------------
 
+/// Standalone Tailscale identity provider for use outside a full transport.
+///
+/// Wraps [`LocalApiClient`] and verifies callers via the WhoIs endpoint.
+/// Used when identity verification is needed independently of transport
+/// concerns (e.g. testing, or composing with a non-Tailscale transport).
+pub struct TailscaleIdentityProvider {
+    client: Arc<LocalApiClient>,
+}
+
+impl TailscaleIdentityProvider {
+    pub fn new(client: Arc<LocalApiClient>) -> Self {
+        Self { client }
+    }
+}
+
+impl IdentityProvider for TailscaleIdentityProvider {
+    fn identify_caller(
+        &self,
+        ctx: &ConnectionContext,
+    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
+        let addr = ctx.peer_addr;
+        async move {
+            let who = self.client.whois(addr).await?;
+            Ok(Identity {
+                user_id: who.user_profile.id,
+                login_name: who.user_profile.login_name,
+                display_name: who.user_profile.display_name,
+                node_name: who.node.name,
+            })
+        }
+    }
+}
+
+impl IdentityProvider for TailscaleTransport {
+    /// Identify a peer from their inbound connection address via Tailscale WhoIs.
+    fn identify_caller(
+        &self,
+        ctx: &ConnectionContext,
+    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
+        let addr = ctx.peer_addr;
+        async move {
+            let who = self.client.whois(addr).await?;
+            Ok(Identity {
+                user_id: who.user_profile.id,
+                login_name: who.user_profile.login_name,
+                display_name: who.user_profile.display_name,
+                node_name: who.node.name,
+            })
+        }
+    }
+}
+
+impl FederationTransport for TailscaleTransport {
     /// Discover reachable peers by probing all tailnet nodes for running kithd instances.
     ///
     /// For each peer returned by Tailscale LocalAPI status, probes
@@ -653,10 +698,31 @@ mod tests {
         _require_federation::<TailscaleTransport>();
     }
 
+    /// Verify that `TailscaleTransport` implements `IdentityProvider`.
+    #[allow(dead_code)]
+    fn _assert_transport_is_identity_provider() {
+        fn _require_identity<T: IdentityProvider>() {}
+        _require_identity::<TailscaleTransport>();
+    }
+
+    /// Verify that `TailscaleIdentityProvider` implements `IdentityProvider`.
+    #[allow(dead_code)]
+    fn _assert_standalone_identity_provider() {
+        fn _require_identity<T: IdentityProvider>() {}
+        _require_identity::<TailscaleIdentityProvider>();
+    }
+
     /// Verify that `TailscaleTransport` is Send + Sync.
     #[allow(dead_code)]
     fn _assert_send_sync() {
         fn _require_send_sync<T: Send + Sync>() {}
         _require_send_sync::<TailscaleTransport>();
+    }
+
+    /// Verify that `TailscaleIdentityProvider` is Send + Sync.
+    #[allow(dead_code)]
+    fn _assert_standalone_send_sync() {
+        fn _require_send_sync<T: Send + Sync>() {}
+        _require_send_sync::<TailscaleIdentityProvider>();
     }
 }

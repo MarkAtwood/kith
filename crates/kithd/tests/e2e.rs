@@ -23,7 +23,7 @@ use kith_events::make_channel;
 #[cfg(feature = "test-utils")]
 use kith_peer;
 use kith_store::Store;
-use kith_core::{FederationTransport, Identity};
+use kith_core::{ConnectionContext, FederationTransport, Identity, IdentityProvider};
 
 use kithd::build_app;
 use kithd::build_dispatcher;
@@ -116,18 +116,20 @@ async fn spawn_test_listener_binds_loopback_port() {
 
 struct MockTransport(Option<Identity>);
 
-impl FederationTransport for MockTransport {
+impl IdentityProvider for MockTransport {
     fn identify_caller(
         &self,
-        _addr: SocketAddr,
-    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+        _ctx: &ConnectionContext,
+    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
         let result: Result<Identity, AuthError> = match &self.0 {
             Some(id) => Ok(id.clone()),
             None => Err(AuthError::WhoIsFailed("test-mock-failure".into())),
         };
         async move { result }
     }
+}
 
+impl FederationTransport for MockTransport {
     fn discover_peers(
         &self,
         _port: u16,

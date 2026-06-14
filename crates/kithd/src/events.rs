@@ -516,7 +516,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
     use axum::Router;
-    use kith_core::{AuthError, FederationTransport, Identity, StateChange};
+    use kith_core::{AuthError, ConnectionContext, FederationTransport, Identity, IdentityProvider, StateChange};
     use kith_events::make_channel;
     use kith_store::Store;
     use std::net::SocketAddr;
@@ -525,18 +525,20 @@ mod tests {
 
     struct MockTransport(Option<Identity>);
 
-    impl FederationTransport for MockTransport {
+    impl IdentityProvider for MockTransport {
         fn identify_caller(
             &self,
-            _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            _ctx: &ConnectionContext,
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
             let result: Result<Identity, AuthError> = match &self.0 {
                 Some(id) => Ok(id.clone()),
                 None => Err(AuthError::WhoIsFailed("test".into())),
             };
             async move { result }
         }
+    }
 
+    impl FederationTransport for MockTransport {
         fn discover_peers(
             &self,
             _port: u16,

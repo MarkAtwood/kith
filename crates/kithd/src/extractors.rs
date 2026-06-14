@@ -3,7 +3,7 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use kith_core::{FederationTransport, Identity, Role};
+use kith_core::{ConnectionContext, FederationTransport, Identity, Role};
 use kith_events::EventSender;
 use kith_store::Store;
 use std::net::SocketAddr;
@@ -95,9 +95,10 @@ where
         // This replicates the logic of `authorize()` split into two phases:
         //   Phase 1 (async): identify_caller -> Identity
         //   Phase 2 (sync):  contacts check inside a lock guard scope
+        let ctx = ConnectionContext::from_addr(addr);
         let identity = state
             .transport
-            .identify_caller(addr)
+            .identify_caller(&ctx)
             .await
             .map_err(|_| CallerRejection::Internal)?;
 
@@ -158,7 +159,7 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
     use axum::Router;
-    use kith_core::AuthError;
+    use kith_core::{AuthError, IdentityProvider};
     use tower::ServiceExt;
 
     // -----------------------------------------------------------------------
@@ -167,18 +168,20 @@ mod tests {
     // -----------------------------------------------------------------------
     struct MockTransport(Option<Identity>);
 
-    impl FederationTransport for MockTransport {
+    impl IdentityProvider for MockTransport {
         fn identify_caller(
             &self,
-            _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            _ctx: &ConnectionContext,
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send + '_ {
             let result: Result<Identity, AuthError> = match &self.0 {
                 Some(id) => Ok(id.clone()),
                 None => Err(AuthError::WhoIsFailed("test".into())),
             };
             async move { result }
         }
+    }
 
+    impl FederationTransport for MockTransport {
         fn discover_peers(
             &self,
             _port: u16,
