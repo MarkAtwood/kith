@@ -50,7 +50,7 @@ mime_guess = "2"
 ratatui = "0.30"
 crossterm = { version = "0.28", features = ["event-stream"] }
 futures = "0.3"
-reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-manual-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-manual-roots"] }
 chrono = { version = "0.4", features = ["serde"] }
 jmap-types = { path = "../crate-jmap/crate-jmap-types" }
 jmap-chat-types = { path = "../crate-jmap/crate-jmap-chat-types" }
