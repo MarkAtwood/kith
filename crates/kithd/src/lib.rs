@@ -4,6 +4,8 @@ pub mod config;
 pub mod discovery;
 pub mod events;
 pub mod extractors;
+pub mod identity_static;
+pub mod identity_unix;
 pub mod listener;
 pub mod logging;
 pub(crate) mod peer_fetch;
@@ -19,6 +21,9 @@ pub mod signal;
 pub mod static_files;
 pub mod tls;
 pub mod transport;
+
+#[cfg(any(test, feature = "test-utils"))]
+pub mod identity_dev;
 
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Path};
