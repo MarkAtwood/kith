@@ -19,8 +19,8 @@ mod inner {
     use kith_core::AuthError;
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
-    use kithd::auth::WhoIsProvider;
+    use kith_core::{FederationTransport, Identity};
+    
     use kithd::build_app;
     use kithd::build_dispatcher;
     use kithd::extractors::AppState;
@@ -63,31 +63,51 @@ mod inner {
         "c5bd75e387701b7bfb4af05c579338f66490bf8cd9916b9dcc1cacb4128549dd";
 
     // -----------------------------------------------------------------------
-    // Test double: MockWhoIs — always returns the same identity.
+    // Test double: MockTransport — always returns the same identity.
     // -----------------------------------------------------------------------
 
-    pub struct MockWhoIs(pub WhoIsResponse);
+    pub struct MockTransport(pub Identity);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
             let result = Ok(self.0.clone());
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    pub fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: format!("{id}-kith.tail12345.ts.net"),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    pub fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: format!("{id}-kith.tail12345.ts.net"),
         }
     }
 
@@ -108,7 +128,7 @@ mod inner {
     //   4. Bob's outbox gains a receipt row (kind='receipt') targeting alice.
     //   5. The receipt is posted directly to alice's peer-inbox router.
     //      This is a separate in-process router that shares alice's store and
-    //      dispatcher, but uses bob's identity in MockWhoIs so the Caller
+    //      dispatcher, but uses bob's identity in MockTransport so the Caller
     //      extractor grants Role::Peer to the call.  This tests ReceiptHandler
     //      end-to-end without requiring a second TLS listener for alice.
     //   6. Alice's message now has read_at set.
@@ -245,7 +265,7 @@ mod inner {
         };
 
         // Step 6: bob marks the message as read via Message/set update.
-        // bob_router has MockConnectInfo(BOB_MOCK_ADDR) and MockWhoIs returning
+        // bob_router has MockConnectInfo(BOB_MOCK_ADDR) and MockTransport returning
         // bob → Owner classification.
         // "readAt" is a hardcoded RFC 3339 string — independent of any code path.
         let read_timestamp = "2026-01-01T12:00:00Z";
@@ -332,12 +352,12 @@ mod inner {
         // Step 8: deliver the receipt directly to alice's peer-inbox router.
         //
         // We build a dedicated alice peer-inbox router that shares alice's store
-        // and dispatcher, but uses bob's identity in MockWhoIs.  The Caller
+        // and dispatcher, but uses bob's identity in MockTransport.  The Caller
         // extractor will classify this connection as Role::Peer (bob is in
         // alice's contacts) and forward the Peer/receipt call to ReceiptHandler.
         // This simulates what outbox_tick would do on bob's side without
         // requiring a second TLS listener for alice.
-        let alice_peer_whois = MockWhoIs(make_whois(BOB_OWNER_ID, BOB_LOGIN));
+        let alice_peer_whois = MockTransport(make_identity(BOB_OWNER_ID, BOB_LOGIN));
         let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(64);
         let (alice_peer_blob_store, _alice_peer_blob_dir) = make_blob_store();
         let alice_peer_dispatcher = Arc::new(build_dispatcher(
@@ -346,7 +366,7 @@ mod inner {
             ALICE_OWNER_ID.to_string(),
         ));
         let alice_peer_state = AppState {
-            ts: Arc::new(alice_peer_whois),
+            transport: Arc::new(alice_peer_whois),
             store: Arc::clone(&pair.alice_store),
             owner_id: ALICE_OWNER_ID.to_string(),
             owner_login: ALICE_LOGIN.to_string(),
@@ -355,7 +375,7 @@ mod inner {
             dispatcher: alice_peer_dispatcher,
             blob_store: alice_peer_blob_store,
         };
-        // BOB_PEER_MOCK_ADDR is distinct from ALICE_MOCK_ADDR; MockWhoIs ignores
+        // BOB_PEER_MOCK_ADDR is distinct from ALICE_MOCK_ADDR; MockTransport ignores
         // the address and returns bob's identity regardless.
         let alice_peer_router =
             build_app(alice_peer_state).layer(MockConnectInfo(BOB_PEER_MOCK_ADDR));
@@ -482,7 +502,7 @@ mod inner {
         }
 
         // Step 2: build alice's in-process router.
-        let alice_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
+        let alice_whois = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
         let (alice_blob_store, _alice_blob_dir) = make_blob_store();
         let alice_dispatcher = Arc::new(build_dispatcher(
@@ -491,7 +511,7 @@ mod inner {
             ALICE_OWNER_ID.to_string(),
         ));
         let alice_state = AppState {
-            ts: Arc::new(alice_whois),
+            transport: Arc::new(alice_whois),
             store: Arc::clone(&alice_store),
             owner_id: ALICE_OWNER_ID.to_string(),
             owner_login: ALICE_LOGIN.to_string(),

@@ -2,9 +2,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
-use crate::auth::WhoIsProvider;
+use kith_core::{FederationTransport, Role};
 use crate::extractors::{AppState, Caller};
-use kith_core::Role;
 
 /// Maximum upload size: 100 MiB.  Requests larger than this are rejected with
 /// 413 before any bytes are written to disk.
@@ -22,8 +21,8 @@ const MAX_CONTENT_TYPE_LEN: usize = 256;
 ///
 /// No DB row is written at upload time.  The DB row is created when the
 /// returned `blobId` is referenced in a subsequent `Message/set` create.
-pub async fn blob_upload_handler<W: WhoIsProvider + Send + Sync + 'static>(
-    State(state): State<AppState<W>>,
+pub async fn blob_upload_handler<T: FederationTransport>(
+    State(state): State<AppState<T>>,
     caller: Caller,
     Path(account_id): Path<String>,
     request: axum::extract::Request,
@@ -118,43 +117,61 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use kith_attach::BlobStore;
-    use kith_core::AuthError;
+    use kith_core::{AuthError, FederationTransport, Identity};
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
     use sha2::{Digest, Sha256};
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tower::ServiceExt;
 
-    use crate::auth::WhoIsProvider;
     use crate::blob::MAX_CONTENT_TYPE_LEN;
     use crate::build_app;
     use crate::build_dispatcher;
     use crate::extractors::AppState;
 
-    struct MockWhoIs(WhoIsResponse);
+    struct MockTransport(Identity);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
             let result = Ok(self.0.clone());
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: format!("{id}-kith.tail.ts.net"),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: format!("{id}-kith.tail.ts.net"),
         }
     }
 
@@ -165,7 +182,7 @@ mod tests {
         (store, dir)
     }
 
-    fn make_app(owner_id: &str, whois: MockWhoIs) -> (Router, tempfile::TempDir) {
+    fn make_app(owner_id: &str, transport: MockTransport) -> (Router, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
@@ -177,7 +194,7 @@ mod tests {
             owner_id.to_string(),
         ));
         let state = AppState {
-            ts: Arc::new(whois),
+            transport: Arc::new(transport),
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
@@ -192,7 +209,7 @@ mod tests {
 
     fn make_app_with_peer_contact(
         owner_id: &str,
-        owner_whois: MockWhoIs,
+        owner_transport: MockTransport,
         peer_id: &str,
         peer_login: &str,
     ) -> (Router, tempfile::TempDir) {
@@ -219,7 +236,7 @@ mod tests {
             owner_id.to_string(),
         ));
         let state = AppState {
-            ts: Arc::new(owner_whois),
+            transport: Arc::new(owner_transport),
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
@@ -258,7 +275,7 @@ mod tests {
             format!("{:x}", h.finalize())
         };
 
-        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
 
         let req = Request::builder()
             .method("POST")
@@ -289,7 +306,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-aself";
         const OWNER_LOGIN: &str = "owner@aself.example.com";
 
-        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri("/jmap/upload/a-self")
@@ -305,7 +322,7 @@ mod tests {
         const OWNER_ID: &str = "uid-owner-acct";
         const OWNER_LOGIN: &str = "owner@acct.example.com";
 
-        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri("/jmap/upload/uid-somebody-else")
@@ -353,7 +370,7 @@ mod tests {
         let expected_truncated = format!("{}/{}", type_part, "x".repeat(subtype_len));
         assert_eq!(expected_truncated.len(), MAX_CONTENT_TYPE_LEN);
 
-        let (app, _blob_dir) = make_app(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+        let (app, _blob_dir) = make_app(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
         let req = Request::builder()
             .method("POST")
             .uri(&format!("/jmap/upload/{OWNER_ID}"))
@@ -389,7 +406,7 @@ mod tests {
 
         let (app, _blob_dir) = make_app_with_peer_contact(
             OWNER_ID,
-            MockWhoIs(make_whois(PEER_ID, PEER_LOGIN)),
+            MockTransport(make_identity(PEER_ID, PEER_LOGIN)),
             PEER_ID,
             PEER_LOGIN,
         );

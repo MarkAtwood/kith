@@ -4,8 +4,9 @@ use hyper_util::service::TowerToHyperService;
 use kith_attach::BlobStore;
 use kith_events::make_channel;
 use kith_store::Store;
+use kith_core::FederationTransport;
 use kith_tslocal::LocalApiClient;
-use kithd::auth::WhoIsProvider;
+use kithd::transport::TailscaleTransport;
 use kithd::build_app;
 use kithd::build_dispatcher;
 use kithd::extractors::AppState;
@@ -188,8 +189,9 @@ async fn main() {
         owner_id.clone(),
     ));
 
+    let transport = Arc::new(TailscaleTransport::new(Arc::clone(&ts)));
     let state = AppState {
-        ts: Arc::clone(&ts),
+        transport: Arc::clone(&transport),
         store: Arc::clone(&store),
         owner_id: owner_id.clone(),
         owner_login: owner_login.clone(),
@@ -212,12 +214,16 @@ async fn main() {
     // -----------------------------------------------------------------------
     let store_for_outbox = Arc::clone(&store);
     let owner_id_for_outbox = owner_id.clone();
+    let transport_for_outbox = Arc::clone(&transport);
+    let host_validator: Arc<dyn Fn(&str) -> bool + Send + Sync> =
+        Arc::new(move |host| transport_for_outbox.is_valid_host(host));
     tokio::spawn(async move {
         loop {
             let h = tokio::spawn(kith_peer::outbox_worker(
                 Arc::clone(&store_for_outbox),
                 kith_peer::PeerHttpClient::new(),
                 owner_id_for_outbox.clone(),
+                Arc::clone(&host_validator),
             ));
             // outbox_worker is `-> !` and never returns Ok; only a panic
             // produces Err here.
@@ -231,7 +237,7 @@ async fn main() {
     // 11a. Spawn peer discovery task
     // -----------------------------------------------------------------------
     kithd::discovery::spawn_discovery_task(
-        Arc::clone(&ts),
+        Arc::clone(&transport),
         Arc::clone(&store),
         config.port,
         owner_id.clone(),
@@ -405,11 +411,11 @@ async fn main() {
     }
 }
 
-// Compile-time check: AppState<LocalApiClient> satisfies WhoIsProvider bounds.
+// Compile-time check: TailscaleTransport satisfies FederationTransport bounds.
 // This function is never called; it exists only to trigger a compile error if
-// the production type drifts out of conformance with the WhoIsProvider trait.
+// the production type drifts out of conformance with the FederationTransport trait.
 #[allow(dead_code)]
-fn _assert_local_api_client_implements_whois_provider() {
-    fn _check<W: WhoIsProvider + Send + Sync + 'static>() {}
-    _check::<LocalApiClient>();
+fn _assert_tailscale_transport_implements_federation_transport() {
+    fn _check<T: FederationTransport>() {}
+    _check::<TailscaleTransport>();
 }

@@ -12,14 +12,14 @@
 ///
 /// Alice runs in-process (no TCP).  Test code calls her router directly via
 /// `.oneshot(request)` with `MockConnectInfo` injecting `ALICE_MOCK_ADDR`.
-/// Alice's `MockWhoIs` always returns alice's identity for any address, so
+/// Alice's `MockTransport` always returns alice's identity for any address, so
 /// all in-process requests to alice's router are classified as Owner.
 ///
 /// Bob runs with a real TCP listener via `spawn_test_listener`.  Alice's
 /// outbox worker delivers to bob over TCP.  From bob's perspective every
 /// incoming TCP connection from 127.0.0.1 is alice delivering, so bob's
-/// `MockWhoIs` returns alice's identity for all addresses.  Bob also has an
-/// in-process router for assertion reads; its `MockWhoIs` returns bob's own
+/// `MockTransport` returns alice's identity for all addresses.  Bob also has an
+/// in-process router for assertion reads; its `MockTransport` returns bob's own
 /// identity so that bob is Owner on those calls.
 ///
 /// Only compiled under `#[cfg(feature = "test-utils")]` because
@@ -28,11 +28,9 @@
 mod inner {
     use axum::extract::connect_info::MockConnectInfo;
     use axum::Router;
-    use kith_core::AuthError;
+    use kith_core::{AuthError, FederationTransport, Identity};
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
-    use kithd::auth::WhoIsProvider;
     use kithd::build_app;
     use kithd::build_dispatcher;
     use kithd::extractors::AppState;
@@ -77,33 +75,53 @@ mod inner {
     );
 
     // -----------------------------------------------------------------------
-    // Test double: MockWhoIs
+    // Test double: MockTransport
     //
-    // Returns a fixed `WhoIsResponse` for any address.
+    // Returns a fixed `Identity` for any address.
     // -----------------------------------------------------------------------
 
-    pub struct MockWhoIs(pub WhoIsResponse);
+    pub struct MockTransport(pub Identity);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
             let result = Ok(self.0.clone());
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    pub fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: format!("{id}-kith.tail12345.ts.net"),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    pub fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: format!("{id}-kith.tail12345.ts.net"),
         }
     }
 
@@ -200,8 +218,8 @@ mod inner {
             )
             .expect("bob: upsert alice as contact must succeed");
 
-        // ---- alice's WhoIs: always returns alice ----
-        let alice_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
+        // ---- alice's transport: always returns alice ----
+        let alice_transport = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
 
         // ---- alice's AppState ----
         let (alice_events_tx, _alice_events_rx) = make_channel(64);
@@ -212,7 +230,7 @@ mod inner {
             ALICE_OWNER_ID.to_string(),
         ));
         let alice_state = AppState {
-            ts: Arc::new(alice_whois),
+            transport: Arc::new(alice_transport),
             store: Arc::clone(&alice_store),
             owner_id: ALICE_OWNER_ID.to_string(),
             owner_login: ALICE_LOGIN.to_string(),
@@ -225,13 +243,13 @@ mod inner {
         // ---- alice's in-process router ----
         let alice_router = build_app(alice_state).layer(MockConnectInfo(ALICE_MOCK_ADDR));
 
-        // ---- bob's TCP listener WhoIs: returns alice for all connections ----
+        // ---- bob's TCP listener transport: returns alice for all connections ----
         //
         // All TCP connections to bob's listener originate from 127.0.0.1
         // (the outbox worker running in the test process).  The only peer
         // that ever connects to bob in these tests is alice, so returning
         // alice's identity unconditionally is correct.
-        let bob_tcp_whois = MockWhoIs(make_whois(ALICE_OWNER_ID, ALICE_LOGIN));
+        let bob_tcp_transport = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
 
         // ---- bob's AppState for the TCP listener ----
         let (bob_events_tx, _bob_events_rx) = make_channel(64);
@@ -242,7 +260,7 @@ mod inner {
             BOB_OWNER_ID.to_string(),
         ));
         let bob_tcp_state = AppState {
-            ts: Arc::new(bob_tcp_whois),
+            transport: Arc::new(bob_tcp_transport),
             store: Arc::clone(&bob_store),
             owner_id: BOB_OWNER_ID.to_string(),
             owner_login: BOB_LOGIN.to_string(),
@@ -259,13 +277,13 @@ mod inner {
 
         // ---- bob's in-process assertion router ----
         //
-        // Uses a separate MockWhoIs that returns bob's own identity so that
+        // Uses a separate MockTransport that returns bob's own identity so that
         // assertion calls (e.g. Message/get to verify a message arrived) are
         // classified as Owner on bob's router.
-        let bob_assert_whois = MockWhoIs(make_whois(BOB_OWNER_ID, BOB_LOGIN));
+        let bob_assert_transport = MockTransport(make_identity(BOB_OWNER_ID, BOB_LOGIN));
         let (bob_assert_events_tx, _bob_assert_events_rx) = make_channel(64);
         let bob_assert_state = AppState {
-            ts: Arc::new(bob_assert_whois),
+            transport: Arc::new(bob_assert_transport),
             store: Arc::clone(&bob_store),
             owner_id: BOB_OWNER_ID.to_string(),
             owner_login: BOB_LOGIN.to_string(),
@@ -303,7 +321,7 @@ pub use inner::{
 
 /// Verifies harness-specific postconditions after `spawn_test_pair`:
 /// both stores start empty (message state = "s-0") and the contacts table
-/// contains the pre-populated alice↔bob entries.
+/// contains the pre-populated alice<->bob entries.
 ///
 /// Listener binding (loopback addr, non-zero port, cert_der, TCP connect)
 /// is covered by `spawn_test_listener_binds_loopback_port` in e2e.rs and
@@ -374,13 +392,13 @@ async fn harness_smoke_test() {
 }
 
 // ---------------------------------------------------------------------------
-// Full delivery test: alice → outbox_tick → bob
+// Full delivery test: alice -> outbox_tick -> bob
 // ---------------------------------------------------------------------------
 
 /// Oracle: the message body "EXPECTED_BODY" is a hardcoded constant never derived
 /// from alice's store.  After `outbox_tick`, bob's store is read directly and the
 /// body is compared against that constant.  `DeliveryState::Received` is the
-/// expected state per Peer/deliver spec (kith-architecture.md §Wire Protocol
+/// expected state per Peer/deliver spec (kith-architecture.md Wire Protocol
 /// step 10).  Alice's outbox row being absent after the tick proves
 /// `complete_delivery` ran (outbox DELETE + messages.delivery_state update are
 /// atomic in a transaction).
@@ -420,7 +438,7 @@ async fn full_message_delivery() {
         )
         .expect("alice: update bob contact with real mailbox_host must succeed");
 
-    // Step 4: create the alice↔bob chat in alice's store.
+    // Step 4: create the alice<->bob chat in alice's store.
     // Message/set create returns notFound if the chat doesn't exist.
     pair.alice_store
         .lock()
@@ -430,7 +448,7 @@ async fn full_message_delivery() {
         .expect("alice: create chat must succeed");
 
     // Step 5: send Message/set create to alice's in-process router.
-    // alice_router already has MockConnectInfo(ALICE_MOCK_ADDR) → Owner classification.
+    // alice_router already has MockConnectInfo(ALICE_MOCK_ADDR) -> Owner classification.
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
         "methodCalls": [["Message/set", {
@@ -742,7 +760,7 @@ async fn offline_delivery_and_retry() {
     // STEP 4: Tick 2 — real delivery.
     // Far-future timestamp: ensures outbox row is due regardless of backoff.
     // Invariant: value must exceed now_actual + max_backoff_with_jitter.
-    // Max backoff cap is 3600s × 1.2 jitter = 4320s. 1_000_000_000 >> 4320.
+    // Max backoff cap is 3600s * 1.2 jitter = 4320s. 1_000_000_000 >> 4320.
     // PeerHttpClient with bob's pinned cert connects to bob's real listener.
     let now2: i64 = 1_000_000_000;
     let client = PeerHttpClient::new_with_root_cert(&pair.bob_cert_der);
@@ -821,7 +839,7 @@ async fn full_message_delivery_with_attachment() {
     use tower::ServiceExt;
 
     // Independent oracle: sha256 of b"hello" computed offline.
-    // printf 'hello' | sha256sum → 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
+    // printf 'hello' | sha256sum -> 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
     const EXPECTED_SHA256: &str =
         "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
@@ -840,7 +858,7 @@ async fn full_message_delivery_with_attachment() {
     let pair = inner::spawn_test_pair().await;
 
     // Step 2: upload a blob to alice's in-process router.
-    // The router already has MockConnectInfo(ALICE_MOCK_ADDR) → Owner role.
+    // The router already has MockConnectInfo(ALICE_MOCK_ADDR) -> Owner role.
     let upload_req = Request::builder()
         .method("POST")
         .uri("/jmap/upload/a-self")
@@ -898,7 +916,7 @@ async fn full_message_delivery_with_attachment() {
         )
         .expect("alice: update bob contact with real mailbox_host must succeed");
 
-    // Step 4: create the alice↔bob chat in alice's store.
+    // Step 4: create the alice<->bob chat in alice's store.
     let chat_id = inner::EXPECTED_CHAT_ID;
     pair.alice_store
         .lock()
@@ -1056,7 +1074,7 @@ async fn full_message_delivery_with_attachment() {
 
         // Oracle: sha256 must match the independently computed value for b"hello".
         // This is the primary integrity check: if the sha256 round-trips correctly
-        // through alice's Message/set → outbox wire format → bob's DeliverHandler,
+        // through alice's Message/set -> outbox wire format -> bob's DeliverHandler,
         // the attachment metadata pipeline is correct end-to-end.
         assert_eq!(
             att.sha256, EXPECTED_SHA256,

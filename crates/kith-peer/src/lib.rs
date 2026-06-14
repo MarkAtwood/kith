@@ -879,6 +879,20 @@ impl PeerHttpClient {
         Self { client }
     }
 
+    /// Construct a client with the given TLS configuration.
+    ///
+    /// The transport layer provides a `ClientConfig` appropriate for its
+    /// security model (e.g. Tailscale's `TailnetCertVerifier`).
+    pub fn with_tls_config(tls_config: rustls::ClientConfig) -> Self {
+        let connector = HttpsConnectorBuilder::new()
+            .with_tls_config(tls_config)
+            .https_only()
+            .enable_http1()
+            .build();
+        let client = Client::builder(TokioExecutor::new()).build(connector);
+        Self { client }
+    }
+
     /// Construct a client that trusts exactly one self-signed certificate.
     ///
     /// `cert_der` must be the DER-encoded end-entity certificate.  The client
@@ -1343,19 +1357,10 @@ fn validate_rich_body(body: &str) -> Result<(), JmapError> {
     Ok(())
 }
 
-/// Returns `true` if `host` is safe to embed in an HTTPS URL authority component.
+/// Tailscale-specific host validator, retained for backward-compatible test use.
 ///
-/// Accepts `[a-zA-Z0-9.-]` as hostname characters and an optional `:[0-9]+` port suffix.
-/// Rejects anything that could enable host-header injection or URL manipulation
-/// (`@`, `/`, `?`, `#`, `%`, whitespace, etc.).
-///
-/// When the host part parses as an [`std::net::IpAddr`], only addresses in the
-/// Tailscale-assigned ranges are accepted:
-///   - IPv4: 100.64.0.0/10 (CGNAT range used by Tailscale)
-///   - IPv6: fc00::/7 (ULA; Tailscale uses fd7a:115c:a1e0::/48 within this)
-///
-/// All other IP addresses — loopback, link-local, RFC 1918, public internet —
-/// are rejected.  Plain hostnames (non-IP) are accepted as before.
+/// Production code should use `FederationTransport::is_valid_host()` instead.
+#[cfg(any(test, feature = "test-utils"))]
 fn is_valid_mailbox_host(host: &str) -> bool {
     use std::net::IpAddr;
 
@@ -1516,6 +1521,7 @@ pub async fn outbox_tick<C: DeliverClient>(
     client: &C,
     owner_id: &str,
     now_unix: i64,
+    host_validator: &(dyn Fn(&str) -> bool + Send + Sync),
 ) {
     // Phase 1: fetch due entries; hold lock only for this SQLite call.
     let due = {
@@ -1584,16 +1590,11 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
         };
 
-        if !is_valid_mailbox_host(&entry.peer_mailbox_host) {
-            // mailbox_host is always derived from the WhoIs-verified peer IP, so
-            // this rejection means the peer's IP is outside the accepted ranges
-            // (100.64.0.0/10 CGNAT or fc00::/7 ULA).  On Headscale deployments,
-            // this can happen if the operator configured a custom IP range other
-            // than the default 100.64.0.0/10.  See kith-architecture.md §Headscale.
+        if !host_validator(&entry.peer_mailbox_host) {
             tracing::warn!(
                 peer_user_id = %entry.peer_user_id,
                 mailbox_host = ?entry.peer_mailbox_host,
-                "outbox: mailbox_host IP is outside accepted tailnet ranges                  (100.64.0.0/10 CGNAT or fc00::/7 ULA); if using Headscale,                  ensure the node IP pool uses the default 100.64.0.0/10 range"
+                "outbox: mailbox_host rejected by transport host validator"
             );
             if let Ok(guard) = store.lock() {
                 if let Err(e) =
@@ -1775,6 +1776,7 @@ pub async fn outbox_worker<C: DeliverClient>(
     store: Arc<Mutex<kith_store::Store>>,
     client: C,
     owner_id: String,
+    host_validator: Arc<dyn Fn(&str) -> bool + Send + Sync>,
 ) -> ! {
     // Run one tick immediately so messages enqueued before this worker
     // starts are delivered without waiting for the first 30-second interval.
@@ -1782,7 +1784,7 @@ pub async fn outbox_worker<C: DeliverClient>(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    outbox_tick(&store, &client, &owner_id, now_unix).await;
+    outbox_tick(&store, &client, &owner_id, now_unix, &*host_validator).await;
 
     loop {
         tokio::time::sleep(Duration::from_secs(OUTBOX_POLL_INTERVAL_SECS)).await;
@@ -1790,7 +1792,7 @@ pub async fn outbox_worker<C: DeliverClient>(
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        outbox_tick(&store, &client, &owner_id, now_unix).await;
+        outbox_tick(&store, &client, &owner_id, now_unix, &*host_validator).await;
     }
 }
 
@@ -4329,7 +4331,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now);
 
         let client = MockClient::succeeds();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(client.call_count(), 1, "deliver must be called once");
         let guard = store.lock().unwrap();
@@ -4364,7 +4366,7 @@ mod tests {
             .unwrap();
 
         let client = MockClient::succeeds();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(
             client.call_count(),
@@ -4398,7 +4400,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now);
 
         let client = MockClient::fails(PeerDeliveryError::Network("conn refused".into()));
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(client.call_count(), 1, "deliver must be attempted");
         let entries = store
@@ -4435,7 +4437,7 @@ mod tests {
         // (3600s base × 1.2 jitter = 4320s), ensuring get_due always returns the entry.
         for _ in 0..72 {
             let client = MockClient::fails(PeerDeliveryError::Timeout);
-            outbox_tick(&store, &client, "uid-owner", now).await;
+            outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
             now += 5000;
         }
 
@@ -4476,7 +4478,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now);
 
         let client = MockClient::fails(PeerDeliveryError::HttpError(403));
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(client.call_count(), 1, "deliver must be attempted once");
         // Outbox row must be deleted (mark_failed removes it).
@@ -4515,7 +4517,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now);
 
         let client = MockClient::fails(PeerDeliveryError::HttpError(429));
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(client.call_count(), 1, "deliver must be attempted once");
         // Outbox row must still exist (record_failure keeps it for retry).
@@ -4553,7 +4555,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now);
 
         let client = MockClient::fails(PeerDeliveryError::PeerRejected("invalidArguments".into()));
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(client.call_count(), 1, "deliver must be attempted once");
         let entries = store
@@ -4620,7 +4622,7 @@ mod tests {
         }
 
         let client = MockClient::succeeds();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(
             client.call_count(),
@@ -4672,7 +4674,7 @@ mod tests {
             .unwrap();
 
         let client = MockClient::succeeds();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         // Row must still exist (record_failure, not mark_failed).
         let entries = store
@@ -4710,7 +4712,7 @@ mod tests {
         add_contact_and_enqueue(&store, msg_id, now + 9999); // due in the future
 
         let client = MockClient::succeeds();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         assert_eq!(
             client.call_count(),
@@ -4777,7 +4779,7 @@ mod tests {
         }
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let msg = &req["methodCalls"][0][1]["message"];
@@ -4841,7 +4843,7 @@ mod tests {
         }
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];
@@ -6210,7 +6212,7 @@ mod tests {
         add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];
@@ -6250,7 +6252,7 @@ mod tests {
         add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];
@@ -6343,7 +6345,7 @@ mod tests {
         }
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now + 1).await;
+        outbox_tick(&store, &client, "uid-owner", now + 1, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];
@@ -6392,7 +6394,7 @@ mod tests {
         }
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];
@@ -6435,7 +6437,7 @@ mod tests {
         add_contact_and_enqueue_outbound(&store, msg_id, chat_id, now, &params);
 
         let client = CapturingMockClient::new();
-        outbox_tick(&store, &client, "uid-owner", now).await;
+        outbox_tick(&store, &client, "uid-owner", now, &is_valid_mailbox_host).await;
 
         let req = client.take().expect("deliver_msg must have been called");
         let wire_msg = &req["methodCalls"][0][1]["message"];

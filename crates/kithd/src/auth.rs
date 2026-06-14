@@ -1,28 +1,5 @@
 use kith_core::{AuthError, Identity, Role};
 use kith_store::contact::ContactStore;
-use kith_tslocal::{LocalApiClient, WhoIsResponse};
-use std::net::SocketAddr;
-
-/// Abstraction over the Tailscale WhoIs call, enabling test doubles.
-///
-/// Implemented for [`LocalApiClient`] in production and for mock structs in tests.
-/// Use with concrete generics (`W: WhoIsProvider`) rather than `dyn WhoIsProvider`
-/// to avoid a dependency on `async-trait`.
-pub trait WhoIsProvider {
-    fn whois(
-        &self,
-        addr: SocketAddr,
-    ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send;
-}
-
-impl WhoIsProvider for LocalApiClient {
-    fn whois(
-        &self,
-        addr: SocketAddr,
-    ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
-        LocalApiClient::whois(self, addr)
-    }
-}
 
 /// Classify a verified [`Identity`] as [`Role::Owner`] or [`Role::Peer`].
 ///

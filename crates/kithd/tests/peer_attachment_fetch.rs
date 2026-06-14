@@ -29,8 +29,8 @@ mod inner {
     use kith_core::AuthError;
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
-    use kithd::auth::WhoIsProvider;
+    use kith_core::{FederationTransport, Identity};
+    
     use kithd::build_app;
     use kithd::build_dispatcher;
     use kithd::extractors::AppState;
@@ -85,28 +85,48 @@ mod inner {
     // Helpers
     // -----------------------------------------------------------------------
 
-    pub(super) struct MockWhoIs(pub(super) WhoIsResponse);
+    pub(super) struct MockTransport(pub(super) Identity);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
             let result = Ok(self.0.clone());
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    pub(super) fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: format!("{id}-kith.tail12345.ts.net"),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    pub(super) fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: format!("{id}-kith.tail12345.ts.net"),
         }
     }
 
@@ -160,13 +180,13 @@ mod inner {
 
         // ---- Sender's TCP TLS listener ----
         //
-        // MockWhoIs returns sender's own identity for all incoming connections
+        // MockTransport returns sender's own identity for all incoming connections
         // so that the download handler grants Role::Owner.  `fetch_peer_blob`
         // connects to this listener to retrieve the blob; the download endpoint
         // is Owner-only, so the WhoIs must classify every incoming connection
         // as sender (= Owner).  This is safe because the listener is bound to
         // 127.0.0.1 and only reachable by the test process.
-        let sender_tcp_whois = MockWhoIs(make_whois(SENDER_OWNER_ID, SENDER_LOGIN));
+        let sender_tcp_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
         let (sender_events_tx, _sender_events_rx) = make_channel(64);
         let sender_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&sender_store),
@@ -174,7 +194,7 @@ mod inner {
             SENDER_OWNER_ID.to_string(),
         ));
         let sender_tcp_state = AppState {
-            ts: Arc::new(sender_tcp_whois),
+            transport: Arc::new(sender_tcp_whois),
             store: Arc::clone(&sender_store),
             owner_id: SENDER_OWNER_ID.to_string(),
             owner_login: SENDER_LOGIN.to_string(),
@@ -193,7 +213,7 @@ mod inner {
         let sender_mailbox_host = format!("127.0.0.1:{}", sender_addr.port());
 
         // ---- Sender's in-process owner router (for the upload call) ----
-        let sender_owner_whois = MockWhoIs(make_whois(SENDER_OWNER_ID, SENDER_LOGIN));
+        let sender_owner_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
         let (sender_owner_events_tx, _sender_owner_events_rx) = make_channel(64);
         let sender_owner_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&sender_store),
@@ -201,7 +221,7 @@ mod inner {
             SENDER_OWNER_ID.to_string(),
         ));
         let sender_owner_state = AppState {
-            ts: Arc::new(sender_owner_whois),
+            transport: Arc::new(sender_owner_whois),
             store: Arc::clone(&sender_store),
             owner_id: SENDER_OWNER_ID.to_string(),
             owner_login: SENDER_LOGIN.to_string(),
@@ -214,7 +234,7 @@ mod inner {
             build_app(sender_owner_state).layer(MockConnectInfo(SENDER_OWNER_MOCK_ADDR));
 
         // ---- Receiver's in-process owner router ----
-        let receiver_owner_whois = MockWhoIs(make_whois(RECEIVER_OWNER_ID, RECEIVER_LOGIN));
+        let receiver_owner_whois = MockTransport(make_identity(RECEIVER_OWNER_ID, RECEIVER_LOGIN));
         let (receiver_owner_events_tx, _receiver_owner_events_rx) = make_channel(64);
         let receiver_owner_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&receiver_store),
@@ -222,7 +242,7 @@ mod inner {
             RECEIVER_OWNER_ID.to_string(),
         ));
         let receiver_owner_state = AppState {
-            ts: Arc::new(receiver_owner_whois),
+            transport: Arc::new(receiver_owner_whois),
             store: Arc::clone(&receiver_store),
             owner_id: RECEIVER_OWNER_ID.to_string(),
             owner_login: RECEIVER_LOGIN.to_string(),
@@ -236,13 +256,13 @@ mod inner {
 
         // ---- Receiver's in-process peer router (for Peer/deliver from sender) ----
         //
-        // MockWhoIs returns SENDER's identity so the Caller extractor grants
+        // MockTransport returns SENDER's identity so the Caller extractor grants
         // Role::Peer to the incoming call.  Sender must already be in receiver's
         // contacts for this to succeed.
-        let receiver_peer_whois = MockWhoIs(make_whois(SENDER_OWNER_ID, SENDER_LOGIN));
+        let receiver_peer_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
         let (receiver_peer_events_tx, _receiver_peer_events_rx) = make_channel(64);
         let receiver_peer_state = AppState {
-            ts: Arc::new(receiver_peer_whois),
+            transport: Arc::new(receiver_peer_whois),
             store: Arc::clone(&receiver_store),
             owner_id: RECEIVER_OWNER_ID.to_string(),
             owner_login: RECEIVER_LOGIN.to_string(),
@@ -316,7 +336,7 @@ mod inner {
         // ---- Step 3: Receiver delivers a message with the attachment ----
         //
         // This simulates what sender's outbox worker would do over the network.
-        // We use receiver's peer router (MockWhoIs returns sender's identity
+        // We use receiver's peer router (MockTransport returns sender's identity
         // → Role::Peer) to invoke Peer/deliver in-process.
         //
         // Note: Peer/deliver's Step 11 upserts the sender contact row using the

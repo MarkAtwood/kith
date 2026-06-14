@@ -4,7 +4,7 @@
 ///   HTTP request → MockConnectInfo → Caller extractor (WhoIs → classify)
 ///                → handler (session / jmap dispatch) → Store → response
 ///
-/// No real Tailscale daemon is required: `MockWhoIs` returns a fixed identity
+/// No real Tailscale daemon is required: `MockTransport` returns a fixed identity
 /// for any address, and `MockConnectInfo` feeds a fixed peer address into the
 /// `ConnectInfo<SocketAddr>` extractor.
 ///
@@ -23,8 +23,8 @@ use kith_events::make_channel;
 #[cfg(feature = "test-utils")]
 use kith_peer;
 use kith_store::Store;
-use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
-use kithd::auth::WhoIsProvider;
+use kith_core::{FederationTransport, Identity};
+
 use kithd::build_app;
 use kithd::build_dispatcher;
 use kithd::extractors::AppState;
@@ -39,7 +39,7 @@ use ulid::Ulid;
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "test-utils")]
-fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::TempDir) {
+fn make_state_for_listener(whois: MockTransport) -> (AppState<MockTransport>, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
@@ -51,7 +51,7 @@ fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::
         OWNER_ID.to_string(),
     ));
     let state = AppState {
-        ts: Arc::new(whois),
+        transport: Arc::new(whois),
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -80,7 +80,7 @@ fn make_state_for_listener(whois: MockWhoIs) -> (AppState<MockWhoIs>, tempfile::
 #[tokio::test]
 async fn spawn_test_listener_binds_loopback_port() {
     let (state, _blob_dir) =
-        make_state_for_listener(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+        make_state_for_listener(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let (addr, cert_der, handle) = kithd::spawn_test_listener(state)
         .await
@@ -108,37 +108,57 @@ async fn spawn_test_listener_binds_loopback_port() {
 }
 
 // ---------------------------------------------------------------------------
-// Test double: MockWhoIs
+// Test double: MockTransport
 //
-// Returns a fixed WhoIsResponse for any address (Some variant), or an auth
+// Returns a fixed Identity for any address (Some variant), or an auth
 // error (None variant).  The None path exercises the 500 / auth-failure path.
 // ---------------------------------------------------------------------------
 
-struct MockWhoIs(Option<WhoIsResponse>);
+struct MockTransport(Option<Identity>);
 
-impl WhoIsProvider for MockWhoIs {
-    fn whois(
+impl FederationTransport for MockTransport {
+    fn identify_caller(
         &self,
         _addr: SocketAddr,
-    ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
-        let result: Result<WhoIsResponse, AuthError> = match &self.0 {
-            Some(r) => Ok(r.clone()),
+    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+        let result: Result<Identity, AuthError> = match &self.0 {
+            Some(id) => Ok(id.clone()),
             None => Err(AuthError::WhoIsFailed("test-mock-failure".into())),
         };
         async move { result }
     }
+
+    fn discover_peers(
+        &self,
+        _port: u16,
+    ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+    {
+        async { Ok(vec![]) }
+    }
+
+    fn local_owner_id(
+        &self,
+    ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+        async { Ok("test-owner".into()) }
+    }
+
+    fn local_addresses(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+        async { Ok(vec![]) }
+    }
+
+    fn is_valid_host(&self, _host: &str) -> bool {
+        true
+    }
 }
 
-fn make_whois_resp(id: &str, login: &str) -> WhoIsResponse {
-    WhoIsResponse {
-        node: WhoIsNode {
-            name: "test-node.tail12345.ts.net".into(),
-        },
-        user_profile: UserProfile {
-            id: id.into(),
-            login_name: login.into(),
-            display_name: None,
-        },
+fn make_identity(id: &str, login: &str) -> Identity {
+    Identity {
+        user_id: id.into(),
+        login_name: login.into(),
+        display_name: None,
+        node_name: "test-node.tail12345.ts.net".into(),
     }
 }
 
@@ -146,7 +166,7 @@ fn make_whois_resp(id: &str, login: &str) -> WhoIsResponse {
 // App factory
 //
 // Builds the full kithd Router with all 15 JMAP handlers registered, using
-// MockWhoIs and an in-memory SQLite store.  `MockConnectInfo` provides the
+// MockTransport and an in-memory SQLite store.  `MockConnectInfo` provides the
 // peer socket address that the Caller extractor requires.
 // ---------------------------------------------------------------------------
 
@@ -160,7 +180,7 @@ fn make_blob_store() -> (std::sync::Arc<kith_attach::BlobStore>, tempfile::TempD
 const OWNER_ID: &str = "uid-owner-e2e";
 const OWNER_LOGIN: &str = "owner@e2e.example.com";
 
-fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
+fn make_full_app(whois: MockTransport) -> (Router, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
@@ -173,7 +193,7 @@ fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
     ));
 
     let state = AppState {
-        ts: Arc::new(whois),
+        transport: Arc::new(whois),
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -198,7 +218,7 @@ fn make_full_app(whois: MockWhoIs) -> (Router, tempfile::TempDir) {
 // existing test call sites.
 // ---------------------------------------------------------------------------
 
-fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile::TempDir) {
+fn make_app_with_store(whois: MockTransport) -> (Router, Arc<Mutex<Store>>, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
@@ -210,7 +230,7 @@ fn make_app_with_store(whois: MockWhoIs) -> (Router, Arc<Mutex<Store>>, tempfile
         OWNER_ID.to_string(),
     ));
     let state = AppState {
-        ts: Arc::new(whois),
+        transport: Arc::new(whois),
         store: Arc::clone(&store),
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -243,7 +263,7 @@ async fn body_string(resp: axum::response::Response) -> String {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_session_endpoint_returns_kith_capability() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -302,7 +322,7 @@ async fn e2e_session_endpoint_returns_kith_capability() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_contact_get_returns_method_response() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     // Manually constructed request from the RFC 8620 §3.3 format spec.
     // Not derived from any implementation output.
@@ -367,7 +387,7 @@ async fn e2e_contact_get_returns_method_response() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn e2e_unknown_method_returns_unknownmethod_error() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
@@ -439,7 +459,7 @@ async fn e2e_unauthorized_caller_gets_401() {
     // Stranger is not the owner and not in contacts → must be rejected.
     let stranger_id = "uid-stranger-unknown";
     let stranger_login = "stranger@unknown.example.com";
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(
         stranger_id,
         stranger_login,
     ))));
@@ -490,7 +510,7 @@ async fn peer_calls_owner_method_forbidden() {
     // Build the app and obtain the store so we can add a contact before
     // the request is dispatched.
     let (app, store, _blob_dir) =
-        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+        make_app_with_store(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN))));
 
     // Register the peer as an unblocked contact so Role::Peer is assigned by the
     // extractor.  Without this the extractor returns 401 and the test never
@@ -576,7 +596,7 @@ async fn peer_calls_chatcontact_querychanges_forbidden() {
     const PEER_LOGIN: &str = "qc@peer.example.com";
 
     let (app, store, _blob_dir) =
-        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+        make_app_with_store(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN))));
     store
         .lock()
         .expect("store lock must not be poisoned in test setup")
@@ -638,7 +658,7 @@ async fn peer_deliver_sender_mismatch_rejected() {
     const PEER_LOGIN: &str = "carol@peer.example.com";
 
     let (app, store, _blob_dir) =
-        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+        make_app_with_store(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN))));
 
     // Register peer as a contact so the Caller extractor grants Role::Peer.
     // Without this the request gets a 401 before reaching DeliverHandler.
@@ -759,7 +779,7 @@ async fn peer_deliver_chatid_contact_mismatch_rejected() {
     const PEER_BOB_LOGIN: &str = "bob@peer.example.com";
 
     // App is configured to identify every incoming connection as Alice.
-    let (app, store, _blob_dir) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+    let (app, store, _blob_dir) = make_app_with_store(MockTransport(Some(make_identity(
         PEER_ALICE_ID,
         PEER_ALICE_LOGIN,
     ))));
@@ -894,7 +914,7 @@ async fn peer_receipt_wrong_contact_returns_not_found() {
     const PEER_BOB_LOGIN: &str = "bob@receipt.example.com";
 
     // App identifies every incoming connection as Alice.
-    let (app, store, _blob_dir) = make_app_with_store(MockWhoIs(Some(make_whois_resp(
+    let (app, store, _blob_dir) = make_app_with_store(MockTransport(Some(make_identity(
         PEER_ALICE_ID,
         PEER_ALICE_LOGIN,
     ))));
@@ -1047,7 +1067,7 @@ async fn peer_receipt_nonexistent_message_returns_not_found() {
     const PEER_LOGIN: &str = "dana@receipt.example.com";
 
     let (app, store, _blob_dir) =
-        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+        make_app_with_store(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN))));
 
     // Register peer as a contact so the Caller extractor grants Role::Peer.
     store
@@ -1146,7 +1166,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     kithd::allow_loopback_for_tests();
 
-    // The receiver's MockWhoIs returns the peer identity so all incoming
+    // The receiver's MockTransport returns the peer identity so all incoming
     // requests are classified as Peer role (not Owner, not unauthorized).
     const PEER_ID: &str = "uid-peer-webpki-regression";
     const PEER_LOGIN: &str = "peer@webpki-regression.example.com";
@@ -1178,7 +1198,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
         OWNER_ID.to_string(),
     ));
     let state = AppState {
-        ts: Arc::new(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN)))),
+        transport: Arc::new(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN)))),
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -1234,7 +1254,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn session_contains_core_capability() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1264,7 +1284,7 @@ async fn session_contains_core_capability() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn session_contains_account_a_self() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1293,7 +1313,7 @@ async fn session_contains_account_a_self() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn session_supported_body_types() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1335,7 +1355,7 @@ async fn session_supported_body_types() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn session_max_body_bytes() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1365,7 +1385,7 @@ async fn session_max_body_bytes() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn session_max_attachment_bytes() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1399,7 +1419,7 @@ async fn session_max_attachment_bytes() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_valid_request_returns_200() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
@@ -1428,7 +1448,7 @@ async fn jmap_api_valid_request_returns_200() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_invalid_json_returns_error() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("POST")
@@ -1459,7 +1479,7 @@ async fn jmap_api_invalid_json_returns_error() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_multiple_method_calls() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
@@ -1509,7 +1529,7 @@ async fn jmap_api_peer_deliver_routed_correctly() {
     const PEER_LOGIN: &str = "route@peer.example.com";
 
     let (app, store, _blob_dir) =
-        make_app_with_store(MockWhoIs(Some(make_whois_resp(PEER_ID, PEER_LOGIN))));
+        make_app_with_store(MockTransport(Some(make_identity(PEER_ID, PEER_LOGIN))));
 
     store
         .lock()
@@ -1575,7 +1595,7 @@ async fn jmap_api_peer_deliver_routed_correctly() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_owner_calls_peer_method_forbidden() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let msg_id = Ulid::new().to_string();
     let request_body = serde_json::json!({
@@ -1626,7 +1646,7 @@ async fn jmap_api_owner_calls_peer_method_forbidden() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_missing_content_type_returns_error() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let request_body = serde_json::json!({
         "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:chat"],
@@ -1658,7 +1678,7 @@ async fn jmap_api_missing_content_type_returns_error() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn jmap_api_empty_body_returns_error() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("POST")
@@ -1688,7 +1708,7 @@ async fn jmap_api_empty_body_returns_error() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn blob_upload_returns_blob_id() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let payload = b"test-blob";
 
@@ -1723,7 +1743,7 @@ async fn blob_upload_returns_blob_id() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn blob_upload_then_download() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let payload = b"roundtrip-payload";
 
@@ -1777,7 +1797,7 @@ async fn blob_upload_then_download() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn blob_download_nonexistent_returns_404() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     // Use a validly-formatted but non-existent blob ID (26 uppercase alphanumeric chars = ULID format)
     let fake_blob_id = "01JQFAKE0000000000000FAKE";
@@ -1803,7 +1823,7 @@ async fn blob_download_nonexistent_returns_404() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn blob_upload_wrong_account_id_returns_400() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("POST")
@@ -1828,7 +1848,7 @@ async fn blob_upload_wrong_account_id_returns_400() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn blob_download_wrong_account_id_returns_400() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1855,7 +1875,7 @@ async fn blob_download_wrong_account_id_returns_400() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn sse_returns_event_stream_content_type() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -1899,7 +1919,7 @@ async fn sse_delivers_state_change() {
         OWNER_ID.to_string(),
     ));
     let state = kithd::extractors::AppState {
-        ts: Arc::new(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN)))),
+        transport: Arc::new(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN)))),
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -1957,7 +1977,7 @@ async fn sse_delivers_state_change() {
 async fn sse_unauthorized_caller_returns_401() {
     let stranger_id = "uid-stranger-sse";
     let stranger_login = "stranger@sse.example.com";
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(
         stranger_id,
         stranger_login,
     ))));
@@ -1989,7 +2009,7 @@ async fn sse_unauthorized_caller_returns_401() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn unknown_path_with_extension_returns_404() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     let req = Request::builder()
         .method("GET")
@@ -2014,7 +2034,7 @@ async fn unknown_path_with_extension_returns_404() {
 // ---------------------------------------------------------------------------
 #[tokio::test]
 async fn large_request_body_rejected() {
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(OWNER_ID, OWNER_LOGIN))));
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(OWNER_ID, OWNER_LOGIN))));
 
     // Build a body exceeding 10 MiB.  We send 10 MiB + 1 byte.
     let oversized = vec![b'x'; 10 * 1024 * 1024 + 1];
@@ -2037,7 +2057,7 @@ async fn large_request_body_rejected() {
 // ---------------------------------------------------------------------------
 // Missing authorization returns 401
 //
-// Oracle: a caller with a failing WhoIs lookup (simulated by MockWhoIs(None))
+// Oracle: a caller with a failing WhoIs lookup (simulated by MockTransport(None))
 // results in a CallerRejection::Internal → 500.  A stranger (not in contacts
 // and not owner) gets 401.  This test uses a stranger identity.
 // ---------------------------------------------------------------------------
@@ -2045,7 +2065,7 @@ async fn large_request_body_rejected() {
 async fn missing_authorization_returns_401() {
     let stranger_id = "uid-stranger-auth";
     let stranger_login = "auth-stranger@example.com";
-    let (app, _blob_dir) = make_full_app(MockWhoIs(Some(make_whois_resp(
+    let (app, _blob_dir) = make_full_app(MockTransport(Some(make_identity(
         stranger_id,
         stranger_login,
     ))));

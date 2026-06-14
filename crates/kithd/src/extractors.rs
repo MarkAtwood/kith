@@ -3,27 +3,25 @@ use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use kith_core::{Identity, Role};
+use kith_core::{FederationTransport, Identity, Role};
 use kith_events::EventSender;
 use kith_store::Store;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use crate::auth::WhoIsProvider;
-
 /// Shared application state injected into every request via axum State.
 ///
-/// Generic over `W` so that tests can substitute a `MockWhoIs` in place of
-/// `LocalApiClient` without dynamic dispatch (which would require object-safe
-/// async traits).  `Arc<W>` provides cheap clone and shared ownership.
+/// Generic over `T` so that tests can substitute a `MockTransport` in place of
+/// `TailscaleTransport` without dynamic dispatch (which would require object-safe
+/// async traits).  `Arc<T>` provides cheap clone and shared ownership.
 ///
 /// `Store` is wrapped in `std::sync::Mutex` because `rusqlite::Connection`
 /// is `!Sync` (contains `RefCell` internally).  The mutex is held only for
 /// the synchronous part of authorization (one SQLite lookup), never across
 /// an `.await`.  All JMAP handler crates (`kith-chat`, `kith-peer`) also
 /// use `std::sync::Mutex<Store>`, so a single `Arc` can be shared.
-pub struct AppState<W> {
-    pub ts: Arc<W>,
+pub struct AppState<T> {
+    pub transport: Arc<T>,
     pub store: Arc<Mutex<Store>>,
     pub owner_id: String,
     /// Tailscale `LoginName` of the mailbox owner (e.g. `alice@example.com`).
@@ -47,12 +45,12 @@ pub struct AppState<W> {
     pub blob_store: Arc<kith_attach::BlobStore>,
 }
 
-// Manual Clone so we don't require W: Clone -- Arc<W> is always Clone.
+// Manual Clone so we don't require T: Clone -- Arc<T> is always Clone.
 // `broadcast::Sender` is Clone (it is an Arc-wrapped channel handle).
-impl<W> Clone for AppState<W> {
+impl<T> Clone for AppState<T> {
     fn clone(&self) -> Self {
         AppState {
-            ts: Arc::clone(&self.ts),
+            transport: Arc::clone(&self.transport),
             store: Arc::clone(&self.store),
             owner_id: self.owner_id.clone(),
             owner_login: self.owner_login.clone(),
@@ -64,7 +62,7 @@ impl<W> Clone for AppState<W> {
     }
 }
 
-/// Verified caller: role and identity extracted from WhoIs on every request.
+/// Verified caller: role and identity extracted from the transport on every request.
 ///
 /// Handlers receive this by placing it as a parameter.  The extractor runs
 /// authorization once per request; handlers must not perform their own
@@ -75,46 +73,39 @@ pub struct Caller {
     pub identity: Identity,
 }
 
-impl<W> FromRequestParts<AppState<W>> for Caller
+impl<T> FromRequestParts<AppState<T>> for Caller
 where
-    W: WhoIsProvider + Send + Sync + 'static,
+    T: FederationTransport,
 {
     type Rejection = CallerRejection;
 
     async fn from_request_parts(
         parts: &mut Parts,
-        state: &AppState<W>,
+        state: &AppState<T>,
     ) -> Result<Self, Self::Rejection> {
         let ConnectInfo(addr) = ConnectInfo::<SocketAddr>::from_request_parts(parts, state)
             .await
             .map_err(|_| CallerRejection::Internal)?;
 
-        // WhoIs is async.  We must complete it before acquiring the store lock
-        // because `ContactStore<'_>` holds `&Connection` which is `!Send`, and
-        // holding a `!Send` value across `.await` would make this future `!Send`
-        // (violating the axum `FromRequestParts` contract).
+        // Identity lookup is async.  We must complete it before acquiring the
+        // store lock because `ContactStore<'_>` holds `&Connection` which is
+        // `!Send`, and holding a `!Send` value across `.await` would make this
+        // future `!Send` (violating the axum `FromRequestParts` contract).
         //
         // This replicates the logic of `authorize()` split into two phases:
-        //   Phase 1 (async): WhoIs lookup -> Identity
+        //   Phase 1 (async): identify_caller -> Identity
         //   Phase 2 (sync):  contacts check inside a lock guard scope
-        let who = state
-            .ts
-            .whois(addr)
+        let identity = state
+            .transport
+            .identify_caller(addr)
             .await
             .map_err(|_| CallerRejection::Internal)?;
-
-        let identity = Identity {
-            user_id: who.user_profile.id,
-            login_name: who.user_profile.login_name,
-            display_name: who.user_profile.display_name,
-            node_name: who.node.name,
-        };
 
         // Hold the lock only for the synchronous contacts check; drop it before
         // returning so concurrent requests can proceed.
         //
         // `ContactStore<'_>` holds `&Connection` which is `!Send`, so we must
-        // complete the async WhoIs call above before acquiring the lock -- holding
+        // complete the async identity call above before acquiring the lock -- holding
         // a `!Send` value across `.await` would make this future `!Send`.
         let role = {
             let store = state.store.lock().map_err(|_| CallerRejection::Internal)?;
@@ -168,39 +159,57 @@ mod tests {
     use axum::routing::get;
     use axum::Router;
     use kith_core::AuthError;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
     use tower::ServiceExt;
 
     // -----------------------------------------------------------------------
-    // Local test double -- same shape as the one in auth.rs tests but
-    // defined here independently so tests do not depend on private internals.
-    // `Some(response)` -> Ok; `None` -> Err(WhoIsFailed("test")).
+    // Local test double -- MockTransport implementing FederationTransport.
+    // `Some(identity)` -> Ok; `None` -> Err(WhoIsFailed("test")).
     // -----------------------------------------------------------------------
-    struct MockWhoIs(Option<WhoIsResponse>);
+    struct MockTransport(Option<Identity>);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
-            let result: Result<WhoIsResponse, AuthError> = match &self.0 {
-                Some(r) => Ok(r.clone()),
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            let result: Result<Identity, AuthError> = match &self.0 {
+                Some(id) => Ok(id.clone()),
                 None => Err(AuthError::WhoIsFailed("test".into())),
             };
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: "test-node".into(),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: "test-node".into(),
         }
     }
 
@@ -211,14 +220,14 @@ mod tests {
         (store, dir)
     }
 
-    fn make_state(whois: MockWhoIs, owner_id: &str) -> (AppState<MockWhoIs>, tempfile::TempDir) {
+    fn make_state(transport: MockTransport, owner_id: &str) -> (AppState<MockTransport>, tempfile::TempDir) {
         let store = Arc::new(std::sync::Mutex::new(
             Store::open_in_memory().expect("in-memory store"),
         ));
         let (events_tx, _events_rx) = kith_events::make_channel(64);
         let (blob_store, blob_dir) = make_blob_store();
         let state = AppState {
-            ts: Arc::new(whois),
+            transport: Arc::new(transport),
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
@@ -231,10 +240,10 @@ mod tests {
     }
 
     /// Build a test router: one GET "/" that returns the caller's role as a
-    /// plain text string.  Uses `AppState<MockWhoIs>` so no real tailscaled
+    /// plain text string.  Uses `AppState<MockTransport>` so no real tailscaled
     /// is needed.
-    fn make_app(whois: MockWhoIs, owner_id: &str) -> (Router, tempfile::TempDir) {
-        let (state, blob_dir) = make_state(whois, owner_id);
+    fn make_app(transport: MockTransport, owner_id: &str) -> (Router, tempfile::TempDir) {
+        let (state, blob_dir) = make_state(transport, owner_id);
         let router = Router::new()
             .route(
                 "/",
@@ -257,13 +266,13 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // extractor_owner_returns_caller_with_owner_role
-    // Oracle: AppState has owner_id "uid-owner"; WhoIs returns "uid-owner" ->
+    // Oracle: AppState has owner_id "uid-owner"; transport returns "uid-owner" ->
     //         Caller{ role: Owner }.  Confirmed by checking response body.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_owner_returns_caller_with_owner_role() {
         let (app, _blob_dir) = make_app(
-            MockWhoIs(Some(make_whois("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
 
@@ -282,13 +291,13 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // extractor_peer_returns_caller_with_peer_role
-    // Oracle: WhoIs returns "uid-bob" who is in contacts (unblocked) ->
+    // Oracle: transport returns "uid-bob" who is in contacts (unblocked) ->
     //         Caller{ role: Peer }.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_peer_returns_caller_with_peer_role() {
         let (state, _blob_dir) = make_state(
-            MockWhoIs(Some(make_whois("uid-bob", "bob@example.com"))),
+            MockTransport(Some(make_identity("uid-bob", "bob@example.com"))),
             "uid-owner",
         );
         add_contact(&state.store, "uid-bob", "bob@example.com");
@@ -316,13 +325,13 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // extractor_unknown_returns_401
-    // Oracle: WhoIs returns "uid-stranger" not in contacts -> 401.
+    // Oracle: transport returns "uid-stranger" not in contacts -> 401.
     //         Body must NOT contain the user_id (no PII leak).
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_unknown_returns_401() {
         let (app, _blob_dir) = make_app(
-            MockWhoIs(Some(make_whois("uid-stranger", "stranger@example.com"))),
+            MockTransport(Some(make_identity("uid-stranger", "stranger@example.com"))),
             "uid-owner",
         );
 
@@ -345,12 +354,12 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // extractor_whois_fail_returns_500
-    // Oracle: MockWhoIs(None) returns WhoIsFailed -> 500.
+    // Oracle: MockTransport(None) returns WhoIsFailed -> 500.
     //         Body must NOT contain the error detail string.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_whois_fail_returns_500() {
-        let (app, _blob_dir) = make_app(MockWhoIs(None), "uid-owner");
+        let (app, _blob_dir) = make_app(MockTransport(None), "uid-owner");
 
         let req = Request::builder().uri("/").body(Body::empty()).unwrap();
 
@@ -372,13 +381,13 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // extractor_blocked_returns_401
-    // Oracle: WhoIs returns "uid-bob" who IS in contacts but blocked=true -> 401.
+    // Oracle: transport returns "uid-bob" who IS in contacts but blocked=true -> 401.
     //         Verifies the extractor enforces the blocked flag, not just presence.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn extractor_blocked_returns_401() {
         let (state, _blob_dir) = make_state(
-            MockWhoIs(Some(make_whois("uid-bob", "bob@example.com"))),
+            MockTransport(Some(make_identity("uid-bob", "bob@example.com"))),
             "uid-owner",
         );
         // Add contact, then block them.
@@ -409,18 +418,20 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Verify AppState<LocalApiClient> compiles -- ensures the production type
-    // satisfies all bounds (WhoIsProvider, Send, Sync, 'static).
+    // Verify AppState<TailscaleTransport> compiles -- ensures the production type
+    // satisfies all bounds (FederationTransport).
     // This is a compile-time check only; the function is never called.
     // -----------------------------------------------------------------------
     #[allow(dead_code)]
     fn _assert_production_state_compiles() {
+        use crate::transport::TailscaleTransport;
         use kith_tslocal::LocalApiClient;
-        let _: fn() -> AppState<LocalApiClient> = || {
+        let _: fn() -> AppState<TailscaleTransport> = || {
             let (events_tx, _events_rx) = kith_events::make_channel(64);
             let blob_dir = std::path::PathBuf::from("/tmp/kithd-blob");
+            let client = Arc::new(LocalApiClient::new("/var/run/tailscale/tailscaled.sock"));
             AppState {
-                ts: Arc::new(LocalApiClient::new("/var/run/tailscale/tailscaled.sock")),
+                transport: Arc::new(TailscaleTransport::new(client)),
                 store: Arc::new(std::sync::Mutex::new(Store::open_in_memory().unwrap())),
                 owner_id: "uid".to_string(),
                 owner_login: String::new(),

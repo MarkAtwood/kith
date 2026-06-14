@@ -6,13 +6,13 @@ use hyper::Request;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
+use kith_core::FederationTransport;
 use kith_store::Store;
-use kith_tslocal::LocalApiClient;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, Error as TlsError, SignatureScheme};
 use serde::Deserialize;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Maximum response body accepted from a probe target (64 KiB).
@@ -20,9 +20,6 @@ const MAX_PROBE_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// Timeout for the entire probe round trip.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Maximum number of peer probes running concurrently per discovery round.
-const PROBE_CONCURRENCY: usize = 10;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -140,31 +137,6 @@ pub(crate) fn build_probe_client() -> Arc<
         .enable_http1()
         .build();
     Arc::new(Client::builder(TokioExecutor::new()).build(connector))
-}
-
-/// Process-wide singleton HTTPS client for discovery probes.
-///
-/// `OnceLock` initialises the client exactly once and returns a cheap
-/// `Arc::clone` on every subsequent call, avoiding a new `rustls::ClientConfig`
-/// on every discovery round.
-static PROBE_CLIENT: OnceLock<
-    Arc<
-        Client<
-            hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
-            Full<Bytes>,
-        >,
-    >,
-> = OnceLock::new();
-
-/// Return a reference-counted handle to the shared discovery probe client,
-/// building it on the first call.
-fn probe_https_client() -> Arc<
-    Client<
-        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
-        Full<Bytes>,
-    >,
-> {
-    Arc::clone(PROBE_CLIENT.get_or_init(build_probe_client))
 }
 
 /// Build the probe URL for a given IP and port.
@@ -328,13 +300,13 @@ pub fn extract_mailbox_host(api_url: &str) -> Option<String> {
 // Background discovery task
 // ---------------------------------------------------------------------------
 
-/// Spawn a background tokio task that periodically probes all tailnet peers
-/// for running kithd instances and upserts them as contacts.
+/// Spawn a background tokio task that periodically discovers peers via the
+/// transport and upserts them as contacts.
 ///
 /// The task is fire-and-forget: errors are logged and ignored; the task
 /// never terminates unless the process exits.
-pub fn spawn_discovery_task(
-    tslocal: Arc<LocalApiClient>,
+pub fn spawn_discovery_task<T: FederationTransport>(
+    transport: Arc<T>,
     store: Arc<Mutex<Store>>,
     port: u16,
     owner_user_id: String,
@@ -342,109 +314,33 @@ pub fn spawn_discovery_task(
 ) {
     tokio::spawn(async move {
         loop {
-            run_discovery_round(&tslocal, &store, port, &owner_user_id).await;
+            run_discovery_round(&*transport, &store, port, &owner_user_id).await;
             tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
         }
     });
 }
 
-async fn run_discovery_round(
-    tslocal: &LocalApiClient,
+async fn run_discovery_round<T: FederationTransport>(
+    transport: &T,
     store: &Arc<Mutex<Store>>,
     port: u16,
-    owner_user_id: &str,
+    _owner_user_id: &str,
 ) {
-    let status = match tslocal.status().await {
-        Ok(s) => s,
+    let peers = match transport.discover_peers(port).await {
+        Ok(p) => p,
         Err(e) => {
-            tracing::warn!("discovery: LocalAPI status failed: {e}");
+            tracing::warn!("discovery: {e}");
             return;
         }
     };
 
-    let peers = status.peer_nodes_excluding(owner_user_id);
     if peers.is_empty() {
-        tracing::debug!("discovery: no tailnet peers found");
+        tracing::debug!("discovery: no peers found");
         return;
     }
 
-    // Obtain the shared HTTPS client singleton.  The client is built once for
-    // the process lifetime; subsequent rounds get a cheap Arc::clone.
-    let probe_client = probe_https_client();
-
-    // Fan out probes concurrently — one task per peer, bounded by PROBE_CONCURRENCY.
-    // Each task tries the peer's IPs in order and returns as soon as one responds.
-    let sem = Arc::new(tokio::sync::Semaphore::new(PROBE_CONCURRENCY));
-    let mut join_set = tokio::task::JoinSet::new();
-
-    for peer in peers.into_iter().cloned() {
-        let sem = Arc::clone(&sem);
-        let client = Arc::clone(&probe_client);
-        join_set.spawn(async move {
-            let _permit = sem.acquire_owned().await.expect("semaphore never closed");
-            let mut session = None;
-            let mut responding_ip: Option<String> = None;
-            for ip in &peer.tailscale_ips {
-                if let Some(s) = probe_peer(&client, ip, port).await {
-                    session = Some(s);
-                    responding_ip = Some(ip.clone());
-                    break;
-                }
-            }
-            // Include the WhoIs-verified user_id so the outer loop can validate
-            // the session's claimed owner_user_id against Tailscale's identity.
-            // responding_ip is the Tailscale-verified IP that answered; mailbox_host
-            // is derived from it — not from the peer-supplied apiUrl — so a malicious
-            // peer cannot redirect outbound delivery to a different node.
-            (
-                peer.dns_name.clone(),
-                peer.user_id.clone(),
-                session,
-                responding_ip,
-            )
-        });
-    }
-
     let mut found = 0usize;
-    while let Some(res) = join_set.join_next().await {
-        let (dns_name, whois_user_id, session_opt, responding_ip) = match res {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("discovery: probe task panicked: {e}");
-                continue;
-            }
-        };
-
-        let Some(ps) = session_opt else {
-            tracing::debug!("discovery: no kithd found for peer {dns_name}");
-            continue;
-        };
-
-        // responding_ip is always Some when session is Some (they are set together).
-        let Some(ip) = responding_ip else {
-            tracing::warn!("discovery: internal: session present but responding_ip missing for {dns_name}; skipping");
-            continue;
-        };
-
-        // Cross-validate: the session's claimed owner_user_id must match the
-        // Tailscale-verified user_id for this peer.  A malicious node could
-        // serve any owner_user_id in its session response; accepting it would
-        // let an attacker redirect outbound delivery for the spoofed user.
-        if ps.owner_user_id != whois_user_id {
-            tracing::warn!(
-                "discovery: peer {dns_name} claims owner_user_id={} but Tailscale says {}; skipping",
-                ps.owner_user_id,
-                whois_user_id,
-            );
-            continue;
-        }
-
-        // Derive mailbox_host from the Tailscale-verified IP and the port we
-        // connected to — never from the peer-supplied apiUrl.  This closes the
-        // redirect attack: a peer cannot steer outbound delivery to a different
-        // node by returning a fabricated apiUrl hostname.
-        let mailbox_host = build_mailbox_host(&ip, port);
-
+    for peer in peers {
         let now_unix = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -454,10 +350,10 @@ async fn run_discovery_round(
             let guard = store.lock();
             match guard {
                 Ok(g) => g.contacts().upsert_discovered_contact(
-                    &ps.owner_user_id,
-                    &ps.owner_login,
-                    &mailbox_host,
-                    ps.owner_display_name.as_deref(),
+                    &peer.user_id,
+                    &peer.login_name,
+                    &peer.mailbox_host,
+                    peer.display_name.as_deref(),
                     now_unix,
                 ),
                 Err(_) => {
@@ -470,15 +366,15 @@ async fn run_discovery_round(
         match result {
             Ok(()) => {
                 found += 1;
-                tracing::debug!("discovery: upserted contact uid={}", ps.owner_user_id);
+                tracing::debug!("discovery: upserted contact uid={}", peer.user_id);
             }
             Err(e) => {
-                tracing::warn!("discovery: upsert failed for uid={}: {e}", ps.owner_user_id);
+                tracing::warn!("discovery: upsert failed for uid={}: {e}", peer.user_id);
             }
         }
     }
 
-    tracing::info!("discovery: round complete, {found} kithd peer(s) found");
+    tracing::info!("discovery: round complete, {found} peer(s) found");
 }
 
 // ---------------------------------------------------------------------------

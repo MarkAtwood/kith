@@ -20,8 +20,8 @@ use axum::Router;
 use kith_core::AuthError;
 use kith_events::make_channel;
 use kith_store::Store;
-use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
-use kithd::auth::WhoIsProvider;
+use kith_core::{FederationTransport, Identity};
+
 use kithd::build_app;
 use kithd::build_dispatcher;
 use kithd::extractors::AppState;
@@ -33,7 +33,7 @@ use tower::ServiceExt;
 // Constants — oracle values independent of the implementation
 // ---------------------------------------------------------------------------
 
-/// The owner identity used by MockWhoIs so that session_handler (on
+/// The owner identity used by MockTransport so that session_handler (on
 /// /.well-known/jmap) classifies the caller as Owner and returns 200.
 const OWNER_ID: &str = "uid-owner-static";
 const OWNER_LOGIN: &str = "owner@static.example.com";
@@ -47,31 +47,51 @@ const MOCK_ADDR: SocketAddr = SocketAddr::new(
 );
 
 // ---------------------------------------------------------------------------
-// Test double: MockWhoIs
+// Test double: MockTransport
 // ---------------------------------------------------------------------------
 
-struct MockWhoIs(WhoIsResponse);
+struct MockTransport(Identity);
 
-impl WhoIsProvider for MockWhoIs {
-    fn whois(
+impl FederationTransport for MockTransport {
+    fn identify_caller(
         &self,
         _addr: SocketAddr,
-    ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+    ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
         let result = Ok(self.0.clone());
         async move { result }
     }
+
+    fn discover_peers(
+        &self,
+        _port: u16,
+    ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+    {
+        async { Ok(vec![]) }
+    }
+
+    fn local_owner_id(
+        &self,
+    ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+        async { Ok("test-owner".into()) }
+    }
+
+    fn local_addresses(
+        &self,
+    ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+        async { Ok(vec![]) }
+    }
+
+    fn is_valid_host(&self, _host: &str) -> bool {
+        true
+    }
 }
 
-fn make_owner_whois() -> MockWhoIs {
-    MockWhoIs(WhoIsResponse {
-        node: WhoIsNode {
-            name: "owner-kith.tail12345.ts.net".into(),
-        },
-        user_profile: UserProfile {
-            id: OWNER_ID.into(),
-            login_name: OWNER_LOGIN.into(),
-            display_name: None,
-        },
+fn make_owner_transport() -> MockTransport {
+    MockTransport(Identity {
+        user_id: OWNER_ID.into(),
+        login_name: OWNER_LOGIN.into(),
+        display_name: None,
+        node_name: "owner-kith.tail12345.ts.net".into(),
     })
 }
 
@@ -98,7 +118,7 @@ fn make_app() -> (Router, tempfile::TempDir) {
         OWNER_ID.to_string(),
     ));
     let state = AppState {
-        ts: Arc::new(make_owner_whois()),
+        transport: Arc::new(make_owner_transport()),
         store,
         owner_id: OWNER_ID.to_string(),
         owner_login: OWNER_LOGIN.to_string(),
@@ -387,7 +407,7 @@ async fn jmap_session_not_shadowed_by_static_handler() {
     let resp = app.oneshot(req).await.expect("oneshot must not fail");
 
     // Oracle: RFC 8620 §2 — session endpoint always returns 200 for
-    // authenticated callers.  MockWhoIs returns the owner identity so
+    // authenticated callers.  MockTransport returns the owner identity so
     // the Caller extractor classifies this request as Owner.
     assert_eq!(
         resp.status(),

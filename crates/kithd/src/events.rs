@@ -25,7 +25,7 @@ fn parse_state_counter(s: &str) -> Option<i64> {
     s.strip_prefix("s-").and_then(|n| n.parse().ok())
 }
 
-use crate::auth::WhoIsProvider;
+use kith_core::FederationTransport;
 use crate::extractors::{AppState, Caller};
 
 /// Query parameters accepted by the EventSource endpoint.
@@ -127,9 +127,9 @@ impl TypeFilter {
 ///
 /// If the broadcast receiver falls behind (messages are dropped), the gap
 /// is logged and skipped; the client must resync via `<Type>/changes`.
-pub async fn events_handler<W: WhoIsProvider + Send + Sync + 'static>(
+pub async fn events_handler<T: FederationTransport>(
     caller: Caller,
-    State(state): State<AppState<W>>,
+    State(state): State<AppState<T>>,
     Query(params): Query<EventsQuery>,
     headers: HeaderMap,
 ) -> Response {
@@ -516,39 +516,58 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::routing::get;
     use axum::Router;
-    use kith_core::{AuthError, StateChange};
+    use kith_core::{AuthError, FederationTransport, Identity, StateChange};
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tower::ServiceExt;
 
-    struct MockWhoIs(Option<WhoIsResponse>);
+    struct MockTransport(Option<Identity>);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
-            let result: Result<WhoIsResponse, AuthError> = match &self.0 {
-                Some(r) => Ok(r.clone()),
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
+            let result: Result<Identity, AuthError> = match &self.0 {
+                Some(id) => Ok(id.clone()),
                 None => Err(AuthError::WhoIsFailed("test".into())),
             };
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    fn make_whois_resp(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: "test-node".into(),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: "test-node".into(),
         }
     }
 
@@ -562,13 +581,13 @@ mod tests {
         store
     }
 
-    fn make_state(whois: MockWhoIs, owner_id: &str) -> AppState<MockWhoIs> {
+    fn make_state(transport: MockTransport, owner_id: &str) -> AppState<MockTransport> {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store"),
         ));
         let (events_tx, _events_rx) = make_channel(64);
         AppState {
-            ts: Arc::new(whois),
+            transport: Arc::new(transport),
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
@@ -579,9 +598,9 @@ mod tests {
         }
     }
 
-    fn make_app(state: AppState<MockWhoIs>) -> Router {
+    fn make_app(state: AppState<MockTransport>) -> Router {
         Router::new()
-            .route("/jmap/events", get(events_handler::<MockWhoIs>))
+            .route("/jmap/events", get(events_handler::<MockTransport>))
             .with_state(state)
             .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 9999))))
     }
@@ -594,7 +613,7 @@ mod tests {
     #[tokio::test]
     async fn events_peer_forbidden() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-bob", "bob@example.com"))),
+            MockTransport(Some(make_identity("uid-bob", "bob@example.com"))),
             "uid-owner",
         );
         // Register uid-bob as a permitted contact so they get Role::Peer (not 401).
@@ -632,7 +651,7 @@ mod tests {
     #[tokio::test]
     async fn events_bad_closeafter_rejected() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let app = make_app(state);
@@ -655,7 +674,7 @@ mod tests {
     #[tokio::test]
     async fn events_bad_type_rejected() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let app = make_app(state);
@@ -679,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn events_owner_gets_sse_stream() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let app = make_app(state);
@@ -709,7 +728,7 @@ mod tests {
     #[tokio::test]
     async fn events_closeafter_state_delivers_one_event() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         // Send a StateChange before the handler subscribes; the handler will
@@ -762,7 +781,7 @@ mod tests {
     #[tokio::test]
     async fn events_type_filter_drops_non_matching() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -817,7 +836,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_invalid_format_ignored() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -859,7 +878,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_too_long_ignored() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -908,7 +927,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_replay_on_state_advance() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
 
@@ -962,7 +981,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_no_replay_when_client_ahead() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1014,7 +1033,7 @@ mod tests {
     #[tokio::test]
     async fn events_two_clients_both_receive_broadcast() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1092,7 +1111,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_replays_at_equal_counter() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
 
@@ -1162,7 +1181,7 @@ mod tests {
     #[tokio::test]
     async fn coalesce_message_and_chat_produce_one_sse_frame() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1232,7 +1251,7 @@ mod tests {
     #[tokio::test]
     async fn coalesce_single_send_produces_one_sse_frame() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1296,7 +1315,7 @@ mod tests {
     #[tokio::test]
     async fn coalesce_type_filter_excludes_chat_from_coalesced_frame() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1366,7 +1385,7 @@ mod tests {
     async fn events_stranger_gets_401() {
         // Stranger is not the owner and NOT in contacts.
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp(
+            MockTransport(Some(make_identity(
                 "uid-stranger",
                 "stranger@example.com",
             ))),
@@ -1395,7 +1414,7 @@ mod tests {
     #[tokio::test]
     async fn events_last_event_id_types_filter_applies_to_replay() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
 
@@ -1457,7 +1476,7 @@ mod tests {
     #[tokio::test]
     async fn events_coalesce_multi_type_batch() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1548,7 +1567,7 @@ mod tests {
     #[tokio::test]
     async fn ping_event_is_first_on_stream() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1610,7 +1629,7 @@ mod tests {
     #[tokio::test]
     async fn ping_zero_treated_as_none() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1656,7 +1675,7 @@ mod tests {
     #[tokio::test]
     async fn ping_over_300_clamped() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1728,7 +1747,7 @@ mod tests {
     #[tokio::test]
     async fn events_coalescing_task_exits_on_disconnect_before_any_broadcast() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();
@@ -1805,7 +1824,7 @@ mod tests {
     #[tokio::test]
     async fn events_coalescing_task_exits_via_select_closed_arm() {
         let state = make_state(
-            MockWhoIs(Some(make_whois_resp("uid-owner", "owner@example.com"))),
+            MockTransport(Some(make_identity("uid-owner", "owner@example.com"))),
             "uid-owner",
         );
         let tx = state.events_tx.clone();

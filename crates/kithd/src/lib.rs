@@ -18,6 +18,7 @@ pub fn allow_loopback_for_tests() {
 pub mod signal;
 pub mod static_files;
 pub mod tls;
+pub mod transport;
 
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Path};
@@ -50,7 +51,7 @@ use std::sync::{Arc, Mutex};
 use tokio_util::io::ReaderStream;
 use tower_http::trace::TraceLayer;
 
-use auth::WhoIsProvider;
+use kith_core::FederationTransport;
 
 /// Base URL used in Session object URL fields.
 ///
@@ -109,8 +110,8 @@ pub fn combined_state(store: &Store) -> String {
 }
 
 /// `GET /.well-known/jmap` — returns a JMAP Session object for the caller.
-pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
-    State(app): State<AppState<W>>,
+pub async fn session_handler<T: FederationTransport>(
+    State(app): State<AppState<T>>,
     caller: Caller,
 ) -> impl axum::response::IntoResponse {
     let state_str = match app.store.lock() {
@@ -137,8 +138,8 @@ pub async fn session_handler<W: WhoIsProvider + Send + Sync + 'static>(
 /// The verified caller identity is passed to the dispatcher as a typed
 /// parameter and forwarded directly to peer-role handlers (`Peer/deliver`,
 /// `Peer/receipt`) without JSON injection.
-pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
-    State(app): State<AppState<W>>,
+pub async fn jmap_handler<T: FederationTransport>(
+    State(app): State<AppState<T>>,
     caller: Caller,
     Json(body): Json<serde_json::Value>,
 ) -> impl axum::response::IntoResponse {
@@ -192,8 +193,8 @@ pub async fn jmap_handler<W: WhoIsProvider + Send + Sync + 'static>(
 /// Content-Disposition is set to `attachment; filename="<sanitized_name>"`.
 /// The filename is the last path segment from the URL, stripped of path
 /// separators and null bytes and clamped to 255 characters.
-pub async fn blob_download_handler<W: WhoIsProvider + Send + Sync + 'static>(
-    State(state): State<AppState<W>>,
+pub async fn blob_download_handler<T: FederationTransport>(
+    State(state): State<AppState<T>>,
     caller: Caller,
     Path((account_id, blob_id, name)): Path<(String, String, String)>,
 ) -> impl IntoResponse {
@@ -495,26 +496,26 @@ pub fn build_dispatcher(
 
 /// Build the axum router for kithd.
 ///
-/// Generic over `W` so tests can inject a `MockWhoIs` instead of `LocalApiClient`.
-/// In production, `W = LocalApiClient`.
-pub fn build_app<W: WhoIsProvider + Send + Sync + 'static>(state: AppState<W>) -> Router {
+/// Generic over `T` so tests can inject a `MockTransport` instead of `TailscaleTransport`.
+/// In production, `T = TailscaleTransport`.
+pub fn build_app<T: FederationTransport>(state: AppState<T>) -> Router {
     Router::new()
-        .route("/.well-known/jmap", get(session_handler::<W>))
+        .route("/.well-known/jmap", get(session_handler::<T>))
         .route(
             "/jmap/api",
             // Enforce the 10 MiB max_size_request limit advertised in the session.
             // Applied at the route level so the blob upload endpoint (which has its
             // own 100 MiB cap enforced in the handler) is not affected.
-            post(jmap_handler::<W>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+            post(jmap_handler::<T>).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
-        .route("/jmap/events", get(events::events_handler::<W>))
+        .route("/jmap/events", get(events::events_handler::<T>))
         .route(
             "/jmap/upload/{account_id}",
-            post(blob::blob_upload_handler::<W>),
+            post(blob::blob_upload_handler::<T>),
         )
         .route(
             "/jmap/download/{account_id}/{blob_id}/{name}",
-            get(blob_download_handler::<W>),
+            get(blob_download_handler::<T>),
         )
         .fallback(static_files::static_handler)
         .layer(TraceLayer::new_for_http())
@@ -532,11 +533,11 @@ pub fn build_app<W: WhoIsProvider + Send + Sync + 'static>(state: AppState<W>) -
 ///
 /// Only available in test builds (`#[cfg(any(test, feature = "test-utils"))]`).
 #[cfg(any(test, feature = "test-utils"))]
-pub async fn spawn_test_listener<W>(
-    state: AppState<W>,
+pub async fn spawn_test_listener<T>(
+    state: AppState<T>,
 ) -> Result<(std::net::SocketAddr, Vec<u8>, tokio::task::JoinHandle<()>), Box<dyn std::error::Error>>
 where
-    W: crate::auth::WhoIsProvider + Send + Sync + 'static,
+    T: FederationTransport,
 {
     use hyper_util::rt::{TokioExecutor, TokioIo};
     use hyper_util::server::conn::auto;
@@ -695,10 +696,9 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::Router;
     use kith_attach::BlobStore;
-    use kith_core::{auth::Role, AuthError, Identity, JmapRequest};
+    use kith_core::{auth::Role, AuthError, FederationTransport, Identity, JmapRequest};
     use kith_events::make_channel;
     use kith_store::Store;
-    use kith_tslocal::{UserProfile, WhoIsNode, WhoIsResponse};
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use tower::ServiceExt;
@@ -712,31 +712,50 @@ mod tests {
         }
     }
 
-    use crate::auth::WhoIsProvider;
     use crate::extractors::AppState;
 
-    struct MockWhoIs(WhoIsResponse);
+    struct MockTransport(Identity);
 
-    impl WhoIsProvider for MockWhoIs {
-        fn whois(
+    impl FederationTransport for MockTransport {
+        fn identify_caller(
             &self,
             _addr: SocketAddr,
-        ) -> impl std::future::Future<Output = Result<WhoIsResponse, AuthError>> + Send {
+        ) -> impl std::future::Future<Output = Result<Identity, AuthError>> + Send {
             let result = Ok(self.0.clone());
             async move { result }
         }
+
+        fn discover_peers(
+            &self,
+            _port: u16,
+        ) -> impl std::future::Future<Output = Result<Vec<kith_core::DiscoveredPeer>, AuthError>> + Send
+        {
+            async { Ok(vec![]) }
+        }
+
+        fn local_owner_id(
+            &self,
+        ) -> impl std::future::Future<Output = Result<String, AuthError>> + Send {
+            async { Ok("test-owner".into()) }
+        }
+
+        fn local_addresses(
+            &self,
+        ) -> impl std::future::Future<Output = Result<Vec<String>, AuthError>> + Send {
+            async { Ok(vec![]) }
+        }
+
+        fn is_valid_host(&self, _host: &str) -> bool {
+            true
+        }
     }
 
-    fn make_whois(id: &str, login: &str) -> WhoIsResponse {
-        WhoIsResponse {
-            node: WhoIsNode {
-                name: format!("{id}-kith.tail.ts.net"),
-            },
-            user_profile: UserProfile {
-                id: id.into(),
-                login_name: login.into(),
-                display_name: None,
-            },
+    fn make_identity(id: &str, login: &str) -> Identity {
+        Identity {
+            user_id: id.into(),
+            login_name: login.into(),
+            display_name: None,
+            node_name: format!("{id}-kith.tail.ts.net"),
         }
     }
 
@@ -749,7 +768,7 @@ mod tests {
 
     fn make_app_for_test(
         owner_id: &str,
-        whois: MockWhoIs,
+        transport: MockTransport,
     ) -> (Router, Arc<BlobStore>, tempfile::TempDir) {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
@@ -762,7 +781,7 @@ mod tests {
             owner_id.to_string(),
         ));
         let state = AppState {
-            ts: Arc::new(whois),
+            transport: Arc::new(transport),
             store,
             owner_id: owner_id.to_string(),
             owner_login: format!("{owner_id}@example.com"),
@@ -874,7 +893,7 @@ mod tests {
         const OWNER_LOGIN: &str = "owner@dl-aself.example.com";
 
         let (app, blob_store, _blob_dir) =
-            make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+            make_app_for_test(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
 
         // Write a known blob directly — independent of the upload handler path.
         let blob_id = BlobStore::generate_blob_id();
@@ -918,7 +937,7 @@ mod tests {
         const OWNER_LOGIN: &str = "owner@dl-badacct.example.com";
 
         let (app, blob_store, _blob_dir) =
-            make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+            make_app_for_test(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
 
         let blob_id = BlobStore::generate_blob_id();
         blob_store
@@ -955,7 +974,7 @@ mod tests {
         const OWNER_LOGIN: &str = "owner@dl-literal.example.com";
 
         let (app, blob_store, _blob_dir) =
-            make_app_for_test(OWNER_ID, MockWhoIs(make_whois(OWNER_ID, OWNER_LOGIN)));
+            make_app_for_test(OWNER_ID, MockTransport(make_identity(OWNER_ID, OWNER_LOGIN)));
 
         let blob_id = BlobStore::generate_blob_id();
         let payload = b"literal-owner-id-download";

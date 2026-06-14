@@ -2,6 +2,7 @@
 pub mod auth;
 pub mod error;
 pub mod events;
+pub mod transport;
 
 // ── Re-exports from jmap-types (RFC 8620 primitives) ──
 pub use jmap_types::{
@@ -27,6 +28,7 @@ pub use jmap_chat_types::space_set::{
 pub use auth::{Identity, Role};
 pub use error::{AuthError, KithError};
 pub use events::{parse_sse_frame, SseFrame, StateChange};
+pub use transport::{DiscoveredPeer, FederationTransport};
 
 // ── Constants ──
 

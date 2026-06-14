@@ -8,20 +8,20 @@ pub enum Role {
     Peer,
 }
 
-/// Verified caller identity from Tailscale LocalAPI WhoIs.
+/// Verified caller identity from the federation transport layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Identity {
-    /// Opaque stable key from Tailscale identity provider.
+    /// Opaque stable key from the transport's identity provider.
     /// Never parse or assume format. Compare with == only.
     pub user_id: String,
     /// Email-shaped login (e.g. "alice@example.com") or bare username.
-    /// May be empty on Headscale without OIDC.
+    /// May be empty depending on the transport.
     pub login_name: String,
     /// User-visible display name. May be absent or empty.
     pub display_name: Option<String>,
-    /// MagicDNS hostname of the caller's Tailscale node. From WhoIs node.name.
-    /// Used to bootstrap peer_mailbox_host in ContactStore. May be empty on
-    /// Headscale without node names configured; callers must handle empty.
+    /// Network hostname of the caller's node (e.g. MagicDNS FQDN on Tailscale).
+    /// Used to bootstrap peer_mailbox_host in ContactStore. May be empty;
+    /// callers must handle empty.
     pub node_name: String,
 }
 
