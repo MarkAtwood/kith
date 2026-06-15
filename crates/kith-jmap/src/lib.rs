@@ -82,7 +82,7 @@ pub fn error_status(err: &JmapError) -> StatusCode {
 ///
 /// Used when the error occurs before method dispatch (e.g., parse failure).
 /// Derives HTTP status from the error type via `error_status`.
-pub struct RequestError(pub StatusCode, pub JmapError);
+pub struct RequestError(pub(crate) StatusCode, pub(crate) JmapError);
 
 impl IntoResponse for RequestError {
     fn into_response(self) -> Response {
