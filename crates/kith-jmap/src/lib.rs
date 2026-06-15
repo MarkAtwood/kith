@@ -121,12 +121,22 @@ pub struct KithChatCapability {
     pub supported_body_types: Vec<String>,
 }
 
+/// Empty capability object for `urn:ietf:params:jmap:cid`.
+///
+/// Per draft-atwood-jmap-cid-00 §3: the value of this capability is an
+/// object with no defined properties.  Advertising it signals that upload
+/// responses include `sha256` and that blob content is stored as-is.
+#[derive(Debug, Clone, Serialize)]
+pub struct CidCapability {}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Capabilities {
     #[serde(rename = "urn:ietf:params:jmap:core")]
     pub core: CoreCapability,
     #[serde(rename = "urn:ietf:params:jmap:chat")]
     pub kith_chat: KithChatCapability,
+    #[serde(rename = "urn:ietf:params:jmap:cid")]
+    pub cid: CidCapability,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -228,6 +238,7 @@ pub fn build_session(
                     "application/jmap-chat-rich".to_string(),
                 ],
             },
+            cid: CidCapability {},
         },
         accounts,
         primary_accounts,
@@ -903,6 +914,39 @@ mod tests {
         let core_caps = &json["capabilities"]["urn:ietf:params:jmap:core"];
         assert_eq!(core_caps["maxCallsInRequest"], 16);
         assert_eq!(core_caps["maxSizeRequest"], 10_485_760_u64);
+    }
+
+    // --- CID capability test ---
+    // Oracle: draft-atwood-jmap-cid-00 §3 — the Session must advertise
+    // "urn:ietf:params:jmap:cid" as an empty object when CID is supported.
+
+    #[test]
+    fn session_advertises_cid_capability() {
+        let identity = kith_core::Identity {
+            user_id: "uid-x".to_string(),
+            login_name: "alice@example.com".to_string(),
+            display_name: None,
+            node_name: "x-node.tail12345.ts.net".to_string(),
+        };
+        let session = build_session(
+            kith_core::Role::Owner,
+            &identity,
+            "https://kith.ts.net",
+            "s-1".to_string(),
+            "uid-x".to_string(),
+            "alice@example.com".to_string(),
+        );
+        let json = serde_json::to_value(&session).expect("Session must serialize");
+        let cid = &json["capabilities"]["urn:ietf:params:jmap:cid"];
+        assert!(
+            cid.is_object(),
+            "urn:ietf:params:jmap:cid must be present as an object, got: {cid}"
+        );
+        assert_eq!(
+            cid.as_object().unwrap().len(),
+            0,
+            "CID capability object must be empty per spec"
+        );
     }
 
     // --- Owner identity in Session tests ---
