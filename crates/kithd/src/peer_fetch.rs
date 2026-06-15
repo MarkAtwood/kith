@@ -210,6 +210,7 @@ fn percent_encode_unreserved(s: &str) -> String {
             }
             _ => {
                 encoded.push('%');
+                // Infallible: (b >> 4) and (b & 0xf) are always 0..=15, valid for radix 16.
                 encoded.push(
                     char::from_digit((b >> 4) as u32, 16)
                         .unwrap()

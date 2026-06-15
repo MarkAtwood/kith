@@ -177,6 +177,7 @@ pub async fn jmap_handler<T: FederationTransport>(
         .body(axum::body::Body::from(
             serde_json::to_string(&response).expect("JmapResponse always serializes"),
         ))
+        // Infallible: no conflicting headers or status set on this builder.
         .unwrap()
 }
 
@@ -352,6 +353,7 @@ pub async fn blob_download_handler<T: FederationTransport>(
     if let Some(len) = file_len {
         builder = builder.header(header::CONTENT_LENGTH, len);
     }
+    // Infallible: no conflicting headers or status set on this builder.
     builder.body(body).unwrap()
 }
 
@@ -493,7 +495,7 @@ pub fn build_dispatcher(
     );
     d.register_peer(
         "Peer/receipt",
-        Box::new(ReceiptHandler::new(Arc::clone(&store), owner_id.clone())),
+        Box::new(ReceiptHandler::new(Arc::clone(&store), owner_id)),
     );
 
     d
