@@ -689,25 +689,27 @@ pub enum PeerDeliveryError {
     InvalidResponse,
 }
 
-/// Returns true if this delivery error is permanent — retrying will never succeed.
-///
-/// 4xx HTTP responses (except 429) are client errors the peer controls; the peer
-/// has explicitly refused the request and will keep refusing it.  `PeerRejected`
-/// means the peer parsed the request and returned a JMAP-level error type — also
-/// permanent.
-///
-/// 429 (Too Many Requests) is explicitly excluded: it is a transient rate-limit
-/// condition and must go through the normal exponential-backoff retry path.
-///
-/// 5xx, network, and timeout errors are transient and should go through the normal
-/// exponential-backoff retry path.
-fn is_permanent_delivery_error(err: &PeerDeliveryError) -> bool {
-    match err {
-        PeerDeliveryError::PeerRejected(_) => true,
-        // 429 is rate-limiting: transient, must retry with backoff.
-        PeerDeliveryError::HttpError(429) => false,
-        PeerDeliveryError::HttpError(400..=499) => true,
-        _ => false,
+impl PeerDeliveryError {
+    /// Returns true if this delivery error is permanent — retrying will never succeed.
+    ///
+    /// 4xx HTTP responses (except 429) are client errors the peer controls; the peer
+    /// has explicitly refused the request and will keep refusing it.  `PeerRejected`
+    /// means the peer parsed the request and returned a JMAP-level error type — also
+    /// permanent.
+    ///
+    /// 429 (Too Many Requests) is explicitly excluded: it is a transient rate-limit
+    /// condition and must go through the normal exponential-backoff retry path.
+    ///
+    /// 5xx, network, and timeout errors are transient and should go through the normal
+    /// exponential-backoff retry path.
+    pub fn is_permanent(&self) -> bool {
+        match self {
+            PeerDeliveryError::PeerRejected(_) => true,
+            // 429 is rate-limiting: transient, must retry with backoff.
+            PeerDeliveryError::HttpError(429) => false,
+            PeerDeliveryError::HttpError(400..=499) => true,
+            _ => false,
+        }
     }
 }
 
@@ -1642,7 +1644,7 @@ pub async fn outbox_tick<C: DeliverClient>(
                 }
                 Err(err) => {
                     if let Ok(guard) = store.lock() {
-                        if is_permanent_delivery_error(&err) {
+                        if err.is_permanent() {
                             // Permanent rejection (4xx or explicit JMAP error) — no point retrying.
                             if let Err(e) = guard.outbox().mark_failed(&entry, &err.to_string()) {
                                 tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
@@ -1742,7 +1744,7 @@ pub async fn outbox_tick<C: DeliverClient>(
             }
             Err(err) => {
                 if let Ok(guard) = store.lock() {
-                    if is_permanent_delivery_error(&err) {
+                    if err.is_permanent() {
                         // Permanent rejection (4xx or explicit JMAP error) — no point retrying.
                         if let Err(e) = guard.outbox().mark_failed(&entry, &err.to_string()) {
                             tracing::warn!(msg_id = %entry.message_id, "outbox: mark_failed error: {e}");
