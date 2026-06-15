@@ -42,7 +42,7 @@ const OUTBOX_POLL_INTERVAL_SECS: u64 = 30;
 
 /// Wire args for the `Peer/deliver` JMAP method.
 #[derive(Debug, Deserialize)]
-pub struct PeerDeliverArgs {
+pub(crate) struct PeerDeliverArgs {
     #[serde(rename = "accountId")]
     pub account_id: String,
     pub message: DeliverMessageArgs,
@@ -50,7 +50,7 @@ pub struct PeerDeliverArgs {
 
 /// Attachment metadata as received in the Peer/deliver wire format.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct AttachmentArg {
+pub(crate) struct AttachmentArg {
     #[serde(rename = "blobId")]
     pub blob_id: String,
     pub filename: String,
@@ -63,7 +63,7 @@ pub struct AttachmentArg {
 /// Broadcast mention metadata as received in the Peer/deliver wire format.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BroadcastMentionArg {
+pub(crate) struct BroadcastMentionArg {
     pub scope: String,
     pub offset: u64,
     pub length: u64,
@@ -71,7 +71,7 @@ pub struct BroadcastMentionArg {
 
 /// An action button attached to a Peer/deliver message.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ActionArg {
+pub(crate) struct ActionArg {
     #[serde(rename = "type")]
     pub action_type: String,
     pub uri: String,
@@ -85,7 +85,7 @@ pub struct ActionArg {
 
 /// The inner message object inside a `Peer/deliver` call.
 #[derive(Debug, Deserialize)]
-pub struct DeliverMessageArgs {
+pub(crate) struct DeliverMessageArgs {
     pub id: String,
     #[serde(rename = "chatId")]
     pub chat_id: String,
@@ -493,7 +493,7 @@ pub enum ReceiptKind {
 /// Arguments for `Peer/receipt`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PeerReceiptArgs {
+pub(crate) struct PeerReceiptArgs {
     pub account_id: String,
     pub message_id: String,
     pub kind: ReceiptKind,
