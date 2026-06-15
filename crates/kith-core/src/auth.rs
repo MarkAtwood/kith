@@ -42,6 +42,12 @@ impl Identity {
     }
 }
 
+impl std::fmt::Display for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.display())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
