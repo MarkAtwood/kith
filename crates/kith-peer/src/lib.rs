@@ -481,13 +481,21 @@ impl PeerJmapHandler for DeliverHandler {
 // Peer/receipt — inbound handler
 // ---------------------------------------------------------------------------
 
+/// The kind of receipt a peer is reporting.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReceiptKind {
+    Delivered,
+    Read,
+}
+
 /// Arguments for `Peer/receipt`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeerReceiptArgs {
     pub account_id: String,
     pub message_id: String,
-    pub kind: String,
+    pub kind: ReceiptKind,
     /// Peer-supplied timestamp for when the event occurred.
     ///
     /// Validated as RFC 3339 at the boundary and stored as `delivered_at` /
@@ -537,14 +545,6 @@ impl PeerJmapHandler for ReceiptHandler {
             // RFC 8620 §5.1: accountId must match the server's own account.
             if parsed.account_id != "a-self" {
                 return Err(JmapError::account_not_found());
-            }
-
-            // Step c: validate kind.
-            if parsed.kind != "delivered" && parsed.kind != "read" {
-                return Err(JmapError::invalid_arguments(format!(
-                    "kind must be 'delivered' or 'read', got '{}'",
-                    parsed.kind
-                )));
             }
 
             // Step c2: validate and parse at — this is the timestamp the peer
@@ -629,8 +629,8 @@ impl PeerJmapHandler for ReceiptHandler {
             }
 
             // Steps j-k: apply the state update.
-            match parsed.kind.as_str() {
-                "delivered" => {
+            match parsed.kind {
+                ReceiptKind::Delivered => {
                     guard
                         .messages()
                         .update_delivery_state(
@@ -643,7 +643,7 @@ impl PeerJmapHandler for ReceiptHandler {
                             JmapError::server_fail("internal error")
                         })?;
                 }
-                "read" => {
+                ReceiptKind::Read => {
                     guard
                         .messages()
                         .update_read_at(&parsed.message_id, at_unix)
@@ -652,8 +652,6 @@ impl PeerJmapHandler for ReceiptHandler {
                             JmapError::server_fail("internal error")
                         })?;
                 }
-                // Validated above; this arm is unreachable.
-                _ => unreachable!("kind already validated to be 'delivered' or 'read'"),
             }
 
             // Step k: release lock (guard drops here) and return success.
