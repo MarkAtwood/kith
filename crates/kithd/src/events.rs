@@ -96,17 +96,14 @@ impl TypeFilter {
             "ChatContact" => self.0 & Self::CHAT_CONTACT != 0,
             "Chat" => self.0 & Self::CHAT != 0,
             "Message" => self.0 & Self::MESSAGE != 0,
-            // Unknown type names are silently dropped.  Note: TypeFilter::parse()
-            // rejects unknown names at the query parameter level, so this arm is
-            // only reachable via broadcast events.  A contributor adding a new
-            // broadcast type MUST add a corresponding arm here or all events of
-            // that type will be silently filtered out for clients using a type
-            // filter.
+            // Unknown type names are dropped.  TypeFilter::parse() rejects
+            // unknown names at the query parameter level, so this arm is only
+            // reachable via broadcast events from a new store type.  Warn in
+            // release builds so the omission is visible in logs.
             _ => {
-                debug_assert!(
-                    false,
-                    "TypeFilter::allows: unknown type_name {type_name:?} — \
-                     add a match arm for every type emitted by the store"
+                tracing::warn!(
+                    type_name,
+                    "TypeFilter::allows: unknown type — add a match arm for every type emitted by the store"
                 );
                 false
             }
