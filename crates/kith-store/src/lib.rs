@@ -67,7 +67,7 @@ pub struct Store {
     /// `None` until the daemon calls `set_events_tx` after construction.
     /// Sub-stores receive a reference to this field and call `send` after
     /// any write that advances a JMAP state counter.
-    pub events_tx: Option<broadcast::Sender<StateChange>>,
+    pub(crate) events_tx: Option<broadcast::Sender<StateChange>>,
 }
 
 const SCHEMA_V1: &str = "
