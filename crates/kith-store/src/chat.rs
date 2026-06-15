@@ -6,7 +6,7 @@ use tokio::sync::broadcast;
 
 /// Row type returned by [`ChatStore::get_changes_since_ordered`].
 /// Fields: (chat_id, changed_at_counter, is_create).
-pub type ChatChangeRow = (String, i64, bool);
+pub(crate) type ChatChangeRow = (String, i64, bool);
 
 /// Convert a DB kind string ("direct", "group", "channel") to the typed enum.
 /// Unknown values are preserved via `ChatKind::Other(s)`.
