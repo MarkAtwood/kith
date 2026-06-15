@@ -818,7 +818,7 @@ impl JmapHandler for ChatContactQueryHandler {
             // 4. Paginate at the SQL level — avoids loading the full contact list.
             let page = guard
                 .contacts()
-                .list_ids_paged(offset, sql_limit)
+                .list_ids_paged(sql_limit, offset)
                 .map_err(kith_to_jmap)?;
 
             // 5. Count only when the caller asked for it.

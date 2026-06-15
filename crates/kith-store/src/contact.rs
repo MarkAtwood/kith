@@ -204,7 +204,7 @@ impl<'a> ContactStore<'a> {
     /// Return a page of contact IDs (peer_user_id), sorted by (peer_login, peer_user_id).
     ///
     /// Used by `Contact/query` to avoid loading the full contact list into memory.
-    pub fn list_ids_paged(&self, offset: u32, limit: u32) -> Result<Vec<String>, KithError> {
+    pub fn list_ids_paged(&self, limit: u32, offset: u32) -> Result<Vec<String>, KithError> {
         let mut stmt = self
             .conn
             .prepare_cached(
