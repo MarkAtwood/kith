@@ -24,19 +24,9 @@ use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use sha2::{Digest, Sha256};
-use std::net::IpAddr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-/// When set to `true`, `is_valid_fetch_host` allows loopback addresses
-/// (`127.x.x.x` and `[::1]`) to pass the SSRF guard.
-///
-/// This flag exists solely to enable integration tests that spin up two
-/// kithd instances on 127.0.0.1 without a real tailnet.  It must never
-/// be set outside `#[cfg(any(test, feature = "test-utils"))]` call sites.
-#[cfg(any(test, feature = "test-utils"))]
-pub static ALLOW_LOOPBACK_FOR_TESTS: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
 
 // ---------------------------------------------------------------------------
 // SSRF validator
@@ -44,143 +34,12 @@ pub static ALLOW_LOOPBACK_FOR_TESTS: std::sync::atomic::AtomicBool =
 
 /// Return `true` if `host` is safe to connect to for an outbound fetch.
 ///
-/// `host` is the authority portion of a URL: either a bare hostname/IP, or
-/// `host:port` (including `[ipv6]:port`).  The function:
-///
-/// - Strips any `:port` suffix; rejects port 0 or anything that doesn't
-///   parse as a valid `u16`.
-/// - Rejects an empty host.
-/// - If the host part parses as an [`IpAddr`], applies IP-range checks
-///   (loopback, unspecified, RFC 1918, link-local).
-/// - If it does not parse as an IP, allows Tailscale MagicDNS hostnames
-///   (`.ts.net` and `.tailscale.net` suffixes) as an explicit exception.
-///   All other plain hostnames are rejected: a hostname could resolve to an
-///   RFC 1918 or loopback address at fetch time (SSRF via DNS).
+/// Delegates to [`crate::transport::is_valid_tailscale_host`] — the SSRF
+/// validation logic is identical for inbound transport and outbound fetches.
+/// Kept as a named function so call sites read as "fetch-host validation"
+/// and tests remain stable.
 pub(crate) fn is_valid_fetch_host(host: &str) -> bool {
-    if host.is_empty() {
-        return false;
-    }
-
-    if host.contains('@') {
-        return false;
-    }
-
-    // Split host from optional port.
-    //
-    // Formats handled:
-    //   hostname          — no colon, no brackets
-    //   hostname:port     — exactly one colon, port is a valid u16
-    //   ipv4              — no colon (or one colon when port is absent, but
-    //                       IPv4 dotted notation has no colons at all)
-    //   ipv4:port         — exactly one colon
-    //   [ipv6]            — bracketed, no port
-    //   [ipv6]:port       — bracketed, with port
-    //   ipv6              — bare (multiple colons) — no port, whole string is IP
-    //
-    // Disambiguation rule: if the string contains more than one colon and
-    // does not start with '[', treat the whole string as a bare IPv6 address
-    // (no port component).  A string with exactly one colon that does not
-    // parse as an IPv6 address is treated as host:port.
-    let (ip_part, port_opt): (&str, Option<u16>) = if host.starts_with('[') {
-        // Bracketed IPv6
-        let close = match host.find(']') {
-            Some(i) => i,
-            None => return false, // malformed
-        };
-        let bracketed = &host[1..close]; // strip [ ]
-        let after = &host[close + 1..];
-        if after.is_empty() {
-            (bracketed, None)
-        } else {
-            // Must be ":port"
-            let port_str = match after.strip_prefix(':') {
-                Some(s) => s,
-                None => return false,
-            };
-            let port: u16 = match port_str.parse() {
-                Ok(p) => p,
-                Err(_) => return false,
-            };
-            (bracketed, Some(port))
-        }
-    } else {
-        // Count colons to distinguish bare IPv6 from host:port
-        let colon_count = host.chars().filter(|&c| c == ':').count();
-
-        if colon_count > 1 {
-            // Multiple colons → bare IPv6 address with no port (e.g. "::1", "fe80::1")
-            (host, None)
-        } else if colon_count == 1 {
-            // Exactly one colon → could be host:port or a pathological case.
-            let colon = host.find(':').expect("one colon confirmed above");
-            let maybe_port = &host[colon + 1..];
-            if let Ok(port) = maybe_port.parse::<u16>() {
-                (&host[..colon], Some(port))
-            } else {
-                // One colon but the suffix doesn't parse as a valid port
-                // (e.g. "alice.ts.net:99999").  Reject it.
-                return false;
-            }
-        } else {
-            // No colon: bare hostname or IPv4 with no port
-            (host, None)
-        }
-    };
-
-    // Reject port 0.
-    if let Some(0) = port_opt {
-        return false;
-    }
-
-    // Empty host after stripping brackets/port.
-    if ip_part.is_empty() {
-        return false;
-    }
-
-    // Case-insensitive "localhost" check before IP parsing.
-    if ip_part.eq_ignore_ascii_case("localhost") {
-        return false;
-    }
-
-    // Integration-test bypass: when ALLOW_LOOPBACK_FOR_TESTS is set, permit
-    // 127.x.x.x and ::1 so tests can target an in-process kithd listener.
-    // This flag is only compiled in under test/test-utils builds.
-    #[cfg(any(test, feature = "test-utils"))]
-    if ALLOW_LOOPBACK_FOR_TESTS.load(std::sync::atomic::Ordering::Relaxed)
-        && (ip_part.starts_with("127.") || ip_part == "::1")
-    {
-        return true;
-    }
-
-    // Try to parse as an IP address.
-    let ip: IpAddr = match ip_part.parse() {
-        Ok(addr) => addr,
-        Err(_) => {
-            // Allow Tailscale MagicDNS hostnames; reject all other plain names
-            // to prevent SSRF via DNS resolution.
-            if ip_part.ends_with(".ts.net") || ip_part.ends_with(".tailscale.net") {
-                return true;
-            }
-            return false;
-        }
-    };
-
-    // --- IP range checks ---
-
-    // Loopback and unspecified are rejected unconditionally before the range
-    // check so that the test-utils loopback bypass in kith-peer does not
-    // accidentally carry over to this SSRF guard.
-    if ip.is_loopback() {
-        return false;
-    }
-    if ip.is_unspecified() {
-        return false;
-    }
-
-    // IP-range logic is centralised in kith_core::is_tailnet_ip so that
-    // kith-peer's is_valid_mailbox_host uses the same definition; any change
-    // to the allowed ranges must be made there.
-    kith_core::is_tailnet_ip(ip)
+    crate::transport::is_valid_tailscale_host(host)
 }
 
 // ---------------------------------------------------------------------------

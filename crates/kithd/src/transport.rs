@@ -319,7 +319,7 @@ impl FederationTransport for TailscaleTransport {
 /// - If it does not parse as an IP, allows Tailscale MagicDNS hostnames
 ///   (`.ts.net` and `.tailscale.net` suffixes) as an explicit exception.
 ///   All other plain hostnames are rejected.
-fn is_valid_tailscale_host(host: &str) -> bool {
+pub(crate) fn is_valid_tailscale_host(host: &str) -> bool {
     if host.is_empty() {
         return false;
     }

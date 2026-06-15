@@ -15,7 +15,7 @@ pub(crate) mod peer_fetch;
 /// Has no effect on production binaries (cfg-gated).
 #[cfg(any(test, feature = "test-utils"))]
 pub fn allow_loopback_for_tests() {
-    peer_fetch::ALLOW_LOOPBACK_FOR_TESTS.store(true, std::sync::atomic::Ordering::Relaxed);
+    transport::ALLOW_LOOPBACK_FOR_TESTS.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 pub mod signal;
 pub mod static_files;
