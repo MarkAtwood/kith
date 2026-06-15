@@ -772,7 +772,7 @@ mod tests {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store must open"),
         ));
-        let (events_tx, _events_rx) = make_channel(64);
+        let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (blob_store, blob_dir) = make_blob_store_for_test();
         let dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&store),

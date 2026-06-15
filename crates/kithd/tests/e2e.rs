@@ -43,7 +43,7 @@ fn make_state_for_listener(whois: MockTransport) -> (AppState<MockTransport>, te
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
-    let (events_tx, _events_rx) = make_channel(64);
+    let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
     let (blob_store, blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
@@ -181,7 +181,7 @@ fn make_full_app(whois: MockTransport) -> (Router, tempfile::TempDir) {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
-    let (events_tx, _events_rx) = make_channel(64);
+    let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
     let (blob_store, blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
@@ -219,7 +219,7 @@ fn make_app_with_store(whois: MockTransport) -> (Router, Arc<Mutex<Store>>, temp
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
-    let (events_tx, _events_rx) = make_channel(64);
+    let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
     let (blob_store, blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
@@ -1187,7 +1187,7 @@ async fn peer_http_client_new_accepts_self_signed_cert() {
             1_000_000,
         )
         .expect("upsert must succeed for a correctly-opened in-memory store");
-    let (events_tx, _events_rx) = make_channel(64);
+    let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
     let (blob_store, _blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),
@@ -1908,7 +1908,7 @@ async fn sse_delivers_state_change() {
     let store = Arc::new(Mutex::new(
         Store::open_in_memory().expect("in-memory store must open"),
     ));
-    let (events_tx, _events_rx) = kith_events::make_channel(64);
+    let (events_tx, _events_rx) = kith_events::make_channel(std::num::NonZeroUsize::new(64).unwrap());
     let (blob_store, _blob_dir) = make_blob_store();
     let dispatcher = Arc::new(build_dispatcher(
         Arc::clone(&store),

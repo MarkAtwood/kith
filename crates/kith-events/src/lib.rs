@@ -17,19 +17,11 @@ pub type EventReceiver = broadcast::Receiver<StateChange>;
 /// Callers that fall behind will receive `RecvError::Lagged`; they should
 /// resync via `<Type>/changes` with their last known state token.
 ///
-/// # Panics
-/// Panics if `capacity == 0`. This mirrors the behaviour of the underlying
-/// `tokio::sync::broadcast::channel` (which also panics on zero capacity).
-/// The assert fires first to give a clearer error message. All production
-/// call sites use a hardcoded non-zero literal; if you need a variable
-/// capacity, use `std::num::NonZeroUsize` at the call site to enforce the
-/// constraint before calling this function.
-pub fn make_channel(capacity: usize) -> (EventSender, EventReceiver) {
-    assert!(
-        capacity > 0,
-        "broadcast channel capacity must be greater than zero (tokio would also panic)"
-    );
-    broadcast::channel(capacity)
+/// The capacity must be non-zero, enforced at the type level via
+/// [`NonZeroUsize`]. This mirrors the requirement of the underlying
+/// `tokio::sync::broadcast::channel`.
+pub fn make_channel(capacity: std::num::NonZeroUsize) -> (EventSender, EventReceiver) {
+    broadcast::channel(capacity.get())
 }
 
 #[cfg(test)]
@@ -39,7 +31,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_channel_roundtrip() {
-        let (tx, mut rx) = make_channel(64);
+        let (tx, mut rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let original = StateChange::new("Message", "s-1");
         let _ = tx.send(original.clone());
         let received = rx.recv().await.expect("recv must succeed");
@@ -49,7 +41,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_channel_multiple_subscribers() {
-        let (tx, mut rx1) = make_channel(64);
+        let (tx, mut rx1) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let mut rx2 = tx.subscribe();
         let msg = StateChange::new("Chat", "s-2");
         tx.send(msg.clone())
@@ -64,7 +56,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_channel_no_receivers_ok() {
-        let (tx, rx) = make_channel(64);
+        let (tx, rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         drop(rx);
         let result = tx.send(StateChange::new("ChatContact", "s-3"));
         // SendError when no receivers is expected; must not panic
@@ -77,9 +69,9 @@ mod tests {
     #[test]
     fn test_make_channel_returns_sender_and_receiver() {
         // Oracle: broadcast channel semantics — sender.receiver_count() reports the
-        // number of live receivers. A fresh channel via make_channel(64) must have
+        // number of live receivers. A fresh channel via make_channel(std::num::NonZeroUsize::new(64).unwrap()) must have
         // exactly one receiver (the one returned by the call).
-        let (tx, _rx) = make_channel(64);
+        let (tx, _rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         assert_eq!(
             tx.receiver_count(),
             1,
@@ -102,7 +94,7 @@ mod tests {
         use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 
         // capacity 1 — easy to overflow with 3 sends
-        let (tx, rx) = make_channel(1);
+        let (tx, rx) = make_channel(std::num::NonZeroUsize::new(1).unwrap());
 
         // Send 3 messages: only the last one survives in the ring buffer.
         // rx has not consumed anything, so it will receive Lagged(2) then msg3.
@@ -133,12 +125,4 @@ mod tests {
         // Key assertion: stream ended normally (collect returned) — no panic.
     }
 
-    #[test]
-    #[should_panic(expected = "broadcast channel capacity must be greater than zero")]
-    fn test_make_channel_zero_capacity_panics() {
-        // Oracle: capacity=0 must panic (documented precondition); this also
-        // prevents the underlying tokio panic from surfacing with a less
-        // useful message.
-        make_channel(0);
-    }
 }

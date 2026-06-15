@@ -184,7 +184,7 @@ mod inner {
         // as sender (= Owner).  This is safe because the listener is bound to
         // 127.0.0.1 and only reachable by the test process.
         let sender_tcp_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
-        let (sender_events_tx, _sender_events_rx) = make_channel(64);
+        let (sender_events_tx, _sender_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let sender_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&sender_store),
             Arc::clone(&sender_blob_store),
@@ -211,7 +211,7 @@ mod inner {
 
         // ---- Sender's in-process owner router (for the upload call) ----
         let sender_owner_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
-        let (sender_owner_events_tx, _sender_owner_events_rx) = make_channel(64);
+        let (sender_owner_events_tx, _sender_owner_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let sender_owner_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&sender_store),
             Arc::clone(&sender_blob_store),
@@ -232,7 +232,7 @@ mod inner {
 
         // ---- Receiver's in-process owner router ----
         let receiver_owner_whois = MockTransport(make_identity(RECEIVER_OWNER_ID, RECEIVER_LOGIN));
-        let (receiver_owner_events_tx, _receiver_owner_events_rx) = make_channel(64);
+        let (receiver_owner_events_tx, _receiver_owner_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let receiver_owner_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&receiver_store),
             Arc::clone(&receiver_blob_store),
@@ -257,7 +257,7 @@ mod inner {
         // Role::Peer to the incoming call.  Sender must already be in receiver's
         // contacts for this to succeed.
         let receiver_peer_whois = MockTransport(make_identity(SENDER_OWNER_ID, SENDER_LOGIN));
-        let (receiver_peer_events_tx, _receiver_peer_events_rx) = make_channel(64);
+        let (receiver_peer_events_tx, _receiver_peer_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let receiver_peer_state = AppState {
             transport: Arc::new(receiver_peer_whois),
             store: Arc::clone(&receiver_store),

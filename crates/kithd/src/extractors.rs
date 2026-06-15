@@ -223,7 +223,7 @@ mod tests {
         let store = Arc::new(std::sync::Mutex::new(
             Store::open_in_memory().expect("in-memory store"),
         ));
-        let (events_tx, _events_rx) = kith_events::make_channel(64);
+        let (events_tx, _events_rx) = kith_events::make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (blob_store, blob_dir) = make_blob_store();
         let state = AppState {
             transport: Arc::new(transport),
@@ -426,7 +426,7 @@ mod tests {
         use crate::transport::TailscaleTransport;
         use kith_tslocal::LocalApiClient;
         let _: fn() -> AppState<TailscaleTransport> = || {
-            let (events_tx, _events_rx) = kith_events::make_channel(64);
+            let (events_tx, _events_rx) = kith_events::make_channel(std::num::NonZeroUsize::new(64).unwrap());
             let blob_dir = std::path::PathBuf::from("/tmp/kithd-blob");
             let client = Arc::new(LocalApiClient::new("/var/run/tailscale/tailscaled.sock"));
             AppState {

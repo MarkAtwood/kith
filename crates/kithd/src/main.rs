@@ -176,7 +176,7 @@ async fn main() {
     // The initial receiver is dropped immediately; EventSource handlers call
     // tx.subscribe() per connection. The channel stays alive while events_tx
     // (held in AppState) is live.
-    let (events_tx, _events_rx) = make_channel(64);
+    let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
     store.set_events_tx(events_tx.clone());
     let store = Arc::new(Mutex::new(store));
 

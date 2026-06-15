@@ -355,7 +355,7 @@ mod inner {
         // This simulates what outbox_tick would do on bob's side without
         // requiring a second TLS listener for alice.
         let alice_peer_whois = MockTransport(make_identity(BOB_OWNER_ID, BOB_LOGIN));
-        let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(64);
+        let (alice_peer_events_tx, _alice_peer_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (alice_peer_blob_store, _alice_peer_blob_dir) = make_blob_store();
         let alice_peer_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&pair.alice_store),
@@ -500,7 +500,7 @@ mod inner {
 
         // Step 2: build alice's in-process router.
         let alice_whois = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
-        let (alice_events_tx, _alice_events_rx) = make_channel(64);
+        let (alice_events_tx, _alice_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (alice_blob_store, _alice_blob_dir) = make_blob_store();
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),

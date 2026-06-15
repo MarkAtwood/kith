@@ -219,7 +219,7 @@ mod inner {
         let alice_transport = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
 
         // ---- alice's AppState ----
-        let (alice_events_tx, _alice_events_rx) = make_channel(64);
+        let (alice_events_tx, _alice_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (alice_blob_store, alice_blob_dir) = make_blob_store();
         let alice_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&alice_store),
@@ -249,7 +249,7 @@ mod inner {
         let bob_tcp_transport = MockTransport(make_identity(ALICE_OWNER_ID, ALICE_LOGIN));
 
         // ---- bob's AppState for the TCP listener ----
-        let (bob_events_tx, _bob_events_rx) = make_channel(64);
+        let (bob_events_tx, _bob_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let (bob_blob_store, bob_blob_dir) = make_blob_store();
         let bob_dispatcher = Arc::new(build_dispatcher(
             Arc::clone(&bob_store),
@@ -278,7 +278,7 @@ mod inner {
         // assertion calls (e.g. Message/get to verify a message arrived) are
         // classified as Owner on bob's router.
         let bob_assert_transport = MockTransport(make_identity(BOB_OWNER_ID, BOB_LOGIN));
-        let (bob_assert_events_tx, _bob_assert_events_rx) = make_channel(64);
+        let (bob_assert_events_tx, _bob_assert_events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         let bob_assert_state = AppState {
             transport: Arc::new(bob_assert_transport),
             store: Arc::clone(&bob_store),

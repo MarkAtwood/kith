@@ -579,7 +579,7 @@ mod tests {
         let store = Arc::new(Mutex::new(
             Store::open_in_memory().expect("in-memory store"),
         ));
-        let (events_tx, _events_rx) = make_channel(64);
+        let (events_tx, _events_rx) = make_channel(std::num::NonZeroUsize::new(64).unwrap());
         AppState {
             transport: Arc::new(transport),
             store,
