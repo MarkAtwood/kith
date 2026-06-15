@@ -715,6 +715,12 @@ impl PeerDeliveryError {
     }
 }
 
+impl From<PeerDeliveryError> for kith_core::KithError {
+    fn from(e: PeerDeliveryError) -> Self {
+        kith_core::KithError::Delivery(e.to_string())
+    }
+}
+
 type HttpsClient = Client<
     hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
     Full<Bytes>,

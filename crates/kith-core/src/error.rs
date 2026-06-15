@@ -31,6 +31,8 @@ pub enum KithError {
     Store(String),
     #[error("validation error: {0}")]
     Validation(String),
+    #[error("delivery error: {0}")]
+    Delivery(String),
 }
 
 impl From<jmap_types::JmapError> for KithError {
