@@ -36,6 +36,10 @@ pub use transport::{ConnectionContext, DiscoveredPeer, FederationTransport, Iden
 pub const MAX_BODY_BYTES: usize = 65_536;
 /// Maximum attachment size (bytes).
 pub const MAX_ATTACHMENT_BYTES: usize = 104_857_600;
+/// Maximum number of attachments per message.
+pub const MAX_ATTACHMENTS: usize = 20;
+/// Body types accepted in chat messages.
+pub const SUPPORTED_BODY_TYPES: &[&str] = &["text/plain", "text/markdown", "application/jmap-chat-rich"];
 /// Maximum JMAP API request body size (bytes).
 ///
 /// Advertised in the Session object as `maxSizeRequest` (RFC 8620 §2).

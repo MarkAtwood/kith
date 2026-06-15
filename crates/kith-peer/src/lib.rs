@@ -23,8 +23,7 @@ use thiserror::Error;
 use ulid::Ulid;
 
 /// Accepted body MIME types (matches KithChatCapability::supported_body_types).
-const SUPPORTED_BODY_TYPES: &[&str] =
-    &["text/plain", "text/markdown", "application/jmap-chat-rich"];
+use kith_core::SUPPORTED_BODY_TYPES;
 
 /// Grace window for receipt `at` timestamps (5 minutes in seconds).
 ///
@@ -1141,9 +1140,7 @@ pub fn build_peer_receipt_request(message_id: &str, kind: &str, at: &str) -> Val
 fn validate_attachments(
     attachments: &[AttachmentArg],
 ) -> Result<Vec<kith_core::Attachment>, JmapError> {
-    const MAX_ATTACHMENTS: usize = 20;
-
-    if attachments.len() > MAX_ATTACHMENTS {
+    if attachments.len() > kith_core::MAX_ATTACHMENTS {
         return Err(JmapError::invalid_arguments("too many attachments"));
     }
 

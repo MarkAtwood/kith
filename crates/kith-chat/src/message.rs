@@ -15,9 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use ulid::Ulid;
 
-const MAX_ATTACHMENTS: usize = 20;
-const SUPPORTED_BODY_TYPES: &[&str] =
-    &["text/plain", "text/markdown", "application/jmap-chat-rich"];
+use kith_core::{MAX_ATTACHMENTS, SUPPORTED_BODY_TYPES};
 
 struct ParsedAttachment {
     blob_id: String,
