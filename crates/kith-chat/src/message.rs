@@ -314,6 +314,7 @@ fn validate_rich_body(body: &str) -> Result<(), Value> {
 // Message/set
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `Message/set` requests.
 pub struct MessageSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
     blob_store: Arc<BlobStore>,
@@ -954,6 +955,7 @@ fn process_update(
 // Message/get
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `Message/get` requests.
 pub struct MessageGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1054,6 +1056,7 @@ impl JmapHandler for MessageGetHandler {
 // Message/changes
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `Message/changes` requests.
 pub struct MessageChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1160,6 +1163,7 @@ impl JmapHandler for MessageChangesHandler {
 // Message/query
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `Message/query` requests.
 pub struct MessageQueryHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1261,6 +1265,7 @@ impl JmapHandler for MessageQueryHandler {
 // Message/queryChanges
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `Message/queryChanges` requests.
 pub struct MessageQueryChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }

@@ -26,6 +26,7 @@ pub(crate) const CONTACT_UPDATE_KEYS: &[&str] = &[
 // Contact/get
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `ChatContact/get` requests.
 pub struct ChatContactGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -137,6 +138,7 @@ impl JmapHandler for ChatContactGetHandler {
 // Contact/set
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `ChatContact/set` requests.
 pub struct ChatContactSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -642,6 +644,7 @@ fn process_update(
 // Contact/changes
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `ChatContact/changes` requests.
 pub struct ChatContactChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -764,6 +767,7 @@ impl JmapHandler for ChatContactChangesHandler {
 // Contact/query
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `ChatContact/query` requests.
 pub struct ChatContactQueryHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -851,6 +855,7 @@ impl JmapHandler for ChatContactQueryHandler {
 // ChatContact/queryChanges
 // ---------------------------------------------------------------------------
 
+/// JMAP handler for `ChatContact/queryChanges` requests.
 pub struct ChatContactQueryChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }

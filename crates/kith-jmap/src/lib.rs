@@ -131,6 +131,10 @@ pub struct KithChatCapability {
 #[derive(Debug, Clone, Serialize)]
 pub struct CidCapability {}
 
+/// Top-level capabilities object in the JMAP session (RFC 8620 §2).
+///
+/// Advertises the capability URIs this server supports along with their
+/// server-specific limits.
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct Capabilities {
@@ -142,6 +146,9 @@ pub struct Capabilities {
     pub cid: CidCapability,
 }
 
+/// Per-account capability for `urn:ietf:params:jmap:chat` in the JMAP session.
+///
+/// Reports the caller's role (`"owner"` or `"peer"`) for this account.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -149,6 +156,10 @@ pub struct KithAccountCapability {
     pub role: String,
 }
 
+/// Per-account capabilities map in the JMAP session `accounts` object (RFC 8620 §2).
+///
+/// Keyed by capability URI; each value describes what the caller can do
+/// in this account.
 #[derive(Debug, Clone, Serialize)]
 #[non_exhaustive]
 pub struct AccountCapabilities {

@@ -30,7 +30,9 @@ pub struct PeerBlobInfo {
 /// self-documenting and allows new fields to be added without changing
 /// every call site.
 pub struct OutboundMessageParams<'a> {
+    /// Unique message ID. Must be non-empty.
     pub id: &'a str,
+    /// ID of the chat this message belongs to. Must be non-empty.
     pub chat_id: &'a str,
     /// Verified Tailscale user ID of the owner sending this message.
     ///
@@ -39,17 +41,24 @@ pub struct OutboundMessageParams<'a> {
     /// ID prevents ambiguity when a Headscale deployment happens to assign
     /// `"self"` as a user ID.
     pub sender_user_id: &'a str,
+    /// Message body text. Must be non-empty.
     pub body: &'a str,
+    /// MIME type of the body (e.g. `"text/plain"`). Must be non-empty.
     pub body_type: &'a str,
+    /// RFC 3339 timestamp from the sending peer, if available.
     pub sent_at_peer: Option<&'a str>,
+    /// Unix timestamp (seconds) when the message was created locally.
     pub created_at_unix: i64,
+    /// ID of the message this is a reply to, if any.
     pub reply_to: Option<&'a str>,
+    /// Attachment metadata records for this message.
     pub attachments: &'a [Attachment],
+    /// Per-user @-mention records for this message.
     pub mentions: &'a [Mention],
     /// `(peer_user_id, peer_mailbox_host)` pairs.  Must be non-empty.
     pub outbox_peers: &'a [(&'a str, &'a str)],
-    /// Optional thread root message ID.  Must reference a top-level message
-    /// (one without its own thread_root_id) in the same chat.
+    /// Optional thread root message ID.  Must be `None` or reference a top-level
+    /// message (one without its own `thread_root_id`) in the same chat.
     pub thread_root_id: Option<&'a str>,
     /// Optional Unix timestamp after which the message should be auto-deleted.
     pub sender_expires_at: Option<i64>,

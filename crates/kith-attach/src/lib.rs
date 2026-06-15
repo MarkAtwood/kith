@@ -10,26 +10,38 @@ use sha2::{Digest, Sha256};
 const MAX_BLOB_BYTES: u64 = 200 * 1024 * 1024; // 200 MiB
 
 /// On-disk blob storage for kith attachments.
+///
+/// Individual blob operations are atomic via temp-file-then-rename.
+/// Concurrent writes to different blob IDs are safe.
+/// Concurrent writes to the same blob ID are safe (unique temp nonces prevent
+/// collision) but last-writer-wins.
 pub struct BlobStore {
     base_dir: PathBuf,
 }
 
 impl BlobStore {
+    /// Create a new `BlobStore` rooted at `base_dir`. Call [`init`](Self::init) before writing.
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         BlobStore {
             base_dir: base_dir.into(),
         }
     }
 
+    /// Create `base_dir` and any missing parent directories.
     pub fn init(&self) -> io::Result<()> {
         std::fs::create_dir_all(&self.base_dir)
     }
 
+    /// Generate a random 256-bit blob ID as 64 lowercase hex characters.
     pub fn generate_blob_id() -> String {
         let bytes: [u8; 32] = rand::rng().random();
         hex_encode(&bytes)
     }
 
+    /// Validate that `id` is safe to use as a filename component.
+    ///
+    /// Rejects empty strings, IDs longer than 128 bytes, IDs starting with `.`,
+    /// and any character outside `[A-Za-z0-9_-]`.
     pub fn validate_blob_id(id: &str) -> Result<(), String> {
         if id.is_empty() {
             return Err("blob_id must not be empty".into());
@@ -51,6 +63,10 @@ impl BlobStore {
         Ok(())
     }
 
+    /// Resolve `id` to its absolute path under `base_dir`.
+    ///
+    /// Panics if `id` fails [`validate_blob_id`](Self::validate_blob_id).
+    /// All public methods validate before calling this.
     pub fn blob_path(&self, id: &str) -> PathBuf {
         // Validate in all build configurations, not just debug.  Every public
         // method in BlobStore calls validate_blob_id() before calling this, so

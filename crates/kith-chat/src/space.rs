@@ -11,9 +11,7 @@ use ulid::Ulid;
 // Space/get
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Space/get` JMAP method.
-///
-/// Returns all spaces (or a specific list) for the owner's account.
+/// JMAP handler for `Space/get` requests.
 pub struct SpaceGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -125,9 +123,7 @@ impl JmapHandler for SpaceGetHandler {
 // Space/changes
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Space/changes` JMAP method.
-///
-/// Returns the set of space IDs that have changed since the given state token.
+/// JMAP handler for `Space/changes` requests.
 pub struct SpaceChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -215,11 +211,7 @@ impl JmapHandler for SpaceChangesHandler {
 // Space/set
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Space/set` JMAP method.
-///
-/// Uses semantic mutations instead of RFC 8620 PatchObject paths.
-/// Create requires `name`; update accepts named keys like `name`,
-/// `description`, `addRoles`, `removeMembers`, etc.
+/// JMAP handler for `Space/set` requests.
 pub struct SpaceSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
     /// Verified Tailscale user ID of the mailbox owner, used as the
@@ -888,10 +880,7 @@ fn space_set_destroy(
 // Space/query
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Space/query` JMAP method.
-///
-/// Standard JMAP /query per RFC 8620 §5.5.  Filters by `name` (substring)
-/// and `isPublic` (boolean).  Default sort: name ascending.
+/// JMAP handler for `Space/query` requests.
 pub struct SpaceQueryHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -998,11 +987,7 @@ impl JmapHandler for SpaceQueryHandler {
 // Space/join
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Space/join` JMAP method.
-///
-/// Accepts exactly one of `inviteCode` or `spaceId` (not both, not neither).
-/// Via inviteCode: resolve invite, check validity/ban, add member, increment uses.
-/// Via spaceId: check isPublic/ban, add member.
+/// JMAP handler for `Space/join` requests.
 pub struct SpaceJoinHandler {
     store: Arc<Mutex<kith_store::Store>>,
     owner_user_id: String,
@@ -1143,9 +1128,7 @@ impl JmapHandler for SpaceJoinHandler {
 // SpaceInvite/get
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceInvite/get` JMAP method.
-///
-/// Returns all invites (or a specific list by IDs) for the owner's account.
+/// JMAP handler for `SpaceInvite/get` requests.
 pub struct SpaceInviteGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1248,11 +1231,7 @@ impl JmapHandler for SpaceInviteGetHandler {
 // SpaceInvite/changes
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceInvite/changes` JMAP method.
-///
-/// Returns `cannotCalculateChanges` for any non-current sinceState because the
-/// invite table does not have per-row change tracking columns. When sinceState
-/// equals the current state, returns empty change lists.
+/// JMAP handler for `SpaceInvite/changes` requests.
 pub struct SpaceInviteChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1341,11 +1320,7 @@ impl JmapHandler for SpaceInviteChangesHandler {
 // SpaceInvite/set
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceInvite/set` JMAP method.
-///
-/// Create: requires `spaceId`, optional `defaultChannelId`, `expiresAt`, `maxUses`.
-/// Update: not supported — returns `forbidden`.
-/// Destroy: deletes the invite.
+/// JMAP handler for `SpaceInvite/set` requests.
 pub struct SpaceInviteSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1556,9 +1531,7 @@ impl JmapHandler for SpaceInviteSetHandler {
 // SpaceBan/get
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceBan/get` JMAP method.
-///
-/// Returns all bans (or a specific list by IDs) for the owner's account.
+/// JMAP handler for `SpaceBan/get` requests.
 pub struct SpaceBanGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1661,11 +1634,7 @@ impl JmapHandler for SpaceBanGetHandler {
 // SpaceBan/changes
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceBan/changes` JMAP method.
-///
-/// Returns `cannotCalculateChanges` for any non-current sinceState because the
-/// ban table does not have per-row change tracking columns. When sinceState
-/// equals the current state, returns empty change lists.
+/// JMAP handler for `SpaceBan/changes` requests.
 pub struct SpaceBanChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -1752,11 +1721,7 @@ impl JmapHandler for SpaceBanChangesHandler {
 // SpaceBan/set
 // ---------------------------------------------------------------------------
 
-/// Handler for the `SpaceBan/set` JMAP method.
-///
-/// Create: requires `spaceId` and `userId`, optional `reason` and `expiresAt`.
-/// Update: supports `reason` and `expiresAt` changes only.
-/// Destroy: lifts the ban.
+/// JMAP handler for `SpaceBan/set` requests.
 pub struct SpaceBanSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }

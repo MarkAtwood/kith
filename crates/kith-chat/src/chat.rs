@@ -10,9 +10,7 @@ use ulid::Ulid;
 // Chat/get
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Chat/get` JMAP method.
-///
-/// Returns all chats (or a specific list) for the owner's account.
+/// JMAP handler for `Chat/get` requests.
 pub struct ChatGetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -124,11 +122,7 @@ impl JmapHandler for ChatGetHandler {
 // Chat/set
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Chat/set` JMAP method.
-///
-/// Supports creating direct chats by referencing a known contact.
-/// Supports updating chat metadata (name, description, muted, etc.).
-/// Destroy operations are rejected (chats persist).
+/// JMAP handler for `Chat/set` requests.
 pub struct ChatSetHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -591,10 +585,7 @@ impl JmapHandler for ChatSetHandler {
 // Chat/changes
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Chat/changes` JMAP method.
-///
-/// Returns the set of chat IDs that have changed since the given state token,
-/// using per-row state tracking via `get_changes_since`.
+/// JMAP handler for `Chat/changes` requests.
 pub struct ChatChangesHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
@@ -714,9 +705,7 @@ impl JmapHandler for ChatChangesHandler {
 // Chat/query
 // ---------------------------------------------------------------------------
 
-/// Handler for the `Chat/query` JMAP method.
-///
-/// Returns a page of chat IDs ordered by lastMessageAt DESC (nulls last), then createdAt DESC.
+/// JMAP handler for `Chat/query` requests.
 pub struct ChatQueryHandler {
     store: Arc<Mutex<kith_store::Store>>,
 }
