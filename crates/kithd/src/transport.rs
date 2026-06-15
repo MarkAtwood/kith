@@ -158,12 +158,12 @@ impl IdentityProvider for TailscaleIdentityProvider {
         let addr = ctx.peer_addr;
         async move {
             let who = self.client.whois(addr).await?;
-            Ok(Identity {
-                user_id: who.user_profile.id,
-                login_name: who.user_profile.login_name,
-                display_name: who.user_profile.display_name,
-                node_name: who.node.name,
-            })
+            Ok(Identity::new(
+                who.user_profile.id,
+                who.user_profile.login_name,
+                who.user_profile.display_name,
+                who.node.name,
+            ))
         }
     }
 }
@@ -177,12 +177,12 @@ impl IdentityProvider for TailscaleTransport {
         let addr = ctx.peer_addr;
         async move {
             let who = self.client.whois(addr).await?;
-            Ok(Identity {
-                user_id: who.user_profile.id,
-                login_name: who.user_profile.login_name,
-                display_name: who.user_profile.display_name,
-                node_name: who.node.name,
-            })
+            Ok(Identity::new(
+                who.user_profile.id,
+                who.user_profile.login_name,
+                who.user_profile.display_name,
+                who.node.name,
+            ))
         }
     }
 }

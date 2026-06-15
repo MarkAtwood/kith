@@ -162,10 +162,7 @@ pub fn parse_sse_event(block: &str) -> Vec<StateChange> {
     let mut out = Vec::new();
     for type_states in sse.changed.values() {
         for (type_name, new_state) in type_states {
-            out.push(StateChange {
-                type_name: type_name.clone(),
-                new_state: new_state.clone(),
-            });
+            out.push(StateChange::new(type_name.clone(), new_state.clone()));
         }
     }
     out

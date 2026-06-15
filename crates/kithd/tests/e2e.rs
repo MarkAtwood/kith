@@ -156,12 +156,7 @@ impl FederationTransport for MockTransport {
 }
 
 fn make_identity(id: &str, login: &str) -> Identity {
-    Identity {
-        user_id: id.into(),
-        login_name: login.into(),
-        display_name: None,
-        node_name: "test-node.tail12345.ts.net".into(),
-    }
+    Identity::new(id.into(), login.into(), None, "test-node.tail12345.ts.net".into())
 }
 
 // ---------------------------------------------------------------------------
@@ -1935,10 +1930,7 @@ async fn sse_delivers_state_change() {
     // Send a state change event after the handler subscribes.
     tokio::spawn(async move {
         tokio::task::yield_now().await;
-        let _ = events_tx.send(StateChange {
-            type_name: "Message".to_string(),
-            new_state: "s-1".to_string(),
-        });
+        let _ = events_tx.send(StateChange::new("Message", "s-1".to_string()));
     });
 
     let req = Request::builder()

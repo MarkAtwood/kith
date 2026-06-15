@@ -43,10 +43,7 @@ impl<'a> OutboxStore<'a> {
 
     fn emit(&self, new_state: String) {
         if let Some(tx) = self.events_tx {
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state,
-            });
+            let _ = tx.send(StateChange::new("Message", new_state));
         }
     }
 

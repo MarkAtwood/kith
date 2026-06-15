@@ -9,12 +9,7 @@ use serde_json::json;
 use std::sync::{Arc, Mutex};
 
 fn dummy_identity() -> Identity {
-    Identity {
-        user_id: "uid-test".to_string(),
-        login_name: "test@example.com".to_string(),
-        display_name: None,
-        node_name: "test-node.tail12345.ts.net".to_string(),
-    }
+    Identity::new("uid-test".to_string(), "test@example.com".to_string(), None, "test-node.tail12345.ts.net".to_string())
 }
 
 // ---------------------------------------------------------------------------

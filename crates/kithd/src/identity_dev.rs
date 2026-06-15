@@ -37,12 +37,7 @@ pub fn from_env() -> Option<Result<DevIdentityProvider, String>> {
         }
         None => (trimmed.to_string(), trimmed.to_string()),
     };
-    let identity = Identity {
-        user_id,
-        login_name,
-        display_name: None,
-        node_name: "dev.local".to_string(),
-    };
+    let identity = Identity::new(user_id, login_name, None, "dev.local");
     Some(Ok(DevIdentityProvider::new(identity)))
 }
 
@@ -83,12 +78,7 @@ mod tests {
     /// for any ConnectionContext, regardless of peer address.
     #[tokio::test]
     async fn any_connection_returns_configured_identity() {
-        let identity = Identity {
-            user_id: "uid-test".to_string(),
-            login_name: "test@example.com".to_string(),
-            display_name: None,
-            node_name: "dev.local".to_string(),
-        };
+        let identity = Identity::new("uid-test".to_string(), "test@example.com".to_string(), None, "dev.local".to_string());
         let provider = DevIdentityProvider::new(identity.clone());
         let result = provider.identify_caller(&make_ctx()).await;
         assert_eq!(result.unwrap(), identity);
@@ -134,12 +124,7 @@ mod tests {
     /// proving no internal state mutation.
     #[tokio::test]
     async fn multiple_connections_return_same_identity() {
-        let identity = Identity {
-            user_id: "uid-stable".to_string(),
-            login_name: "stable@example.com".to_string(),
-            display_name: None,
-            node_name: "dev.local".to_string(),
-        };
+        let identity = Identity::new("uid-stable".to_string(), "stable@example.com".to_string(), None, "dev.local".to_string());
         let provider = DevIdentityProvider::new(identity.clone());
 
         let ctx1 = ConnectionContext {

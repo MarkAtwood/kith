@@ -21,6 +21,7 @@ pub struct MessageStore<'a> {
 
 /// The result of a Message/changes query.
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct ChangesResult {
     pub added: Vec<String>,
     pub updated: Vec<String>,
@@ -645,10 +646,7 @@ impl<'a> MessageStore<'a> {
 
     fn emit(&self, new_state: String) {
         if let Some(tx) = self.events_tx {
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state,
-            });
+            let _ = tx.send(StateChange::new("Message", new_state));
         }
     }
 

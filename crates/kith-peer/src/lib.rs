@@ -484,6 +484,7 @@ impl PeerJmapHandler for DeliverHandler {
 /// The kind of receipt a peer is reporting.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum ReceiptKind {
     Delivered,
     Read,
@@ -674,6 +675,7 @@ const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
 
 /// Errors that can occur when delivering a message to a peer mailbox.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PeerDeliveryError {
     #[error("peer URL must use HTTPS")]
     InsecureUrl,
@@ -1871,12 +1873,7 @@ mod tests {
     }
 
     fn make_identity(user_id: &str) -> Identity {
-        Identity {
-            user_id: user_id.to_string(),
-            login_name: format!("{user_id}@example.com"),
-            display_name: Some(format!("User {user_id}")),
-            node_name: format!("{user_id}-node.tail12345.ts.net"),
-        }
+        Identity::new(user_id.to_string(), format!("{user_id}@example.com"), Some(format!("User {user_id}")), format!("{user_id}-node.tail12345.ts.net"))
     }
 
     // ---------------------------------------------------------------------------
@@ -2000,12 +1997,7 @@ mod tests {
     async fn deliver_empty_identity_user_id_returns_invalid_arguments() {
         let store = make_store();
         // Construct an identity with an empty user_id — simulates a broken WhoIs result.
-        let empty_identity = Identity {
-            user_id: "".to_string(),
-            login_name: "ghost@example.com".to_string(),
-            node_name: "ghost".to_string(),
-            display_name: None,
-        };
+        let empty_identity = Identity::new("", "ghost@example.com", None, "ghost");
         let chat_id = "test-direct-chat-empty-uid";
         let msg_id = Ulid::new().to_string();
         let args = json!({

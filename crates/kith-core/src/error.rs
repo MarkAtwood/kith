@@ -2,6 +2,7 @@ use thiserror::Error;
 
 /// Authentication and authorization errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AuthError {
     /// Request had no peer socket address (should never happen in normal operation).
     #[error("no peer address on request")]
@@ -20,6 +21,7 @@ pub enum AuthError {
 /// Top-level error type for the kith system.
 /// All crates convert their internal errors to KithError at boundaries.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum KithError {
     #[error(transparent)]
     Auth(#[from] AuthError),

@@ -8,11 +8,22 @@ use serde::{Deserialize, Serialize};
 /// calls `<Type>/changes` to pull the delta — the event only signals
 /// *that* a change occurred, not *what* changed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct StateChange {
     /// JMAP object type name, e.g. "ChatContact", "Chat", "Message".
     pub type_name: String,
     /// New opaque state token, e.g. "s-42".
     pub new_state: String,
+}
+
+impl StateChange {
+    /// Construct a new `StateChange`.
+    pub fn new(type_name: impl Into<String>, new_state: impl Into<String>) -> Self {
+        Self {
+            type_name: type_name.into(),
+            new_state: new_state.into(),
+        }
+    }
 }
 
 /// A parsed SSE event block (lines between `\n\n` separators).

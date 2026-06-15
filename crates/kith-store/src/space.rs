@@ -172,10 +172,7 @@ impl<'a> SpaceStore<'a> {
 
     fn emit(&self, type_name: &str, new_state: String) {
         if let Some(tx) = self.events_tx {
-            let _ = tx.send(StateChange {
-                type_name: type_name.to_string(),
-                new_state,
-            });
+            let _ = tx.send(StateChange::new(type_name, new_state));
         }
     }
 

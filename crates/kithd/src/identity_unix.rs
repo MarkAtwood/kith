@@ -45,12 +45,7 @@ mod tests {
     use std::net::SocketAddr;
 
     fn test_identity() -> Identity {
-        Identity {
-            user_id: "uid-local-owner".to_string(),
-            login_name: "alice@localhost".to_string(),
-            display_name: Some("Alice Local".to_string()),
-            node_name: "localhost".to_string(),
-        }
+        Identity::new("uid-local-owner".to_string(), "alice@localhost".to_string(), Some("Alice Local".to_string()), "localhost".to_string())
     }
 
     fn ctx_from(addr: &str) -> ConnectionContext {

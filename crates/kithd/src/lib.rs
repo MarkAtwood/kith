@@ -711,12 +711,7 @@ mod tests {
     use tower::ServiceExt;
 
     fn dummy_identity() -> Identity {
-        Identity {
-            user_id: "uid-test".to_string(),
-            login_name: "test@example.com".to_string(),
-            display_name: None,
-            node_name: "test-node.tail12345.ts.net".to_string(),
-        }
+        Identity::new("uid-test".to_string(), "test@example.com".to_string(), None, "test-node.tail12345.ts.net".to_string())
     }
 
     use crate::extractors::AppState;
@@ -760,12 +755,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity {
-            user_id: id.into(),
-            login_name: login.into(),
-            display_name: None,
-            node_name: format!("{id}-kith.tail.ts.net"),
-        }
+        Identity::new(id.into(), login.into(), None, format!("{id}-kith.tail.ts.net"))
     }
 
     fn make_blob_store_for_test() -> (Arc<BlobStore>, tempfile::TempDir) {

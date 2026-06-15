@@ -15,6 +15,7 @@ use tokio::sync::broadcast;
 ///
 /// The `mailbox_host` field identifies where to fetch the blob from; the
 /// remaining fields are the attachment metadata as recorded at delivery time.
+#[non_exhaustive]
 pub struct PeerBlobInfo {
     pub mailbox_host: String,
     pub filename: String,
@@ -996,10 +997,7 @@ impl Store {
         }
         tx.commit().map_err(db_err)?;
         if let Some(ref tx_ch) = self.events_tx {
-            let _ = tx_ch.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: format!("s-{version}"),
-            });
+            let _ = tx_ch.send(StateChange::new("Message", format!("s-{version}")));
         }
         Ok(())
     }
@@ -1127,10 +1125,7 @@ impl Store {
         }
         tx.commit().map_err(db_err)?;
         if let Some(ref tx_ch) = self.events_tx {
-            let _ = tx_ch.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: format!("s-{version}"),
-            });
+            let _ = tx_ch.send(StateChange::new("Message", format!("s-{version}")));
         }
         Ok(())
     }

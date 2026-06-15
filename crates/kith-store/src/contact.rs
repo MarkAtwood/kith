@@ -22,10 +22,7 @@ impl<'a> ContactStore<'a> {
 
     fn emit(&self, new_state: String) {
         if let Some(tx) = self.events_tx {
-            let _ = tx.send(StateChange {
-                type_name: "ChatContact".to_string(),
-                new_state,
-            });
+            let _ = tx.send(StateChange::new("ChatContact", new_state));
         }
     }
 

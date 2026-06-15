@@ -40,10 +40,7 @@ mod tests {
     #[tokio::test]
     async fn test_channel_roundtrip() {
         let (tx, mut rx) = make_channel(64);
-        let original = StateChange {
-            type_name: "Message".to_string(),
-            new_state: "s-1".to_string(),
-        };
+        let original = StateChange::new("Message", "s-1");
         let _ = tx.send(original.clone());
         let received = rx.recv().await.expect("recv must succeed");
         assert_eq!(received.type_name, original.type_name);
@@ -54,10 +51,7 @@ mod tests {
     async fn test_channel_multiple_subscribers() {
         let (tx, mut rx1) = make_channel(64);
         let mut rx2 = tx.subscribe();
-        let msg = StateChange {
-            type_name: "Chat".to_string(),
-            new_state: "s-2".to_string(),
-        };
+        let msg = StateChange::new("Chat", "s-2");
         tx.send(msg.clone())
             .expect("send must succeed with two receivers");
         let r1 = rx1.recv().await.expect("rx1 must receive");
@@ -72,10 +66,7 @@ mod tests {
     async fn test_channel_no_receivers_ok() {
         let (tx, rx) = make_channel(64);
         drop(rx);
-        let result = tx.send(StateChange {
-            type_name: "ChatContact".to_string(),
-            new_state: "s-3".to_string(),
-        });
+        let result = tx.send(StateChange::new("ChatContact", "s-3"));
         // SendError when no receivers is expected; must not panic
         assert!(
             result.is_err(),
@@ -115,18 +106,9 @@ mod tests {
 
         // Send 3 messages: only the last one survives in the ring buffer.
         // rx has not consumed anything, so it will receive Lagged(2) then msg3.
-        let _ = tx.send(StateChange {
-            type_name: "ChatContact".to_string(),
-            new_state: "s-1".to_string(),
-        });
-        let _ = tx.send(StateChange {
-            type_name: "Chat".to_string(),
-            new_state: "s-2".to_string(),
-        });
-        let _ = tx.send(StateChange {
-            type_name: "Message".to_string(),
-            new_state: "s-3".to_string(),
-        });
+        let _ = tx.send(StateChange::new("ChatContact", "s-1"));
+        let _ = tx.send(StateChange::new("Chat", "s-2"));
+        let _ = tx.send(StateChange::new("Message", "s-3"));
 
         // Drop tx so the BroadcastStream terminates after draining.
         drop(tx);

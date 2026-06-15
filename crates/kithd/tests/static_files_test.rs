@@ -89,12 +89,7 @@ impl FederationTransport for MockTransport {
 }
 
 fn make_owner_transport() -> MockTransport {
-    MockTransport(Identity {
-        user_id: OWNER_ID.into(),
-        login_name: OWNER_LOGIN.into(),
-        display_name: None,
-        node_name: "owner-kith.tail12345.ts.net".into(),
-    })
+    MockTransport(Identity::new(OWNER_ID.into(), OWNER_LOGIN.into(), None, "owner-kith.tail12345.ts.net".into()))
 }
 
 // ---------------------------------------------------------------------------

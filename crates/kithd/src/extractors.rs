@@ -120,6 +120,7 @@ where
                 kith_core::AuthError::WhoIsFailed(_)
                 | kith_core::AuthError::NoPeerAddr
                 | kith_core::AuthError::SenderMismatch => CallerRejection::Internal,
+                _ => CallerRejection::Internal,
             })
         }?;
 
@@ -208,12 +209,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity {
-            user_id: id.into(),
-            login_name: login.into(),
-            display_name: None,
-            node_name: "test-node".into(),
-        }
+        Identity::new(id.into(), login.into(), None, "test-node".into())
     }
 
     fn make_blob_store() -> (Arc<kith_attach::BlobStore>, tempfile::TempDir) {

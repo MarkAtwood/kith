@@ -38,12 +38,7 @@ mod tests {
     use kith_store::Store;
 
     fn make_identity(user_id: &str, login: &str) -> Identity {
-        Identity {
-            user_id: user_id.into(),
-            login_name: login.into(),
-            display_name: None,
-            node_name: "test-node.tail12345.ts.net".into(),
-        }
+        Identity::new(user_id.into(), login.into(), None, "test-node.tail12345.ts.net".into())
     }
 
     // -----------------------------------------------------------------------

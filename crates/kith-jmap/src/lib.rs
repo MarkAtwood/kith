@@ -102,6 +102,7 @@ pub fn request_error(err: JmapError) -> RequestError {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CoreCapability {
     pub max_size_upload: u64,
     pub max_concurrent_upload: u32,
@@ -115,6 +116,7 @@ pub struct CoreCapability {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct KithChatCapability {
     pub max_body_bytes: u64,
     pub max_attachment_bytes: u64,
@@ -130,6 +132,7 @@ pub struct KithChatCapability {
 pub struct CidCapability {}
 
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct Capabilities {
     #[serde(rename = "urn:ietf:params:jmap:core")]
     pub core: CoreCapability,
@@ -141,11 +144,13 @@ pub struct Capabilities {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct KithAccountCapability {
     pub role: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[non_exhaustive]
 pub struct AccountCapabilities {
     #[serde(rename = "urn:ietf:params:jmap:chat")]
     pub kith_chat: KithAccountCapability,
@@ -153,6 +158,7 @@ pub struct AccountCapabilities {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Account {
     pub name: String,
     pub is_personal: bool,
@@ -162,6 +168,7 @@ pub struct Account {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Session {
     pub capabilities: Capabilities,
     pub accounts: HashMap<String, Account>,
@@ -196,6 +203,7 @@ pub fn build_session(
     let role_str = match role {
         Role::Owner => "owner".to_string(),
         Role::Peer => "peer".to_string(),
+        _ => "peer".to_string(),
     };
 
     let mut accounts = HashMap::new();
@@ -644,12 +652,7 @@ mod tests {
     // Expected values are derived from the RFC spec, not from running the code.
 
     fn dummy_identity() -> Identity {
-        Identity {
-            user_id: "uid-test".to_string(),
-            login_name: "test@example.com".to_string(),
-            display_name: None,
-            node_name: "test-node.tail12345.ts.net".to_string(),
-        }
+        Identity::new("uid-test".to_string(), "test@example.com".to_string(), None, "test-node.tail12345.ts.net".to_string())
     }
 
     // Test 1: Valid request with both capabilities → Ok
@@ -762,12 +765,7 @@ mod tests {
     // Session object tests (oracle: RFC 8620 §2)
     #[test]
     fn test_build_session_owner_role() {
-        let identity = kith_core::Identity {
-            user_id: "uid-alice".to_string(),
-            login_name: "alice@example.com".to_string(),
-            display_name: Some("Alice Smith".to_string()),
-            node_name: "alice-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-alice".to_string(), "alice@example.com".to_string(), Some("Alice Smith".to_string()), "alice-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -794,12 +792,7 @@ mod tests {
 
     #[test]
     fn test_build_session_peer_role() {
-        let identity = kith_core::Identity {
-            user_id: "uid-bob".to_string(),
-            login_name: "bob@example.com".to_string(),
-            display_name: None,
-            node_name: "bob-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-bob".to_string(), "bob@example.com".to_string(), None, "bob-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Peer,
             &identity,
@@ -822,12 +815,7 @@ mod tests {
     #[test]
     fn test_build_session_username_never_empty() {
         // Even with empty display_name and empty login_name, username uses user_id
-        let identity = kith_core::Identity {
-            user_id: "uid-fallback".to_string(),
-            login_name: String::new(),
-            display_name: Some(String::new()),
-            node_name: "fallback-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-fallback".to_string(), String::new(), Some(String::new()), "fallback-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -842,12 +830,7 @@ mod tests {
 
     #[test]
     fn test_build_session_primary_accounts() {
-        let identity = kith_core::Identity {
-            user_id: "uid-x".to_string(),
-            login_name: "x@example.com".to_string(),
-            display_name: None,
-            node_name: "x-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-x".to_string(), "x@example.com".to_string(), None, "x-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -865,12 +848,7 @@ mod tests {
 
     #[test]
     fn test_build_session_api_url() {
-        let identity = kith_core::Identity {
-            user_id: "uid-x".to_string(),
-            login_name: "x@example.com".to_string(),
-            display_name: None,
-            node_name: "x-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-x".to_string(), "x@example.com".to_string(), None, "x-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -885,12 +863,7 @@ mod tests {
 
     #[test]
     fn test_build_session_serializes_correctly() {
-        let identity = kith_core::Identity {
-            user_id: "uid-x".to_string(),
-            login_name: "alice@example.com".to_string(),
-            display_name: None,
-            node_name: "x-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-x".to_string(), "alice@example.com".to_string(), None, "x-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -922,12 +895,7 @@ mod tests {
 
     #[test]
     fn session_advertises_cid_capability() {
-        let identity = kith_core::Identity {
-            user_id: "uid-x".to_string(),
-            login_name: "alice@example.com".to_string(),
-            display_name: None,
-            node_name: "x-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-x".to_string(), "alice@example.com".to_string(), None, "x-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Owner,
             &identity,
@@ -957,12 +925,7 @@ mod tests {
 
     #[test]
     fn session_includes_owner_identity() {
-        let identity = kith_core::Identity {
-            user_id: "uid-peer".to_string(),
-            login_name: "peer@example.com".to_string(),
-            display_name: None,
-            node_name: "peer-node.tail12345.ts.net".to_string(),
-        };
+        let identity = kith_core::Identity::new("uid-peer".to_string(), "peer@example.com".to_string(), None, "peer-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Peer,
             &identity,
@@ -990,12 +953,7 @@ mod tests {
         // Owner fields must reflect the mailbox owner, not the caller's identity.
         // A peer calls /.well-known/jmap; the caller identity is different from the
         // owner identity. Both must appear in the JSON at the correct keys.
-        let caller_identity = kith_core::Identity {
-            user_id: "uid-bob".to_string(),
-            login_name: "bob@example.com".to_string(),
-            display_name: None,
-            node_name: "bob-node.tail12345.ts.net".to_string(),
-        };
+        let caller_identity = kith_core::Identity::new("uid-bob".to_string(), "bob@example.com".to_string(), None, "bob-node.tail12345.ts.net".to_string());
         let session = build_session(
             kith_core::Role::Peer,
             &caller_identity,

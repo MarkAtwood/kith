@@ -1506,10 +1506,7 @@ mod tests {
             .insert("c-1".to_string(), "Alice".to_string());
         state.messages.clear();
 
-        let sc = StateChange {
-            type_name: "Message".to_string(),
-            new_state: "s-4".to_string(),
-        };
+        let sc = StateChange::new("Message", "s-4");
         handle_state_change(&http_client, &api_url, &sc, &mut state).await;
 
         // Oracle: mock returns one new message with receivedAt "2026-04-19T14:00:00Z"
@@ -1536,10 +1533,7 @@ mod tests {
         let mut state = crate::app::AppState::new();
         state.message_state = "s-5".to_string();
 
-        let sc = StateChange {
-            type_name: "UnknownType".to_string(),
-            new_state: "s-6".to_string(),
-        };
+        let sc = StateChange::new("UnknownType", "s-6");
         handle_state_change(&http_client, api_url, &sc, &mut state).await;
 
         assert_eq!(state.message_state, "s-5", "message_state must not change");
@@ -1752,10 +1746,7 @@ mod tests {
         }
 
         // Step 4+5: SSE state change arrives
-        let sc = StateChange {
-            type_name: "Message".to_string(),
-            new_state: "s-5".to_string(),
-        };
+        let sc = StateChange::new("Message", "s-5");
         handle_state_change(&http_client, &api_url, &sc, &mut state).await;
 
         // ── Assertions (all derived from mock data, not from code) ─────────────────

@@ -562,12 +562,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity {
-            user_id: id.into(),
-            login_name: login.into(),
-            display_name: None,
-            node_name: "test-node".into(),
-        }
+        Identity::new(id.into(), login.into(), None, "test-node".into())
     }
 
     fn make_blob_store_for_events_tests() -> std::sync::Arc<kith_attach::BlobStore> {
@@ -740,10 +735,7 @@ mod tests {
         tokio::spawn(async move {
             // Small yield to let the handler subscribe first.
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -789,15 +781,9 @@ mod tests {
         tokio::spawn(async move {
             tokio::task::yield_now().await;
             // Send a Message event (should be filtered out).
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-bad".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-bad".to_string()));
             // Send a Chat event (should pass the filter and close the stream).
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Chat", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -843,10 +829,7 @@ mod tests {
 
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -885,10 +868,7 @@ mod tests {
 
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state: "s-99".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Chat", "s-99".to_string()));
         });
 
         // 65-byte value that otherwise looks like a valid prefix
@@ -990,10 +970,7 @@ mod tests {
         // the stream and give us a body to inspect.
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "ChatContact".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("ChatContact", "s-1".to_string()));
         });
 
         // LEI "s-2" is ahead of every type's server counter (all at s-0):
@@ -1055,10 +1032,7 @@ mod tests {
             for _ in 0..4 {
                 tokio::task::yield_now().await;
             }
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-42".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-42".to_string()));
         });
 
         let (resp_a, resp_b) = tokio::join!(app.clone().oneshot(req_a), app.oneshot(req_b),);
@@ -1129,10 +1103,7 @@ mod tests {
         // Broadcast a live Message event at "s-2" to close the stream.
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-2".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-2".to_string()));
         });
 
         // Reconnect with LEI = "s-1" (the state we already have).
@@ -1190,14 +1161,8 @@ mod tests {
             tokio::task::yield_now().await;
             // Two sends with no await between them — both must land in the
             // broadcast ring buffer before the coalescing task can run.
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-42".to_string(),
-            });
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-42".to_string()));
+            let _ = tx.send(StateChange::new("Chat", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -1258,10 +1223,7 @@ mod tests {
 
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-7".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-7".to_string()));
         });
 
         let req = Request::builder()
@@ -1324,14 +1286,8 @@ mod tests {
             tokio::task::yield_now().await;
             // Both sends without yielding — Chat must be excluded by the
             // Message-only filter during coalescing, not reach the output.
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-42".to_string(),
-            });
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-42".to_string()));
+            let _ = tx.send(StateChange::new("Chat", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -1490,18 +1446,9 @@ mod tests {
             // them.  They land in the broadcast ring buffer synchronously.
             // The task's recv().await picks up the first, then try_recv()
             // captures the remaining two before any async yield — one batch.
-            let _ = tx.send(StateChange {
-                type_name: "ChatContact".to_string(),
-                new_state: "s-1".to_string(),
-            });
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state: "s-2".to_string(),
-            });
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-42".to_string(),
-            });
+            let _ = tx.send(StateChange::new("ChatContact", "s-1".to_string()));
+            let _ = tx.send(StateChange::new("Chat", "s-2".to_string()));
+            let _ = tx.send(StateChange::new("Message", "s-42".to_string()));
         });
 
         let req = Request::builder()
@@ -1577,10 +1524,7 @@ mod tests {
         // there are no state replays).
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -1636,10 +1580,7 @@ mod tests {
 
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -1685,10 +1626,7 @@ mod tests {
         // there are no state replays).
         tokio::spawn(async move {
             tokio::task::yield_now().await;
-            let _ = tx.send(StateChange {
-                type_name: "Message".to_string(),
-                new_state: "s-1".to_string(),
-            });
+            let _ = tx.send(StateChange::new("Message", "s-1".to_string()));
         });
 
         let req = Request::builder()
@@ -1791,10 +1729,7 @@ mod tests {
         // wake it up.  The ChatContact filter drops this event, the batch is empty,
         // and is_closed() in the empty-batch path detects the dropped receiver and
         // breaks.
-        let _ = tx.send(StateChange {
-            type_name: "Chat".to_string(),
-            new_state: "s-1".to_string(),
-        });
+        let _ = tx.send(StateChange::new("Chat", "s-1".to_string()));
 
         // Yield to let the task process the recv(), see the filtered-empty batch,
         // call is_closed(), and break.

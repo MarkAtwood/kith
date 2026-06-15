@@ -177,10 +177,7 @@ impl<'a> ChatStore<'a> {
 
     fn emit(&self, new_state: String) {
         if let Some(tx) = self.events_tx {
-            let _ = tx.send(StateChange {
-                type_name: "Chat".to_string(),
-                new_state,
-            });
+            let _ = tx.send(StateChange::new("Chat", new_state));
         }
     }
 

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Authorization role derived from WhoIs on every request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum Role {
     Owner,
     Peer,
@@ -10,6 +11,7 @@ pub enum Role {
 
 /// Verified caller identity from the federation transport layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Identity {
     /// Opaque stable key from the transport's identity provider.
     /// Never parse or assume format. Compare with == only.
@@ -23,6 +25,23 @@ pub struct Identity {
     /// Used to bootstrap peer_mailbox_host in ContactStore. May be empty;
     /// callers must handle empty.
     pub node_name: String,
+}
+
+impl Identity {
+    /// Construct a new `Identity`.
+    pub fn new(
+        user_id: impl Into<String>,
+        login_name: impl Into<String>,
+        display_name: Option<String>,
+        node_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            user_id: user_id.into(),
+            login_name: login_name.into(),
+            display_name,
+            node_name: node_name.into(),
+        }
+    }
 }
 
 impl Identity {

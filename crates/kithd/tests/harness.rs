@@ -119,12 +119,7 @@ mod inner {
     }
 
     pub fn make_identity(id: &str, login: &str) -> Identity {
-        Identity {
-            user_id: id.into(),
-            login_name: login.into(),
-            display_name: None,
-            node_name: format!("{id}-kith.tail12345.ts.net"),
-        }
+        Identity::new(id.into(), login.into(), None, format!("{id}-kith.tail12345.ts.net"))
     }
 
     // -----------------------------------------------------------------------
