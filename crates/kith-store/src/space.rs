@@ -4,6 +4,7 @@
 //! SpaceInvite, SpaceBan, and channel permission overrides.
 
 use crate::db_err;
+use crate::message::ChangesResult;
 use kith_core::{
     make_category, make_channel_permission, make_space_member, make_space_role, Category,
     ChannelPermission, Id, KithError, Space, SpaceBan, SpaceInvite, SpaceMember, SpaceRole,
@@ -416,7 +417,7 @@ impl<'a> SpaceStore<'a> {
     pub fn get_changes_since(
         &self,
         since_state: &str,
-    ) -> Result<(Vec<String>, Vec<String>, String), KithError> {
+    ) -> Result<ChangesResult, KithError> {
         let since_counter = since_state
             .strip_prefix("s-")
             .and_then(|n| n.parse::<i64>().ok())
@@ -429,7 +430,12 @@ impl<'a> SpaceStore<'a> {
             .expect("get_state always returns s-<integer>");
 
         if since_counter >= current_counter {
-            return Ok((vec![], vec![], current_state));
+            return Ok(ChangesResult {
+                added: vec![],
+                updated: vec![],
+                destroyed: vec![],
+                new_state: current_state,
+            });
         }
 
         let mut stmt = self
@@ -447,7 +453,15 @@ impl<'a> SpaceStore<'a> {
             .map_err(db_err)?;
 
         // Phase 1: no tombstone table, so destroyed is always empty.
-        Ok((changed, vec![], current_state))
+        // All changed spaces go into `updated`; this method does not
+        // distinguish added vs updated (use get_changes_since_ordered
+        // for that).
+        Ok(ChangesResult {
+            added: vec![],
+            updated: changed,
+            destroyed: vec![],
+            new_state: current_state,
+        })
     }
 
     /// Return change rows ordered by `changed_at_counter` with create/update
@@ -1996,10 +2010,10 @@ mod tests {
         let store = test_store();
         let ss = store.spaces();
 
-        let (changed, destroyed, new_state) = ss.get_changes_since("s-0").unwrap();
-        assert!(changed.is_empty());
-        assert!(destroyed.is_empty());
-        assert_eq!(new_state, "s-0");
+        let result = ss.get_changes_since("s-0").unwrap();
+        assert!(result.updated.is_empty());
+        assert!(result.destroyed.is_empty());
+        assert_eq!(result.new_state, "s-0");
     }
 
     #[test]
@@ -2010,13 +2024,13 @@ mod tests {
         ss.create_space("sp-gc", "Changed", None, None, false, false, 1000)
             .unwrap();
 
-        let (changed, _destroyed, new_state) = ss.get_changes_since("s-0").unwrap();
+        let result = ss.get_changes_since("s-0").unwrap();
         assert!(
-            changed.contains(&"sp-gc".to_string()),
-            "created space must appear in changed; got {:?}",
-            changed
+            result.updated.contains(&"sp-gc".to_string()),
+            "created space must appear in updated; got {:?}",
+            result.updated
         );
-        assert_eq!(new_state, "s-1");
+        assert_eq!(result.new_state, "s-1");
     }
 
     #[test]
@@ -2031,11 +2045,11 @@ mod tests {
         ss.update_space_metadata("sp-gu", Some("After"), None, None)
             .unwrap();
 
-        let (changed, _destroyed, _new_state) = ss.get_changes_since(&mid_state).unwrap();
+        let result = ss.get_changes_since(&mid_state).unwrap();
         assert!(
-            changed.contains(&"sp-gu".to_string()),
-            "updated space must appear in changed; got {:?}",
-            changed
+            result.updated.contains(&"sp-gu".to_string()),
+            "updated space must appear in updated; got {:?}",
+            result.updated
         );
     }
 
