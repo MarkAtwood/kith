@@ -10,7 +10,7 @@ pub enum Role {
 }
 
 /// Verified caller identity from the federation transport layer.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Identity {
     /// Opaque stable key from the transport's identity provider.
@@ -64,6 +64,17 @@ impl Identity {
 impl std::fmt::Display for Identity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.display())
+    }
+}
+
+impl std::fmt::Debug for Identity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Identity")
+            .field("user_id", &"<redacted>")
+            .field("login_name", &"<redacted>")
+            .field("display_name", &self.display_name)
+            .field("node_name", &self.node_name)
+            .finish()
     }
 }
 
