@@ -2,6 +2,7 @@ use crate::db_err;
 use crate::message::ChangesResult;
 use kith_core::{Chat, ChatKind, Id, JmapError, KithError, StateChange, UTCDate};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashMap;
 use tokio::sync::broadcast;
 
 /// Row type returned by [`ChatStore::get_changes_since_ordered`].
@@ -407,11 +408,42 @@ impl<'a> ChatStore<'a> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(db_err)?;
 
+        if rows.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Bulk-fetch all pinned messages in one query to avoid N+1.
+        let placeholders: String = rows
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let pin_sql = format!(
+            "SELECT chat_id, message_id FROM pinned_messages \
+             WHERE chat_id IN ({placeholders}) ORDER BY message_id"
+        );
+        let mut pin_stmt = self.conn.prepare(&pin_sql).map_err(db_err)?;
+        let pin_params: Vec<&dyn rusqlite::types::ToSql> =
+            rows.iter().map(|r| &r.id as &dyn rusqlite::types::ToSql).collect();
+        let mut pins: HashMap<String, Vec<Id>> = HashMap::new();
+        pin_stmt
+            .query_map(pin_params.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(db_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(db_err)?
+            .into_iter()
+            .for_each(|(chat_id, msg_id)| {
+                pins.entry(chat_id).or_default().push(Id::from(msg_id));
+            });
+
         let mut chats = Vec::with_capacity(rows.len());
         for r in rows {
             let chat_id = r.id.clone();
             let mut chat = build_chat(r);
-            chat.pinned_message_ids = self.load_pinned_messages(&chat_id)?;
+            chat.pinned_message_ids = pins.remove(&chat_id).unwrap_or_default();
             chats.push(chat);
         }
 
@@ -510,70 +542,95 @@ impl<'a> ChatStore<'a> {
         chat_id: &str,
         update: &ChatMetadataUpdate<'_>,
     ) -> Result<Chat, KithError> {
-        // Build SET clauses dynamically to avoid overwriting fields not in the update.
-        let mut set_clauses: Vec<String> = Vec::new();
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        // Fixed SQL using CASE WHEN so prepare_cached can be used.
+        // Parameters (all always bound):
+        //   ?1  update_name (bool)          ?2  name (text or null)
+        //   ?3  update_description (bool)   ?4  description (text or null)
+        //   ?5  update_avatar (bool)        ?6  avatar_blob_id (text or null)
+        //   ?7  update_muted (bool)         ?8  muted (integer)
+        //   ?9  update_mute_until (bool)    ?10 mute_until (text or null)
+        //   ?11 update_rti (bool)           ?12 receive_typing_indicators (integer)
+        //   ?13 update_receipt (bool)       ?14 receipt_sharing (integer or null)
+        //   ?15 update_expiry (bool)        ?16 message_expiry_seconds (integer or null)
+        //   ?17 chat_id
+        const UPDATE_SQL: &str = "\
+            UPDATE chats SET \
+              name                      = CASE WHEN ?1  THEN ?2  ELSE name                      END, \
+              description               = CASE WHEN ?3  THEN ?4  ELSE description               END, \
+              avatar_blob_id            = CASE WHEN ?5  THEN ?6  ELSE avatar_blob_id            END, \
+              muted                     = CASE WHEN ?7  THEN ?8  ELSE muted                     END, \
+              mute_until                = CASE WHEN ?9  THEN ?10 ELSE mute_until                END, \
+              receive_typing_indicators = CASE WHEN ?11 THEN ?12 ELSE receive_typing_indicators END, \
+              receipt_sharing           = CASE WHEN ?13 THEN ?14 ELSE receipt_sharing           END, \
+              message_expiry_seconds    = CASE WHEN ?15 THEN ?16 ELSE message_expiry_seconds    END \
+            WHERE id = ?17";
 
-        if let Some(v) = update.name {
-            set_clauses.push(format!("name = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v.map(|s| s.to_owned())));
-        }
-        if let Some(v) = update.description {
-            set_clauses.push(format!("description = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v.map(|s| s.to_owned())));
-        }
-        if let Some(v) = update.avatar_blob_id {
-            set_clauses.push(format!("avatar_blob_id = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v.map(|s| s.to_owned())));
-        }
-        if let Some(v) = update.muted {
-            set_clauses.push(format!("muted = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v as i32));
-        }
-        if let Some(v) = update.mute_until {
-            set_clauses.push(format!("mute_until = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v.map(|s| s.to_owned())));
-        }
-        if let Some(v) = update.receive_typing_indicators {
-            set_clauses.push(format!(
-                "receive_typing_indicators = ?{}",
-                param_values.len() + 1
-            ));
-            param_values.push(Box::new(v as i32));
-        }
-        if let Some(v) = update.receipt_sharing {
-            set_clauses.push(format!("receipt_sharing = ?{}", param_values.len() + 1));
-            param_values.push(Box::new(v.map(|b| b as i32)));
-        }
-        if let Some(v) = update.message_expiry_seconds {
-            set_clauses.push(format!(
-                "message_expiry_seconds = ?{}",
-                param_values.len() + 1
-            ));
-            param_values.push(Box::new(v.map(|n| n as i64)));
-        }
+        let any_update = update.name.is_some()
+            || update.description.is_some()
+            || update.avatar_blob_id.is_some()
+            || update.muted.is_some()
+            || update.mute_until.is_some()
+            || update.receive_typing_indicators.is_some()
+            || update.receipt_sharing.is_some()
+            || update.message_expiry_seconds.is_some();
 
-        if set_clauses.is_empty() {
+        if !any_update {
             // Nothing to update — just return the current chat.
             return self
                 .get_with_pins(chat_id)?
                 .ok_or_else(|| KithError::Store("chat not found".into()));
         }
 
-        // Add chat_id as the last parameter.
-        let id_param_idx = param_values.len() + 1;
-        param_values.push(Box::new(chat_id.to_owned()));
-
-        let sql = format!(
-            "UPDATE chats SET {} WHERE id = ?{}",
-            set_clauses.join(", "),
-            id_param_idx
-        );
+        // Resolve each field to (should_update: bool, value) pairs.
+        let (upd_name, val_name) = match update.name {
+            Some(v) => (true, v),
+            None => (false, None),
+        };
+        let (upd_desc, val_desc) = match update.description {
+            Some(v) => (true, v),
+            None => (false, None),
+        };
+        let (upd_avatar, val_avatar) = match update.avatar_blob_id {
+            Some(v) => (true, v),
+            None => (false, None),
+        };
+        let (upd_muted, val_muted) = match update.muted {
+            Some(v) => (true, v as i32),
+            None => (false, 0i32),
+        };
+        let (upd_mute_until, val_mute_until) = match update.mute_until {
+            Some(v) => (true, v),
+            None => (false, None),
+        };
+        let (upd_rti, val_rti) = match update.receive_typing_indicators {
+            Some(v) => (true, v as i32),
+            None => (false, 0i32),
+        };
+        let (upd_receipt, val_receipt): (bool, Option<i32>) = match update.receipt_sharing {
+            Some(v) => (true, v.map(|b| b as i32)),
+            None => (false, None),
+        };
+        let (upd_expiry, val_expiry): (bool, Option<i64>) = match update.message_expiry_seconds {
+            Some(v) => (true, v.map(|n| n as i64)),
+            None => (false, None),
+        };
 
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            param_values.iter().map(|b| b.as_ref()).collect();
-        let affected = tx.execute(&sql, param_refs.as_slice()).map_err(db_err)?;
+        let affected = tx
+            .prepare_cached(UPDATE_SQL)
+            .map_err(db_err)?
+            .execute(params![
+                upd_name, val_name,
+                upd_desc, val_desc,
+                upd_avatar, val_avatar,
+                upd_muted, val_muted,
+                upd_mute_until, val_mute_until,
+                upd_rti, val_rti,
+                upd_receipt, val_receipt,
+                upd_expiry, val_expiry,
+                chat_id,
+            ])
+            .map_err(db_err)?;
 
         if affected == 0 {
             tx.commit().map_err(db_err)?;
@@ -602,20 +659,30 @@ impl<'a> ChatStore<'a> {
         chat_id: &str,
         message_ids: &[&str],
     ) -> Result<(), KithError> {
-        // Validate all message IDs belong to this chat.
-        for msg_id in message_ids {
-            let exists: bool = self
+        // Validate all message IDs belong to this chat in one query.
+        if !message_ids.is_empty() {
+            let placeholders: String = message_ids
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("?{}", i + 1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let chat_id_param_idx = message_ids.len() + 1;
+            let val_sql = format!(
+                "SELECT COUNT(*) FROM messages \
+                 WHERE id IN ({placeholders}) AND chat_id = ?{chat_id_param_idx}"
+            );
+            let mut val_params: Vec<&dyn rusqlite::types::ToSql> =
+                message_ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+            val_params.push(&chat_id);
+            let count: i64 = self
                 .conn
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM messages WHERE id = ?1 AND chat_id = ?2)",
-                    params![msg_id, chat_id],
-                    |row| row.get(0),
-                )
+                .query_row(&val_sql, val_params.as_slice(), |row| row.get(0))
                 .map_err(db_err)?;
-            if !exists {
+            if count as usize != message_ids.len() {
                 return Err(KithError::Validation(format!(
-                    "message '{}' does not exist in chat '{}'",
-                    msg_id, chat_id
+                    "one or more message IDs do not exist in chat '{}'",
+                    chat_id
                 )));
             }
         }
