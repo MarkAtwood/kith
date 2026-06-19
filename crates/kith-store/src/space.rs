@@ -189,7 +189,7 @@ impl<'a> SpaceStore<'a> {
         icon_blob_id: Option<&str>,
         is_public: bool,
         is_publicly_previewable: bool,
-        created_at_unix: i64,
+        now_unix: i64,
     ) -> Result<Space, KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
         tx.execute(
@@ -203,7 +203,7 @@ impl<'a> SpaceStore<'a> {
                 icon_blob_id,
                 is_public as i64,
                 is_publicly_previewable as i64,
-                created_at_unix,
+                now_unix,
             ],
         )
         .map_err(db_err)?;
@@ -224,7 +224,7 @@ impl<'a> SpaceStore<'a> {
             icon_blob_id: icon_blob_id.map(|s| s.to_string()),
             is_public,
             is_publicly_previewable,
-            created_at: created_at_unix,
+            created_at: now_unix,
         };
         Ok(build_space(row, vec![], vec![]))
     }
@@ -780,7 +780,7 @@ impl<'a> SpaceStore<'a> {
         space_id: &str,
         user_id: &str,
         nick: Option<&str>,
-        joined_at_unix: i64,
+        now_unix: i64,
         role_ids: &[&str],
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
@@ -801,7 +801,7 @@ impl<'a> SpaceStore<'a> {
         tx.execute(
             "INSERT INTO space_members (space_id, user_id, nick, joined_at) \
              VALUES (?1, ?2, ?3, ?4)",
-            params![space_id, user_id, nick, joined_at_unix],
+            params![space_id, user_id, nick, now_unix],
         )
         .map_err(db_err)?;
 

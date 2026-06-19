@@ -1,7 +1,8 @@
 use crate::db_err;
 use kith_core::{KithError, StateChange};
 use rand::Rng;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::types::{FromSql, FromSqlError, ValueRef};
+use rusqlite::{params, Connection};
 use tokio::sync::broadcast;
 
 /// Maximum number of delivery attempts before an outbox entry is marked failed.
@@ -16,13 +17,41 @@ const _: () = assert!(
     "BASE_RETRY_DELAY_SECS must be >= 5: jitter_range = base/5 rounds to 0 below this threshold"
 );
 
+/// The kind of outbox entry: a message delivery or a read receipt delivery.
+#[derive(Debug, PartialEq, Eq)]
+pub enum OutboxKind {
+    Message,
+    Receipt,
+}
+
+impl OutboxKind {
+    fn as_str(&self) -> &'static str {
+        match self {
+            OutboxKind::Message => "message",
+            OutboxKind::Receipt => "receipt",
+        }
+    }
+}
+
+impl FromSql for OutboxKind {
+    fn column_result(value: ValueRef<'_>) -> Result<Self, FromSqlError> {
+        match value.as_str()? {
+            "message" => Ok(OutboxKind::Message),
+            "receipt" => Ok(OutboxKind::Receipt),
+            other => Err(FromSqlError::Other(
+                format!("unknown outbox kind: {other}").into(),
+            )),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct OutboxEntry {
     pub message_id: String,
     pub peer_user_id: String,
     pub peer_mailbox_host: String,
-    pub kind: String,              // "message" or "receipt"
-    pub read_at_unix: Option<i64>, // Some(_) for kind="receipt"
+    pub kind: OutboxKind,
+    pub read_at_unix: Option<i64>, // Some(_) for kind=Receipt
     pub next_attempt_at: i64,
     pub attempt_count: u32,
     pub last_error: Option<String>,
@@ -200,7 +229,7 @@ impl<'a> OutboxStore<'a> {
                     next,
                     entry.message_id,
                     entry.peer_user_id,
-                    entry.kind
+                    entry.kind.as_str()
                 ],
             )
             .map_err(db_err)?;
@@ -218,7 +247,7 @@ impl<'a> OutboxStore<'a> {
             .execute(
                 "DELETE FROM outbox \
                  WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",
-                params![entry.message_id, entry.peer_user_id, entry.kind],
+                params![entry.message_id, entry.peer_user_id, entry.kind.as_str()],
             )
             .map_err(db_err)?;
         Ok(())
@@ -227,7 +256,7 @@ impl<'a> OutboxStore<'a> {
     /// Atomically mark as successfully delivered: advance the message state counter,
     /// update messages.delivery_state to 'delivered', and delete the outbox row.
     ///
-    /// For kind='receipt': only deletes the outbox row (no message state update).
+    /// For kind=Receipt: only deletes the outbox row (no message state update).
     ///
     /// Mirrors `mark_failed`: all three writes are wrapped in a single transaction so
     /// that a crash between steps cannot leave the message stuck in Pending with no retry
@@ -237,26 +266,26 @@ impl<'a> OutboxStore<'a> {
         entry: &OutboxEntry,
         delivered_at_unix: i64,
     ) -> Result<(), KithError> {
-        if entry.kind == "receipt" {
+        if entry.kind == OutboxKind::Receipt {
             return self.delete_outbox_row(entry);
         }
-        // kind == "message": transactional delivery with state counter advance.
+        // kind == Message: transactional delivery with state counter advance.
         self.finish_message_delivery(entry, "delivered", Some(delivered_at_unix))
     }
 
     /// Permanent failure: update messages.delivery_state to 'failed' (with state counter
     /// advance so Message/changes picks it up), then delete the outbox row.
     ///
-    /// For kind='receipt': only deletes the outbox row (no message state update).
+    /// For kind=Receipt: only deletes the outbox row (no message state update).
     ///
     /// All three writes are wrapped in a single transaction. `unchecked_transaction()` is
     /// safe here because kithd is single-user single-writer — no concurrent writers on
     /// this connection.
     pub fn mark_failed(&self, entry: &OutboxEntry, _last_error: &str) -> Result<(), KithError> {
-        if entry.kind == "receipt" {
+        if entry.kind == OutboxKind::Receipt {
             return self.delete_outbox_row(entry);
         }
-        // kind == "message": transactional failure with state counter advance.
+        // kind == Message: transactional failure with state counter advance.
         self.finish_message_delivery(entry, "failed", None)
     }
 
@@ -266,7 +295,7 @@ impl<'a> OutboxStore<'a> {
             .execute(
                 "DELETE FROM outbox \
                  WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",
-                params![entry.message_id, entry.peer_user_id, entry.kind],
+                params![entry.message_id, entry.peer_user_id, entry.kind.as_str()],
             )
             .map_err(db_err)?;
         Ok(())
@@ -289,54 +318,36 @@ impl<'a> OutboxStore<'a> {
     ) -> Result<(), KithError> {
         let tx = self.conn.unchecked_transaction().map_err(db_err)?;
 
-        // Ordering requirement: advance the counter FIRST, then stamp state_version
-        // on the messages row with that captured value.  This guarantees that
-        // state_version on the row equals exactly the counter announced in the
-        // StateChange event — never counter+1 from a stale subquery read.
-        //
-        // If we stamped state_version via a subquery (counter+1) and then advanced
-        // the counter, the two values would agree only because SQLite serialises
-        // writes within a transaction.  Making the order explicit removes the
-        // dependency on that coincidence and makes the invariant self-documenting.
-        //
-        // The counter is advanced only when the UPDATE actually touches a row.
-        // For orphaned outbox entries (message row absent) the counter must not move.
-
-        // First: probe whether the messages row exists and is not already delivered.
-        // We use a SELECT rather than a speculative UPDATE so we can branch before
-        // touching the counter.
-        let exists: bool = tx
-            .query_row(
-                "SELECT 1 FROM messages WHERE id = ?1 AND delivery_state != 'delivered'",
-                params![entry.message_id],
-                |_| Ok(()),
+        // Update delivery_state first; the WHERE guard prevents re-delivery.
+        // rows > 0 means a message row existed and was not already delivered.
+        // For orphaned outbox entries (no message row) rows == 0 and the counter
+        // must not move.
+        let rows = if let Some(at) = delivered_at {
+            tx.execute(
+                "UPDATE messages \
+                 SET delivery_state = ?1, delivered_at = ?2 \
+                 WHERE id = ?3 AND delivery_state != 'delivered'",
+                params![final_state, at, entry.message_id],
             )
-            .optional()
             .map_err(db_err)?
-            .is_some();
+        } else {
+            tx.execute(
+                "UPDATE messages \
+                 SET delivery_state = ?1 \
+                 WHERE id = ?2 AND delivery_state != 'delivered'",
+                params![final_state, entry.message_id],
+            )
+            .map_err(db_err)?
+        };
 
-        let version = if exists {
-            // Advance the counter first; capture the new value.
+        let version = if rows > 0 {
+            // Advance the counter and stamp state_version with the captured value.
             let v = crate::advance_state_counter_in_tx(&tx, "message")?;
-
-            // Now stamp the row with the exact counter value we just reserved.
-            if let Some(at) = delivered_at {
-                tx.execute(
-                    "UPDATE messages \
-                     SET delivery_state = ?1, delivered_at = ?2, state_version = ?3 \
-                     WHERE id = ?4 AND delivery_state != 'delivered'",
-                    params![final_state, at, v, entry.message_id],
-                )
-                .map_err(db_err)?;
-            } else {
-                tx.execute(
-                    "UPDATE messages \
-                     SET delivery_state = ?1, state_version = ?2 \
-                     WHERE id = ?3 AND delivery_state != 'delivered'",
-                    params![final_state, v, entry.message_id],
-                )
-                .map_err(db_err)?;
-            }
+            tx.execute(
+                "UPDATE messages SET state_version = ?1 WHERE id = ?2",
+                params![v, entry.message_id],
+            )
+            .map_err(db_err)?;
             Some(v)
         } else {
             None
@@ -345,7 +356,7 @@ impl<'a> OutboxStore<'a> {
         tx.execute(
             "DELETE FROM outbox \
              WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3",
-            params![entry.message_id, entry.peer_user_id, entry.kind],
+            params![entry.message_id, entry.peer_user_id, entry.kind.as_str()],
         )
         .map_err(db_err)?;
         tx.commit().map_err(db_err)?;
@@ -426,7 +437,7 @@ mod tests {
         assert_eq!(due[0].message_id, "msg-1");
         assert_eq!(due[0].peer_user_id, "user-b");
         assert_eq!(due[0].peer_mailbox_host, "host-b.example.ts.net");
-        assert_eq!(due[0].kind, "message");
+        assert_eq!(due[0].kind, OutboxKind::Message);
         assert!(due[0].read_at_unix.is_none());
         assert_eq!(due[0].next_attempt_at, 1000);
         assert_eq!(due[0].attempt_count, 0);
@@ -706,7 +717,7 @@ mod tests {
 
     #[test]
     fn enqueue_receipt_creates_receipt_kind_row() {
-        // Oracle: enqueue_receipt inserts a row with kind='receipt' and read_at_unix set.
+        // Oracle: enqueue_receipt inserts a row with kind=Receipt and read_at_unix set.
         // get_by_message returns it; get_due returns it when due.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-rcpt");
@@ -717,7 +728,7 @@ mod tests {
 
         let entries = ob.get_by_message("msg-rcpt").unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].kind, "receipt");
+        assert_eq!(entries[0].kind, OutboxKind::Receipt);
         assert_eq!(entries[0].read_at_unix, Some(9999));
         assert_eq!(entries[0].next_attempt_at, 1000);
         assert_eq!(entries[0].attempt_count, 0);
@@ -725,12 +736,12 @@ mod tests {
         // get_due must return it at now_unix=1000.
         let due = ob.get_due(1000).unwrap();
         assert_eq!(due.len(), 1);
-        assert_eq!(due[0].kind, "receipt");
+        assert_eq!(due[0].kind, OutboxKind::Receipt);
     }
 
     #[test]
     fn complete_delivery_receipt_only_deletes_outbox_row() {
-        // Oracle: for kind='receipt', complete_delivery must only delete the outbox row.
+        // Oracle: for kind=Receipt, complete_delivery must only delete the outbox row.
         // It must NOT update messages.delivery_state or advance the state counter.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-rcpt-cd");
@@ -853,7 +864,7 @@ mod tests {
 
     #[test]
     fn mark_failed_receipt_only_deletes_outbox_row() {
-        // Oracle: for kind='receipt', mark_failed must only delete the outbox row.
+        // Oracle: for kind=Receipt, mark_failed must only delete the outbox row.
         // It must NOT update messages.delivery_state or advance the state counter.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-rcpt-mf");
@@ -916,7 +927,7 @@ mod tests {
         assert_eq!(due[0].message_id, "msg-ev1");
         assert_eq!(due[0].peer_user_id, "user-c");
         assert_eq!(due[0].peer_mailbox_host, "host-c.example.ts.net");
-        assert_eq!(due[0].kind, "message");
+        assert_eq!(due[0].kind, OutboxKind::Message);
         assert_eq!(due[0].next_attempt_at, 7777);
         assert_eq!(due[0].attempt_count, 0);
         assert!(due[0].last_error.is_none());
@@ -1039,7 +1050,7 @@ mod tests {
 
     #[test]
     fn enqueue_receipt_inserts_receipt_entry() {
-        // Oracle: enqueue_receipt creates a row with kind='receipt', read_at_unix set,
+        // Oracle: enqueue_receipt creates a row with kind=Receipt, read_at_unix set,
         // and attempt_count=0.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-er1");
@@ -1050,7 +1061,7 @@ mod tests {
 
         let entries = ob.get_by_message("msg-er1").unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].kind, "receipt");
+        assert_eq!(entries[0].kind, OutboxKind::Receipt);
         assert_eq!(entries[0].read_at_unix, Some(8888));
         assert_eq!(entries[0].attempt_count, 0);
         assert_eq!(entries[0].next_attempt_at, 2000);
