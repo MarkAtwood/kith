@@ -42,12 +42,20 @@ pub fn from_env() -> Option<Result<DevIdentityProvider, String>> {
 }
 
 /// Dev-only identity provider that identifies every connection as a fixed user.
+///
+/// **SECURITY**: This identity provider accepts all connections without verification.
+/// It is ONLY for use in tests. NEVER enable the `test-utils` feature in production.
+/// Enabling `test-utils` in a production build bypasses all authentication.
 pub struct DevIdentityProvider {
     identity: Identity,
 }
 
 impl DevIdentityProvider {
     pub fn new(identity: Identity) -> Self {
+        tracing::error!(
+            "DevIdentityProvider is active — ALL authentication is bypassed. \
+             This MUST NOT be used in production."
+        );
         Self { identity }
     }
 }

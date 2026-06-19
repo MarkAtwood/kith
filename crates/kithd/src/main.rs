@@ -390,6 +390,18 @@ async fn main() {
                     std::process::exit(1);
                 }
             };
+            // Require explicit opt-in to plain HTTP mode.  Without this guard,
+            // setting KITHD_BIND_ADDR alone would silently expose the full API
+            // over an unauthenticated plaintext listener.
+            if std::env::var("KITHD_ALLOW_PLAINTEXT").as_deref() != Ok("1") {
+                tracing::error!(
+                    "KITHD_ALLOW_PLAINTEXT not set — refusing to start in plain HTTP mode. \
+                     Set KITHD_ALLOW_PLAINTEXT=1 to acknowledge that plain HTTP is insecure \
+                     and must not be used in production."
+                );
+                std::process::exit(1);
+            }
+            tracing::warn!("INSECURE: plain HTTP mode active — not suitable for production use");
             tracing::warn!(
                 "tailnet binding failed ({e}), falling back to plain HTTP on {fallback_addr}"
             );

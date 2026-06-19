@@ -1441,7 +1441,7 @@ impl JmapHandler for SpaceInviteSetHandler {
                         let invite_id = Ulid::new().to_string();
                         let code: String = rand::rng()
                             .sample_iter(rand::distr::Alphanumeric)
-                            .take(16)
+                            .take(8)
                             .map(char::from)
                             .collect();
 
@@ -2810,8 +2810,8 @@ mod tests {
             .expect("create test space");
     }
 
-    // Oracle: SpaceInvite/set create must return an invite object with a
-    // 16-character alphanumeric code and server-assigned id.
+    // Oracle: SpaceInvite/set create must return an invite object with an
+    // 8-character alphanumeric code and server-assigned id.
     #[tokio::test]
     async fn test_space_invite_set_create() {
         let store = make_store();
@@ -2840,7 +2840,7 @@ mod tests {
             .get("code")
             .and_then(|v| v.as_str())
             .expect("created invite must have code");
-        assert_eq!(code.len(), 16, "code must be 16 characters; got: {code}");
+        assert_eq!(code.len(), 8, "code must be 8 characters; got: {code}");
         assert!(
             code.chars().all(|c| c.is_ascii_alphanumeric()),
             "code must be alphanumeric; got: {code}"
