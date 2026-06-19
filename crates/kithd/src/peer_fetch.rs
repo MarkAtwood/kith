@@ -26,6 +26,7 @@ use hyper_util::rt::TokioExecutor;
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+use subtle::ConstantTimeEq;
 
 
 // ---------------------------------------------------------------------------
@@ -321,9 +322,31 @@ async fn verify_and_store(
 ) -> Result<(), FetchBlobError> {
     let mut hasher = Sha256::new();
     hasher.update(&body);
-    let computed_hex = format!("{:x}", hasher.finalize());
+    let computed_bytes = hasher.finalize();
 
-    if computed_hex != expected_sha256 {
+    // Decode the expected hex string to raw bytes for constant-time comparison.
+    // A malformed hex string cannot match any computed digest, so treat it as a
+    // mismatch rather than a separate error variant.
+    let expected_bytes: Option<[u8; 32]> = (|| {
+        let s = expected_sha256.as_bytes();
+        if s.len() != 64 {
+            return None;
+        }
+        let mut out = [0u8; 32];
+        for (i, chunk) in s.chunks(2).enumerate() {
+            let hi = (chunk[0] as char).to_digit(16)? as u8;
+            let lo = (chunk[1] as char).to_digit(16)? as u8;
+            out[i] = (hi << 4) | lo;
+        }
+        Some(out)
+    })();
+
+    let matched: bool = expected_bytes
+        .map(|eb| computed_bytes.as_slice().ct_eq(&eb).into())
+        .unwrap_or(false);
+
+    if !matched {
+        let computed_hex = format!("{:x}", computed_bytes);
         tracing::warn!(blob_id, "fetch_peer_blob: hash mismatch (expected != got)");
         return Err(FetchBlobError::HashMismatch {
             expected: expected_sha256.to_string(),
