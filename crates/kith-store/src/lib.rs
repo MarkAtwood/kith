@@ -1231,39 +1231,31 @@ pub(crate) fn advance_state_counter_in_tx(
     tx: &rusqlite::Transaction<'_>,
     type_name: &str,
 ) -> Result<i64, KithError> {
-    let current: i64 = tx
-        .query_row(
-            "SELECT counter FROM state_counters WHERE type_name = ?1",
-            rusqlite::params![type_name],
-            |row| row.get(0),
-        )
-        .map_err(|e| {
-            if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
-                KithError::Store(format!(
-                    "advance_state_counter: unknown type_name '{type_name}'"
-                ))
-            } else {
-                db_err(e)
-            }
-        })?;
     // Guard against i64 overflow on the state counter. At 2^63-1 increments
     // a personal mailbox has sent more messages than atoms in the universe —
     // this is defence-in-depth, not a practical concern.
-    if current >= i64::MAX - 1 {
+    //
+    // SQLite promotes i64::MAX + 1 to REAL, so row.get::<_, i64> returns
+    // InvalidColumnType; map that to the overflow error too.
+    let new_counter: i64 = tx
+        .query_row(
+            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1 RETURNING counter",
+            rusqlite::params![type_name],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => KithError::Store(format!(
+                "advance_state_counter: unknown type_name '{type_name}'"
+            )),
+            rusqlite::Error::InvalidColumnType(_, _, _) => {
+                KithError::Store("state counter overflow".to_string())
+            }
+            _ => db_err(e),
+        })?;
+    if new_counter >= i64::MAX {
         return Err(KithError::Store("state counter overflow".to_string()));
     }
-    let rows = tx
-        .execute(
-            "UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1",
-            rusqlite::params![type_name],
-        )
-        .map_err(db_err)?;
-    if rows != 1 {
-        return Err(KithError::Store(format!(
-            "advance_state_counter: unknown type_name '{type_name}'"
-        )));
-    }
-    Ok(current + 1)
+    Ok(new_counter)
 }
 
 #[cfg(test)]
