@@ -104,7 +104,7 @@ impl<'a> OutboxStore<'a> {
     /// Idempotent: if a receipt is already queued for this (message_id, peer_user_id),
     /// the existing row is updated with the new read_at_unix timestamp and the retry
     /// state is reset. This handles the case where the owner updates readAt multiple
-    /// times — the latest timestamp is always used.
+    /// times -- the latest timestamp is always used.
     pub fn enqueue_receipt(
         &self,
         message_id: &str,
@@ -167,7 +167,7 @@ impl<'a> OutboxStore<'a> {
     }
 
     /// Record a delivery failure. Increments attempt_count and schedules next retry
-    /// with exponential backoff (30s base, 2× per attempt, 1h cap) and ±20% jitter.
+    /// with exponential backoff (30s base, 2x per attempt, 1h cap) and +-20% jitter.
     ///
     /// `attempt_count` is 0-indexed: after `MAX_DELIVERY_ATTEMPTS` calls
     /// (attempt_count reaching `MAX_DELIVERY_ATTEMPTS - 1` before this call),
@@ -196,7 +196,7 @@ impl<'a> OutboxStore<'a> {
         let shift = attempt.min(30);
         let base_delay: i64 = std::cmp::min(BASE_RETRY_DELAY_SECS * (1i64 << shift), 3600);
 
-        // ±20% jitter: randomise within [base - base/5, base + base/5].
+        // +-20% jitter: randomise within [base - base/5, base + base/5].
         // Clamped to at least 1 second to avoid scheduling in the past.
         let jitter_range = base_delay / 5;
         let jitter: i64 = rand::rng().random_range(-jitter_range..=jitter_range);
@@ -204,7 +204,7 @@ impl<'a> OutboxStore<'a> {
 
         let next = now_unix + delay_secs;
 
-        // Truncate at a UTF-8 character boundary ≤ 500 bytes to avoid a panic on
+        // Truncate at a UTF-8 character boundary <= 500 bytes to avoid a panic on
         // multi-byte sequences.  last_error comes from internal formatting but may
         // contain non-ASCII from peer hostnames or TLS details.
         let error_truncated = if last_error.len() <= 500 {
@@ -279,7 +279,7 @@ impl<'a> OutboxStore<'a> {
     /// For kind=Receipt: only deletes the outbox row (no message state update).
     ///
     /// All three writes are wrapped in a single transaction. `unchecked_transaction()` is
-    /// safe here because kithd is single-user single-writer — no concurrent writers on
+    /// safe here because kithd is single-user single-writer -- no concurrent writers on
     /// this connection.
     pub fn mark_failed(&self, entry: &OutboxEntry, _last_error: &str) -> Result<(), KithError> {
         if entry.kind == OutboxKind::Receipt {
@@ -420,7 +420,7 @@ mod tests {
         .unwrap();
     }
 
-    // Oracle: SQL semantics — enqueue inserts a row with next_attempt_at = now_unix;
+    // Oracle: SQL semantics -- enqueue inserts a row with next_attempt_at = now_unix;
     // get_due returns rows where next_attempt_at <= now_unix.
 
     #[test]
@@ -465,9 +465,9 @@ mod tests {
 
     #[test]
     fn record_failure_increments_attempt_and_schedules_backoff_with_jitter() {
-        // Oracle: backoff formula is 30 * 2^attempt_count ± 20% jitter (before increment).
-        //   attempt_count=0 → base=30, range=[24, 36]
-        //   attempt_count=1 → base=60, range=[48, 72]
+        // Oracle: backoff formula is 30 * 2^attempt_count +- 20% jitter (before increment).
+        //   attempt_count=0 -> base=30, range=[24, 36]
+        //   attempt_count=1 -> base=60, range=[48, 72]
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-3");
 
@@ -476,7 +476,7 @@ mod tests {
         ob.enqueue("msg-3", "user-b", "host-b.example.ts.net", now)
             .unwrap();
 
-        // First failure: attempt_count was 0, base = 30 * 2^0 = 30, ±20% → [24, 36].
+        // First failure: attempt_count was 0, base = 30 * 2^0 = 30, +-20% -> [24, 36].
         let entries = ob.get_by_message("msg-3").unwrap();
         ob.record_failure(&entries[0], "connection refused", now)
             .unwrap();
@@ -491,7 +491,7 @@ mod tests {
         );
         assert_eq!(entry.last_error.as_deref(), Some("connection refused"));
 
-        // Second failure: attempt_count was 1, base = 30 * 2^1 = 60, ±20% → [48, 72].
+        // Second failure: attempt_count was 1, base = 30 * 2^1 = 60, +-20% -> [48, 72].
         let now2 = entry.next_attempt_at;
         let entries2 = ob.get_by_message("msg-3").unwrap();
         ob.record_failure(&entries2[0], "timeout", now2).unwrap();
@@ -563,12 +563,12 @@ mod tests {
 
         // State counter must have advanced so get_changes_since returns this message.
         // The message existed before state_before (it was inserted first), so it
-        // must appear in updated[] per RFC 8620 §5.2, not added[].
+        // must appear in updated[] per RFC 8620 section 5.2, not added[].
         let changes = ms.get_changes_since(&state_before).unwrap();
         assert!(
             changes.updated.contains(&"msg-cd".to_string()),
             "complete_delivery must advance state_version so the message appears \
-             in updated[] (RFC 8620 §5.2); updated={:?}",
+             in updated[] (RFC 8620 section 5.2); updated={:?}",
             changes.updated
         );
     }
@@ -578,11 +578,11 @@ mod tests {
         // Oracle: error strings > 500 bytes are truncated at the last UTF-8 char boundary
         // so that no multi-byte character is split.
         //
-        // Input: 499 ASCII 'x' + '€' (U+20AC, 3 bytes) + 4 ASCII 'y' = 506 bytes.
-        // The '€' starts at byte index 499 (< 500) → included in output.
-        // The 'y' chars start at byte index 502 (≥ 500) → excluded.
-        // A naive &s[..500] would split '€' (panic); the code must avoid this.
-        // Expected stored value: 499 'x' + '€' = 502 bytes, all valid UTF-8.
+        // Input: 499 ASCII 'x' + U+20AC (3 bytes) + 4 ASCII 'y' = 506 bytes.
+        // The euro sign starts at byte index 499 (< 500) -> included in output.
+        // The 'y' chars start at byte index 502 (>= 500) -> excluded.
+        // A naive &s[..500] would split the euro sign (panic); the code must avoid this.
+        // Expected stored value: 499 'x' + euro sign = 502 bytes, all valid UTF-8.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-trunc");
 
@@ -590,7 +590,7 @@ mod tests {
         ob.enqueue("msg-trunc", "user-b", "host-b.example.ts.net", 1000)
             .unwrap();
 
-        let long_error = format!("{}{}{}", "x".repeat(499), '€', "yyyy");
+        let long_error = format!("{}{}{}", "x".repeat(499), '\u{20AC}', "yyyy");
         assert_eq!(
             long_error.len(),
             506,
@@ -612,17 +612,17 @@ mod tests {
             std::str::from_utf8(stored.as_bytes()).is_ok(),
             "stored error must be valid UTF-8"
         );
-        // Must end with '€' (last complete multi-byte char preserved).
+        // Must end with the euro sign (last complete multi-byte char preserved).
         assert!(
-            stored.ends_with('€'),
-            "stored error must end with '€'; got: {stored:?}"
+            stored.ends_with('\u{20AC}'),
+            "stored error must end with euro sign; got: {stored:?}"
         );
-        // Must not contain any 'y' (truncation excluded the chars after '€').
+        // Must not contain any 'y' (truncation excluded the chars after the euro sign).
         assert!(
             !stored.contains('y'),
             "stored error must not contain 'y' after truncation; got: {stored:?}"
         );
-        // Must be exactly 502 bytes (499 ASCII + 3-byte '€').
+        // Must be exactly 502 bytes (499 ASCII + 3-byte euro sign).
         assert_eq!(stored.len(), 502, "truncated length must be 502 bytes");
     }
 
@@ -630,8 +630,8 @@ mod tests {
     fn mark_failed_advances_message_state_counter() {
         // Oracle: after mark_failed, get_changes_since(state_before) must include the
         // message in `updated` (not `added`).  The message was inserted before state_before
-        // was captured, so it existed before sinceState — RFC 8620 §5.2 requires it in
-        // updated[], not created[].  This verifies that mark_failed advances state_version
+        // was captured, so it existed before sinceState -- RFC 8620 section 5.2 requires it
+        // in updated[], not created[].  This verifies that mark_failed advances state_version
         // on the messages row so the JMAP polling path is not blind to permanent failures.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-mf");
@@ -650,7 +650,7 @@ mod tests {
         assert!(
             changes.updated.contains(&"msg-mf".to_string()),
             "mark_failed must advance message state_version so get_changes_since returns it \
-             in updated[] (RFC 8620 §5.2); updated={:?}",
+             in updated[] (RFC 8620 section 5.2); updated={:?}",
             changes.updated
         );
     }
@@ -668,9 +668,9 @@ mod tests {
         ob.enqueue("msg-5", "user-b", "host-b.example.ts.net", now)
             .unwrap();
 
-        // Drive 71 failures — row must still exist after each.
+        // Drive 71 failures -- row must still exist after each.
         // Advance by 5000s per call: exceeds the maximum possible delay
-        // (3600s base × 1.2 jitter = 4320s) so that get_due would return the entry.
+        // (3600s base x 1.2 jitter = 4320s) so that get_due would return the entry.
         for i in 0..71u32 {
             let entries = ob.get_by_message("msg-5").unwrap();
             assert!(
@@ -829,7 +829,7 @@ mod tests {
             "orphaned outbox row must be deleted by complete_delivery"
         );
 
-        // State counter must NOT have advanced — the UPDATE found no message row.
+        // State counter must NOT have advanced -- the UPDATE found no message row.
         let state_after = ms.get_state().unwrap();
         assert_eq!(
             state_before, state_after,
@@ -955,7 +955,7 @@ mod tests {
     fn mark_delivered_is_idempotent() {
         // Oracle: calling mark_delivered on an already-delivered (already-deleted)
         // entry must succeed without error. The DELETE WHERE clause simply matches
-        // 0 rows — no constraint violation or error.
+        // 0 rows -- no constraint violation or error.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-mdi");
 
@@ -966,7 +966,7 @@ mod tests {
         let entries = ob.get_by_message("msg-mdi").unwrap();
         ob.mark_delivered(&entries[0]).unwrap();
 
-        // Second call with same entry — must not error.
+        // Second call with same entry -- must not error.
         ob.mark_delivered(&entries[0])
             .expect("mark_delivered must be idempotent (no error on already-delivered)");
 
@@ -1022,7 +1022,7 @@ mod tests {
     #[test]
     fn record_failure_updates_next_attempt_at_to_future() {
         // Oracle: after record_failure at now=1000, next_attempt_at must be > 1000.
-        // Base delay = 30s, jitter ±20% → range [24, 36]. So next >= 1024.
+        // Base delay = 30s, jitter +-20% -> range [24, 36]. So next >= 1024.
         let store = Store::open_in_memory().unwrap();
         insert_test_message(&store.conn, "msg-rfn");
 
