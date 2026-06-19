@@ -7,6 +7,11 @@ use tokio::sync::broadcast;
 /// Row returned by `get_changes_since_ordered`: (peer_user_id, changed_at_counter, is_create).
 type ContactChangeRow = (String, i64, bool);
 
+/// Sentinel value written by migration V17 to rows that existed before the created_at_counter
+/// column was added (V13 backfilled these with 0; V17 changed them to -1 to distinguish
+/// "existed at counter=0" from "just inserted when counter happened to be 0").
+const PRE_V8_SENTINEL: i64 = -1;
+
 pub struct ContactStore<'a> {
     conn: &'a Connection,
     events_tx: Option<&'a broadcast::Sender<StateChange>>,
@@ -528,8 +533,8 @@ fn stamp_contact_counters(
             params![counter, peer_user_id],
         )
         .map_err(db_err)?;
-    } else if created_at < 0 {
-        // Pre-V8 row (V17 sentinel = -1): existed before V8 classification.
+    } else if created_at == PRE_V8_SENTINEL {
+        // Pre-V8 row (V17 sentinel): existed before V8 classification.
         // Set created_at_counter = 0 so is_create = (0 > sinceState) = false.
         tx.execute(
             "UPDATE contacts SET changed_at_counter = ?1, created_at_counter = 0 \
