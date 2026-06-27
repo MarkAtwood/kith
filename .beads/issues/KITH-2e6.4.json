@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.4",
+  "title": "SEC2.1: watch.rs jmap_post opens new TLS connection per call",
+  "description": "fetch_and_notify calls jmap_post twice (Message/changes, Message/get) on lines 406, 440 of watch.rs. Each jmap_post opens a fresh TCP+TLS connection (lines 481, 484), causing unnecessary TLS handshakes. For a watch loop with one message per SSE event, this doubles the handshake cost.\n\nImpact: High latency, excessive CPU/network for watch notifications.\nFix: Reuse connection across both JMAP calls or use HTTP/1.1 keep-alive.\nLocation: watch.rs lines 469-549 (jmap_post function), called from fetch_and_notify lines 406 and 440.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:10Z",
+  "updated_at": "2026-04-19T19:22:14Z",
+  "closed_at": "2026-04-19T19:22:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:10Z"
+    }
+  ]
+}

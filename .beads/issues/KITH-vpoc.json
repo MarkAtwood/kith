@@ -1,0 +1,22 @@
+{
+  "close_reason": "10 tests added for delivery receipts",
+  "closed_at": "2026-06-13T19:54:46Z",
+  "compaction_level": 0,
+  "content_hash": "39c1a933ea7493d947378b70209d2ea2ce3f61c138acf87f02da1bfb38d020c0",
+  "created_at": "2026-06-13T19:28:28Z",
+  "created_by": "Mark Atwood",
+  "description": "Zero test coverage for delivery receipts. Need: upsert_delivery_receipt round-trip, load_delivery_receipts batch, read_disposition validation (displayed/deleted/processed), state counter advancement, UPSERT idempotency. Also need Peer/receipt handler test that verifies receipt is stored in delivery_receipts table. ~8 tests.",
+  "ephemeral": 0,
+  "id": "KITH-vpoc",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add missing tests for delivery receipts",
+  "updated_at": "2026-06-13T19:54:46Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.22",
+  "title": "KITH_BIND_ADDR not in Config struct, undocumented, wrong prefix",
+  "description": "In main.rs line 154, the fallback plain-HTTP bind address is read via std::env::var(\"KITH_BIND_ADDR\") directly in main(), bypassing Config entirely. Problems: (1) It uses a KITH_* prefix while all other kithd vars use KITHD_*; a maintainer doing 'grep KITHD_' in the codebase will miss it. (2) It is not in the Config struct, so there is no central list of supported env vars. (3) The value is passed to TcpListener::bind() without validation \u2014 a malformed address panics at unwrap_or_else(exit), which is acceptable, but the error message does not tell the operator what value was rejected. Fix: move KITH_BIND_ADDR into Config as fallback_bind_addr, rename it to KITHD_FALLBACK_ADDR, document it in the struct.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:31:12Z",
+  "updated_at": "2026-04-19T16:37:36Z",
+  "closed_at": "2026-04-19T16:37:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:31:11Z"
+    }
+  ]
+}

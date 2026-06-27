@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:03:14Z",
+  "compaction_level": 0,
+  "content_hash": "ac9b9cbd87b2fd4630813aaec6c0c69ce500c26cb51de27f1f8f6effc055c90e",
+  "created_at": "2026-06-15T04:56:08Z",
+  "created_by": "Mark Atwood",
+  "description": "Several public user-visible types use ad-hoc display() methods instead of impl std::fmt::Display, which prevents use with format strings, log macros, and error chains:\n\nkith-core/src/auth.rs: Identity has a pub fn display(&self) -> &str method (line 32) instead of impl Display. Callers must call .display() explicitly; they cannot use {id} in format strings, only {}.\n\nNote: AuthError and KithError do use thiserror #[derive(Error)] so Display is generated for those.\n\nFix: implement std::fmt::Display for Identity (delegating to the existing display() logic), then deprecate or remove the display() method. This allows Identity values to be used directly in format strings and log macros.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.58",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Missing Display impl on user-visible types",
+  "updated_at": "2026-06-15T12:03:14Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:56:08Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

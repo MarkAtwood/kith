@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.14",
+  "title": "DECISION: Test-only loopback bypass via atomic flag with cfg gating",
+  "description": "ALLOW_LOOPBACK_FOR_TESTS (peer_fetch.rs:38-40) is a std::sync::atomic::AtomicBool that only compiles in #[cfg(any(test, feature = \"test-utils\"))]. Integration tests set it explicitly before running (peer_attachment_fetch.rs:162). Cannot be triggered by default production builds. Security-aware test design: integration tests need 127.0.0.1 access, but the bypass is sandboxed to test-only code paths.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:16:10Z",
+  "updated_at": "2026-04-20T17:21:00Z",
+  "closed_at": "2026-04-20T17:21:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:16:10Z"
+    }
+  ]
+}

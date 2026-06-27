@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.5",
+  "title": "whois: node.name and display_name not checked for null bytes",
+  "description": "In kith-tslocal/src/lib.rs whois(), user_id and login_name are checked for null bytes (lines 349-356) but node.name and display_name are not. node.name flows into Identity.node_name and is used as a hostname string in peer delivery URL construction. A null byte in node_name could cause silent string truncation in C-backed libraries or SQL engines. The same risk applies to display_name if Tailscale ever sends a null byte there. Fix: add the same contains('\\0') check for result.node.name and result.user_profile.display_name (if Some) before returning Ok.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:36Z",
+  "updated_at": "2026-04-25T01:28:39Z",
+  "closed_at": "2026-04-25T01:28:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:35Z"
+    }
+  ]
+}

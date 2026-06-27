@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.51",
+  "title": "test-utils: build_dispatcher called with wrong arity in 4 test files",
+  "description": "harness.rs lines 208 and 233, e2e.rs lines 47 and 1162, group_and_receipt.rs line 484, and peer_attachment_fetch.rs lines 171, 194, and 211 all call kithd::build_dispatcher with one argument (store only). The production signature requires two: build_dispatcher(store: Arc<Mutex<Store>>, blob_store: Arc<BlobStore>). This is a compile-time failure under --features test-utils, leaving the entire integration test suite broken. Fix: pass a make_blob_store() value as the second argument at each call site, matching the pattern already used in static_files_test.rs.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:18:08Z",
+  "updated_at": "2026-04-25T01:43:17Z",
+  "closed_at": "2026-04-25T01:43:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:18:08Z"
+    }
+  ]
+}

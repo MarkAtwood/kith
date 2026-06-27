@@ -1,0 +1,13 @@
+{
+  "id": "KITH-nzfb",
+  "title": "Review: test coverage KITH-ngr5",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:00:30Z",
+  "updated_at": "2026-04-24T19:04:11Z",
+  "closed_at": "2026-04-24T19:04:11Z",
+  "notes": "Round 10 review: 3 findings. Confidence: 85% chance of no missed bug. Finding 1 (P2, correctness): test comment claims the select! closed() arm fires, but the actual exit path is the is_closed() check in the empty-batch branch \u2014 the select! arm is never exercised in this test. Finding 2 (P2, correctness): the select! closed() arm has zero direct test coverage; a regression removing it would pass this test. Finding 3 (P3, risk): the receiver_count()==1 assertion after one yield_now() depends on undocumented single-threaded tokio scheduler ordering. The drop(resp) \u2192 live_tx.closed() chain is sound; axum Sse holds the stream directly in the response body so dropping resp does drop live_rx. The 5-yield count for the final assertion is adequate given the single-threaded runtime. No bikeshedding."
+}

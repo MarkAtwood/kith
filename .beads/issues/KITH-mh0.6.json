@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.6",
+  "title": "Good decision: subscribe-before-lock ordering in EventSource handler",
+  "description": "Decision: In events_handler (kithd/src/events.rs), the broadcast channel is subscribed BEFORE reading store state.\n\nCode location: lines 107-110 of kithd/src/events.rs.\n\nWhy this is correct: If subscription happens after locking and reading state, any state change that arrives between the read and subscription is lost. By subscribing first, any subsequent state advances are captured by the live stream. Combined with Last-Event-ID replay logic, no events can be lost.\n\nThe wrong alternative would be to read store state first, then subscribe. This creates a race window where a state-change event arrives after the read but before subscription, causing that event to be silently dropped. The client has no mechanism to detect the gap (the LEI is still the read state, not the intermediate state that was missed).\n\nThis is a subtle but load-bearing design choice for a reliable push system. Worth preserving.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:36Z",
+  "updated_at": "2026-04-19T08:41:45Z",
+  "closed_at": "2026-04-19T08:41:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:35Z"
+    }
+  ]
+}

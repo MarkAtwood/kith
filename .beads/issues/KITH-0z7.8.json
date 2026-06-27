@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.8",
+  "title": "SEC0: spawn_test_listener temp dir collision on pid reuse",
+  "description": "In e2e.rs:72, spawn_test_listener_binds_loopback_port builds its temp dir path as 'kithd-test-listener-{pid}' using only the process ID. If two cargo test processes run concurrently with the same PID (possible after OS pid recycling, or in CI where multiple test binaries run in parallel), they will attempt to use the same temp directory and the same cert/key file paths. The second process will load the first process's certificate (due to the 'if both files exist, load them' path in load_or_generate_cert), resulting in the PinnedCertVerifier being given bytes for the loaded cert while the TLS acceptor also uses that cert \u2014 the test passes, but it silently tested against a stale cert from a previous run rather than a freshly generated one, which can mask cert-generation failures. In contrast, harness.rs:141-145 correctly adds a subsec_nanos suffix. Fix: add a unique suffix (e.g. subsec_nanos or a random u32) to the temp dir name in spawn_test_listener_binds_loopback_port, matching the pattern already used in spawn_test_pair.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:19:24Z",
+  "updated_at": "2026-04-19T17:26:11Z",
+  "closed_at": "2026-04-19T17:26:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:19:23Z"
+    }
+  ]
+}

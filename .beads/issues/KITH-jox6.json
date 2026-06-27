@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "478b8afb531e28847ddcc56c997254eae9b598ec1249199b122a595d8cdfdf38",
+  "created_at": "2026-06-14T00:03:45Z",
+  "created_by": "Mark Atwood",
+  "description": "Old-school mesh VPN, fully open source, battle-tested. No central service. Manual key exchange. Less ergonomic but zero dependencies on any company. Good fit for air-gapped or high-security deployments. Requires the abstract transport trait (KITH-lhaj).",
+  "ephemeral": 0,
+  "id": "KITH-jox6",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Federation transport: Tinc mesh VPN",
+  "updated_at": "2026-06-14T00:03:45Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:03:51Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-u8ft.3",
+  "title": "try_send Full/Closed distinction: correct and worth defending",
+  "description": "The old code used .is_err() to handle both TrySendError::Full and TrySendError::Closed identically (silent break). The new code explicitly splits them: Full \u2192 warn + break (stalled consumer, operator should know), Closed \u2192 silent break (client disconnected, expected). This split is correct engineering: Full is a signal that something is wrong with the SSE consumer and an operator needs to investigate; Closed is a normal lifecycle event. A future contributor might suggest 'simplifying' back to .is_err() to reduce code, which would silently suppress the stall warning and make ops-level debugging impossible. The verbosity is load-bearing.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:10:42Z",
+  "updated_at": "2026-04-25T09:12:00Z",
+  "closed_at": "2026-04-25T09:12:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-u8ft",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:10:42Z"
+    }
+  ]
+}

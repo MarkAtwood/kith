@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.1",
+  "title": "Migration PRAGMA user_version not atomic with schema",
+  "description": "File: /home/mark/WORK/KITH/crates/kith-store/src/lib.rs, lines 131-146\n\nThe migrate() function executes schema SQL and PRAGMA user_version in separate execute_batch() calls. Each execute_batch() is its own transaction, violating the atomic requirement. If the process crashes between line 138 (schema) and line 141 (PRAGMA), the next Store::open() will see the old user_version but the schema already applied, causing potential inconsistency or repeated attempts.\n\nCORRECT BEHAVIOR: Both the schema SQL and PRAGMA user_version update must happen in the same transaction. This requires either:\n1. A single execute_batch() call with both statements, OR\n2. An explicit transaction wrapper around both execute_batch calls\n\nIMPACT: Data integrity \u2014 migration state could be partially applied, though the IF NOT EXISTS clauses may mask it.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:12Z",
+  "updated_at": "2026-04-19T05:57:58Z",
+  "closed_at": "2026-04-19T05:57:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:11Z"
+    }
+  ]
+}

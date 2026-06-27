@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:02:36Z",
+  "compaction_level": 0,
+  "content_hash": "511a32e080df40f4296074ada58bc38063db5a68ccd45c2fb5c2530dabd98789",
+  "created_at": "2026-06-15T04:53:43Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-attach/src/lib.rs: the BlobStore public API lacks concurrency and idempotency contracts on several methods:\n\n1. write_blob() and write_blob_streaming(): use a random nonce in the temp filename to handle concurrent writes for the same blob_id. This is correct, but the behavior on concurrent writes is not documented. Specifically: if two callers race to write the same blob_id, both will succeed and the final file will be whichever rename() wins (atomic on POSIX). This idempotent-last-write-wins behavior is a contract callers need to know about.\n\n2. blob_path() (line 54): asserts validate_blob_id() is Ok. This is a public method that panics on invalid input without returning an error. The doc comment mentions the assert, but making a method pub when it can panic on user-supplied input is a defensive-code-forcing issue \u2014 every caller must call validate_blob_id() first or risk a panic. Since blob_path() just joins a path, it should either be pub(crate) (the path itself is an implementation detail) or return Result<PathBuf, String>.\n\n3. init() returns io::Result<()> but write_blob() returns Err with NotFound if init() was not called. This init()-before-use contract is not type-enforced; the doc on write_blob() mentions it but init() itself does not document that it must be called before any write.\n\n4. No concurrency documentation on the struct itself \u2014 BlobStore is Send + Sync (implicitly, since it only contains a PathBuf), and write_blob is &self not &mut self, meaning concurrent writes are possible. This is intentional (temp+rename is atomic) but not documented.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.24",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-attach: BlobStore methods undocumented for concurrency and idempotence",
+  "updated_at": "2026-06-15T16:02:36Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:43Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

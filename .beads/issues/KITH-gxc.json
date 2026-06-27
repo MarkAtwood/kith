@@ -1,0 +1,26 @@
+{
+  "id": "KITH-gxc",
+  "title": "kithctl contacts list",
+  "description": "Implement kithctl contacts list: open SQLite database read-only, list contacts table in tabular format.\n\nWHAT: Print all contacts (login, display name, mailbox host, blocked status, last seen) so operators can verify who has been auto-added.\n\nALGORITHM:\n1. Build Config from env + CLI overrides; derive db_path = config.db_path()\n2. Verify db_path exists: if not, eprintln!(\"error: database not found at {path}: run kithd first\") and exit(1)\n3. Open: Store::open(&db_path) \u2014 on Err: eprintln! and exit(1)\n4. Call store.contacts().list()? \u2192 Vec<Contact>\n5. If empty: println!(\"No contacts.\") and return Ok(())\n6. Print table header: \"LOGIN                          DISPLAY NAME              MAILBOX HOST                             BLOCKED  LAST SEEN\"\n7. Print separator line of dashes matching header width\n8. For each contact: println!(\"{:<30} {:<25} {:<40} {:<8} {}\",\n     contact.login_or_fallback(), display_or_dash, contact.mailbox_host, blocked_str, contact.last_seen_at)\n   where login_or_fallback = contact.login if non-empty else contact.tailscale_user_id\n   where display_or_dash = contact.display_name.as_deref().unwrap_or(\"-\")\n   where blocked_str = if contact.blocked { \"BLOCKED\" } else { \"ok\" }\n9. println!(\"\") then println!(\"{} contact(s)\", contacts.len())\n\nDEFENSIVE RULES:\n- Display name may be None \u2014 use \"-\" not panic\n- login may be empty (Headscale without OIDC) \u2014 fall back to tailscale_user_id\n- Do not print internal IDs (contact.id field) \u2014 they are opaque store keys\n- last_seen_at is a pre-formatted RFC 3339 string from kith-store; just print it\n- Store::open opens read-write even for reads; this is safe (WAL mode, no writes done)\n\nTESTS:\n- Integration test: create temp SQLite file using Store::open_in_memory() or a temp file, insert 2 contacts via ContactStore::upsert(), run contacts list logic, assert output contains both login names. Oracle: manually constructed expected output strings.\n- Test with empty DB: assert output is exactly \"No contacts.\"",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T19:17:03Z",
+  "closed_at": "2026-04-19T19:17:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0fs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:05:24Z"
+    },
+    {
+      "depends_on_id": "KITH-yvu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

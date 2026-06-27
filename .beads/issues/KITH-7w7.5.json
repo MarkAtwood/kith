@@ -1,0 +1,27 @@
+{
+  "id": "KITH-7w7.5",
+  "title": "Tests: DeliverHandler attachment validation and group chat",
+  "description": "**What:** Write unit tests for the DeliverHandler changes from KITH-7w7.4: attachment metadata validation (all rejection paths), group-chat N-participant chatId computation, and attachment storage.\n\n**Algorithm:**\n1. Open `crates/kith-peer/src/lib.rs` test module.\n2. Write the following tests (independent oracle \u2014 expected values are hardcoded literals, NOT derived from running the code):\n\n**Attachment validation rejection tests** (each asserts `invalidArguments` error, no DB write, state counter unchanged):\n- 'deliver_attachment_invalid_blob_id_rejected': send Peer/deliver with attachment blob_id='../evil', assert invalidArguments returned, message_state_counter unchanged.\n- 'deliver_attachment_unsafe_filename_rejected': blob_id=valid, filename='../passwd', assert invalidArguments.\n- 'deliver_attachment_bad_content_type_rejected': content_type='not-mime' (no slash), assert invalidArguments.\n- 'deliver_attachment_oversized_rejected': size=104_857_601 (one byte over limit), assert invalidArguments.\n- 'deliver_attachment_bad_sha256_rejected': sha256='UPPERCASE' (not lowercase hex), assert invalidArguments.\n- 'deliver_too_many_attachments_rejected': 21 attachments, assert invalidArguments.\n\n**Attachment acceptance + storage tests** (oracle: assert specific fields in DB after delivery):\n- 'deliver_with_attachment_stores_metadata': deliver 1 attachment with known fields (blob_id='a'*64, filename='doc.pdf', content_type='application/pdf', size=1024, sha256='f'*64). After delivery, call `attachments().list_by_message(msg_id)` and assert returned Attachment matches all input fields exactly.\n- 'deliver_with_zero_attachments_accepted': deliver with empty attachments array, assert accepted=true, message stored with 0 attachments.\n\n**Group chat chatId tests**:\n- 'deliver_group_chat_correct_chat_id_accepted': send Peer/deliver with participants=['alice', 'bob', 'carol'] (sorted), chatId=hex(sha256('alice\\x00bob\\x00carol')), assert accepted=true. Oracle: independently compute sha256 of sorted+joined IDs using a known hash value (compute offline and hardcode).\n- 'deliver_group_chat_wrong_chat_id_rejected': same participants but wrong chatId, assert invalidArguments.\n- 'deliver_group_chat_creates_chat_with_all_participants': after delivering a 3-participant message, call `chats().get(chat_id)` and assert the chat has 3 members.\n\n**Use existing test helpers** \u2014 the test module already has `make_store()`, `make_handler()`, and similar fixtures. Do not duplicate \u2014 reuse. Tests must check that state counter does NOT advance on rejection tests.\n\n**Agent team:** T (derives all expected values from external oracle \u2014 for sha256 tests, compute hash using sha2 crate in a `const` or at test-init time, NOT by calling compute_chat_id with the same input) \u2192 I-test-writer (writes the test code) \u2192 V (cargo test -p kith-peer + clippy + fmt).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:51:08Z",
+  "updated_at": "2026-04-20T02:04:50Z",
+  "closed_at": "2026-04-20T02:04:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:08Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:28Z"
+    }
+  ]
+}

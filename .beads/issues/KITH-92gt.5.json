@@ -1,0 +1,21 @@
+{
+  "id": "KITH-92gt.5",
+  "title": "contact.rs ChatContactSet/update ignores login changes",
+  "description": "kith-chat/src/contact.rs process_update(): the update patch can contain arbitrary keys; the handler reads displayName and blocked from the patch but re-upserts with `existing.login` unconditionally, without checking whether the patch includes a `login` field. If a caller sends a patch with a new login value, the value is silently dropped rather than rejected. The spec comment says 'Re-upsert with updated values', implying login should be immutable on update, but there is no validation that rejects a caller who attempts to set it \u2014 the field is silently ignored. Consequence: ambiguous API contract; an owner who sends a login patch gets silent no-op with no error, which violates RFC 8620 \u00a75.3 (unknown properties should be signalled as invalidArguments, not silently dropped).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:37:28Z",
+  "updated_at": "2026-04-24T19:43:52Z",
+  "closed_at": "2026-04-24T19:43:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-92gt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:37:27Z"
+    }
+  ]
+}

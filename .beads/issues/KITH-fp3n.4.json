@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.4",
+  "title": "percent_encode_path_segment misnamed: used for query param encoding, not path segment",
+  "description": "peer_fetch.rs: the function percent_encode_path_segment (line 238) is used to encode the content_type query parameter value (accept=ct_encoded) and the filename path segment. The function itself uses the RFC 3986 unreserved character set (A-Z, a-z, 0-9, -, ., _, ~), which is correct and safe for BOTH path segments AND query parameter values. Functionally safe for both uses. However, the name implies path-segment encoding, while query parameter encoding (application/x-www-form-urlencoded or percent-encoding for query components) has a different reserved set. A future caller wanting to encode an actual path segment component where '/' should be preserved (e.g. in a passthrough proxy path) would be incorrectly blocked. The comment above the function also says 'path segment' but the function is called for a query parameter value in the main code path. Rename to percent_encode_value (or percent_encode_unreserved) and update the doc comment to accurately describe what it does.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:05:00Z",
+  "updated_at": "2026-04-24T18:10:34Z",
+  "closed_at": "2026-04-24T18:10:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:04:59Z"
+    }
+  ]
+}

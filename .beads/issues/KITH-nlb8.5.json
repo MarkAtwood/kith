@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nlb8.5",
+  "title": "invalid accountId returns notFound; RFC 8620 requires accountNotFound",
+  "description": "kith-chat/src/chat.rs:44,152,388,521 (and same pattern in kith-chat/src/contact.rs, message.rs) \u2014 when accountId != 'a-self', handlers return JmapError::not_found() (error_type: 'notFound'). RFC 8620 \u00a75.1 specifies the error type must be 'accountNotFound' for an unrecognized account. The distinction matters: JMAP clients specifically check for 'accountNotFound' to trigger re-authentication. Also missing: JmapError::account_not_found() constructor in kith-core/src/error.rs.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:27:10Z",
+  "updated_at": "2026-04-25T00:34:04Z",
+  "closed_at": "2026-04-25T00:34:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:27:09Z"
+    }
+  ]
+}

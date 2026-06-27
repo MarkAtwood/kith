@@ -1,0 +1,13 @@
+{
+  "id": "KITH-s8kd",
+  "title": "Review: kith-core, kith-store, kith-tslocal, kith-events",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:35:16Z",
+  "updated_at": "2026-04-25T08:36:22Z",
+  "closed_at": "2026-04-25T08:36:22Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 The store layer has several subtle correctness issues (state counter ordering in finish_message_delivery, Chat/changes always returning added[], advance_state without row stamp) that are latent or active protocol bugs. The tslocal and events layers are clean. The migration chain is long (V1-V19) and correct migrations depend on correct sequencing assumptions that aren't enforced. Nothing is a remote code execution or data exfiltration risk, but incorrect JMAP state semantics will generate user-visible bugs (missing messages, phantom chats) that will be hard to diagnose.\nConfidence: 25% chance of missed bug. Uncertainty driven by: (1) kithd dispatcher and kith-jmap handler code not in scope \u2014 could not confirm whether get_changes_since or get_changes_since_ordered is the live path (affects severity of KITH-s8kd.4, .21); (2) no integration test coverage visible \u2014 cannot confirm whether finish_message_delivery ordering bug (KITH-s8kd.1) is triggered in practice; (3) SQLite WAL + single-writer design mitigates advance_state_counter_in_tx TOCTOU but this was assessed from architecture docs, not from a lock-mode audit. Would raise confidence if: could see kith-jmap handler dispatch (which get_changes_since variant is called), could see test coverage matrix for outbox retry paths, and could verify SQLite WAL + exclusive-writer mode is enforced at open time."
+}

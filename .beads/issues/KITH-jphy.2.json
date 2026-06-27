@@ -1,0 +1,27 @@
+{
+  "id": "KITH-jphy.2",
+  "title": "kith-tui: AppState and types (app.rs)",
+  "description": "What: Implement app.rs with the AppState struct, Focus enum, and placeholder-populated new() constructor.\n\nAlgorithm:\n1. Define Focus enum: pub enum Focus { ChatList, Input }\n2. Define AppState struct with fields:\n   - quit: bool\n   - terminal_size: (u16, u16)\n   - focus: Focus\n   - chat_list: Vec<String>  (placeholder chat names)\n   - selected_chat: usize    (index into chat_list, clamped)\n   - messages: std::collections::VecDeque<String>  (placeholder message lines)\n   - scroll_offset: usize    (lines from bottom, 0 = latest)\n   - input: String\n   - input_cursor: usize     (byte offset, always char boundary)\n3. Implement AppState::new() -> Self with hardcoded placeholder data:\n   - chat_list: vec![\"alice\".into(), \"bob\".into(), \"group-chat\".into()]\n   - messages: VecDeque with 20 hardcoded placeholder lines like \"12:34 alice: hello\"\n   - all other fields to sensible zero values\n4. Implement AppState::clamp_scroll(&mut self, visible_height: usize) to keep scroll_offset in bounds\n5. Implement PartialEq for Focus (needed for focus comparison in ui.rs)\n\nDefensive programming rules:\n- input_cursor must always point to a UTF-8 char boundary; new() sets it to 0 (valid)\n- selected_chat must be < chat_list.len() or 0 if empty; new() guarantees this\n- No unwrap()\n\nTests (unit, in app.rs #[cfg(test)]):\n- test: new() produces non-empty chat_list and messages\n- test: clamp_scroll(5) with 20 messages and scroll_offset=100 clamps to 15\n- test: clamp_scroll(5) with 3 messages and scroll_offset=0 stays 0",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:32:44Z",
+  "updated_at": "2026-04-20T04:35:53Z",
+  "closed_at": "2026-04-20T04:35:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jphy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:44Z"
+    },
+    {
+      "depends_on_id": "KITH-jphy.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:50Z"
+    }
+  ]
+}

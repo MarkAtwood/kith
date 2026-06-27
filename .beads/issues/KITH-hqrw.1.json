@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.1",
+  "title": "outbox_worker never terminates on clean outbox_tick exit",
+  "description": "outbox_worker returns '-> \\!' and loops forever with a 30-second sleep. If outbox_tick panics internally (e.g. poisoned mutex path calls return, not panic), the supervision wrapper in main.rs correctly restarts it. However, if the tokio runtime itself is shutting down during the sleep, the task will be aborted mid-sleep rather than completing its current tick. This is actually correct behavior \u2014 but the '-> \\!' return type is a lie: the function body has no diverging expression after the loop (the loop itself is the diverging point), which is fine. The real concern: the outer supervision loop in main.rs logs 'outbox_worker exited unexpectedly; restarting' on a clean return, but outbox_worker: \\! never returns cleanly, so that log arm is unreachable. This is P0 documentation confusion rather than a crash: a future maintainer adding an early-return to outbox_worker would silently lose the supervision message if they changed the return type. Not a runtime bug today. Downgrade to P1 if desired.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:29:27Z",
+  "updated_at": "2026-04-25T07:53:11Z",
+  "closed_at": "2026-04-25T07:53:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:29:27Z"
+    }
+  ]
+}

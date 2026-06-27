@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.5",
+  "title": "ChatContact/queryChanges: removed field uses changes.destroyed which is always empty",
+  "description": "contact.rs ChatContactQueryChangesHandler returns 'removed: changes.destroyed' where changes is a ChangeSet from get_changes_since(). Contacts are never destroyed (destroy is forbidden), so this is always empty in practice. But the semantic is wrong: RFC 8620 queryChanges 'removed' means IDs that fell out of the result set (due to filter or sort changes), not IDs of destroyed objects. When Phase 2 adds contact filtering, a contributor may assume 'removed' is already correctly populated and skip implementing filter-aware removal tracking. The field name 'destroyed' in the ChangeSet struct is misleading. Should either rename the struct field or add a comment explaining why destroyed == removed is correct for this unfiltered query.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:49:56Z",
+  "updated_at": "2026-04-25T05:44:11Z",
+  "closed_at": "2026-04-25T05:44:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:49:56Z"
+    }
+  ]
+}

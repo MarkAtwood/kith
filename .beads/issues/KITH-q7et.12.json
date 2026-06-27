@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "712e039840fa80bb14469569697df23c401f00f9b20f2acda6b378f0554a814b",
+  "created_at": "2026-06-15T04:53:02Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-store/src/contact.rs:stamp_contact_counters() (line 514) branches on three cases: created_at == 0 (fresh insert), created_at < 0 (pre-V8 sentinel set by V17 migration), and otherwise (existing row). The magic value -1 appears in migration SQL at V17 (SCHEMA_V17) and is silently implied in the code's < 0 check.\n\nThe -1 sentinel has non-obvious origin: V13 backfilled created_at_counter = 0 for old rows, V17 then changed those 0 values to -1 to distinguish 'existed at counter=0' from 'just inserted and counter happens to be 0'. This multi-migration interaction is only explained in code comments spread across lib.rs (V13, V17 migration strings) and contact.rs.\n\nSuggested improvement: define a named constant (const PRE_V8_SENTINEL: i64 = -1) in contact.rs with a comment pointing to the V13/V17 migration pair. This makes the branch condition self-documenting without requiring the reader to reconstruct the migration history.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.12",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "stamp_contact_counters encodes sentinel semantics in magic integer constants",
+  "updated_at": "2026-06-19T20:44:04Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:01Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

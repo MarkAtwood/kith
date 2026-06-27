@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.8",
+  "title": "kith-jmap: spawn-per-handler for panic isolation is correct",
+  "description": "Every handler call is wrapped in tokio::task::spawn so a panic in a handler kills that task, not the connection handler task. A contributor might remove the spawn for simplicity. The spawn is load-bearing: without it, any handler panic unwinds through dispatch, through the axum handler, crashing the connection. The JoinError catch returning serverFail is the documented contract.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:54:00Z",
+  "updated_at": "2026-04-25T08:15:48Z",
+  "closed_at": "2026-04-25T08:15:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:54:00Z"
+    }
+  ]
+}

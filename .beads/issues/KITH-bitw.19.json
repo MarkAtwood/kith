@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.19",
+  "title": "DECISION: Input size limit enforced at insertion, not parse time",
+  "description": "What: Before inserting a character into the input buffer, handle_key() checks if state.input.len() + c.len_utf8() <= 65536. Insertion is rejected if it would exceed the limit.\n\nWhy it's good: Prevents unbounded input buffer growth. The check uses c.len_utf8() to account for multi-byte characters, so a limit of 65536 is truly a byte limit, not a char count. Checked before mutation, so the state stays consistent. The bound is enforced in the key handler, not at send time, so the UI never accepts invalid input. Simple and direct.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:12Z",
+  "updated_at": "2026-04-20T05:46:05Z",
+  "closed_at": "2026-04-20T05:46:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:12Z"
+    }
+  ]
+}

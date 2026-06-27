@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.11",
+  "title": "Store error strings (rusqlite messages with schema/path details) returned verbatim to peer callers",
+  "description": "kith-chat/src/lib.rs kith_to_jmap() and kith-peer/src/lib.rs (lines 172,183,195,207,226,255,265,281,384,408,424,430) pass raw KithError::Display output into JmapError::server_fail(). Rusqlite error messages routinely include table names, column names, constraint names, SQL fragments, and file paths (e.g. 'UNIQUE constraint failed: contacts.user_id', 'unable to open database file: /home/user/.kithd/kith.db'). These are returned in the JMAP description field to authenticated callers including peers. Fix: in kith_to_jmap and all JmapError::server_fail() call sites in kith-peer, log the error internally and return a fixed string 'internal error' to the caller.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:52Z",
+  "updated_at": "2026-04-24T05:26:32Z",
+  "closed_at": "2026-04-24T05:26:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:52Z"
+    }
+  ]
+}

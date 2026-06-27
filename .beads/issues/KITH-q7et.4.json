@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "54352be58568fab34867fc90307b63ffe3dd62ec03b8d4232c6f8c9ab931cfd5",
+  "created_at": "2026-06-15T04:52:22Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-chat/src/permission.rs::resolve_permission() calls four store methods in sequence: is_member(), get_member_role_ids(), load_roles(), and load_channel_permission_overrides(). Each is a separate SQL round-trip to SQLite.\n\nThis function is called on every channel message send and every channel read, making it a per-request overhead multiplier for Spaces users.\n\nThe four queries can be collapsed into two (or one CTE): 1) a single query joining space_members, space_member_roles, and space_roles to fetch membership status, role IDs, and role permissions in one pass; 2) the existing load_channel_permission_overrides query for the channel.\n\nFor Phase 1 single-user deployments without Spaces this is zero-overhead. For Spaces with many concurrent channels or high-frequency clients, this is O(4) queries per operation where O(2) suffices.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.4",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "resolve_permission makes 4 separate DB queries per permission check",
+  "updated_at": "2026-06-15T04:52:22Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:21Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

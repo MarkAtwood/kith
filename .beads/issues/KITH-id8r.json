@@ -1,0 +1,31 @@
+{
+  "close_reason": "Message deletion implemented",
+  "closed_at": "2026-06-13T18:15:09Z",
+  "compaction_level": 0,
+  "content_hash": "ffb33651a373d3c21cbe28c6529dc513a5f21098c71c70694a93a5f740ba0459",
+  "created_at": "2026-06-13T13:39:51Z",
+  "created_by": "Mark Atwood",
+  "description": "Spec defines soft deletion. deletedAt (UTCDate, optional): when set, body is cleared to empty string, attachments cleared to empty array. deletedForAll (Boolean, optional): if true and sender is self, propagate deletion to all recipients via federation. Needs: Message/set update to set deletedAt, Peer/retract for federated deletion, body/attachment clearing logic. Spec reference: draft-atwood-jmap-chat-00.md lines 627-628, 1090+.",
+  "ephemeral": 0,
+  "id": "KITH-id8r",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement Message deletion (deletedAt, deletedForAll)",
+  "updated_at": "2026-06-13T18:15:09Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:12Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

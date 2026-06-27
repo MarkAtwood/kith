@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.23",
+  "title": "Decision: Attachment metadata separated from bytes on disk",
+  "description": "lib.rs lines 72-80 define an attachments table storing only metadata (id, filename, content_type, size_bytes, sha256, created_at), not blob content. The schema anticipates that blob bytes will be stored separately on the filesystem (or future blob store). This separation allows indexing and querying attachments without loading large blobs. Phase 1 is a stub (message.rs line 170 returns empty attachments vec), but the schema decision is sound for future scaling.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:33:17Z",
+  "updated_at": "2026-04-19T05:58:12Z",
+  "closed_at": "2026-04-19T05:58:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:33:17Z"
+    }
+  ]
+}

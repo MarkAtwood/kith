@@ -1,0 +1,13 @@
+{
+  "id": "KITH-1gm9",
+  "title": "harness delivery tests fail: is_valid_mailbox_host rejects 127.0.0.1",
+  "description": "The IP-range enforcement in is_valid_mailbox_host (added in KITH-gpz5) rejects loopback addresses, breaking the integration test harness that uses 127.0.0.1:port for bob's listener. outbox_tick calls record_failure instead of delivering, so the outbox row is never deleted. Affects: harness::full_message_delivery, harness::offline_delivery_and_retry, harness::full_message_delivery_with_attachment, inner::read_receipt_round_trip, inner::group_chat_delivers_to_reachable_peer. Fix: add #[cfg(feature = \"test-utils\")] bypass for is_loopback() in is_valid_mailbox_host, since loopback is never reachable in production but is needed in test harness.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:01:01Z",
+  "updated_at": "2026-04-24T22:02:11Z",
+  "closed_at": "2026-04-24T22:02:11Z"
+}

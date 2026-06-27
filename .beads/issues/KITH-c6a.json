@@ -1,0 +1,13 @@
+{
+  "id": "KITH-c6a",
+  "title": "Add test: KITH_DB_PATH bare filename falls back to XDG data dir",
+  "description": "What: Add a unit test to kithd/src/config.rs documenting that a bare filename like 'kith.db' (no directory separator) causes Config::from_env to use the XDG-compliant default path (~/.local/share/kithd/kith.db) rather than treating it as a CWD-relative path.\n\nAlgorithm:\n1. Read kithd/src/config.rs to understand Config::from_env and the line ~99 path check\n2. Add test fn config_bare_filename_uses_xdg_default() in #[cfg(test)] block:\n   - Set KITH_DB_PATH=kith.db (no slash)\n   - Call Config::from_env()\n   - Assert resulting db_path ends with '.local/share/kithd/' or similar XDG prefix (NOT CWD)\n3. Document the expected behavior in the test name and comment\n\nDefensive programming rules:\n- Do NOT change production code \u2014 this is a test-only addition\n- Test must be hermetic: set/unset env vars around the assertion, do not rely on ambient environment\n- If the code does NOT currently handle this correctly, file a separate bug; do not silently fix it in this task\n\nAgent team: single R+I+T agent (one test, one file)\n\nTests:\n- cargo test -p kithd config::tests::config_bare_filename passes",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:19:11Z",
+  "updated_at": "2026-04-19T21:25:05Z",
+  "closed_at": "2026-04-19T21:25:05Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.18",
+  "title": "SEC4: TLS verifier trait methods lack explanation",
+  "description": "PinnedCertVerifier (lines 104-160, watch.rs) has good struct-level docs but:\n- The trait method implementations (verify_tls12_signature, verify_tls13_signature, supported_verify_schemes) are just delegations to rustls::crypto::aws_lc_rs::default_provider()\n- No doc comment explains why these trait methods are necessary or what they do\n- A maintainer unfamiliar with rustls might think custom verification logic is happening\n\nSUGGESTION: Add a doc comment above the impl block explaining these are standard trait boilerplate required by ServerCertVerifier, and the actual cert verification logic is in verify_server_cert (line 110).",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:39Z",
+  "updated_at": "2026-04-19T19:26:38Z",
+  "closed_at": "2026-04-19T19:26:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:38Z"
+    }
+  ]
+}

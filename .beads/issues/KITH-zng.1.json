@@ -1,0 +1,20 @@
+{
+  "id": "KITH-zng.1",
+  "title": "Round 1 fixes adequate for maintainer burden",
+  "description": "All P1 maintainer concerns from round 1 addressed: hyper pin comment (KITH-626.1), handshake stability (KITH-626.2), size constant security rationale (KITH-626.6), socket cleanup via SocketGuard RAII (KITH-626.24), null-byte security comment (KITH-626.26). No new P1 concerns found. Remaining open items (KITH-626.10 error message styles, P3/P4 dead code) are opinion-rated and do not represent maintainer traps.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:21:57Z",
+  "updated_at": "2026-04-19T23:32:46Z",
+  "closed_at": "2026-04-19T23:32:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-zng",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:21:57Z"
+    }
+  ]
+}

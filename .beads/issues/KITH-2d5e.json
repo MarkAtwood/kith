@@ -1,0 +1,12 @@
+{
+  "id": "KITH-2d5e",
+  "title": "SEC0: enqueue_receipt does not handle rapid readAt updates",
+  "description": "In kith-chat/src/message.rs, if readAt is updated twice in rapid succession, the second enqueue_receipt call fails silently due to composite PK conflict, and the newer read timestamp is lost.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:18:10Z",
+  "updated_at": "2026-04-20T03:21:34Z",
+  "closed_at": "2026-04-20T03:21:34Z"
+}

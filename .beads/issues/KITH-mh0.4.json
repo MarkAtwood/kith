@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.4",
+  "title": "Batch state counter reads in SSE replay path",
+  "description": "events_handler reads three separate state counters (contact, chat, message) from the store in lines 116-124 of kithd/src/events.rs when replaying events. Each get_state() call makes a separate SQL SELECT query. This could be optimized by adding a Store::get_all_states() method that queries all three counters in a single SELECT: 'SELECT type_name, counter FROM state_counters WHERE type_name IN (\"contact\", \"chat\", \"message\")' and returns a map. This reduces SQLite round-trips from 3 to 1 while holding the store lock.\n\nImpact: Reduces latency on EventSource subscription for clients using Last-Event-ID (replay path).\nAlternative: Could also cache the states in an in-memory map, but batching the DB query is simpler and more correct.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:27Z",
+  "updated_at": "2026-04-19T08:41:43Z",
+  "closed_at": "2026-04-19T08:41:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:27Z"
+    }
+  ]
+}

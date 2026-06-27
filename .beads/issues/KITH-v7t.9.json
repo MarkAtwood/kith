@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.9",
+  "title": "config tests: Box::leak for env var keys unnecessary",
+  "description": "In config.rs, take_vars() uses Box::leak to produce &'static str keys, with a comment claiming 'leak is fine in test code.' The leak is entirely avoidable: storing Vec<(String, Option<String>)> with owned keys eliminates it. The current approach works but the leak is pointless and the SAFETY comment is misleading \u2014 this isn't an unsafe contract, it's a workaround for a lifetime that could be expressed without unsafe at all.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:25Z",
+  "updated_at": "2026-04-19T23:37:46Z",
+  "closed_at": "2026-04-19T23:37:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:25Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.1",
+  "title": "TLS key written before permissions set",
+  "description": "tls.rs:51-58 \u2014 File::create() creates the key file with default umask permissions (typically 0o644, world-readable) before set_permissions(0o600) is called. There is a TOCTOU window between file creation and permission tightening during which another process on the same host can read the private key bytes. The fix is to use OpenOptions with mode 0o600 on the initial open, or write to a temp file with restricted permissions and rename into place.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:29:47Z",
+  "updated_at": "2026-04-19T16:37:16Z",
+  "closed_at": "2026-04-19T16:37:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:29:47Z"
+    }
+  ]
+}

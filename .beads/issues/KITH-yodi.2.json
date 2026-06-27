@@ -1,0 +1,21 @@
+{
+  "id": "KITH-yodi.2",
+  "title": "kith-tui: pending_sc dispatched after quit is set, causing spurious HTTP call on exit",
+  "description": "When state.quit is set inside select! (keyboard q, stream end) and pending_sc is simultaneously Some, handle_state_change fires an HTTP round-trip before the quit check at the bottom of the loop. Not a crash or data loss, just a wasted network call that adds ~latency to the quit path.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:05:30Z",
+  "updated_at": "2026-04-25T08:06:36Z",
+  "closed_at": "2026-04-25T08:06:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-yodi",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:05:29Z"
+    }
+  ]
+}

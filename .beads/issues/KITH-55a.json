@@ -1,0 +1,13 @@
+{
+  "id": "KITH-55a",
+  "title": "kith-peer: add attachments field to DeliverMessageArgs and validate on receive",
+  "description": "KITH-3yb.6 was closed as done but DeliverMessageArgs has no attachments field and DeliverHandler does not validate or store incoming attachment metadata.\n\nImplement:\n1. Add attachments: Option<Vec<PeerAttachment>> to DeliverMessageArgs (serde deserialize)\n2. Add PeerAttachment struct: blobId, filename, contentType, size, sha256\n3. Validate each attachment in DeliverHandler (before any DB write): same rules as kith-chat message.rs \u2014 BlobStore::validate_blob_id, validate_filename, validate_content_type (exactly one slash), validate_sha256 (64 hex), size <= 104857600\n4. Pass attachments to insert_message_with_attachments (or messages().insert + separate attachment inserts in transaction)\n5. Reject if too many attachments (MAX_ATTACHMENTS = 20) or total size > 100 MiB\n\nWhy: Without this, received messages cannot carry attachments; the Phase 2 attachment feature only works for owner-authored messages.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:22:26Z",
+  "updated_at": "2026-04-20T01:51:55Z",
+  "closed_at": "2026-04-20T01:51:55Z",
+  "notes": "Part of Phase 2 peer delivery epic KITH-7w7"
+}

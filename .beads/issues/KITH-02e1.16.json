@@ -1,0 +1,19 @@
+{
+  "id": "KITH-02e1.16",
+  "title": "DECISION: prev_selected invariant prevents message reloads on every tick",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:14:49Z",
+  "updated_at": "2026-04-24T00:06:42Z",
+  "closed_at": "2026-04-24T00:06:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T05:14:49Z"
+    }
+  ]
+}

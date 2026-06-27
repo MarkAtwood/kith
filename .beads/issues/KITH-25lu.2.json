@@ -1,0 +1,20 @@
+{
+  "id": "KITH-25lu.2",
+  "title": "lib.rs test make_blob_store_for_test leaks temp dirs",
+  "description": "make_blob_store_for_test uses std::env::temp_dir().join(random_id) and calls create_dir_all but never deletes the directory. blob.rs tests correctly use tempfile::TempDir. Switch to return (Arc<BlobStore>, tempfile::TempDir) so cleanup is automatic.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:41:59Z",
+  "updated_at": "2026-04-25T06:47:58Z",
+  "closed_at": "2026-04-25T06:47:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-25lu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:41:59Z"
+    }
+  ]
+}

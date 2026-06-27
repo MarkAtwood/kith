@@ -1,0 +1,32 @@
+{
+  "assignee": "claude",
+  "close_reason": "All Space methods registered in METHOD_ROLES and dispatcher",
+  "closed_at": "2026-06-13T21:09:55Z",
+  "compaction_level": 0,
+  "content_hash": "5bf16d21fef9a9c7e91ac6c7e4a3c01e76ff990f0c5e5b3775454eebf190ded3",
+  "created_at": "2026-06-13T19:01:47Z",
+  "created_by": "Mark Atwood",
+  "description": "Register all Space methods in kith-jmap METHOD_ROLES: Space/get, Space/set, Space/changes, Space/query, Space/queryChanges, Space/join, SpaceInvite/get, SpaceInvite/set, SpaceInvite/changes, SpaceBan/get, SpaceBan/set, SpaceBan/changes. All Role::Owner. Add urn:ietf:params:jmap:chat capability advertisement for Spaces support if spec defines one.",
+  "ephemeral": 0,
+  "id": "KITH-ts93",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 4: Method registration and capability",
+  "updated_at": "2026-06-13T21:09:55Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:02:00Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-w7rx",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

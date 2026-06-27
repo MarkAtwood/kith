@@ -1,0 +1,20 @@
+{
+  "id": "KITH-q4mu.6",
+  "title": "V5 migration dedup DELETE before UNIQUE INDEX handles pre-existing race duplicates",
+  "description": "The V5 migration runs DELETE ... WHERE rowid NOT IN (SELECT MIN(rowid) ...) before DROP/CREATE UNIQUE INDEX. Without this, any database that had duplicate (chat_id, sender_msg_id) rows from the KITH-orvy.1 bug window would fail migration with a UNIQUE constraint error, bricking the user's store. MIN(rowid) is correct: the first-received row is canonical. A contributor might suggest removing the DELETE as 'unnecessary cleanup' \u2014 it is not cleanup, it is a prerequisite for the UNIQUE INDEX to apply at all on a live database.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:00:13Z",
+  "updated_at": "2026-04-24T04:05:14Z",
+  "closed_at": "2026-04-24T04:05:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:00:13Z"
+    }
+  ]
+}

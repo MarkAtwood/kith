@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hdm.4",
+  "title": "Redundant chat fetch in Message/set create (validation + participants)",
+  "description": "SEC2 finding: message.rs process_create fetches the chat twice \u2014 once to validate existence, once to get participants for outbox enqueue. A single fetch with the result reused would avoid the second DB hit.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:53:05Z",
+  "updated_at": "2026-04-19T15:59:05Z",
+  "closed_at": "2026-04-19T15:59:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hdm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:53:04Z"
+    }
+  ]
+}

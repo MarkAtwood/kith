@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.13",
+  "title": "DECISION: Dynamic timeout proportional to blob size with fixed bounds",
+  "description": "fetch_peer_blob (line 373) uses timeout = (expected_size / 65536).saturating_add(30).min(300) seconds. Rejects static timeout in favor of dynamic scaling: baseline 30s + ~1.5s per 100MB, capped at 5min. Prevents stalled downloads from hanging forever while allowing large blobs to complete. Saturating_add prevents arithmetic panic on huge sizes.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:16:03Z",
+  "updated_at": "2026-04-20T17:21:02Z",
+  "closed_at": "2026-04-20T17:21:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:16:03Z"
+    }
+  ]
+}

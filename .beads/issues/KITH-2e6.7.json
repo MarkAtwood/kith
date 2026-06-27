@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.7",
+  "title": "SEC4: watch_once event ID tracking is confusing",
+  "description": "Lines 333-381 in watch.rs have convoluted logic for tracking last_event_id:\n- The code assigns 'let _ = new_id' twice (lines 341, 379) without actually using the value\n- The comment on lines 335-341 suggests storing in last_message_state but doesn't actually do it properly\n- A future maintainer won't understand if event IDs are being persisted across reconnects or not\n\nSUGGESTION: Either document the event ID tracking mechanism clearly with a comment above the entire block, or simplify the code to make the intent obvious. The relationship between last_event_id and last_message_state needs explicit explanation.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:16Z",
+  "updated_at": "2026-04-19T19:26:56Z",
+  "closed_at": "2026-04-19T19:26:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:16Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.21",
+  "title": "_events_rx drop in main.rs needs an explanatory comment",
+  "description": "main.rs line 57: let (events_tx, _events_rx) = make_channel(64); The initial receiver is immediately dropped. The underscore prefix suppresses the compiler warning but not the reader confusion. A future maintainer will ask: 'Is this a bug? Should something be reading this channel?' The actual answer is: EventSource handlers call tx.subscribe() to create their own receivers on demand (broadcast channel pattern). Without a comment, this will be re-investigated on every future code reading. Fix: add a one-line comment: '// Receiver is dropped here; EventSource handlers call tx.subscribe() per connection.'.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:31:04Z",
+  "updated_at": "2026-04-19T16:37:33Z",
+  "closed_at": "2026-04-19T16:37:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:31:03Z"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T23:56:31Z",
+  "compaction_level": 0,
+  "content_hash": "eabec9b897ca105074481cbc24694cca1e8c2dffd13dc7a44601b2b5782fb9d4",
+  "created_at": "2026-06-14T23:53:02Z",
+  "created_by": "Mark Atwood",
+  "description": "Use SO_PEERCRED on Unix socket connections to identify callers by OS UID. Implements IdentityProvider. The OS is the identity provider \u2014 zero infrastructure, zero config. Maps UID to Identity (user_id = UID string, login_name from passwd). Pairs with KITH-in2g (Unix socket transport). Linux/macOS only.",
+  "ephemeral": 0,
+  "id": "KITH-0bw6",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Identity provider: Unix peer credentials",
+  "updated_at": "2026-06-14T23:56:31Z"
+}

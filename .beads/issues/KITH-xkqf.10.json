@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.10",
+  "title": "kith-tui silently exits when chat list is empty (new user)",
+  "description": "event.rs:876-879: run() returns Ok(()) early if chat_ids.get(selected_chat) is None after load_startup_data. For a new user with no chats, the TUI appears briefly and exits with no message. The event loop never starts. Fix: continue into the event loop with an empty chat list and display a user-visible hint (e.g. 'No chats yet \u2014 add a contact first').",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:38Z",
+  "updated_at": "2026-04-25T03:24:51Z",
+  "closed_at": "2026-04-25T03:24:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:38Z"
+    }
+  ]
+}

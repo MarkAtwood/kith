@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.10",
+  "title": "SEC2: outbox_tick N+1 contact lookups",
+  "description": "In kith-peer/src/lib.rs outbox_tick (lines 889-916), for each due outbox entry (up to 50 from get_due batch), a separate contact lookup is performed via get_by_peer_user_id. This is an N+1 pattern: one initial query returns 50 entries, then 50 individual contact queries follow. Optimization: batch contact lookups or pre-fetch contacts for the due entry peer_user_ids. Note: This is acceptable for Phase 1 (single user, small scale) but should be addressed before multi-mailbox delivery or higher concurrency.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:18:09Z",
+  "updated_at": "2026-04-20T03:20:57Z",
+  "closed_at": "2026-04-20T03:20:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:18:09Z"
+    }
+  ]
+}

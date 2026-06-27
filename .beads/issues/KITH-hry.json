@@ -1,0 +1,25 @@
+{
+  "id": "KITH-hry",
+  "title": "kith-events: reconnect with last-event-id replay",
+  "description": "What: Add Last-Event-ID reconnect replay to the EventSource handler so clients that briefly disconnect are notified of state changes they missed.\n\nAlgorithm:\n1. In events_handler (kith-events/src/lib.rs), extract TypedHeader<LastEventId> from request parts (axum headers crate) OR extract via HeaderMap lookup:\n   let last_event_id = headers.get(\"last-event-id\").and_then(|v| v.to_str().ok()).map(str::to_owned);\n2. If last_event_id is Some:\n   a. Validate length <= 64 bytes; if longer treat as absent (do not error)\n   b. Validate format: must be \"s-\" followed by digits only (regex \"^s-[0-9]+$\"); if invalid treat as absent\n   c. Lock store: let store_guard = state.store.lock().await\n   d. Read current states:\n      let contact_state = store_guard.contacts().get_state()?\n      let chat_state = store_guard.chats().get_state()?\n      let msg_state = store_guard.messages().get_state()?\n   e. drop(store_guard)  // release lock before building stream\n   f. For each (type_name, current_state) in [(\"Contact\",contact_state),(\"Chat\",chat_state),(\"Message\",msg_state)]:\n      - If types filter includes type_name AND current_state != last_event_id:\n        - Prepend to stream: emit SSE event for this type with current_state\n3. Subscribe to broadcast channel AFTER releasing store lock (to avoid missing events between read and subscribe: subscribe first, then read states and prepend, so the live stream catches any concurrent state advance)\n\nCorrect ordering to avoid race:\n  a. let rx = state.events_tx.subscribe()  // subscribe FIRST\n  b. lock store, read states, unlock\n  c. build replay_events vec\n  d. chain(replay_events).chain(broadcast_stream)\n\nDefensive rules:\n- Subscribe to broadcast BEFORE reading store state to ensure no events lost during replay construction\n- Validate Last-Event-ID before any DB access\n- Never interpolate Last-Event-ID into SQL; parse to i64 then compare against get_state() return\n- Invalid Last-Event-ID silently treated as absent (no 400 - client recovery is more important)\n- Size limit on Last-Event-ID: silently ignore if > 64 bytes",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T08:26:27Z",
+  "closed_at": "2026-04-19T08:26:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-845",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-swf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

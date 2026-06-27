@@ -1,0 +1,20 @@
+{
+  "id": "KITH-9399.17",
+  "title": "chats table missing index on changed_at_counter \u2014 Chat/changes does full table scan",
+  "description": "The Chat/changes query filters WHERE changed_at_counter > ?1 ORDER BY changed_at_counter ASC but there is no index on chats(changed_at_counter). On large chat histories this becomes a full table scan. Fix: add CREATE INDEX idx_chats_changed_at_counter ON chats(changed_at_counter) in a new migration.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:11:47Z",
+  "updated_at": "2026-04-24T22:30:25Z",
+  "closed_at": "2026-04-24T22:30:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:11:47Z"
+    }
+  ]
+}

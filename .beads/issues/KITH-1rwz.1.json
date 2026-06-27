@@ -1,0 +1,21 @@
+{
+  "id": "KITH-1rwz.1",
+  "title": "discovery: trusts peer-supplied owner_user_id \u2014 outbound delivery redirection",
+  "description": "Attack: malicious tailnet node M serves /.well-known/jmap with owner_user_id = alice-id. upsert_discovered_contact runs ON CONFLICT DO UPDATE SET peer_mailbox_host = M_host. Outbound delivery for alice-id now goes to M instead of Alice's real kithd \u2014 outbound message interception.\n\nFix: in run_discovery_round, each PeerNode from /status already has a WhoIs-verified user_id. After probe_peer() returns a PeerSession, compare session.owner_user_id against peer.user_id (from LocalAPI /status). If they diverge, log a warning and skip the upsert. No extra WhoIs call needed \u2014 /status user_id is already authoritative.\n\nRequires passing peer.user_id through the JoinSet task tuple: change (dns_name, session) to (dns_name, peer_user_id, session).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:52:29Z",
+  "updated_at": "2026-04-25T00:58:38Z",
+  "closed_at": "2026-04-25T00:58:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1rwz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:52:28Z"
+    }
+  ]
+}

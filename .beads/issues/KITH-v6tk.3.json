@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v6tk.3",
+  "title": "SSE channel Full/Closed split: explicit match is correct and should be defended",
+  "description": "The new match on TrySendError::Full vs TrySendError::Closed at events.rs line 432 is the right design. Full = client is alive but stalled; Closed = client disconnected. Conflating them (the old is_err() form) made it impossible to emit a warn log only for stalled clients. A future contributor might suggest 'simplify back to is_err()' to reduce boilerplate \u2014 this should be resisted because the two cases have different operational meanings and the distinction enables correct observability (warn on Full, silent drop on Closed).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:56:23Z",
+  "updated_at": "2026-04-25T08:57:48Z",
+  "closed_at": "2026-04-25T08:57:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v6tk",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:56:23Z"
+    }
+  ]
+}

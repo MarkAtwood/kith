@@ -1,0 +1,13 @@
+{
+  "id": "KITH-909i",
+  "title": "Review: kithctl, kith-peer, kith-attach",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:36:08Z",
+  "updated_at": "2026-04-25T08:30:29Z",
+  "closed_at": "2026-04-25T08:30:29Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 P0 bugs in kithctl watch (spurious notifications, bootstrap state fallback, chunked TE) are user-visible on every kithctl watch invocation. The chunked TE issue means JMAP calls silently fail every time. kith-peer and kith-attach are well-structured with good test coverage.\nConfidence: 20% chance of missed bug. Uncertainty driven by: (1) cannot verify how kithd actually sends HTTP responses \u2014 if it sends HTTP/1.1 with chunked TE the jmap_post issue is a P0 that breaks watch entirely; (2) outbox_tick test coverage is thorough but integration tests against a real kithd network path do not exist; (3) kith-attach is only tested with sync-style byte slices, not with real axum Body streams from HTTP. Would raise confidence if: running kithctl watch against a live kithd and observing actual notification behavior; checking kithd's axum response headers to confirm whether chunked TE is used."
+}

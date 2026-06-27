@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.3",
+  "title": "SEC0: /tmp/kithd fallback is unsafe and ephemeral",
+  "description": "Config::from_env() at config.rs:18-19 falls back to /tmp/kithd when HOME is unset. This fallback is problematic:\n- /tmp/ is world-writable; vulnerable to symlink/TOCTOU attacks\n- /tmp is typically cleaned on reboot, losing all data\n- Code prints warning but continues with unsafe path\n- No validation that path exists or is writable until runtime\n\nLegitimate case where HOME might be unset: systemd services without User= directive, some container runtimes, or CI/CD scripts.\n\nFix: Treat missing HOME as a fatal error. Output clear error message and exit(1) rather than silently using /tmp.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:06Z",
+  "updated_at": "2026-04-19T19:26:12Z",
+  "closed_at": "2026-04-19T19:26:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:06Z"
+    }
+  ]
+}

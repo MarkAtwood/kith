@@ -1,0 +1,33 @@
+{
+  "id": "KITH-z9ly.5",
+  "title": "E2E: group chat fanout + read receipt delivery",
+  "description": "Add E2E tests for group chat delivery to multiple participants and read receipt round-trip.\n\n**What:** Two E2E scenarios exercising the full stack via spawn_test_pair.\n\n**Scenario 1 \u2014 Group chat fanout (oracle: JMAP spec + RFC 8620):**\n1. Spawn 3 daemons: alice, bob, carol.\n2. Alice sends a Message/set create in a 3-way chat (chat with bob and carol).\n3. Wait for outbox_tick to run on alice's daemon.\n4. Assert bob's daemon received the Peer/deliver call (check bob's Message/get returns alice's message).\n5. Assert carol's daemon received the Peer/deliver call (same check).\n6. Oracle: independently construct the expected message JSON from the spec; compare only id, chatId, body, senderTailscaleUserId fields.\n\n**Scenario 2 \u2014 Read receipt round-trip (oracle: PeerReceiptArgs struct contract):**\n1. Spawn 2 daemons: alice, bob.\n2. Alice delivers a message to bob via Peer/deliver.\n3. Bob marks the message as read via Message/set update with readAt.\n4. Wait for outbox_tick to run on bob's daemon.\n5. Assert alice's daemon received the Peer/receipt call (check alice's message has read_at set or delivery_state updated \u2014 depending on ReceiptHandler behavior).\n6. Oracle: alice's message row delivery_state or read_at must reflect the receipt; verify with Message/get.\n\n**Agent team:** R (read e2e.rs to understand spawn_test_pair, test harness, and existing E2E patterns) + I.\n\n**Tests:** cargo test -p kithd --features test-utils must pass clean.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:53:27Z",
+  "updated_at": "2026-04-20T03:16:11Z",
+  "closed_at": "2026-04-20T03:16:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:27Z"
+    },
+    {
+      "depends_on_id": "KITH-z9ly.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:33Z"
+    },
+    {
+      "depends_on_id": "KITH-z9ly.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:34Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-pnlm.7",
+  "title": "Per-row changed_at_counter on contacts: correct RFC 8620 \u00a75.6 paging approach",
+  "description": "Schema V8 adds changed_at_counter to each contacts row. get_changes_since_ordered() returns (peer_user_id, changed_at_counter) tuples; the handler uses the last returned counter as newState on truncation. This is the correct approach for RFC 8620 \u00a75.6: it avoids fetching all rows just to compute a truncated state token, and the ORDER BY changed_at_counter ASC ensures oldest-first paging. A contributor might suggest using the global state counter as newState on truncation (wrong: client would miss items between newState and the last actually-returned counter) or computing per-row state in a separate pass (unnecessary complexity).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:27:47Z",
+  "updated_at": "2026-04-24T20:34:09Z",
+  "closed_at": "2026-04-24T20:34:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:27:47Z"
+    }
+  ]
+}

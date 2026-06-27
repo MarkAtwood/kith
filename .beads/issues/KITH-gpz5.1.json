@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.1",
+  "title": "upsert always advances state counter on no-op",
+  "description": "contact.upsert and upsert_discovered_contact call advance_state unconditionally \u2014 even when the ON CONFLICT DO UPDATE clause writes identical values. Every upsert, including idempotent re-deliveries, emits a spurious StateChange and phantom Contact/changes delta for JMAP clients. Compare: set_blocked guards on affected > 0.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:44:28Z",
+  "updated_at": "2026-04-24T17:00:00Z",
+  "closed_at": "2026-04-24T17:00:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:44:28Z"
+    }
+  ]
+}

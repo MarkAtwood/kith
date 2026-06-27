@@ -1,0 +1,13 @@
+{
+  "id": "KITH-1tsc",
+  "title": "Review: post-KITH-hwly audit (outbox, receipt success, schema V6)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:37:21Z",
+  "updated_at": "2026-04-24T04:46:48Z",
+  "closed_at": "2026-04-24T04:46:48Z",
+  "notes": "Maintainer risk: LOW \u2014 No new auth surface, no wire format changes. The P0/P1 claims from the outbox agent were false positives: the at-least-once delivery semantic with peer-side idempotency is the correct design. Real findings are: one P1 test coverage gap (receipt state machine forward path), two P2 doc/const issues, one P3 comment gap.\nConfidence: 8% chance of missed bug. Uncertainty driven by: the outbox retry loop is large and was traced carefully this cycle \u2014 I am now more confident in it. The main remaining uncertainty is whether any JMAP owner-side method has an unvalidated reference to a nonexistent chat or contact that could produce unexpected behavior. Would raise confidence if: the owner-side Message/set create path for group chats with mixed-status members (some delivered, some failed) was traced end-to-end."
+}

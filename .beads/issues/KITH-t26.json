@@ -1,0 +1,12 @@
+{
+  "id": "KITH-t26",
+  "title": "Extractor error match should explicitly handle AuthError variants",
+  "description": "In crates/kithd/src/extractors.rs lines 100-103, the match on AuthError uses catch-all '_' instead of explicitly matching the expected WhoIsFailed variant returned by classify(). This violates Rust exhaustiveness checking and makes the code fragile to future AuthError additions. If someone adds a new AuthError variant in the future, this code won't compile-fail; the new variant silently becomes Internal.\n\nCurrent code:\n```rust\nmatch e {\n    kith_core::AuthError::Unauthorized => CallerRejection::Unauthorized,\n    _ => CallerRejection::Internal,\n}\n```\n\nShould be explicit about WhoIsFailed and defensive about unexpected variants.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:53:48Z",
+  "updated_at": "2026-04-19T06:55:12Z",
+  "closed_at": "2026-04-19T06:55:12Z"
+}

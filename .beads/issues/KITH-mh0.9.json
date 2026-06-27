@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.9",
+  "title": "Good decision: Lagged broadcast messages silently skipped, not errored",
+  "description": "Decision: When a BroadcastStream receiver falls behind and messages are dropped, the Lagged error is logged and skipped (returns None), not propagated to close the stream.\n\nCode location: lines 174-180 of kithd/src/events.rs. Test: test_lagged_receiver_skips in kith-events/src/lib.rs.\n\nWhy this is correct: A lagged receiver indicates a slow client, not a service error. Terminating the stream (propagating the error) forces the client to reconnect, re-authenticate, and re-establish the subscription. This creates a cascade of reconnections and may cause more event loss under load. Skipping gracefully allows the client to keep the stream open and resync via /changes at its own pace, with fewer round-trips.\n\nThe client learns it was lagged when it calls /changes and gets a state delta, not through stream closure. This is more resilient.\n\nThe wrong alternative would be to propagate Lagged as a stream error (Err(e)) or return a 500 and close the connection. This increases load and breaks the stream unnecessarily.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:51Z",
+  "updated_at": "2026-04-19T08:41:50Z",
+  "closed_at": "2026-04-19T08:41:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:51Z"
+    }
+  ]
+}

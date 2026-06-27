@@ -1,0 +1,31 @@
+{
+  "close_reason": "kith-jmap fixed, 47 tests pass",
+  "closed_at": "2026-06-13T14:01:57Z",
+  "compaction_level": 0,
+  "content_hash": "ec6f6b37d06e421615d94f9ba8dc1ae06db832c6a1f4f5702d864153ed7d4233",
+  "created_at": "2026-06-13T13:48:21Z",
+  "created_by": "Mark Atwood",
+  "description": "Update dispatcher, method registry, JmapError usage. Update session handler.",
+  "ephemeral": 0,
+  "id": "KITH-pfwy",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Phase 5: Fix kith-jmap for jmap-types migration",
+  "updated_at": "2026-06-13T14:01:57Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:48:27Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-dhgl",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

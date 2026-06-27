@@ -1,0 +1,20 @@
+{
+  "id": "KITH-46h",
+  "title": "Extract state counter increment transaction pattern in message.rs",
+  "description": "update_delivery_state() and update_read_at() both contain identical 6-line transaction boilerplate (lines 325-343 and 365-383) that increments state_counters, reads the new value, updates state_version, and commits. Extract a private helper fn advance_message_state_and_stamp() to reduce duplication and maintenance risk.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:44Z",
+  "updated_at": "2026-04-19T21:20:45Z",
+  "closed_at": "2026-04-19T21:20:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-avs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T14:20:44Z"
+    }
+  ]
+}

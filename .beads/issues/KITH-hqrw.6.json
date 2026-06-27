@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.6",
+  "title": "TLS cert expiry sidecar: 0-second fallback on SystemTime error silently marks valid cert as expired",
+  "description": "In tls.rs load_or_generate_cert, when the sidecar file is absent, remaining_days is set to 0 and expiry_source is 'unknown'. This triggers the 'certificate is expired or expires today' warning. However when the sidecar file IS present, not_after_secs is parsed as u64. If now_secs (from SystemTime::now()) is somehow > not_after_secs (due to clock skew or a cert close to expiry), saturating_sub returns 0, which triggers the same warning. This is correct \u2014 if the cert is expired, warn. But if SystemTime::now().duration_since(UNIX_EPOCH) fails (only possible if clock is before 1970, .ok()? returns None, and remaining_days falls through to the 'sidecar absent' path with 0 days), a perfectly valid cert gets the 'treating as expired' warning. This is a documentation/UX bug: the warning says 'sidecar missing' but the real cause may be a clock issue. The code silently collapses two distinct failure modes into one warning message.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:29:59Z",
+  "updated_at": "2026-04-25T04:44:04Z",
+  "closed_at": "2026-04-25T04:44:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:29:58Z"
+    }
+  ]
+}

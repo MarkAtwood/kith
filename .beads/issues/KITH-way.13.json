@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.13",
+  "title": "Decision: TypeFilter as Copy u8 bitmask for closure capture efficiency",
+  "description": "In kithd events.rs TypeFilter (lines 38-85) is a Copy struct wrapping u8 instead of Vec<String>:\n  struct TypeFilter(u8);\n  const CONTACT: u8 = 0b001;\n  const CHAT: u8 = 0b010;\n  const MESSAGE: u8 = 0b100;\n\nThe live stream closure (line 230) captures TypeFilter by copy \u2014 a single word instead of heap allocation. Benefits:\n1. The closure runs for the entire SSE stream lifetime; Copy avoids persistent allocation\n2. Bitwise operations are faster than Vec contains() checks\n3. Only 3 types exist in Phase 1, so bitmask is sufficient\n4. Comment documents the design tradeoff explicitly (lines 38-44)\n5. Test coverage confirms filter applies correctly during coalescing (line 1097+)\n\nThis is correct optimization under Phase 1 constraints; scalability is documented for Phase 2.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:16Z",
+  "updated_at": "2026-04-19T20:16:20Z",
+  "closed_at": "2026-04-19T20:16:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:16Z"
+    }
+  ]
+}

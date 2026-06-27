@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.8",
+  "title": "kith-peer: stored attachment sha256 is never verified against blob content",
+  "description": "validate_attachments checks sha256 is 64-char lowercase hex (format only). The actual blob bytes are never fetched or hashed to verify the claim. A peer can store an arbitrary sha256 value in the DB. Future code that uses sha256 for integrity checking (e.g. a download endpoint) would get a misleading result. This is a Phase 1 known gap (no blob fetching during delivery), but should be documented and addressed before any integrity-critical feature is built on top.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:38:36Z",
+  "updated_at": "2026-04-25T07:08:27Z",
+  "closed_at": "2026-04-25T07:08:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:38:36Z"
+    }
+  ]
+}

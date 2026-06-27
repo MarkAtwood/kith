@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.57",
+  "title": "selected_chat index not reset when chat list shrinks",
+  "description": "event.rs load_startup_data clamps selected_chat to chat_list.len()-1 when the list is non-empty (line 275). However handle_state_change type 'Chat' calls load_startup_data which may return a shorter list than before (e.g. a contact is removed). If selected_chat was pointing to index 3 and the list shrinks to 2 items it will be clamped to 1. That is correct. But the prev_selected in run() is NOT updated when load_startup_data runs via handle_state_change, so after the clamping, prev_selected \\!= state.selected_chat and run() will immediately attempt to reload messages for the newly selected chat. This is benign but causes an extra unnecessary message reload on every Chat state change.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:57Z",
+  "updated_at": "2026-04-25T05:51:28Z",
+  "closed_at": "2026-04-25T05:51:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:56Z"
+    }
+  ]
+}

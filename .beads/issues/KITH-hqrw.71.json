@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.71",
+  "title": "util.rs test vectors duplicate kith-core tests",
+  "description": "kith-store/src/util.rs is a one-line delegation wrapper. Its test block repeats all kith-core test vectors verbatim. Remove the tests from util.rs; kith-core tests cover the implementation.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:41Z",
+  "updated_at": "2026-04-25T08:36:25Z",
+  "closed_at": "2026-04-25T08:36:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:41Z"
+    }
+  ]
+}

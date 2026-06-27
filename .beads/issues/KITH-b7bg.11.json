@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.11",
+  "title": "kith-jmap: resolve_args processes #-keys in HashMap-iteration order \u2014 non-deterministic error for multiple bad refs",
+  "description": "Already tracked as KITH-hqrw.84. Skipping duplicate.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:52:50Z",
+  "updated_at": "2026-04-25T04:52:56Z",
+  "closed_at": "2026-04-25T04:52:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:52:50Z"
+    }
+  ]
+}

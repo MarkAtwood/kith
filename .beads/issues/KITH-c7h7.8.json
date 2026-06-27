@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.8",
+  "title": "Migration snapshot pattern: read user_version once, trust ordering",
+  "description": "Store::migrate reads user_version once at start, never re-reads inside loop. Safe and correct because: migrations strictly additive and ordered; if N runs, all M<N have already run; single-writer guarantee (one daemon per mailbox); stale snapshot never causes skip. Comment (lines 189-195) documents this reasoning explicitly, showing deep understanding of constraint.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:54Z",
+  "updated_at": "2026-04-20T03:20:52Z",
+  "closed_at": "2026-04-20T03:20:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:53Z"
+    }
+  ]
+}

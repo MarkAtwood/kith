@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.94",
+  "title": "kith-events: coalescing + broadcast design handles Lagged correctly",
+  "description": "The SSE coalescing task correctly handles RecvError::Lagged by logging a warning and continuing (not breaking). This is the right behavior: Lagged means some events were dropped from the ring buffer; the client will resync via Type/changes anyway. The continue does not re-insert a missed event (correct \u2014 it's gone from the buffer). TryRecvError::Lagged during the drain loop also continues correctly. The select\\! with live_tx.closed() ensures the coalescing task exits when the client disconnects even if no broadcasts ever arrive \u2014 the test events_coalescing_task_exits_via_select_closed_arm specifically covers this case. The belt-and-suspenders is_closed() check in the filtered-empty-batch path catches the race between select\\! arms.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:43:55Z",
+  "updated_at": "2026-04-25T08:15:15Z",
+  "closed_at": "2026-04-25T08:15:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:43:55Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.15",
+  "title": "kith-core: unix_secs_to_rfc3339 uses as i64 widening that can overflow before year 2299",
+  "description": "unix_secs_to_rfc3339 receives u64 secs. It computes days = secs / 86400, then let days = days as i64. For u64 values above i64::MAX / 86400 (~292 billion years of days), the cast overflows. The function claims correctness through 2299 \u2014 u64 timestamps to year 2299 are ~10,500,000,000 seconds, safely within i64 range. So the overflow is not reachable for any plausible real timestamp. However, the function takes u64 which allows values far beyond 2299 at the type level. A caller passing a malformed timestamp (e.g. unvalidated u64 from network) could trigger incorrect date output without error. The as i64 cast should be preceded by a bounds check or the input type should be capped. Low priority since callers in kith-store all pass values that are <= i64::MAX already (stored as i64 in SQLite).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:40Z",
+  "updated_at": "2026-04-25T06:15:58Z",
+  "closed_at": "2026-04-25T06:15:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:39Z"
+    }
+  ]
+}

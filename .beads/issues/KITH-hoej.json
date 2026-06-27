@@ -1,0 +1,12 @@
+{
+  "id": "KITH-hoej",
+  "title": "SEC3: Factor repeated state capture pattern in test harness",
+  "description": "In kithd/tests/group_and_receipt.rs, multiple tests capture message state before and after operations (lines 1349-1365, 1475-1478, 1803-1806, etc). The pattern is: lock store, call get_state(), unlock, perform operation, lock again, compare states. Extract into a helper function or closure to reduce duplication and improve test readability. Test code style follows project conventions; this is a maintenance optimization.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:55Z",
+  "updated_at": "2026-04-20T03:56:08Z",
+  "closed_at": "2026-04-20T03:56:08Z"
+}

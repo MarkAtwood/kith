@@ -1,0 +1,14 @@
+{
+  "id": "KITH-1gq",
+  "title": "Review round 1: kith-store SQLite storage layer",
+  "description": "Review round 1 for KITH-h10 epic implementation",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:31:27Z",
+  "updated_at": "2026-04-19T05:46:48Z",
+  "closed_at": "2026-04-19T05:46:48Z",
+  "notes": "Confidence: 75% chance of no missed critical bugs. Calibration: All 25 findings have engineering merit; no purely stylistic opinions. P0 bugs (migrations, outbox atomicity) are genuine data integrity issues. P2 decisions properly documented with trade-offs. Minor overlap: KITH-1gq.3 and KITH-1gq.6 both identify unix_secs_to_rfc3339 duplication. Running out of real complaints: No - reviewers found substantive issues across all priority levels. Recommend blocking merge on P0/P1 fixes before proceeding."
+}

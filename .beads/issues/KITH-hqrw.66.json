@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.66",
+  "title": "kith-tui main.rs fetch_session failure exits without terminal cleanup",
+  "description": "main.rs line 51: fetch_session is called with ? operator AFTER entering raw mode (line 42) and alternate screen (line 43). If fetch_session returns Err, the ? operator propagates it to main which returns Err. The cleanup block at lines 66-68 runs because it is after the result? call \u2014 wait, no: line 70 is 'result?' which means cleanup at lines 66-68 runs BEFORE result?. Let me re-read: lines 55-63 run, then cleanup at 66-68, then result?. Actually the code is: run() returns result, then lines 66-68 cleanup, then result? propagates. But fetch_session at line 51 is BEFORE run() and uses ? directly. If fetch_session fails, the ? at line 51 returns early from main without running lines 66-68 cleanup. The terminal is left in raw mode with alternate screen active.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:53Z",
+  "updated_at": "2026-04-25T03:59:47Z",
+  "closed_at": "2026-04-25T03:59:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:53Z"
+    }
+  ]
+}

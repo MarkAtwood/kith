@@ -1,0 +1,33 @@
+{
+  "id": "KITH-5nj3",
+  "title": "Chat ID: SHA256 deterministic hash -> server-assigned ULID, participants -> contactId",
+  "description": "The I-D moved from deterministic SHA256 chat IDs to server-assigned ULIDs to support diverse identity systems. This is the largest change.\\n\\nNew model:\\n- Chat/set create with kind=direct: check if direct Chat with contactId already exists (find_direct_by_contact_id); if yes, return in 'updated'; if no, generate ULID, create chat\\n- Peer/deliver with unknown chatId: create new Chat with peer-supplied chatId, contactId = sender's userId (no recomputation \u2014 trust is from sender auth)\\n- Peer/deliver with known chatId: verify sender matches chat.contact_id; reject if mismatch\\n\\nChat struct change:\\n- Remove participants: Vec<String>\\n- Add contact_id: Option<String> (serde: contactId, skip_serializing_if None)\\n\\nkith-store/src/chat.rs:\\n- Add find_direct_by_contact_id(contact_id) -> Option<Chat>\\n- Add create(chat_id, kind, contact_id, now) -> Chat (distinct from get_or_create)\\n- Load contact_id column in all row-mapping queries\\n\\nkith-peer/src/lib.rs:\\n- Remove steps that recompute chatId and reject mismatches\\n- Replace with: get chat by chatId; if not found create with sender as contactId; if found verify sender == contact_id\\n\\nkith-chat/src/: Chat/set handler uses new create path\\n\\nkith-core/src/chat.rs: remove compute_chat_id, remove sha2 dep from Cargo.toml\\n\\nDepends on: KITH-phdk, KITH-8ntb, KITH-j4v2",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:52Z",
+  "updated_at": "2026-04-23T23:10:24Z",
+  "closed_at": "2026-04-23T23:10:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8ntb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:18Z"
+    },
+    {
+      "depends_on_id": "KITH-j4v2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:19Z"
+    },
+    {
+      "depends_on_id": "KITH-phdk",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:17Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.3",
+  "title": "Fallback HTTP listener activates unconditionally when tailnet binding fails",
+  "description": "main.rs defaults fallback_bind_addr to '127.0.0.1:8080' when KITHD_BIND_ADDR is unset. When tailscaled is unavailable or returns no tailnet IPs, kithd silently falls back to plain HTTP on loopback \u2014 no TLS, no Tailscale WhoIs, full JMAP+blob+events API reachable by any local process. Fix: when KITHD_BIND_ADDR is not explicitly set and tailnet binding fails, refuse to start with a clear error.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:58:56Z",
+  "updated_at": "2026-04-24T05:12:17Z",
+  "closed_at": "2026-04-24T05:12:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:58:56Z"
+    }
+  ]
+}

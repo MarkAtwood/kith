@@ -1,0 +1,13 @@
+{
+  "id": "KITH-pnlm",
+  "title": "Review: TLS/discovery/events/contact-changes (KITH-v793..KITH-tpd2)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:25:46Z",
+  "updated_at": "2026-04-24T20:36:43Z",
+  "closed_at": "2026-04-24T20:36:43Z",
+  "notes": "Maintainer risk: LOW \u2014 code is well-structured, tested, and follows established patterns. The main risk is the TLS cert mtime heuristic (P3) and the maxChanges=0 spec-SHOULD gap (P2).\nConfidence: 8% chance of missed bug. Uncertainty driven by: SSE coalescing task has complex interaction between close_after_first, ping, and LEI replay \u2014 the combination of all three simultaneously is not tested end-to-end. Would raise confidence if: a test exercises ping=N + last-event-id=s-M + closeafter=state simultaneously."
+}

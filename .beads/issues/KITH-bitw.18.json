@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.18",
+  "title": "DECISION: Minimum area guards prevent panic on tiny terminals",
+  "description": "What: Every draw_* function (chat_list, messages, input, status) checks if area.width < 4 and area.height < 4, then returns early without rendering.\n\nWhy it's good: Terminal resize can make the drawable area arbitrarily small. Ratatui widgets will panic if constraints are violated. Early returns make the code robust to any resize event. The main draw() function also checks (line 22-24). This is defensive programming applied consistently: if the contract is violated (minimum 4x4), we silently skip rendering rather than trust the constraint. User sees a blank area but the app does not crash.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:07Z",
+  "updated_at": "2026-04-20T05:46:02Z",
+  "closed_at": "2026-04-20T05:46:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:07Z"
+    }
+  ]
+}

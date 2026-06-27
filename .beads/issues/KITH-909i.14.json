@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.14",
+  "title": "kith-peer: Peer/deliver idempotency via sender_msg_id dedup is correct and worth preserving",
+  "description": "DeliverHandler looks up find_by_sender_msg_id before inserting, returning the original receiver-assigned id and receivedAt on retransmit. This is exactly right: the sender's ULID is the dedup key (not the receiver's), so the receiver can assign its own IDs while still detecting retransmits. A contributor might suggest simplifying by using the sender's id directly as the stored id; this would break the receiver-assigns-IDs invariant.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:15Z",
+  "updated_at": "2026-04-25T08:12:34Z",
+  "closed_at": "2026-04-25T08:12:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:15Z"
+    }
+  ]
+}

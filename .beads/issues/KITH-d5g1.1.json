@@ -1,0 +1,20 @@
+{
+  "id": "KITH-d5g1.1",
+  "title": "SEC0: Send failure loses pending attachments",
+  "description": "File: /home/mark/WORK/KITH/web/app.js:653-659\n\nBug: In sendMessage() error path, pendingAttachments are cleared before the JMAP call (line 593), but on send failure (lines 653-659), the user's selected files are not restored. This causes silent data loss: if the user selects files, clicks send, and the send fails, the attachments vanish from the compose area without warning.\n\nFix: In the catch block (line 653), after restoring textarea.value, restore the attachments: 'pendingAttachments = attachmentsSnapshot; renderAttachmentPreview();'",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:19:26Z",
+  "updated_at": "2026-04-20T15:23:07Z",
+  "closed_at": "2026-04-20T15:23:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d5g1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:19:25Z"
+    }
+  ]
+}

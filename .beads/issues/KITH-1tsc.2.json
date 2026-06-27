@@ -1,0 +1,21 @@
+{
+  "id": "KITH-1tsc.2",
+  "title": "Backoff test comment says '60s' for first failure, should be '30s'",
+  "description": "In kith-store/src/outbox.rs the test comment for the first failure case claims the expected delay is '60s' but the formula is 30 * 2^0 = 30s. The test itself correctly asserts [24, 36]s (30 \u00b1 20%). The comment is misleading \u2014 a maintainer adjusting the base delay would read the comment and conclude their change is correct when it isn't. \u2014 Fix the comment to state 'base = 30s, \u00b120% jitter \u2192 [24, 36]'.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:40:43Z",
+  "updated_at": "2026-04-24T04:46:42Z",
+  "closed_at": "2026-04-24T04:46:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1tsc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:40:42Z"
+    }
+  ]
+}

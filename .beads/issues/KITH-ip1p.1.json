@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ip1p.1",
+  "title": "Regression test is its own oracle \u2014 won't catch field rename",
+  "description": "Scenario: someone renames kith-core Message.sender_id rename to a new serde name (e.g. 'userId'). The watch.rs test constructs its own JSON literal with 'senderId' hardcoded and then looks up 'senderId' in that same literal. The test passes even though the server now emits a different field name, and notifications silently regress to '(unknown)'. A real regression guard would serialize an actual kith_core::Message struct and assert the key is present \u2014 that would fail immediately on any rename. The current test proves only that serde_json::json\\! and serde_json::Value::get agree on a string, not that the server and client agree on a wire field name.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:39:51Z",
+  "updated_at": "2026-04-25T09:41:52Z",
+  "closed_at": "2026-04-25T09:41:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ip1p",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:39:50Z"
+    }
+  ]
+}

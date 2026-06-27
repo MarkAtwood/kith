@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.5",
+  "title": "update_last_message_at swallows failure with no log",
+  "description": "message.rs:473-476: the update_last_message_at call after message insert uses let _ = ... with a comment that it is intentional. However there is no tracing::warn! on failure, so a persistently failing update (e.g. chats row deleted) is invisible in production logs. Chat.lastMessageAt becomes silently stale with no way to observe the condition. Add tracing::warn! with the error.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:15Z",
+  "updated_at": "2026-04-25T03:24:17Z",
+  "closed_at": "2026-04-25T03:24:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:14Z"
+    }
+  ]
+}

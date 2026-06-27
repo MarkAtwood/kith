@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.12",
+  "title": "SEC3: now2=1_000_000_000 comment says 'far future' but it is 2001",
+  "description": "harness.rs:725: let now2: i64 = 1_000_000_000; with comment 'far future'. Unix timestamp 1_000_000_000 is 2001-09-09 \u2014 25 years in the past (project date: 2026). The magic value works only because the backoff ceiling in outbox_tick is less than (1_000_000_000 - 1_000_000) = 999_000_000 seconds. That invariant is unstated: if the backoff policy changes the test silently breaks with no diagnostic. The fix is either (a) a named constant with a comment referencing the backoff ceiling (e.g. PAST_FAR_ENOUGH_FOR_ANY_BACKOFF), or (b) computing now2 = now + MAX_BACKOFF_SECS + 1 using the same constant the implementation uses.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:19:37Z",
+  "updated_at": "2026-04-19T17:27:07Z",
+  "closed_at": "2026-04-19T17:27:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:19:37Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.2",
+  "title": "Peer/receipt: no e2e test for wrong-caller forgery",
+  "description": "ReceiptHandler validates that the caller's WhoIs identity is the contact_id for the chat, but no e2e test exercises the rejection path. Scenarios missing: (1) Peer A sends receipt for message in Peer B's chat, (2) receipt for nonexistent message, (3) receipt that references a chat the caller isn't part of. The fix for Peer/receipt auth bypass (KITH-orvy.2) is correct but unverified at the HTTP level. \u2014 Add e2e tests using state-counter-as-oracle pattern (existing e2e.rs shows how): send receipt as wrong peer, assert 4xx + no state change.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:19:29Z",
+  "updated_at": "2026-04-24T04:30:07Z",
+  "closed_at": "2026-04-24T04:30:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:19:29Z"
+    }
+  ]
+}

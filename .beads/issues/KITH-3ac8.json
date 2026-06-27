@@ -1,0 +1,13 @@
+{
+  "id": "KITH-3ac8",
+  "title": "Review: senderMsgId + I-D alignment batch",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:39:48Z",
+  "updated_at": "2026-04-24T06:03:05Z",
+  "closed_at": "2026-04-24T06:03:05Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 two P1 bugs survive after four prior review cycles: (1) peer-controlled contentType with CRLF panics the download handler on every future download of that attachment; (2) PeerHttpClient::new() uses WebPKI roots but kithd presents a self-signed cert, silently breaking all outbound delivery in production. The rest of the codebase is clean.\nConfidence: 15% chance of additional missed bugs. Uncertainty driven by: (a) I did not read kith-chat, kith-store/contact, kith-store/message, or the full e2e test suite; (b) the migration correctness argument (stale snapshot is safe) is plausible but not formally verified. Would raise confidence if: read the full outbox.rs to verify retry limits and complete_delivery atomicity; run the e2e tests against a real two-node setup to confirm the PeerHttpClient TLS failure is reproducible in practice."
+}

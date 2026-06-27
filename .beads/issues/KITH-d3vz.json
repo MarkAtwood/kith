@@ -1,0 +1,22 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T18:04:03Z",
+  "compaction_level": 0,
+  "content_hash": "6e06732d2e56086e4bb9fa4e39b5dffb4a15db73352bdf073faaeb6789f3b723",
+  "created_at": "2026-06-14T17:55:02Z",
+  "created_by": "Mark Atwood",
+  "description": "Add IdentityProvider trait and ConnectionContext to kith-core/src/transport.rs. IdentityProvider is a supertrait of FederationTransport. identify_caller moves from FederationTransport to IdentityProvider, taking ConnectionContext instead of bare SocketAddr. ConnectionContext starts with peer_addr and optional peer_cert_der for future mTLS/TOFU support.",
+  "ephemeral": 0,
+  "id": "KITH-d3vz",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Define IdentityProvider trait and ConnectionContext",
+  "updated_at": "2026-06-14T18:04:03Z"
+}

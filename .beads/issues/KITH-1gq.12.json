@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.12",
+  "title": "MAINTENANCE: Message state_version semantics not documented",
+  "description": "\n/crates/kith-store/src/message.rs:71-108 (insert method), line 86\n\nPattern: advance_state_counter() called BEFORE INSERT, returned value stamped in state_version.\nInvariant: state_version = counter at insertion/update time; used by get_changes_since() to track deltas.\n\nRisk: update_delivery_state() and update_read_at() correctly call advance_state_counter() first,\nbut there's no enforced pattern. If a new method is added later (e.g., update_thread_id),\ndeveloper might forget to advance counter first, breaking get_changes_since() semantics.\n\nSolution: Add mandatory doc comment to Message struct or insert() method:\n  /// INVARIANT: state_version is set by INSERT/UPDATE methods BEFORE the row is written.\n  /// advance_state_counter() is called first, and its returned value is stamped on\n  /// state_version. This ensures every message change is tracked by get_changes_since().\n  /// When adding new update methods: call advance_state_counter(), then UPDATE with\n  /// SET state_version = ?N.\n\nImpact: Reduces accidental logic bugs in message state tracking.\n",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:40Z",
+  "updated_at": "2026-04-19T05:58:01Z",
+  "closed_at": "2026-04-19T05:58:01Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:40Z"
+    }
+  ]
+}

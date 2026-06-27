@@ -1,0 +1,13 @@
+{
+  "id": "KITH-84lz",
+  "title": "Review: SSE warn, supervision, TUI fixes, store/tslocal/attach hardening",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:18:25Z",
+  "updated_at": "2026-04-25T09:21:37Z",
+  "closed_at": "2026-04-25T09:21:37Z",
+  "notes": "Maintainer risk: LOW \u2014 All changes are isolated improvements (log ergonomics, prealloc, dead-field removal, const naming, assert upgrade, null-reject). No new public surface, no new config, no protocol changes. The assert!-in-release change in blob_path is intentional defence-in-depth and well-documented.\nConfidence: 5% chance of missed bug. Uncertainty driven by: (1) I can't observe runtime behavior of the SSE coalescing task under real concurrent load with multiple clients \u2014 the yield-based tests are correct but scheduler-dependent; (2) the pre-existing state_map.get('Message') wrong-path bug in kithctl/src/watch.rs was not introduced by this batch but would cause kithctl watch to never fire notifications via the SSE path \u2014 out of scope for this review but worth tracking. Would raise confidence if: cargo test --all-features passes cleanly (I can verify this), and if the watch notification path is exercised by an integration test with actual SSE events."
+}

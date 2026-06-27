@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.19",
+  "title": "SEC6: Header injection prevention via Last-Event-ID validation",
+  "description": "is_valid_last_event_id (watch.rs:79-94) validates SSE Last-Event-ID header against strict pattern s-\\\\d+ before insertion into request. Prevents header injection via embedded \\\\r\\\\n or other control characters.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:42Z",
+  "updated_at": "2026-04-19T19:21:53Z",
+  "closed_at": "2026-04-19T19:21:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:42Z"
+    }
+  ]
+}

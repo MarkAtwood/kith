@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.9",
+  "title": "Decision: No unwrap() in production paths ensures graceful degradation",
+  "description": "Scanning the entire file: no .unwrap(), .expect(), or ! panics in production code. Certificate parsing (line 74) returns Result. Stream operations (line 195) propagate with ?. Channel sends (line 204) check .is_err(). This disciplined error handling means network failures, malformed responses, or dropped channels cannot crash kith-tui. Errors are logged or handled explicitly.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:52Z",
+  "updated_at": "2026-04-20T11:46:43Z",
+  "closed_at": "2026-04-20T11:46:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:51Z"
+    }
+  ]
+}

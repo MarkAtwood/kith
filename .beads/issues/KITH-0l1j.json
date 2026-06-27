@@ -1,0 +1,12 @@
+{
+  "id": "KITH-0l1j",
+  "title": "SEC3: Unify kind dispatch pattern in complete_delivery/mark_failed",
+  "description": "In kith-store/src/outbox.rs lines 219-228 and 260-269, both complete_delivery and mark_failed dispatch on entry.kind using if statements returning early for receipt kind. These could use match for consistency or a helper to centralize the dispatch policy. Improves clarity and extensibility if additional kinds are added.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:36Z",
+  "updated_at": "2026-04-20T03:54:48Z",
+  "closed_at": "2026-04-20T03:54:48Z"
+}

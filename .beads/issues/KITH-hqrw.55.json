@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.55",
+  "title": "two independent SSE parsers in watch.rs and client.rs risk divergence",
+  "description": "watch.rs parse_sse_frame and client.rs parse_sse_event are two independent implementations of the SSE frame parser. They already differ: parse_sse_frame exposes the id: field; parse_sse_event ignores it. They also have different signatures and use different intermediate types. If kithd changes its SSE wire format both parsers must be updated in sync. A single shared SSE parser in kith-core would eliminate this drift. Risk: maintainer updates one parser and forgets the other.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:39Z",
+  "updated_at": "2026-04-25T06:09:27Z",
+  "closed_at": "2026-04-25T06:09:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:39Z"
+    }
+  ]
+}

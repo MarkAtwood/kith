@@ -1,0 +1,12 @@
+{
+  "id": "KITH-pt7g",
+  "title": "kith-tslocal: whois_cache HashMap grows unboundedly (never pruned)",
+  "description": "The whois_cache is a HashMap<SocketAddr, (Instant, WhoIsResponse)> that is never pruned. Each new connection arrives on a unique ephemeral port (new SocketAddr key), and expired entries are never evicted. In sustained traffic the HashMap grows monotonically for the process lifetime. At 100 connections/second over 24 hours that is ~8.6M entries / several GB. Fix: before each cache insert, call cache.retain(|_, (t, _)| t.elapsed() < WHOIS_CACHE_TTL) to evict expired entries.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:35:24Z",
+  "updated_at": "2026-04-25T02:38:31Z",
+  "closed_at": "2026-04-25T02:38:31Z"
+}

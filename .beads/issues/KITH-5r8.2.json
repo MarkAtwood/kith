@@ -1,0 +1,20 @@
+{
+  "id": "KITH-5r8.2",
+  "title": "P1: resolve_args() partial mutation on error leaves corrupted state",
+  "description": "\nLocation: /crates/kith-jmap/src/lib.rs lines 380-425 (resolve_args function), line 331 (caller dispatch_one)\n\nRisk: resolve_args() modifies the args object in place and returns Err if ANY reference fails to resolve. But if the error occurs after processing some #-keys, those keys have already been removed and replaced.\n\nFailure scenario:\n  Input args: {\"#a\": ref_a, \"#b\": ref_b, \"x\": \"val\"}\n  Line 394: Remove #a, parse, resolve successfully \u2192 args becomes {\"a\": resolved_a, \"#b\": ref_b, \"x\": \"val\"}\n  Next iteration: Remove #b, parse, but pointer() fails at line 414 \u2192 return Err(...)\n  Caller (dispatch_one) receives Err and returns error_invocation\n  BUT: args has been PARTIALLY MODIFIED. The original #a is gone, replaced with \"a\".\n\nThis is not a correctness bug (the error is returned), but it's fragile:\n- If any code ever inspects args after receiving the error (e.g., for detailed logging), it sees a corrupted state\n- The pattern invites future bugs when similar mutation-on-error patterns are added elsewhere\n- Hard to debug: error message refers to #b failure, but args shows #a was already resolved\n\nSuggested fix:\n  1. Collect all resolutions into a staging map first (don't mutate args yet)\n  2. Validate all references can be resolved\n  3. Only if all succeed, apply mutations to args\n  4. This makes success atomic and failure leaves args untouched\n  \n  Alternatively:\n  - Accept the current behavior but document it explicitly in the function docstring\n  - Add a test case that demonstrates partial mutation on error (currently missing from test suite)\n",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:40:48Z",
+  "updated_at": "2026-04-19T07:45:26Z",
+  "closed_at": "2026-04-19T07:45:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5r8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:40:48Z"
+    }
+  ]
+}

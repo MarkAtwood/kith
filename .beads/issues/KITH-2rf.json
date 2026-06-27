@@ -1,0 +1,14 @@
+{
+  "id": "KITH-2rf",
+  "title": "Review round 1: kith-core shared types",
+  "description": "Review round 1 for epic KITH-bhl (kith-core: shared types). Seven review agents cover correctness, maintainer burden, efficiency, elegance, readability, decisions, and calibration.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:04:49Z",
+  "updated_at": "2026-04-19T05:10:14Z",
+  "closed_at": "2026-04-19T05:10:14Z",
+  "notes": "SEC7 confidence: 92% no correctness bug missed. Real issues: 2x P1 (MethodError duplication, missing pub use re-exports), 1x P3 (parallel fallback logic). Opinion items: 3x P4 (doc conventions). Running out of real complaints. Crate quality is solid."
+}

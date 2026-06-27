@@ -1,0 +1,26 @@
+{
+  "id": "KITH-9xj",
+  "title": "kith-store: AttachmentStore (metadata only)",
+  "description": "AttachmentStore: metadata-only insert, get by blob_id, list by message_id.\n\n**What:** AttachmentStore wraps &Connection and stores attachment metadata rows; blob bytes managed by kith-attach.\n\n**Algorithm:**\n1. Define pub struct AttachmentStore<'a> { conn: &'a Connection }\n2. insert(blob_id: &str, message_id: &str, filename: &str, content_type: &str, size_bytes: u64, sha256: &str, now_unix: i64) -> Result<(), KithError>:\n   INSERT INTO attachments(id, message_id, filename, content_type, size_bytes, sha256, created_at) VALUES(?,?,?,?,?,?,?)\n3. get(blob_id: &str) -> Result<Option<Attachment>, KithError>: SELECT by id\n4. list_by_message(message_id: &str) -> Result<Vec<Attachment>, KithError>: SELECT WHERE message_id=? ORDER BY created_at\n\n**Defensive programming rules:**\n- blob_id format validation (ULID) must occur at handler before calling store\n- content_type validation (valid MIME) must occur at handler before calling store\n- Store layer does NOT re-validate; trusts handler has done so\n- size_bytes stored as INTEGER (u64 fits in i64 for reasonable file sizes)\n- sha256 stored as TEXT (64 hex chars); no verification in store\n\n**Tests:**\n- insert then get returns identical metadata\n- list_by_message returns all attachments for message in order\n- DELETE from messages cascades to attachments (FK ON DELETE CASCADE)\n\n**Acceptance:** cargo test -p kith-store: AttachmentStore tests pass; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:29:36Z",
+  "closed_at": "2026-04-19T05:29:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-k64",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

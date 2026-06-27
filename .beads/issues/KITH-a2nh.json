@@ -1,0 +1,31 @@
+{
+  "close_reason": "MessageAction implemented",
+  "closed_at": "2026-06-13T18:15:11Z",
+  "compaction_level": 0,
+  "content_hash": "e7c89548604e95dbf831bda02c9d1879f7557686f0431d99706b6feb123d8d86",
+  "created_at": "2026-06-13T13:40:01Z",
+  "created_by": "Mark Atwood",
+  "description": "Spec defines MessageAction[] on Message for out-of-band action invitations (interactive buttons, links). Each MessageAction has type, uri, label, expires_at, metadata. Servers MUST store and forward without inspection. Spec reference: draft-atwood-jmap-chat-00.md lines 594-595.",
+  "ephemeral": 0,
+  "id": "KITH-a2nh",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement MessageAction (interactive actions on messages)",
+  "updated_at": "2026-06-13T18:15:11Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:13Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

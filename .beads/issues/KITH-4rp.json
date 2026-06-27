@@ -1,0 +1,14 @@
+{
+  "id": "KITH-4rp",
+  "title": "Review round 4: Minimal web client",
+  "description": "Final calibration check \u2014 verify all fixes hold and no new issues.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:07:06Z",
+  "updated_at": "2026-04-19T18:08:08Z",
+  "closed_at": "2026-04-19T18:08:08Z",
+  "notes": "Confidence: 95% chance of missed P0/P1. Running out of real complaints: yes. Found only one genuine P1 (response unpacking pattern) during round 4 final read. State machine logic solid across null-sync, delta sync, error recovery. Optimistic UI correctly reverts. EventSource parsing handles errors gracefully. Static file serving secure for MVP. Code maintainable and testable."
+}

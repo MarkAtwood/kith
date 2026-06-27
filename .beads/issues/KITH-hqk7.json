@@ -1,0 +1,13 @@
+{
+  "id": "KITH-hqk7",
+  "title": "Review round 1: peer auto-discovery and contact block/unblock",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:14:29Z",
+  "updated_at": "2026-04-20T16:23:46Z",
+  "closed_at": "2026-04-20T16:23:46Z",
+  "notes": "SEC7 Calibration: 3 additional findings (app.js innerHTML, discovery.rs lock poisoning silent, contact.rs untested collect). SEC agents caught 6 substantive issues. Code quality: strong. Test coverage: excellent. Confidence: 80% of identified issues are real bugs vs. stylistic preferences. Running out of real complaints: yes."
+}

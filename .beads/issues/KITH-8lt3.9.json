@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8lt3.9",
+  "title": "process_update receipt suppressed for blocked senders without documentation",
+  "description": "process_update (message.rs lines 507-521) silently skips the receipt enqueue when is_permitted returns false \u2014 i.e., when the original sender is blocked. This means marking a blocked contact's message as read never sends them a receipt. That policy may be intentional (blocked contacts shouldn't get any feedback) but it is not documented anywhere in the code comments or CLAUDE.md. A future maintainer editing the receipt path could change this behaviour without realising it has policy implications. Add a comment explaining the deliberate policy: receipts are intentionally withheld from blocked senders.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:44:39Z",
+  "updated_at": "2026-04-24T17:53:41Z",
+  "closed_at": "2026-04-24T17:53:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8lt3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:44:39Z"
+    }
+  ]
+}

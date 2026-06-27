@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.13",
+  "title": "kith-events make_channel capacity=0 panics instead of returning Err",
+  "description": "make_channel(0) triggers assert\\!(capacity > 0, ...) which panics. The assert message is useful for debugging but a panic in library code is not appropriate when the caller could receive a Result. If make_channel is called from server startup code, the panic will crash the daemon. The assert is acceptable for a private internal function but make_channel is pub. Either change the signature to return Result<(EventSender, EventReceiver), &'static str> or make it a NonZeroUsize parameter. The current test confirms the panic behavior, but 'confirmed panic' \\!= 'correct API'.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:19Z",
+  "updated_at": "2026-04-25T06:16:06Z",
+  "closed_at": "2026-04-25T06:16:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:19Z"
+    }
+  ]
+}

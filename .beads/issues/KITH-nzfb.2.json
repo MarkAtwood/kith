@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nzfb.2",
+  "title": "no test for pure select! closed() path",
+  "description": "The select! { _ = live_tx.closed() => break } arm (line 334) has no direct test coverage. The existing test always sends a Chat broadcast after dropping the response, so the task exits via is_closed() in the empty-batch fallback, not via the select! arm. A regression that accidentally removes or breaks the select! closed() branch would not be caught. A second test variant that drops the response and waits without sending any broadcast would exercise the select! closed() arm directly and would fail if that branch were removed.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:01:40Z",
+  "updated_at": "2026-04-24T19:03:36Z",
+  "closed_at": "2026-04-24T19:03:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nzfb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:01:39Z"
+    }
+  ]
+}

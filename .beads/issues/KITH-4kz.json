@@ -1,0 +1,12 @@
+{
+  "id": "KITH-4kz",
+  "title": "SEC0-R2: fit_col panics or truncates incorrectly when max < 2",
+  "description": "The fit_col() function in crates/kithctl/src/main.rs (lines 97-105) handles single-character (max=1) column widths incorrectly.\n\nWhen max=1:\n- chars.len() > max evaluates to true for any non-empty input\n- chars[..max-1] becomes chars[..0] (empty)\n- Result is just ellipsis '\u2026' with no content\n\nExample: fit_col('A', 1) returns '\u2026' instead of 'A'\n\nThe function should ensure truncation only when strictly necessary:\nif chars.len() > max && max > 1 { ... }\n\nOr add a minimum width check at function entry.\n\nCurrent usage only passes widths \u226525, so this doesn't manifest in practice, but fit_col is public and could be reused elsewhere.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:28:01Z",
+  "updated_at": "2026-04-19T19:31:21Z",
+  "closed_at": "2026-04-19T19:31:21Z"
+}

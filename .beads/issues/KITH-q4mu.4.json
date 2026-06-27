@@ -1,0 +1,20 @@
+{
+  "id": "KITH-q4mu.4",
+  "title": "PeerJmapHandler separate trait enforces identity delivery at compile time",
+  "description": "The two-trait design (JmapHandler for owner methods, PeerJmapHandler for peer methods) makes it a compile error to implement a peer handler that ignores the caller Identity \u2014 the type system forces the parameter to be present. The alternative (single trait with a CallerContext enum) would have required all 15+ owner handlers to pattern-match on something they never use, and the alternative (modify JmapHandler signature) would have broken all owner handlers. A future contributor might suggest 'simplifying to one trait' \u2014 resist: the separation is load-bearing for auth correctness.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:00:09Z",
+  "updated_at": "2026-04-24T04:05:10Z",
+  "closed_at": "2026-04-24T04:05:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:00:09Z"
+    }
+  ]
+}

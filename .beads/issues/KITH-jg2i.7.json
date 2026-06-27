@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.7",
+  "title": "hex_encode with_capacity preallocation is the right fix \u2014 defend against revert",
+  "description": "The new hex_encode allocates bytes.len()*2 upfront then writes with fmt::Write, producing zero intermediate String objects. The old Iterator::collect approach allocates one String per byte then concatenates N-1 times inside collect. A contributor might suggest reverting to the collect form for brevity. The current form is correct and the allocation improvement is real, not micro-optimization \u2014 blob IDs are 32 bytes (SHA256), so the old code always did 32 intermediate allocations per hex_encode call.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:46:33Z",
+  "updated_at": "2026-04-25T08:51:58Z",
+  "closed_at": "2026-04-25T08:51:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:46:33Z"
+    }
+  ]
+}

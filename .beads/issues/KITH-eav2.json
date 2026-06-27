@@ -1,0 +1,11 @@
+{
+  "id": "KITH-eav2",
+  "title": "Android client: native kith app for Android",
+  "description": "A native Android client for kith. Connects to the user's own kithd over their Tailscale network via JMAP over HTTPS. No central server; the app is just a UI to the user's mailbox.\n\nScope:\n- Tailscale SDK or companion app integration to reach the user's tailnet from the phone\n- JMAP session bootstrap from /.well-known/jmap on the user's kithd\n- Contact list, chat list, message thread (1:1 and group)\n- Send/receive messages; read receipts via Peer/receipt\n- Attachment upload (camera, files) and download\n- EventSource or long-poll for push (FCM as wakeup mechanism, poll for content \u2014 kithd has no FCM knowledge)\n- Background sync when app is in background (WorkManager or foreground service)\n- Notifications for new messages\n- Target: Kotlin + Jetpack Compose; Material3 design language\n- Distribution: Google Play Store",
+  "status": "deferred",
+  "priority": 2,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:41:47Z",
+  "updated_at": "2026-04-24T02:25:39Z"
+}

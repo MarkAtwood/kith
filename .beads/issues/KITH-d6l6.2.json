@@ -1,0 +1,21 @@
+{
+  "id": "KITH-d6l6.2",
+  "title": "Group send with no members stores orphaned-pending message (no delivery path)",
+  "description": "If get_members returns an empty list (group chat with zero members), insert_outbound_message is called with an empty outbox_peers slice. The message is written to the DB with delivery_state='pending' and no outbox rows. The outbox retry loop will never pick it up. The owner gets a success response and sees the message stuck in Pending forever. The new doc comment explicitly calls this 'valid (no delivery scheduled)', which may prevent a future fix. Scenario that triggers the cost: user creates a group chat and sends before adding any members. Maintenance consequence: 'message stuck pending' issue reports with no obvious cause, since the DB state is consistent (no error, just no outbox entry).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:08:48Z",
+  "updated_at": "2026-04-24T03:34:51Z",
+  "closed_at": "2026-04-24T03:34:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d6l6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:08:47Z"
+    }
+  ]
+}

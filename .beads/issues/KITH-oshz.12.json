@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.12",
+  "title": "Error type design: ClientError has 4 variants; not all network failure modes covered",
+  "description": "ClientError enum (lines 20\u201330):\n  - CertNotFound(PathBuf)\n  - CertInvalid\n  - Http(#[from] reqwest::Error)\n  - Parse(String)\n\nANALYSIS: What is missing?\n1. Auth failure: Currently would be Http (status 401). No dedicated variant.\n2. Cert expiry: Would be Http (TLS handshake failure). No dedicated variant.\n3. Timeout: Would be Http (reqwest Timeout error). No dedicated variant.\n4. Connection refused: Would be Http. No dedicated variant.\n5. DNS failure: Would be Http. No dedicated variant.\n\nCURRENT BEHAVIOR: All network errors flatten into ClientError::Http(reqwest::Error). The reqwest::Error contains details (reqwest::error::Kind is private), but callers cannot pattern-match specific failures.\n\nMAINTENANCE BURDEN: Low for Phase 1. The TUI (event.rs, app.rs) does not examine error details yet. It just shows 'SSE stream ended: <error>' to eprintln. Once the TUI has user-facing error messages or retry logic, more granular variants will be needed.\n\nNEW ERROR CASES: If Phase 2 adds:\n  - Per-message auth errors (senderTailscaleUserId mismatch): Would need a new Auth variant.\n  - Certificate expiry warnings: Would need a Cert/Tls variant.\n  - Timeout-triggered reconnect: Current Parse variant is re-used for lossy SSE, conflicts conceptually.\n\nRECOMMENDATION: Accept for Phase 1 (error handling is minimal). Before Phase 2 (higher reliability requirements), expand ClientError with variants for Auth, Tls, Timeout, ConnectionRefused. Update call_jmap, fetch_session, run_sse to return more specific errors. Consider adding a context wrapper (e.g., anyhow or miette) for better error messages.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:05:05Z",
+  "updated_at": "2026-04-20T05:07:37Z",
+  "closed_at": "2026-04-20T05:07:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:05:05Z"
+    }
+  ]
+}

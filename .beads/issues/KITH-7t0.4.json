@@ -1,0 +1,20 @@
+{
+  "id": "KITH-7t0.4",
+  "title": "[R3] Double-send race: sendMessage not guarded against concurrent calls",
+  "description": "Race condition in sendMessage:\n1. User clicks send \u2192 textarea cleared, optimistic bubble shown, Message/set in flight\n2. User types new message while waiting for response\n3. User clicks send again (or presses Enter) \u2192 second Message/set sent for the new text\n4. Both messages arrive at server\n\nSymptom: User can accidentally send multiple messages by clicking while a previous send is in flight.\n\nRoot cause: sendMessage() is not guarded against concurrent calls. The textarea.value check at line 441 only prevents sending when the field is empty at call time, not while a previous send is in flight.\n\nFix: Add a flag (let inFlight = false; set true before Message/set, false after) and skip sendMessage if inFlight is true. Or disable the send button.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:03:02Z",
+  "updated_at": "2026-04-19T18:06:44Z",
+  "closed_at": "2026-04-19T18:06:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7t0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:03:02Z"
+    }
+  ]
+}

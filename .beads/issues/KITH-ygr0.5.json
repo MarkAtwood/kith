@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.5",
+  "title": "tls: only one of two partial-presence cases tested",
+  "description": "test_partial_presence_returns_error creates only the cert file and leaves the key absent. The symmetric case \u2014 key exists, cert absent \u2014 is not tested. Both branches of the cert_exists != key_exists guard execute the same logic with swapped variable assignments; a regression there would go undetected.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:46:33Z",
+  "updated_at": "2026-04-24T20:00:18Z",
+  "closed_at": "2026-04-24T20:00:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:46:33Z"
+    }
+  ]
+}

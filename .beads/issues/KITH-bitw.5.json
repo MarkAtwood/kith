@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.5",
+  "title": "SEC3: Message formatting logic duplicated across load_messages_for_chat and handle_state_change",
+  "description": "Lines 316-330 in load_messages_for_chat and lines 480-500 in handle_state_change both construct formatted message strings identically. Extract to a helper function to reduce duplication and simplify logic flow.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:41Z",
+  "updated_at": "2026-04-20T05:49:37Z",
+  "closed_at": "2026-04-20T05:49:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:41Z"
+    }
+  ]
+}

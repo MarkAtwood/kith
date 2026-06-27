@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqk7.9",
+  "title": "DECISION: Do not hold store lock during network probe in discovery loop",
+  "description": "Lock is acquired only for the upsert operation, not held during probe_peer (network I/O). Rationale: avoids blocking other JMAP requests (Message/get, Chat/query, etc.) on network latency. Correct atomicity: the race between discovery and user action is acceptable \u2014 discovery is eventual, and the contact data converges via periodic re-probing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:16:04Z",
+  "updated_at": "2026-04-20T16:22:25Z",
+  "closed_at": "2026-04-20T16:22:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqk7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:16:03Z"
+    }
+  ]
+}

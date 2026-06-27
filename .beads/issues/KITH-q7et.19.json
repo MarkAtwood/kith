@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Assessed: key_der Vec<u8> is moved (not cloned) into PrivateKeyDer \u2014 no intermediate copy to zeroize. The limitation is in rustls 0.23 which does not implement Zeroize on PrivateKeyDer. No mitigation possible without patching rustls. Accepted risk: key bytes live in rustls's heap allocation until the ServerConfig is dropped, which is process-lifetime. Documented as known limitation.",
+  "closed_at": "2026-06-15T15:55:15Z",
+  "compaction_level": 0,
+  "content_hash": "a01ff4547cd102c5789fb7e76abeb885e5925d1b59173f136d8ac3e3021c11db",
+  "created_at": "2026-06-15T04:53:28Z",
+  "created_by": "Mark Atwood",
+  "description": "In kithd/src/tls.rs load_or_generate_cert(), the private key is loaded and held as key_der: Vec<u8> (plain heap allocation). It is then wrapped in PrivateKeyDer::from(PrivatePkcs8KeyDer::from(key_der)), but rustls's PrivateKeyDer/PrivatePkcs8KeyDer do not implement Zeroize and do not zero their backing memory on drop. The workspace has no zeroize or secrecy dependency. Key bytes will remain in heap memory after the TlsAcceptor is constructed, potentially visible via memory dumps or use-after-free. Recommendation: add the zeroize crate and wrap the raw key bytes in Zeroizing<Vec<u8>> before passing them to rustls, or confirm that rustls's internal key representation handles this (it does not in rustls 0.23). Affects kithd/src/tls.rs and any future code that handles raw key material.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.19",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "TLS private key bytes not zeroized on drop",
+  "updated_at": "2026-06-15T15:55:15Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:27Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

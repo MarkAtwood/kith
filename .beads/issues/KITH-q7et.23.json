@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "a7d1e7c69c14dd70bfa5b602a294879560b082dc6b70afa9421af69ca50a9949",
+  "created_at": "2026-06-15T04:53:41Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-core/src/lib.rs defines make_attachment(), make_mention(), and make_broadcast_mention() by constructing a serde_json::json!({...}) Value and then calling serde_json::from_value() on it. The doc comments explain this is because jmap-chat-types marks these structs #[non_exhaustive] without providing constructor functions.\n\nThis is an imposed workaround for an upstream API gap, not a design choice. The pattern is inelegant (JSON serialization as a constructor, with a panic-on-failure expect) and the panic path, while labeled as 'logic error', is invisible to callers.\n\nTwo options:\n1. Upstream: add pub fn new() constructors to Attachment, Mention, BroadcastMention in jmap-chat-types. This is the correct fix and removes the workaround entirely.\n2. Local: document in the CLAUDE.md or architecture notes that these helpers exist specifically because of the upstream gap, with a pointer to the relevant issue or PR. This prevents future contributors from wondering why serialization is being used for construction.\n\nThe workaround is acknowledged implicitly ('this is a bug in kith-core if it fires'), but the root cause is not stated in the code.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.23",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "make_attachment and make_mention construct types via serde round-trip",
+  "updated_at": "2026-06-15T04:53:41Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:41Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

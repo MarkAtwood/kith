@@ -1,0 +1,36 @@
+{
+  "compaction_level": 0,
+  "content_hash": "c23cab24ba0fa687ef00a361c16bc91acdb2edef2defd8924ad752943913b182",
+  "created_at": "2026-06-13T19:18:07Z",
+  "created_by": "Mark Atwood",
+  "description": "Once kith has an abstract transport layer and DNS discovery, stand up a federation interop test: two independent JMAP Chat server implementations exchanging messages. Validates that the federation spec is implementation-independent per the 2+ implementations principle. Test vectors: send message, receive delivery receipt, typing indicator round-trip, attachment fetch across federation boundary.",
+  "ephemeral": 0,
+  "id": "KITH-b387",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "JMAP Chat federation interop testing",
+  "updated_at": "2026-06-13T19:18:07Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:18:11Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-beps",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T17:02:22Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

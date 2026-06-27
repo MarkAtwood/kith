@@ -1,0 +1,20 @@
+{
+  "id": "KITH-800t.12",
+  "title": "kith-tui: pending_sc deferred dispatch syncs prev_selected unconditionally",
+  "description": "After dispatching pending_sc, the code unconditionally sets prev_selected = state.selected_chat. The comment says 'A Chat state change calls load_startup_data which may clamp selected_chat'. But a Message state change does not call load_startup_data and does not clamp selected_chat. Syncing prev_selected after a Message state change means the chat-selection-change reload path (the block at the bottom of the loop) will NOT fire for a selection change that happened during the handle_state_change await. This is correct behavior (the reload already happened for the new selection), but the reason is implicit: handle_state_change for Message type reloads messages if selected_chat changed during the await. A comment explaining why prev_selected is synced for both Chat AND Message state changes would prevent future confusion.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:33:08Z",
+  "updated_at": "2026-04-25T09:38:12Z",
+  "closed_at": "2026-04-25T09:38:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-800t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:33:07Z"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "df31039d7285c99ecf3faffd088244b909e6532bfdc386401d8d173d05f39e4a",
+  "created_at": "2026-06-15T04:54:11Z",
+  "created_by": "Mark Atwood",
+  "description": "kithd/src/auth.rs contains a single classify() function that takes an Identity and ContactStore reference and returns Role. The axum extractor in extractors.rs calls this function. No other path in the codebase makes auth decisions.\n\nThe fail-closed store error handling (store errors \u2192 WhoIsFailed, not Unauthorized) is explicitly tested. The architecture doc comment states: 'single authoritative source of the authorization decision rules'.\n\nThis is worth defending. A common alternative is to spread authorization logic across handler functions ('check if owner first, else check if permitted peer'). That spreads the rules and makes them easy to diverge. The single-function design guarantees any change to auth rules is in one place and that the tests for that function cover all cases.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.35",
+  "is_template": 0,
+  "issue_type": "decision",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DECISION: auth classify() has exactly one site with one set of rules",
+  "updated_at": "2026-06-15T04:54:11Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:11Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

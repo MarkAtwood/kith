@@ -1,0 +1,27 @@
+{
+  "id": "KITH-3yb.6",
+  "title": "kith-peer: DeliverHandler validate and store incoming attachment metadata",
+  "description": "What: Extend DeliverHandler in kith-peer to validate peer-supplied attachment metadata and insert rows into the attachments table.\n\nAlgorithm:\n1. Add optional attachments: Option<Vec<Value>> to PeerDeliverArgs / InboundMessage deserialization.\n2. After step 7 (ULID validation) and before DB write, validate each attachment:\n   a. validate_blob_id(&blob_id) \u2014 reject path traversal.\n   b. filename: reject ../, /, \\, \\0, len > 255.\n   c. contentType: must contain /; reject newlines; len <= 256.\n   d. size: must be u64 <= 104_857_600.\n   e. sha256: must be 64 lowercase hex chars.\n   f. Limit: max 20 attachments. Reject if exceeded.\n3. All validation MUST occur BEFORE message insert.\n4. After message insert, insert each attachment row: store.attachments().insert(&blob_id, &msg_id, &filename, &content_type, size, &sha256, now_unix).\n5. Wrap message insert + attachment inserts in unchecked_transaction.\n6. On any attachment validation failure: return invalidArguments, no DB write.\n\nDefensive rules: all validation before any write; peer-supplied sha256/size/filename/contentType are all untrusted; reject partial inserts by using transaction; validate_blob_id before file system use; blobId from peer is stored as metadata only \u2014 actual blob bytes are fetched lazily (Phase 2 design).\n\nAgent team: R reads DeliverHandler validation flow and existing transaction patterns; I implements; T writes tests: deliver with valid attachment metadata succeeds, malicious filename rejected with no DB write (zero-write assertion), oversized attachment rejected, max count exceeded rejected; V runs cargo test -p kith-peer + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:56:24Z",
+  "updated_at": "2026-04-20T00:13:48Z",
+  "closed_at": "2026-04-20T00:13:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:56:24Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:19Z"
+    }
+  ]
+}

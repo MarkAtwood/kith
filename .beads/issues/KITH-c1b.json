@@ -1,0 +1,14 @@
+{
+  "id": "KITH-c1b",
+  "title": "Review round 2: kithd HTTP daemon",
+  "description": "Review round 2 for KITH-it6. Verify P0/P1 fixes and find any remaining issues.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:37:51Z",
+  "updated_at": "2026-04-19T16:43:01Z",
+  "closed_at": "2026-04-19T16:43:01Z",
+  "notes": "Round 2 \u2014 P0=0 P1=1(opinion) P2=7(real bugs). Confidence: 85%. Running out of real complaints: no. P1 KITH-626.10 is error-prefix inconsistency, already opinion-labeled. Real P2 bugs: KITH-i2s (non-atomic state counter), KITH-q7g (phantom state on cache hit), KITH-uhj (state regression allowed), KITH-uos (u64\u2192i64 sign-flip on attacker input), KITH-wa5 (no busy_timeout), KITH-c1b.1 (TLS drain is blind sleep), KITH-kv2 (SSE RFC non-compliance). Stopping condition NOT met: P2 real bugs remain open."
+}

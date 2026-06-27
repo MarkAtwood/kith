@@ -1,0 +1,31 @@
+{
+  "close_reason": "Delivery receipts implemented",
+  "closed_at": "2026-06-13T18:15:11Z",
+  "compaction_level": 0,
+  "content_hash": "e48125862007a643fe5f23c1ad67cfb4dd226def7676fb2a6254e939230ef296",
+  "created_at": "2026-06-13T13:39:54Z",
+  "created_by": "Mark Atwood",
+  "description": "Spec defines per-recipient delivery tracking. deliveryReceipts (Object, server-set): keyed by recipient ChatContact.id, each DeliveryReceipt has delivered_at, device_delivered_at, read_at, read_disposition. readDisposition (String): 'displayed', 'deleted', or 'processed'. kith has basic deliveredAt/readAt but no per-recipient breakdown or disposition. Spec reference: draft-atwood-jmap-chat-00.md lines 621-624.",
+  "ephemeral": 0,
+  "id": "KITH-xhoy",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement delivery receipts (deliveryReceipts, readDisposition)",
+  "updated_at": "2026-06-13T18:15:11Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:13Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

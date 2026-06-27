@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.3",
+  "title": "update_last_message_at silently succeeds on nonexistent chat_id",
+  "description": "ChatStore::update_last_message_at calls UPDATE chats SET last_message_at = ?1 WHERE id = ?2 and checks affected > 0. If affected == 0 (chat does not exist), it commits an empty transaction and returns Ok(()). This is documented as 'Returns Ok(()) silently if chat_id is not found.' The caller in the message delivery path does not verify the chat exists before calling this. If a chat row is somehow absent (e.g. race with deletion, or a bug in the create path), last_message_at silently never gets set, the chat appears to have no messages in the UI, and no error is surfaced. The correct behavior for a missing chat_id is to return Err so the caller can detect and handle the inconsistency.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:32Z",
+  "updated_at": "2026-04-25T05:54:31Z",
+  "closed_at": "2026-04-25T05:54:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:32Z"
+    }
+  ]
+}

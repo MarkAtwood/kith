@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.14",
+  "title": "Decision: Subscribe BEFORE reading store state in events handler",
+  "description": "In kithd events.rs events_handler (lines 149-156), subscription order is critical:\n  1. Subscribe FIRST: let mut rx = state.events_tx.subscribe(); (line 152)\n  2. Read store state SECOND: store.get_all_states() (line 180)\n\nThis prevents lost events:\n  Any state change arriving between subscription and the state read will be delivered via the live stream. No events are lost even if store state advances during the get_all_states() query.\n\nComment at line 149 explicitly documents this invariant. The pattern is:\n  subscribe() \u2192 read current state \u2192 compare to LEI \u2192 emit replay if needed \u2192 stream live events\n\nReversing this order would create a race: state could advance between read and subscribe, and the replay logic would miss it. This is a non-obvious correctness requirement in async programming.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:21Z",
+  "updated_at": "2026-04-19T20:16:23Z",
+  "closed_at": "2026-04-19T20:16:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:20Z"
+    }
+  ]
+}

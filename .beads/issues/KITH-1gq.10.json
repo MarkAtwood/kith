@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.10",
+  "title": "Decision: INSERT OR IGNORE for idempotent chat/contact creation",
+  "description": "Both chat.rs (line 28) and contact.rs (lines 31-35) use INSERT OR IGNORE / INSERT OR REPLACE to safely retry operations without duplicating state. This is a load-bearing design choice: Peer/deliver can be retried safely, and get_or_create is idempotent across multiple callers. Rejected alternative: error on duplicate would require caller-side dedup logic.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:37Z",
+  "updated_at": "2026-04-19T05:58:07Z",
+  "closed_at": "2026-04-19T05:58:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:37Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.9",
+  "title": "TailnetCertVerifier duplicated in kith-peer and kithd \u2014 can drift silently",
+  "description": "kith-peer/src/lib.rs and kithd/src/discovery.rs each define an independent TailnetCertVerifier struct with identical contract. peer_fetch.rs avoids a third copy by importing discovery::TailnetCertVerifier, but the kith-peer copy is fully separate with no compile-time coupling. Suggested rewrite: move TailnetCertVerifier into kith-core (or add a minimal kith-tls helper crate) so both consumers import the same type. If the crate boundary is a blocker short-term, add a // SYNC: see kithd::discovery::TailnetCertVerifier comment and a doc test that exercises both.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:03Z",
+  "updated_at": "2026-04-24T15:43:48Z",
+  "closed_at": "2026-04-24T15:43:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:02Z"
+    }
+  ]
+}

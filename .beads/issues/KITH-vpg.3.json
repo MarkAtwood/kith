@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.3",
+  "title": "SEC1: take_vars type change silently abandons lifetime discipline",
+  "description": "In commit 08810bf, take_vars/restore_vars changed from Vec<(&'static str, Option<String>)> to Vec<(String, Option<String>)>.\n\nISSUE: The old code explicitly used Box::leak() to convert name literals into &'static str, making test-only memory leaks intentional and visible. The new version silently allocates heap Strings for every env var name in the test suite (~80+ allocations per test run).\n\nBURDEN: A future maintainer reading 'Vec<(String, ...)>' will assume it's normal data, not realizing Strings are leaked. The explicit Box::leak() was self-documenting.\n\nRECOMMENDATION: Either revert to &'static str with Box::leak(), or add a comment explaining the intentional leak pattern.\n\nFILE: crates/kithd/src/config.rs:190\u2013209\nCONTEXT: Tests use [#serial] to prevent concurrent env mutation; leak is safe and intentional.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:41:00Z",
+  "updated_at": "2026-04-19T23:43:48Z",
+  "closed_at": "2026-04-19T23:43:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:41:00Z"
+    }
+  ]
+}

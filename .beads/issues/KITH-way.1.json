@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.1",
+  "title": "Decision: Snapshot state counter before migration loop to prevent skip race",
+  "description": "In Store::migrate, the current PRAGMA user_version is read ONCE before the loop (line 165-167), then compared against a snapshot for each migration. This is correct because migrations are strictly ordered and additive: if migration N runs, every M < N also ran. The snapshot is never stale because:\n\n1. Single-writer guarantee: each kithd opens exactly one Connection per mailbox\n2. Migrations are purely additive (no down-migrations)\n3. If current >= version, that migration already ran (either in this open or a previous one)\n\nThis prevents a subtle bug where re-reading current inside the loop could skip migrations if a concurrent writer advanced user_version \u2014 which can't happen here but is good practice for future maintainers to document explicitly.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:39Z",
+  "updated_at": "2026-04-19T20:16:02Z",
+  "closed_at": "2026-04-19T20:16:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:38Z"
+    }
+  ]
+}

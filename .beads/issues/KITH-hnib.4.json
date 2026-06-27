@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hnib.4",
+  "title": "SSRF fix silently breaks contacts with MagicDNS hostnames as mailbox_host",
+  "description": "is_valid_fetch_host now rejects plain hostnames to prevent SSRF via DNS. However, extract_mailbox_host extracts the host from the remote kithd's apiUrl field in the JMAP session. If a kithd instance includes a MagicDNS hostname in its apiUrl (e.g. https://alice.tail-xxx.ts.net/jmap/api), the stored mailbox_host is a hostname, and is_valid_fetch_host returns false. fetch_peer_blob returns FetchBlobError::HostRejected with only a tracing::warn log. The contact appears valid in Contact/get but blob fetches silently fail. Any manually added contact with a hostname mailbox_host is also broken. The SSRF fix should log a more actionable error or probe_peer should normalise apiUrl hostnames to their tail IP before storing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:28:07Z",
+  "updated_at": "2026-04-24T17:34:04Z",
+  "closed_at": "2026-04-24T17:34:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hnib",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:28:11Z"
+    }
+  ]
+}

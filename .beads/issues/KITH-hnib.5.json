@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hnib.5",
+  "title": "update_read_at allows backward timestamp regression",
+  "description": "update_read_at executes UPDATE messages SET read_at = ?1 unconditionally; a second Peer/receipt(read) arriving with an earlier local clock value silently overwrites a later read_at. update_delivery_state has a terminal-state SQL guard (delivery_state \\!= 'delivered') but update_read_at has no equivalent monotonicity guard (WHERE read_at IS NULL OR read_at < ?1). In Phase 1 now_unix is monotonically increasing but there is no DB-layer enforcement.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:28:54Z",
+  "updated_at": "2026-04-24T17:33:36Z",
+  "closed_at": "2026-04-24T17:33:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hnib",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:28:54Z"
+    }
+  ]
+}

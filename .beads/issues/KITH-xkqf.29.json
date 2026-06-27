@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.29",
+  "title": "peer_attachment_fetch: cache-hit test does not prove second download skipped the network",
+  "description": "peer_attachment_fetch.rs step 5: downloads the blob a second time and checks bytes match. But the sender's TCP listener is still running, so if the cache lookup had a bug and always re-fetched from the peer, the test would still pass (bytes match from re-fetch). Add an independent oracle: shut down sender_handle before the second download and verify it still succeeds \u2014 this proves the blob is served from local cache, not re-fetched.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:54Z",
+  "updated_at": "2026-04-25T03:27:04Z",
+  "closed_at": "2026-04-25T03:27:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:54Z"
+    }
+  ]
+}

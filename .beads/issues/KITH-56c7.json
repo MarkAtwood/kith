@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "f35570ebdf12a3a0e095f294fa68b65f6df0839515723f70d260b4d785544548",
+  "created_at": "2026-06-14T00:03:43Z",
+  "created_by": "Mark Atwood",
+  "description": "ZeroTier is the closest Tailscale analog \u2014 software-defined L2/L3 overlay, peer-to-peer with relay fallback, identity via network membership. Has a local API (zerotier-cli) for caller identity similar to Tailscale WhoIs. Open source core (BSL). Most natural second overlay transport after Tailscale. Requires the abstract transport trait (KITH-lhaj).",
+  "ephemeral": 0,
+  "id": "KITH-56c7",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Federation transport: ZeroTier overlay",
+  "updated_at": "2026-06-14T00:03:43Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:03:50Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

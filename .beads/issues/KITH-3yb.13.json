@@ -1,0 +1,39 @@
+{
+  "id": "KITH-3yb.13",
+  "title": "Tests: group chat creation and multi-peer delivery (3-instance harness)",
+  "description": "What: Integration test for group chat: 3-instance harness, message sent by one member arrives at all other members.\n\nAlgorithm:\n1. Extend the two-instance harness to support 3 instances (A, B, C).\n2. A creates group chat with participantIds = [a_id, b_id, c_id].\n3. Verify chatId matches Python oracle: sha256(sorted([a_id, b_id, c_id]).join(\\x00)).\n4. A sends message in group chat (Message/set create).\n5. Outbox delivers to B and C.\n6. B calls Message/get \u2014 verifies message exists with correct chatId and body.\n7. C calls Message/get \u2014 same verification.\n8. B sends reply in same group chat.\n9. A and C receive the reply.\n10. Verify Peer/deliver at A and C accepts B's group message (chatId recomputed at receiver).\n\nOracle: chatId computed by Python hashlib.sha256 with sorted participants joined by \\x00 \u2014 hardcoded hex literal in test.\n\nAgent team: R reads existing two-instance harness; T extends to 3-instance and writes group chat scenario; V runs cargo test -p kithd --features test-utils + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:57:40Z",
+  "updated_at": "2026-04-20T00:27:36Z",
+  "closed_at": "2026-04-20T00:27:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:57:39Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:26Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:27Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.9",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:27Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hwly.8",
+  "title": "PeerJmapHandler typed Identity parameter prevents auth bypass at compile time",
+  "description": "The PeerJmapHandler trait takes caller: Identity as a typed parameter rather than extracting it from a JSON field inside each handler. This makes it structurally impossible for a handler implementation to forget to validate the caller identity \u2014 the compiler requires the parameter to be present. A contributor might suggest reverting to JSON extraction (simpler trait signature); this would reintroduce the class of bug fixed in KITH-d6l6.1 (forgetting _caller_identity extraction). The compile-time guarantee is load-bearing.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:20:21Z",
+  "updated_at": "2026-04-24T04:32:05Z",
+  "closed_at": "2026-04-24T04:32:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:20:21Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.1",
+  "title": "?accept= query param reflected verbatim as Content-Type on blob downloads",
+  "description": "Owner downloads a locally stored blob via GET /jmap/download/a-self/<id>/<name>?accept=text/html. The handler reads the accept query param, applies a weak filter (len\u2264256, exactly one '/'), and sets it as the Content-Type response header verbatim. A peer can deliver an HTML or SVG blob; if the owner is tricked into clicking a crafted download URL (e.g. embedded in a message), the browser executes the content in the kithd origin. Combined with the missing upload validation (blob.rs:44 accepts any content_type including text/html), this is a complete stored-XSS path. Fix: for locally stored blobs, read content_type from DB (set at upload time) rather than from the URL accept parameter. Also reject script-executable MIME types at upload time.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:58:39Z",
+  "updated_at": "2026-04-24T05:12:08Z",
+  "closed_at": "2026-04-24T05:12:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:58:38Z"
+    }
+  ]
+}

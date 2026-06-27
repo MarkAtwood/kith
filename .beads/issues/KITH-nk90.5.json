@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.5",
+  "title": "SEC3: Duplicated fetch logic in test vs. production code",
+  "description": "fetch_with_https_client (lines 393-469) and fetch_peer_blob_from_url test helper (lines 511-570) duplicate nearly identical code:\n\n- Content-Length header parsing (429-441 vs 541-549)\n- Body collection and size check (445-466 vs 552-567)\n\nOnly difference: production uses HTTPS client, test uses plain HTTP.\n\nRefactor: Extract common logic into a parameterized inner function that accepts client as argument. Eliminates ~70 LOC duplication while keeping both code paths.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:33Z",
+  "updated_at": "2026-04-20T17:21:17Z",
+  "closed_at": "2026-04-20T17:21:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:33Z"
+    }
+  ]
+}

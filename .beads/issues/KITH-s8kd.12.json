@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.12",
+  "title": "query_index returns 0 for contacts with identical peer_login, ambiguous position",
+  "description": "ContactStore::query_index counts contacts WHERE c2.peer_login < c1.peer_login. When two contacts have the same peer_login, both return the same count (same 0-based index). Contact/queryChanges will report both new contacts at position N, causing the client to insert them at the same slot. KITH-hqrw.53 already covers the non-determinism in list(); this is the companion issue for query_index: not only is the result non-deterministic for contacts with duplicate login names, the returned index is incorrect for both. The fix requires a secondary sort key (e.g. peer_user_id) to break ties consistently in both list() and query_index().",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:10Z",
+  "updated_at": "2026-04-25T05:41:56Z",
+  "closed_at": "2026-04-25T05:41:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:10Z"
+    }
+  ]
+}

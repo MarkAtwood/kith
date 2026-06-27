@@ -1,0 +1,21 @@
+{
+  "id": "KITH-3f2",
+  "title": "Integration testing",
+  "description": "Test harness running two kithd instances with mock tailscaled WhoIs stubs. Full message delivery, offline queuing, auth rejection, multi-device fanout tested end-to-end.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:47Z",
+  "updated_at": "2026-04-19T17:28:14Z",
+  "closed_at": "2026-04-19T17:28:14Z",
+  "notes": "Review converged after 2 rounds. P0=0 P1=0. All fixes verified. 55 kithd tests (with test-utils) + full workspace passing.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-it6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

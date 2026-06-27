@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.8",
+  "title": "Concurrent writes to same blob_id share a single .tmp path \u2014 data race",
+  "description": "kith-attach/src/lib.rs:58,90 both write to '<id>.tmp'. If two concurrent writes for the same blob_id arrive (retransmit storm or collision), one write's data silently overwrites the other's .tmp mid-write. The final rename is atomic but the .tmp content is nondeterministic. Fix: use a per-write unique temp suffix (e.g. append a random token) so concurrent writes don't share a .tmp path.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:48Z",
+  "updated_at": "2026-04-24T05:26:19Z",
+  "closed_at": "2026-04-24T05:26:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:48Z"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "KITH-qvdl.5",
+  "title": "run(): load_messages() + initial load + chat selection reload",
+  "description": "What: Add async helper load_messages_for_chat(), call it on startup and whenever selected_chat changes.\n\nAlgorithm:\n1. Add pub(crate) async fn load_messages_for_chat(http_client: &reqwest::Client, api_url: &str, chat_id: &str) -> Result<VecDeque<String>, kith_tui::client::ClientError>:\n   a. Build JmapRequest call 1: [\"Message/query\", {\"accountId\":\"a-self\",\"filter\":{\"chatId\":chat_id},\"position\":0,\"limit\":50}, \"mq0\"].\n   b. Send via call_jmap. Parse ids: Vec<String> from response. If empty, return Ok(VecDeque::new()) without a second call.\n   c. Build JmapRequest call 2: [\"Message/get\", {\"accountId\":\"a-self\",\"ids\":ids}, \"mg0\"].\n   d. Send via call_jmap. Parse list: Vec<serde_json::Value> from response.\n   e. For each message Value: extract receivedAt:&str (take chars [11..16] = HH:MM), senderId:&str, body:&str.\n   f. Sender display name: if senderId==\"self\" use \"me\"; else look up in a contacts parameter (passed as &HashMap<String,String>); fallback to senderId.\n   g. Format: sanitize_display(&format!(\"{} {}: {}\", hhmm, sender_name, body)).\n   h. Collect into VecDeque, in receivedAt ascending order (oldest first = top of screen, newest at bottom).\n   i. Return Ok(messages).\n2. Update load_messages_for_chat signature to also accept contacts: &HashMap<String,String>.\n3. In event::run(), after Chat/get completes: if state.chat_ids is non-empty, call load_messages_for_chat for state.chat_ids[state.selected_chat]; set state.messages = result; reset state.scroll_offset = 0.\n4. Track prev_selected_chat: usize in the event loop. After each event is processed: if state.selected_chat != prev_selected_chat, reload messages and reset scroll. Update prev_selected_chat.\n\nDefensive programming rules:\n- receivedAt[11..16] slice: guard with .get(11..16).unwrap_or(\"??\") \u2014 receivedAt is guaranteed RFC3339 by kithd but be safe.\n- If load_messages_for_chat returns Err: set state.messages = VecDeque::new() and log error; do not panic.\n- Cap messages at 50 (already enforced by limit=50 in query).\n- sanitize_display() on body and sender_name before formatting.\n\nAgent team: R reads event.rs, app.rs, client.rs; I implements; T writes wiremock tests; V runs cargo test + clippy.\n\nTests (oracle: known mock data):\n- wiremock: mock Message/query returning [\"m1\",\"m2\"], Message/get returning [{id:\"m1\",senderId:\"self\",body:\"Hi\",receivedAt:\"2026-04-19T13:45:00Z\",...},{id:\"m2\",senderId:\"c-1\",body:\"Hey\",receivedAt:\"2026-04-19T13:46:00Z\",...}] -> state.messages=[\"13:45 me: Hi\",\"13:46 Alice: Hey\"].\n- wiremock: mock Message/query returning [] -> state.messages is empty, no Message/get call.\n- Unit: senderId==\"self\" -> displays as \"me\" (oracle: code spec).\n- Unit: receivedAt=\"2026-04-19T08:05:00Z\" -> HH:MM is \"08:05\" (oracle: string slice [11..16]).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:24:15Z",
+  "updated_at": "2026-04-20T05:35:20Z",
+  "closed_at": "2026-04-20T05:35:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:24:15Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:25:01Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.2",
+  "title": "get_changes_since for messages: no early-exit when since_version >= current_version",
+  "description": "MessageStore::get_changes_since does not have the early-exit guard that ChatStore::get_changes_since and ContactStore::get_changes_since both have (the since_counter >= current_counter check). It runs the SQL query unconditionally. This means that if a client sends a sinceState equal to the current state, a query still runs and returns empty. This is not a behavioral bug (the SQL WHERE clause is correct) but it means the two faster stores (chat, contact) have a microoptimization path that messages lack. However, the real issue: get_changes_since does not validate that since_version is not in the future (> current). A client with a state token from a future state (malformed or from a different instance) gets an empty result instead of cannotCalculateChanges. ChatStore and ContactStore explicitly check since_counter >= current_counter and short-circuit \u2014 they use the resolved current state to gate. MessageStore skips this check. For a since_version larger than current, the SQL query returns empty correctly by accident, but the returned new_state will be the current state, not an error \u2014 so the client will stop retrying thinking it is up to date.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:24Z",
+  "updated_at": "2026-04-25T05:54:39Z",
+  "closed_at": "2026-04-25T05:54:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:23Z"
+    }
+  ]
+}

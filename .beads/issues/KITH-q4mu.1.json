@@ -1,0 +1,21 @@
+{
+  "id": "KITH-q4mu.1",
+  "title": "update_last_message_at propagates error after atomic insert succeeds",
+  "description": "crates/kith-chat/src/message.rs:409-414: after insert_outbound_message commits (message + outbox rows in DB, delivery guaranteed), update_last_message_at failure causes process_create to return Err(...) \u2192 caller sees notCreated but message is already stored and will be delivered to peers. Caller retry generates a true duplicate (new ULID, no idempotency key from the owner side). Comment says 'best-effort cache' but .map_err(...)? propagates the error. Fix: change to let _ = guard.chats().update_last_message_at(...); \u2014 swallow the error since the comment already documents this intent.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:59:16Z",
+  "updated_at": "2026-04-24T04:04:12Z",
+  "closed_at": "2026-04-24T04:04:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:59:16Z"
+    }
+  ]
+}

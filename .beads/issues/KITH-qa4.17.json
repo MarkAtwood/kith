@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.17",
+  "title": "[SEC6] Good: Contact blocking respected in renderContactList",
+  "description": "In app.js renderContactList() (lines 157-173), the code explicitly skips blocked contacts:\n\n  if (contact.blocked) continue;\n\nA malicious or noisy contact can be blocked at the server level, and the client respects that. The UI won't render a chat button for blocked contacts.\n\nThis is a simple but important correctness choice. Not checking the flag would allow users to accidentally re-engage with blocked contacts. The check is in the right place (during list rendering, before any click handler is attached).",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:37Z",
+  "updated_at": "2026-04-19T18:21:41Z",
+  "closed_at": "2026-04-19T18:21:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:36Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.8",
+  "title": "KITH_BASE_URL prefix inconsistency unexplained",
+  "description": "lib.rs reads KITH_BASE_URL (KITH_ prefix) while all current daemon config uses KITHD_ prefix. The KITH_ prefix is also used for legacy backward-compat vars (KITH_DB_PATH, KITH_OWNER_ID) that are being retired. KITH_BASE_URL is a present-tense active variable \u2014 not a compat alias \u2014 but uses the old prefix with no comment explaining the naming discrepancy. A reader cannot determine whether this is intentional, an oversight, or a variable scheduled for renaming. The KITH_* vs KITHD_* distinction is never documented anywhere.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:24Z",
+  "updated_at": "2026-04-19T23:37:56Z",
+  "closed_at": "2026-04-19T23:37:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:23Z"
+    }
+  ]
+}

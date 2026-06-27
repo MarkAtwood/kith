@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.20",
+  "title": "No SSE reconnection: TUI shows Reconnecting forever after stream closes",
+  "description": "spawn_sse starts run_sse once and never retries. If the server closes the SSE stream (restart, network blip), the mpsc channel sender is dropped, sse_rx.recv() returns None, and connection_status is set to Reconnecting permanently. The TUI remains functional for typing but no new messages arrive. The user must quit and restart. Phase 1 trade-off is noted in a code comment but there is no user-visible hint that manual restart is required.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:40Z",
+  "updated_at": "2026-04-25T02:23:55Z",
+  "closed_at": "2026-04-25T02:23:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:40Z"
+    }
+  ]
+}

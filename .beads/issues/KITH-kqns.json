@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T18:04:03Z",
+  "compaction_level": 0,
+  "content_hash": "3c9b4a488e2a181dbbf07fb6f2b40768eba3e68332dd52f4d08b6002b8e3a362",
+  "created_at": "2026-06-14T17:55:02Z",
+  "created_by": "Mark Atwood",
+  "description": "Extract identity verification from TailscaleTransport into a separate TailscaleIdentityProvider struct. TailscaleTransport delegates IdentityProvider::identify_caller to TailscaleIdentityProvider. This proves the trait works and serves as the reference implementation.",
+  "ephemeral": 0,
+  "id": "KITH-kqns",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement TailscaleIdentityProvider",
+  "updated_at": "2026-06-14T18:04:03Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T10:55:06Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-d3vz",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.22",
+  "title": "discovery may overwrite owner-set mailbox_host on each round",
+  "description": "In discovery.rs run_discovery_round, a successful probe upserts the contact via upsert_discovered_contact with the Tailscale-verified IP as mailbox_host. If the owner has manually edited a contact mailbox_host (e.g. to a MagicDNS name), the next discovery round silently overwrites it with the raw IP. Whether upsert_discovered_contact preserves owner-set fields is not visible from kithd source. If it does not, manual contact configuration is silently clobbered by discovery.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:31:05Z",
+  "updated_at": "2026-04-25T04:47:05Z",
+  "closed_at": "2026-04-25T04:47:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:31:04Z"
+    }
+  ]
+}

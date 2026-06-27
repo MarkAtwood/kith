@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2rxf.2",
+  "title": "Fix N+1 query in MessageStore::list_by_chat attachment loading",
+  "description": "MessageStore::list_by_chat() does N+1 SQLite queries: 1 for messages + N for attachments (one per message). For 100-message lists this is 101 queries.\n\nFix: use a single batch query with WHERE message_id IN (...) to load all attachments for all messages in one round trip, then group by message_id and assign.\n\nFile: crates/kith-store/src/message.rs \u2014 list_by_chat() method.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:16:43Z",
+  "updated_at": "2026-04-20T02:20:59Z",
+  "closed_at": "2026-04-20T02:20:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2rxf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:16:42Z"
+    }
+  ]
+}

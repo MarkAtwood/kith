@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.11",
+  "title": "SEC4: DeliverHandler doc comment does not list step 7b",
+  "description": "kith-peer/src/lib.rs: The DeliverHandler doc comment (lines 153-165) lists the mandatory validation order as steps 1-11. The implementation at line 267 performs attachment validation as '7b', but '7b' does not appear in the documented sequence. A maintainer reading the doc comment to understand the order would not see attachment validation called out. The doc comment should be updated to include step 7b (or renumber to 8 and shift subsequent steps).",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:37Z",
+  "updated_at": "2026-04-20T01:18:12Z",
+  "closed_at": "2026-04-20T01:18:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:36Z"
+    }
+  ]
+}

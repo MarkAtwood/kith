@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ctt",
+  "title": "mark_failed skips message state counter advance",
+  "description": "outbox.rs::mark_failed sets delivery_state='failed' via direct SQL but never calls advance_state_counter() or updates state_version on the message row. Result: Message/changes (which uses state_version > N) never returns the failed message to polling clients. Users see their message stuck in 'pending' forever after 10 retry failures.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:49:47Z",
+  "updated_at": "2026-04-19T05:53:41Z",
+  "closed_at": "2026-04-19T05:53:41Z"
+}

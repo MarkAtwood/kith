@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "62a745b697efd2cd5e6dcbc726c713c71b1ff28777ce3101b021e1eb75f569ee",
+  "created_at": "2026-06-15T04:52:31Z",
+  "created_by": "Mark Atwood",
+  "description": "advance_state_counter_in_tx (kith-store/src/lib.rs:1226) issues a SELECT to read the current counter value, then a separate UPDATE counter + 1. The code comments correctly note this is safe only because kithd is single-writer.\n\nThe more direct implementation is one statement: UPDATE state_counters SET counter = counter + 1 WHERE type_name = ?1 RETURNING counter. This eliminates one round-trip per state advance (which happens on every message insert, contact upsert, chat create, and delivery completion), is equivalent in single-writer contexts, and is also safe under concurrent writers.\n\nRETURNING is supported since SQLite 3.35 (released 2021). The workspace already requires Rust 1.88 and bundled rusqlite, both well past that floor.\n\nThe existing overflow guard (if current >= i64::MAX - 1) would move to a check on the RETURNING value after the UPDATE, which is equally correct.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.6",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "advance_state_counter_in_tx reads then writes in two statements",
+  "updated_at": "2026-06-19T20:44:02Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:30Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

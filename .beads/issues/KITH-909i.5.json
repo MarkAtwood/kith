@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.5",
+  "title": "watch: SSE frame accumulation has no size limit \u2014 unbounded memory growth",
+  "description": "In watch_once (watch.rs:329), frame_lines accumulates SSE lines between blank-line separators. There is no bound on frame size or line count. A misbehaving kithd (or compromised server) sending an infinite SSE stream with no blank-line terminator causes frame_lines to grow until the process runs out of memory. MAX_RESPONSE_BYTES protects JMAP POST responses but not the SSE stream. Fix: reject frames exceeding a reasonable size (e.g. 64 KiB) or enforce a max line count.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:26Z",
+  "updated_at": "2026-04-25T05:08:36Z",
+  "closed_at": "2026-04-25T05:08:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:26Z"
+    }
+  ]
+}

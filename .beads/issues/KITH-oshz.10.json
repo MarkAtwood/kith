@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.10",
+  "title": "SSE task management: JoinHandle can be ignored, risk of silent task death on panic",
+  "description": "spawn_sse returns (mpsc::Receiver<StateChange>, tokio::task::JoinHandle<()>). Callers can drop the JoinHandle, losing access to task status.\n\nCurrent code: spawn_sse wraps run_sse in tokio::spawn. If run_sse panics, tokio catches it (no unwind), logs to eprintln (line 173), and the task dies silently. Receiver stays open but will never receive events.\n\nSCENARIO 1 (normal): SSE stream ends cleanly \u2192 run_sse returns Ok(()) \u2192 task exits cleanly.\nSCENARIO 2 (error): Network error or malformed SSE \u2192 run_sse returns Err(...) \u2192 eprintln and exit.\nSCENARIO 3 (panic): Panic in parse_sse_event or buffer handling \u2192 task panics \u2192 tokio catches \u2192 silent death.\nSCENARIO 4 (reconnect): Currently NOT IMPLEMENTED. If SSE stream drops, no retry. Caller must implement reconnect loop around spawn_sse.\n\nMAINTENANCE BURDEN: High if reconnect is in scope; Medium if it is not.\n\nPHASE 1 TRADE-OFF: The project instructions (CLAUDE.md) state 'No reconnect logic: If the SSE stream drops, there's no reconnect. Is this a maintenance burden (callers must implement reconnect) or acceptable for this phase?' This is a known Phase 1 limitation.\n\nRISK ANALYSIS:\n- parse_sse_event (lines 125\u2013157) is pure and safe.\n- utf8_lossy is lossy but correct (skips bad bytes, does not panic).\n- The only panic risk is in tokio internals or the network stack itself (very low).\n- If a panic occurs, the TUI becomes unresponsive to new messages without obvious error (UX risk, not memory safety risk).\n\nRECOMMENDATION: Document that spawn_sse can fail silently (add a comment above the function). File a follow-up task for reconnect + exponential backoff in Phase 2 if real deployments show SSE stream drops. For Phase 1 (local testing on stable tailnet), acceptable.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:56Z",
+  "updated_at": "2026-04-20T05:08:53Z",
+  "closed_at": "2026-04-20T05:08:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:55Z"
+    }
+  ]
+}

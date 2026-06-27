@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.5",
+  "title": "kith-tslocal: decode Peer nodes from LocalAPI /status",
+  "description": "The Tailscale /status response contains a Peer map keyed by node key, but kith-tslocal currently only decodes the local node's tailnet IPs. Add decoding of peer nodes so the discovery task can enumerate all tailnet peers.\n\nWhat: Extend StatusResponse to decode the Peer map.\n\nAlgorithm:\n1. Add a new struct PeerNode:\n   - user_id: String  (from UserID field, use deserialize_as_string like SelfPeer)\n   - login_name: String  (from UserProfile.LoginName or Peer.DNSName, see note)\n   - display_name: Option<String>  (from UserProfile.DisplayName)\n   - dns_name: String  (from DNSName, e.g. 'alice-laptop.tail-xxxxx.ts.net.')\n   - tailscale_ips: Vec<String>  (from TailscaleIPs)\n\n   Note: Tailscale /status Peer entries have: UserID (integer), DNSName (MagicDNS with trailing dot), TailscaleIPs, Hostinfo.OS, etc. LoginName is on the top-level User map keyed by UserID. For simplicity: use DNSName as the display login fallback; the discovery task will get login from the probed kithd session anyway.\n\n2. Add peers: HashMap<String, PeerNode> to StatusResponse (key = node key, value = PeerNode).\n   Use #[serde(rename = 'Peer', default)] to ignore missing field if no peers.\n\n3. Add a helper method status_peers(&self) -> Vec<&PeerNode> that deduplicates by user_id and skips the local node (compare user_id to self_node.user_id).\n\n4. Add unit tests with hardcoded JSON (not from live Tailscale):\n   - Test 1: status with two peers; assert peers map has 2 entries with correct user_ids\n   - Test 2: status with no peers (empty map); assert peers returns empty Vec\n   - Test 3: status_peers deduplicates same user_id across multiple nodes\n\nDefensive programming rules:\n- Default all new fields (missing fields should not fail deserialization)\n- Strip trailing dot from dns_name on deserialization (Tailscale appends '.')\n- PeerNode user_id uses same deserialize_as_string as SelfPeer (handles numeric IDs)\n- No logging of user IDs",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:00:59Z",
+  "updated_at": "2026-04-20T16:03:43Z",
+  "closed_at": "2026-04-20T16:03:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:00:59Z"
+    }
+  ]
+}

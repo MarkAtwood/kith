@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.5",
+  "title": "Silent outbox skip when get_mailbox_host returns None",
+  "description": "kith-chat/src/message.rs:373 uses if-let to conditionally call enqueue: if get_mailbox_host returns Ok(None) or Err, the send is silently skipped. Message is written to the messages table with delivery_state=Pending but never enters the outbox. No error is returned to the owner; no log is emitted. Message sits pending indefinitely with no retry and no error.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:04:39Z",
+  "updated_at": "2026-04-24T01:36:17Z",
+  "closed_at": "2026-04-24T01:36:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:04:39Z"
+    }
+  ]
+}

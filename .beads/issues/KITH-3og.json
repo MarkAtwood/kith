@@ -1,0 +1,26 @@
+{
+  "id": "KITH-3og",
+  "title": "kith-store: MessageStore",
+  "description": "MessageStore: insert, query, delivery state updates, JMAP state tokens for Message type.\n\n**What:** MessageStore wraps &Connection and implements message persistence with ULID-based IDs, ordering by created_at, delivery state machine, and Message/changes support.\n\n**Algorithm:**\n1. Define pub struct MessageStore<'a> { conn: &'a Connection }\n2. insert(msg: &Message, created_at_unix: i64) -> Result<(), KithError>:\n   INSERT INTO messages(id, chat_id, sender_user_id, body, body_type, sent_at_peer, created_at, delivery_state, reply_to) VALUES(?,?,?,?,?,?,?,?,?); advance state\n3. get(id: &str) -> Result<Option<Message>, KithError>: SELECT by PK, map to Message\n4. list_by_chat(chat_id: &str, limit: u32) -> Result<Vec<Message>, KithError>: SELECT WHERE chat_id=? ORDER BY created_at DESC LIMIT ? (uses messages_chat_time index)\n5. update_delivery_state(id: &str, state: &DeliveryState, delivered_at: Option<i64>) -> Result<(), KithError>: UPDATE delivery_state and delivered_at; advance state\n6. update_read_at(id: &str, read_at: i64) -> Result<(), KithError>: UPDATE read_at WHERE id=?; advance state\n7. get_changes_since(since_state: &str) -> Result<ChangesResult, KithError>:\n   a. Parse state counter from 'since-{n}' format\n   b. SELECT messages created or updated with state_version > n\n   c. Return added + updated lists and new_state string\n   NOTE: store a state_version INTEGER column updated on each write to enable this query\n8. get_state/advance_state: type_name='message'\n\n**Algorithm note for state_version:** Add column state_version INTEGER to messages table in KITH-k64 migration. On each insert/update, set state_version = (SELECT counter FROM state_counters WHERE type_name='message') AFTER incrementing.\n\n**Defensive programming rules:**\n- Message IDs are server-assigned ULIDs; never trust a caller-supplied ID for routing\n- created_at is the server's unix timestamp; sent_at_peer is stored as text for display only\n- All params use params! macro\n- get_changes_since returns KithError::Jmap(JmapError::cannot_calculate_changes()) if since_state not parseable or too old\n\n**Tests:**\n- Insert then get returns identical Message\n- list_by_chat returns messages in created_at descending order (oracle: manually computed insertion order)\n- update_delivery_state changes state and advances state token\n- get_changes_since with state token from before insert includes new message in added list\n- get_changes_since with current state token returns empty lists\n\n**Acceptance:** cargo test -p kith-store: all MessageStore tests pass; no unwrap; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:29:33Z",
+  "closed_at": "2026-04-19T05:29:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-k64",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

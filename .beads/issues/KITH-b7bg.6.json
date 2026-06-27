@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.6",
+  "title": "kith-jmap: parse_request silently accepts any non-empty using array with no capability check",
+  "description": "parse_request accepts any non-empty using array. The comment says 'unknown capabilities silently ignored for interoperability'. But urn:ietf:params:jmap:core is also never checked \u2014 a client that sends only an empty-string URI like [''] passes validation. RFC 8620 \u00a73.3 says the server MUST return unknownCapability if the using array contains a URI that the server does not support \u2014 the RFC clearly says 'unknown URIs MUST be rejected'. The current implementation inverts this: it silently accepts unknown URIs instead of rejecting them. Tests explicitly assert this behavior (test_parse_request_unknown_capability_ignored) which means the tests would need to change too. This is a deliberate design choice with a comment defending it, but the comment misrepresents RFC 8620 \u00a73.3. At minimum the comment should acknowledge the deviation; ideally file as a known RFC deviation in kith-architecture.md.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:07Z",
+  "updated_at": "2026-04-25T05:17:59Z",
+  "closed_at": "2026-04-25T05:17:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:07Z"
+    }
+  ]
+}

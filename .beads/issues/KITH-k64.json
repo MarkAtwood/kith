@@ -1,0 +1,26 @@
+{
+  "id": "KITH-k64",
+  "title": "kith-store: all schema migrations",
+  "description": "Define all table and index DDL for the kith-store schema in a single migration string.\n\n**What:** SQL DDL for all seven tables (self, contacts, chats, chat_members, messages, outbox, attachments) and all indexes, as migration version 1.\n\n**Algorithm:**\n1. Write SCHEMA_V1: &str containing CREATE TABLE IF NOT EXISTS statements for:\n   - self(tailscale_user_id TEXT PK, tailscale_login TEXT NOT NULL, display_name TEXT, created_at INTEGER NOT NULL)\n   - contacts(peer_user_id TEXT PK, peer_login TEXT NOT NULL, peer_mailbox_host TEXT NOT NULL, display_name TEXT, first_seen_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, blocked INTEGER NOT NULL DEFAULT 0)\n   - chats(id TEXT PK, kind TEXT NOT NULL DEFAULT 'direct', created_at INTEGER NOT NULL, last_message_at INTEGER)\n   - chat_members(chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE, peer_user_id TEXT NOT NULL, PRIMARY KEY(chat_id, peer_user_id))\n   - messages(id TEXT PK, chat_id TEXT NOT NULL REFERENCES chats(id), sender_user_id TEXT NOT NULL, body TEXT NOT NULL, body_type TEXT NOT NULL DEFAULT 'text/plain', sent_at_peer TEXT, created_at INTEGER NOT NULL, delivery_state TEXT NOT NULL, delivered_at INTEGER, read_at INTEGER, reply_to TEXT REFERENCES messages(id) ON DELETE SET NULL)\n   - outbox(message_id TEXT PK REFERENCES messages(id) ON DELETE CASCADE, peer_user_id TEXT NOT NULL, peer_mailbox_host TEXT NOT NULL, next_attempt_at INTEGER NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, last_error TEXT)\n   - attachments(id TEXT PK, message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE, filename TEXT NOT NULL, content_type TEXT NOT NULL, size_bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, created_at INTEGER NOT NULL)\n2. CREATE INDEX IF NOT EXISTS messages_chat_time ON messages(chat_id, created_at)\n3. CREATE INDEX IF NOT EXISTS messages_pending ON messages(delivery_state) WHERE delivery_state='pending'\n4. CREATE INDEX IF NOT EXISTS outbox_next ON outbox(next_attempt_at)\n5. Include state_counters(type_name TEXT PK, counter INTEGER NOT NULL DEFAULT 0) table for JMAP state tracking\n6. Register as MIGRATIONS entry: (1, SCHEMA_V1)\n\n**Defensive programming rules:**\n- Use CREATE TABLE IF NOT EXISTS for all tables (idempotent)\n- Use CREATE INDEX IF NOT EXISTS for all indexes (idempotent)\n- All FK references include ON DELETE behavior (CASCADE or SET NULL)\n- CHECK constraint: delivery_state IN ('pending','delivered','failed','received')\n- No raw string interpolation anywhere in SQL\n\n**Tests:**\n- After migration, PRAGMA user_version = 1\n- All 8 tables exist (query sqlite_master)\n- messages_chat_time index exists\n- messages_pending partial index exists\n- outbox_next index exists\n\n**Acceptance:** cargo test -p kith-store: migration tests pass; all 8 tables present in in-memory DB; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:24:13Z",
+  "closed_at": "2026-04-19T05:24:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-jcf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

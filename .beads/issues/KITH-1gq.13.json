@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.13",
+  "title": "Decision: db_err helper to avoid orphan rule",
+  "description": "lib.rs lines 174-180 define db_err() which converts rusqlite::Error to KithError::Store. This avoids violating the orphan rule (both types are external) while keeping error propagation clean via .map_err(db_err) at every rusqlite boundary. Rejected alternatives: blanket impl From would violate orphan rule; custom Result type would obscure the error variant.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:42Z",
+  "updated_at": "2026-04-19T05:58:07Z",
+  "closed_at": "2026-04-19T05:58:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:41Z"
+    }
+  ]
+}

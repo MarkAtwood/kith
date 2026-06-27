@@ -1,0 +1,32 @@
+{
+  "assignee": "claude",
+  "close_reason": "Contact presence implemented",
+  "closed_at": "2026-06-13T18:15:13Z",
+  "compaction_level": 0,
+  "content_hash": "346657bf25b6e05e01f53318d7e3cc9d5d28a53fd8262e34bd15c699b464f6b2",
+  "created_at": "2026-06-13T13:40:05Z",
+  "created_by": "Mark Atwood",
+  "description": "Spec defines presence fields on ChatContact missing from kith: presence (enum: online/away/busy/invisible/offline), lastActiveAt (UTCDate), statusText (String), statusEmoji (String), endpoints (Endpoint[] \u2014 capability URIs like VTC). Requires: PresenceStatus type, Peer/presence ephemeral events for federation, store columns. Spec reference: draft-atwood-jmap-chat-00.md lines 410-434.",
+  "ephemeral": 0,
+  "id": "KITH-iq7r",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement ChatContact presence (presence, lastActiveAt, statusText, statusEmoji, endpoints)",
+  "updated_at": "2026-06-13T18:15:13Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:15Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

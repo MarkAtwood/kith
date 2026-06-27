@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.3",
+  "title": "Decision: key file chmod before write",
+  "description": "In tls.rs load_or_generate_cert, the key file is created and its permissions set to 0o600 before any secret bytes are written to it. This is correct because writing secret material to a world-readable file first and then chmoding it leaves a race window (however brief) during which another process could read the key. Setting mode first eliminates that window entirely.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:06Z",
+  "updated_at": "2026-04-19T23:32:47Z",
+  "closed_at": "2026-04-19T23:32:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:05Z"
+    }
+  ]
+}

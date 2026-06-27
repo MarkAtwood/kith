@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.3",
+  "title": "watch: bootstrap failure falls back to s-0, replays all historical messages as notifications",
+  "description": "In cmd_watch (watch.rs:642), if the bootstrap Message/get fails, last_message_state is set to \"s-0\" (beginning of time). The next SSE state event will then trigger Message/changes since s-0, returning all historical messages, and fire desktop notifications for every message ever received. The fallback should be to exit with an error, not silently proceed with a broken baseline.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:36:53Z",
+  "updated_at": "2026-04-25T05:10:32Z",
+  "closed_at": "2026-04-25T05:10:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:36:53Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-tuw1.4",
+  "title": "kithd: blob_download_handler \u2014 lazy peer fetch on local miss",
+  "description": "Extend blob_download_handler in crates/kithd/src/lib.rs to attempt a peer fetch when the blob is not found locally.\n\nWhat: wire fetch_peer_blob into the download handler's 404 path.\n\nAlgorithm (extends existing handler):\n1. Validate blob_id with BlobStore::validate_blob_id(); 400 if invalid (already done)\n2. Try to open blob locally (existing code path); if found \u2192 serve immediately (no change)\n3. If NOT found:\n   a. Lock store, call store.get_peer_mailbox_for_blob(blob_id); release lock\n   b. If None \u2192 404 (blob is local and missing, or owner-uploaded but gone)\n   c. If Some(PeerBlobInfo { mailbox_host, filename, content_type, sha256, size_bytes }):\n      - Call fetch_peer_blob(&state.blob_store, &mailbox_host, blob_id, &filename, &content_type, &sha256, size_bytes)\n      - If Ok(()):\n        * Open the now-cached local blob\n        * Serve with correct Content-Type and Content-Disposition\n      - If Err(FetchBlobError::Timeout | Network) \u2192 502 Bad Gateway\n      - If Err(FetchBlobError::HttpError(404)) \u2192 404 (peer doesn't have it either)\n      - If Err(FetchBlobError::HashMismatch | SizeExceeded) \u2192 500 (peer sent corrupt data; log at error level)\n      - If Err(FetchBlobError::HostRejected) \u2192 403 (peer host rejected by policy)\n      - If Err(FetchBlobError::BlobStore) \u2192 500\n\nDefensive programming:\n- Never log the actual blob bytes\n- Release store lock before making the network call (do not hold lock across await)\n- Use content_type from DB (trusted) not from the peer's HTTP response (untrusted)\n- Set Content-Disposition to 'attachment; filename=...' using filename from DB\n- Sanitize filename for Content-Disposition header (no control chars, no backslash)\n\nTests: (integration tests in kithd/tests/, using existing harness)\n- Oracle: hardcoded test bytes + sha256 computed with 'echo -n testdata | sha256sum'\n- peer attachment served: deliver message with attachment to test kithd; serve mock peer blob; download succeeds\n- hash mismatch returns 500: mock peer returns wrong bytes; download returns 500\n- unreachable peer returns 502: no server listening at peer host; download returns 502",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:48:13Z",
+  "updated_at": "2026-04-20T17:00:14Z",
+  "closed_at": "2026-04-20T17:00:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tuw1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:13Z"
+    },
+    {
+      "depends_on_id": "KITH-tuw1.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:22Z"
+    }
+  ]
+}

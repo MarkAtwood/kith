@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.7",
+  "title": "Empty user_id is explicitly rejected (lines 212-214)",
+  "description": "whois() validates that user_profile.id is not empty before returning. This catches malformed LocalAPI responses early. Combined with the null-byte check, this ensures every valid user_id is non-empty and safe to use as a database key or in log messages.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:19Z",
+  "updated_at": "2026-04-19T19:51:55Z",
+  "closed_at": "2026-04-19T19:51:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:19Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.6",
+  "title": "SEC3: DEFAULT_BASE_URL doc omits deprecated KITH_BASE_URL fallback",
+  "description": "The doc comment on DEFAULT_BASE_URL (crates/kithd/src/lib.rs lines 32-37) says 'read from KITHD_BASE_URL (default: https://kith.local)' but session_handler also checks the deprecated KITH_BASE_URL before falling back to the constant. A reader of the doc alone does not know the deprecated fallback exists. The doc should mention all three resolution steps or explicitly cross-reference the cascade. The three-branch if-let itself is idiomatic Rust for this cascading pattern; no cleaner stdlib alternative exists without a helper function.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:42:35Z",
+  "updated_at": "2026-04-19T23:43:51Z",
+  "closed_at": "2026-04-19T23:43:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:42:34Z"
+    }
+  ]
+}

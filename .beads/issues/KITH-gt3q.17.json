@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.17",
+  "title": "Section 6: graceful drain loop subscribe-before-check is correct",
+  "description": "main.rs:344-355 registers Notify::notified() BEFORE loading the in_flight counter, then awaits if the counter is nonzero. This is the correct ordering for a notify-based drain loop: if the last connection calls notify_one() between the load and the await, the notification is already queued and notified.await returns immediately. Reversing the order (load first, then register notified) would introduce a race where the notification is missed, causing the drain to hang. A contributor doing a 'cleanup' refactor might flip the order \u2014 this comment defends the current ordering.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:10Z",
+  "updated_at": "2026-04-25T08:07:32Z",
+  "closed_at": "2026-04-25T08:07:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:10Z"
+    }
+  ]
+}

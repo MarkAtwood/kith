@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.10",
+  "title": "attachment size not verified against actual blob bytes",
+  "description": "parse_attachments validates the size field range and blob existence but never checks that claimed size matches the actual file size or verifies sha256 against stored bytes. Attacker-controlled size field can misrepresent storage accounting. Fix: stat blob file and compare to claimed size; verify sha256 against blob contents.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:18Z",
+  "updated_at": "2026-04-25T05:48:03Z",
+  "closed_at": "2026-04-25T05:48:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:18Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-9e9",
+  "title": "Web client: JMAP session bootstrap",
+  "description": "Implement JMAP session bootstrap in app.js: fetch /.well-known/jmap and store the session URLs and accountId.\n\nWhat: On page load, GET /.well-known/jmap, parse Session object, store apiUrl/eventsUrl/accountId in module state.\n\nAlgorithm:\n1. In /home/mark/WORK/KITH/web/app.js, module-level state:\n   let session = { apiUrl: null, eventsUrl: null, accountId: 'a-self' };\n2. async function bootstrap():\n   - const resp = await fetch('/.well-known/jmap');\n   - if (!resp.ok) throw new Error('Session fetch failed: ' + resp.status);\n   - const data = await resp.json();\n   - session.apiUrl = data.apiUrl;  // e.g., 'https://host/jmap/api'\n   - session.eventsUrl = data.eventSourceUrl;  // template with {types},{closeafter},{ping}\n   - session.accountId = 'a-self';  // always; also in data.primaryAccounts['urn:kith:chat:1']\n   - session.username = data.username;\n   - session.state = data.state;  // opaque combined state token\n   - return session;\n3. Error handling: catch network errors (tailscaled not running, wrong device), show #error-banner with message 'Cannot connect to Kith. Is Tailscale running on this device?'\n4. async function callJmap(methodCalls): wraps POST to session.apiUrl:\n   - body: JSON.stringify({ using: ['urn:ietf:params:jmap:core','urn:kith:chat:1'], methodCalls })\n   - headers: { 'Content-Type': 'application/json' }\n   - returns: data.methodResponses array\n   - throws on HTTP error or method-level error (type in first response entry)\n5. document.addEventListener('DOMContentLoaded', () => bootstrap().then(renderApp).catch(showError));\n\nDefensive programming rules:\n- Never access data fields without checking resp.ok first.\n- Never eval() any response content.\n- Use try/catch around all fetches; show user-visible error on failure.\n- eventSourceUrl is a template \u2014 replace {types},{closeafter},{ping} before using.\n\nTests (independent oracle: manually construct expected session shape from RFC 8620 \u00a72):\n- After bootstrap(), session.apiUrl ends with '/jmap/api'\n- After bootstrap(), session.accountId === 'a-self'\n- On fetch failure (mock network down), error banner becomes visible",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:47:53Z",
+  "closed_at": "2026-04-19T17:47:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bgq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-f0g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

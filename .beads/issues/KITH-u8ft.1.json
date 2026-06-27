@@ -1,0 +1,21 @@
+{
+  "id": "KITH-u8ft.1",
+  "title": "peer_node misleading name in SSE stall log: always owner not peer",
+  "description": "The variable is named peer_node (events.rs:317) but SSE is owner-only (auth check at line 137 ensures Role::Owner before the code runs). In Kith, 'peer' is a term-of-art for another kith user delivering messages; using it here for the SSE client (always the owner) will mislead a future contributor reading the warn log or the code. They may ask 'why does the warn log say peer= for an owner-only endpoint?' A more accurate name would be client_node or owner_node, and the log field key should match.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:10:18Z",
+  "updated_at": "2026-04-25T09:12:37Z",
+  "closed_at": "2026-04-25T09:12:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-u8ft",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:10:18Z"
+    }
+  ]
+}

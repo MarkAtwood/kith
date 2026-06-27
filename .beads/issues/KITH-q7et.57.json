@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Low impact: all callers either map the String into io::Error/JmapError or just check .is_err(). No caller matches on specific validation failure. Typed error would add complexity for no external benefit.",
+  "closed_at": "2026-06-15T12:02:34Z",
+  "compaction_level": 0,
+  "content_hash": "c65624d2d276446d516cf6ff65491056cd9ab448cec8fc500014f1fb0501878f",
+  "created_at": "2026-06-15T04:55:58Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-attach/src/lib.rs:33: pub fn validate_blob_id(id: &str) -> Result<(), String>\n\nReturning String as the error type from a public library function prevents callers from matching on specific failure reasons (empty, too long, invalid char, starts-with-dot) without string parsing.\n\nFix: introduce a BlobIdError enum (or at minimum a newtype) and return Result<(), BlobIdError>. This gives callers structured access to the rejection reason.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.57",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "validate_blob_id returns Result<(), String> \u2014 use typed error",
+  "updated_at": "2026-06-15T12:02:34Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:58Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

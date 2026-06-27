@@ -1,0 +1,20 @@
+{
+  "id": "KITH-9399.6",
+  "title": "outbox_tick: delivery lock not released on complete_delivery failure",
+  "description": "In outbox_worker, after successful HTTP delivery, complete_delivery() is called inside a lock guard. If complete_delivery fails (SQLite error), the lock is held and the outbox row stays locked indefinitely \u2014 no retry, no mark_failed. The row becomes a permanent zombie. Fix: ensure the lock is released and failure is recorded regardless of complete_delivery outcome.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:11:05Z",
+  "updated_at": "2026-04-24T21:29:02Z",
+  "closed_at": "2026-04-24T21:29:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:11:05Z"
+    }
+  ]
+}

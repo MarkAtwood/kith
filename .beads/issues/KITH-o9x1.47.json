@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.47",
+  "title": "Message/set update nonexistent ID returns serverFail instead of notFound",
+  "description": "In message.rs process_update, when update_read_at is called with a nonexistent message ID, kith-store returns KithError::Store(\"message not found: {id}\"). process_update maps ALL errors from update_read_at via .map_err(|e| json!({\"type\": \"serverFail\", \"description\": e.to_string()})), so the notUpdated SetError has type=serverFail. RFC 8620 \u00a75.3 requires type=notFound when the object ID does not exist in the account. Compare: contact.rs process_update correctly checks get_by_peer_user_id before calling the store mutator and returns notFound explicitly. Message/set should do the same: call messages().get(server_id) first and return notFound if absent.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:17:11Z",
+  "updated_at": "2026-04-25T01:27:45Z",
+  "closed_at": "2026-04-25T01:27:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:17:11Z"
+    }
+  ]
+}

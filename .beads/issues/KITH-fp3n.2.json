@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.2",
+  "title": "get_changes_since_for_chat computes new_state that is discarded",
+  "description": "kith-store/src/message.rs: get_changes_since_for_chat() calls self.get_state() at line 613 and returns it as new_state in ChangesResult. However, the caller in kith-chat/src/message.rs queryChanges handler (line 892) only destructures (chat_changes.added, chat_changes.destroyed), discarding chat_changes.new_state entirely. Lock 2 then calls get_state() again (line 905). This results in one redundant SELECT query against state_counters on every queryChanges call that has changes. Low impact in Phase 1 but is a latent inconsistency: the store function computes something the caller never uses.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:04:41Z",
+  "updated_at": "2026-04-24T18:11:15Z",
+  "closed_at": "2026-04-24T18:11:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:04:41Z"
+    }
+  ]
+}

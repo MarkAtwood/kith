@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "b22fe647cd8a880dbfde47ef4525dbe92034355ed66c7dd1f72e2ec4a3f212c9",
+  "created_at": "2026-06-15T04:53:37Z",
+  "created_by": "Mark Atwood",
+  "description": "In kith-chat/src/space.rs:1467, space invite codes are generated as 8 random alphanumeric characters using rand::rng().sample_iter(rand::distr::Alphanumeric).take(8). With 62 possible characters per position, this yields log2(62^8) \u2248 47.6 bits of entropy. This is borderline for an invite code that may be long-lived and guessable by an adversary with network access. The RNG itself (rand 0.9 via rand_chacha) is a CSPRNG \u2014 the concern is the output length, not the generator quality. Recommendation: increase to at least 16 characters (\u224895 bits) or use 128 bits from the CSPRNG encoded as hex/base64. The code is currently used as the human-shareable invite code; if shortness is required for UX, pair it with rate limiting on the join endpoint.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.22",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "Space invite code: 8-char alphanumeric is ~47.6 bits entropy",
+  "updated_at": "2026-06-19T20:45:43Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:37Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

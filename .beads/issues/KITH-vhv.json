@@ -1,0 +1,26 @@
+{
+  "id": "KITH-vhv",
+  "title": "kith-peer: exponential backoff with jitter",
+  "description": "What: Enhance OutboxStore.record_failure (in kith-store) to add \u00b120% random jitter to the next_attempt_at timestamp, and increase max_attempts to 72 (covering ~24h of hourly retries), matching the KITH-8my epic specification.\n\nAlgorithm:\n1. Read current record_failure in crates/kith-store/src/outbox.rs\n2. Change max failure threshold from 9 (10th call) to 71 (72nd call)\n3. Change initial delay from 60s to 30s: let base_delay = 30i64 * (1i64 << shift.min(30)); capped at 3600\n4. Add jitter: let jitter_range = base_delay / 5; // 20% of delay; let jitter = thread_rng().gen_range(-(jitter_range)..(jitter_range)); let delay_secs = (base_delay + jitter).max(1);\n5. Add rand to kith-store Cargo.toml (workspace dep)\n6. Ensure thread_rng() is only called in record_failure (not in tests for determinism); tests may use known attempt counts to verify bounds\n7. Run: cargo test -p kith-store\n8. Run: cargo clippy --all-features -- -D warnings\n\nDefensive rules:\n- Jitter must not produce negative delay: clamp to min 1 second\n- No overflow: shift is already clamped to 30 bits; base_delay fits in i64\n- rand dep must use workspace version; do NOT add getrandom or similar separately\n- max_attempts change is behavioral: existing test vectors must be updated to match new thresholds; do NOT delete tests, update their expected values\n- If existing test for 10th failure exists, update to verify 72nd failure marks_failed instead\n\nAgent team: Researcher R reads outbox.rs record_failure and existing tests. Implementer I changes max_attempts and adds jitter. Tester T verifies: attempt 71 still retries (does not mark_failed), attempt 72 calls mark_failed; jitter is within \u00b120% of base delay for sample attempt counts. Validator V runs cargo test -p kith-store + clippy.\n\nTests (oracle = KITH-8my epic spec: 30s base, 2x doubling, 1h cap, \u00b120% jitter, 72 max):\n- Attempt 0: next_attempt_at in range [now + 24, now + 36] (30s \u00b1 20%)\n- Attempt 1: next_attempt_at in range [now + 48, now + 72] (60s \u00b1 20%)\n- Attempt 10: next_attempt_at in range [now + 2880, now + 4320] (30*2^10=30720, capped at 3600, \u00b120% = [2880, 4320])\n- Attempt 71: record_failure returns Ok(()); outbox row updated; message NOT marked failed\n- Attempt 72: record_failure internally calls mark_failed; message.delivery_state = Failed",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:21:47Z",
+  "closed_at": "2026-04-19T09:21:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-vp0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

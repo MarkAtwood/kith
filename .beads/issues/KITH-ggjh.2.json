@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ggjh.2",
+  "title": "is_closed() branch at line 379 has no test coverage",
+  "description": "The is_closed() guard in events.rs line 379 (inside the empty-batch path, when close_after_first=false) is unreachable in the single-threaded tokio test runtime. To exercise it, the coalescing task must: (1) wake via a broadcast arriving through rx.recv(), not via closed(), (2) filter the event to produce an empty batch, (3) then observe live_rx already dropped. In a single-threaded runtime the task cannot be mid-execution when live_rx is dropped \u2014 the select! closed() arm preempts this scenario every time. The branch exists for a valid production race but has zero test coverage. The fix attempt in the first test (events_coalescing_task_exits_on_disconnect_before_any_broadcast) does not actually exercise it.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:31:44Z",
+  "updated_at": "2026-04-24T19:34:15Z",
+  "closed_at": "2026-04-24T19:34:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ggjh",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:31:44Z"
+    }
+  ]
+}

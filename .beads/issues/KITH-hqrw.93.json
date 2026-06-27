@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.93",
+  "title": "kith-jmap: role-before-handler dispatch order is correct security design",
+  "description": "Dispatcher::dispatch_one() performs the role check against METHOD_ROLES BEFORE looking up the handler. This is correct defense-in-depth: the comment says 'Role check MUST precede handler lookup (defense-in-depth)'. An attacker calling a peer-only method as owner gets forbidden, not unknownMethod, regardless of handler registration state. The two separate handler maps (handlers for owner, peer_handlers for peer) with the typed-identity parameter on PeerJmapHandler::call() is a good API design: it makes it impossible for a peer handler to forget to check the caller identity because the identity is injected as a typed parameter rather than being extractable from args.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:43:45Z",
+  "updated_at": "2026-04-25T08:14:47Z",
+  "closed_at": "2026-04-25T08:14:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:43:45Z"
+    }
+  ]
+}

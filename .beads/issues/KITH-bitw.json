@@ -1,0 +1,13 @@
+{
+  "id": "KITH-bitw",
+  "title": "Review round 1: kith-tui read-only chat UI",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:41:42Z",
+  "updated_at": "2026-04-20T05:50:33Z",
+  "closed_at": "2026-04-20T05:50:33Z",
+  "notes": "Confidence: 5% chance of missed bug. Code has solid input validation, proper boundary checks (UTF-8 cursor movement, 65536-byte limits), comprehensive independent-oracle test coverage, no panics in error paths, and defensive chat-filtering logic. Only engineering issue found: KITH-bitw.2 (O(n\u00b2) deduplication) has real algorithmic complexity basis, not stylistic. Running out of real complaints: yes \u2014 further flags would be preferences (naming, comment style) without engineering substance.\nReview converged after 1 round. P0=0 P1=0 P2=0. SEC7 confidence: 5% chance of missed bug. Running out of real complaints."
+}

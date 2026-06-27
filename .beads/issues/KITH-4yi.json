@@ -1,0 +1,74 @@
+{
+  "id": "KITH-4yi",
+  "title": "kith-chat: tests for all owner methods",
+  "description": "What: Comprehensive test suite for all 10 owner method handlers in kith-chat crate.\n\nNote: Individual method tests are already specified in each implementation bead. This bead adds:\n1. Cross-method integration tests (e.g., create contact, create chat, send message, query \u2014 end-to-end within kith-chat crate using in-memory store).\n2. Auth rejection tests (critical \u2014 must not be self-certifying).\n3. Cross-input security invariant tests.\n\nTest groups:\n\nGROUP A \u2014 Cross-method workflow:\n- Test 1: Contact/set create \u2192 Contact/get \u2192 Contact/query \u2192 Contact/changes (verify state sequence).\n- Test 2: Chat/set create \u2192 Chat/get \u2192 Chat/query \u2192 Chat/changes.\n- Test 3: Message/set create \u2192 Message/get \u2192 Message/query (with chatId) \u2192 Message/changes.\n- Test 4: Full sequence: contact \u2192 chat \u2192 message \u2192 readAt \u2192 queryChanges.\n\nGROUP B \u2014 Auth rejection (non-self-certifying):\n- Test 5: All owner methods reject when called with Role::Peer (method should return forbiddenMethod error from Dispatcher role check).\n- Test 6: All peer methods reject when called with Role::Owner.\n- These must use the Dispatcher directly, not bypass it, to test the actual role gate.\n\nGROUP C \u2014 Security invariants:\n- Test 7: Message/set create with body exactly 65536 bytes \u2192 success.\n- Test 8: Message/set create with body 65537 bytes \u2192 notCreated/invalidArguments.\n- Test 9: Message/set create with wrong chatId (doesn't match any chat) \u2192 notCreated/notFound.\n- Test 10: Contact/changes with sinceState from future (s-99999) \u2192 state_mismatch or empty.\n- Test 11: Message/query without chatId in filter \u2192 invalidArguments.\n\nAll oracle values must be hand-constructed from RFC 8620 text and kith-core serde field names \u2014 no test may derive expected values from the code under test.\n\nAgent team:\n- Agent R: Read existing tests in kith-store/tests/ for patterns. Read kith-jmap/src/lib.rs (Dispatcher) to understand how to test via Dispatcher (not bypass).\n- Agent I: Implement tests in kith-chat/tests/integration.rs.\n- Agent T: Design test vectors independently. Confirm expected JMAP field names from RFC 8620 \u00a75 (e.g., 'methodResponses', 'accountId', 'list', 'notFound', 'state').\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nCritical: Tests MUST NOT pass by testing the method's output against its own internal state. Use a second independent read to verify. For example: write via /set, then read via /get with known expected fields, not by calling the same /set logic again.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:38:10Z",
+  "closed_at": "2026-04-19T15:38:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1xr",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:47Z"
+    },
+    {
+      "depends_on_id": "KITH-4e0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:49Z"
+    },
+    {
+      "depends_on_id": "KITH-6sy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:49Z"
+    },
+    {
+      "depends_on_id": "KITH-aqi",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:46Z"
+    },
+    {
+      "depends_on_id": "KITH-df2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:48Z"
+    },
+    {
+      "depends_on_id": "KITH-e9c",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:48Z"
+    },
+    {
+      "depends_on_id": "KITH-jp2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:47Z"
+    },
+    {
+      "depends_on_id": "KITH-mp0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:45Z"
+    },
+    {
+      "depends_on_id": "KITH-oan",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:46Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

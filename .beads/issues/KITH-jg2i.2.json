@@ -1,0 +1,21 @@
+{
+  "id": "KITH-jg2i.2",
+  "title": "try_send drop silently breaks SSE without client-visible reason",
+  "description": "events_handler uses try_send; when the channel is full the task breaks and live_tx is dropped. The SSE stream ends (hyper closes the connection). The client sees a dropped connection with no HTTP error code or SSE error event. In production, a slow client will repeatedly reconnect, fill the channel again, and get dropped again \u2014 generating a flood of reconnections and log noise. Scenario: user on a slow network or with a battery-saving browser tab that throttles JS. Consequence: ghost reconnect loop; no actionable error for the user or logs beyond 'SSE receiver lagged'.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:45:00Z",
+  "updated_at": "2026-04-25T08:51:38Z",
+  "closed_at": "2026-04-25T08:51:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:45:00Z"
+    }
+  ]
+}

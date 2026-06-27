@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.16",
+  "title": "Decision: Parse and validate request parameters BEFORE subscribing to events",
+  "description": "In kithd events.rs events_handler (lines 106-129), parameter validation happens early, before any resource allocation:\n  1. Auth check (line 107) \u2014 reject if not Owner\n  2. Parse closeafter (lines 112-118) \u2014 reject if invalid\n  3. Parse types filter (lines 121-129) \u2014 reject if invalid\n  4. Extract/validate Last-Event-ID (lines 134-147)\n  5. THEN subscribe to broadcast (line 152)\n\nThis is correct defense-in-depth:\n  - Invalid requests fail fast without consuming channel capacity\n  - Broadcast channel subscription happens only for valid requests\n  - If any parameter is malformed, client gets 400 before draining resources\n  - Last-Event-ID parsing is lenient (invalid format \u2192 silent ignore, no 400) but is still validated before subscribe\n\nOrder matters: return before subscribe prevents wasted work on invalid requests.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:36Z",
+  "updated_at": "2026-04-19T20:16:29Z",
+  "closed_at": "2026-04-19T20:16:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:35Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.15",
+  "title": "DECISION: Independent test oracles via wiremock, never self-certifying",
+  "description": "What: All integration tests use wiremock to mount mock JMAP responses with hardcoded JSON payloads. Test assertions compare state against those mock values, never against what the code just produced.\n\nWhy it's good: Tests prove the code correctly parses and displays known good JMAP responses. A test that calls Message/query and asserts 'got back what I sent' proves nothing. Instead, tests mount a mock that returns e.g. 'Chat/get with unreadCount=2' and assert 'unread count is shown in display name'. The oracle is the mock payload, defined once at test setup. Prevents circular validation and catches format mismatches.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:43:54Z",
+  "updated_at": "2026-04-20T05:45:53Z",
+  "closed_at": "2026-04-20T05:45:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:43:53Z"
+    }
+  ]
+}

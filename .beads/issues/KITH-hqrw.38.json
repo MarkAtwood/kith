@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.38",
+  "title": "outbox_worker 30s sleep interval is hardcoded with no config override",
+  "description": "outbox_worker sleeps for a hardcoded 30 seconds between ticks. For high-traffic deployments or responsive UX, this is fine. However for low-power devices or high-latency scenarios, the polling interval cannot be tuned. The discovery interval has KITHD_DISCOVERY_INTERVAL_SECS; the outbox has no equivalent. Not a correctness issue but limits operational flexibility.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:13Z",
+  "updated_at": "2026-04-25T07:53:39Z",
+  "closed_at": "2026-04-25T07:53:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:13Z"
+    }
+  ]
+}

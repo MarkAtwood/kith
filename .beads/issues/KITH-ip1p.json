@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ip1p",
+  "title": "Review: fix: use senderId field name in kithctl watch notification",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:39:41Z",
+  "updated_at": "2026-04-25T09:41:54Z",
+  "closed_at": "2026-04-25T09:41:54Z",
+  "notes": "Maintainer risk: LOW \u2014 The functional fix is correct and complete. The only risk is a weak regression test that won't catch future field renames in kith-core.\nConfidence: 5% chance of missed bug. Uncertainty driven by: no end-to-end integration test that spins up kithd, delivers a message via Peer/deliver, and then checks that kithctl watch fires a notification with the correct sender \u2014 the only integration coverage is unit-level. Would raise confidence if: there were an integration test exercising the full SSE \u2192 Message/get \u2192 notification path against a real kithd instance."
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-c5f",
+  "title": "kith-core: error types",
+  "description": "What: Define KithError, JmapError, and AuthError types in src/error.rs. Requires thiserror dep (KITH-bhl.1).\n\nModule file: crates/kith-core/src/error.rs \u2014 create this file, then add 'pub mod error;' to src/lib.rs.\n\nAlgorithm:\n1. Import: use thiserror::Error;\n2. Define AuthError enum:\n   #[derive(Debug, thiserror::Error)]\n   Variants:\n   - NoPeerAddr  \u2192 #[error(\"no peer address on request\")]\n   - WhoIsFailed(String)  \u2192 #[error(\"WhoIs failed: {0}\")]\n   - Unauthorized  \u2192 #[error(\"caller is not authorized\")]\n3. Define JmapError struct (serializable error for JMAP method responses):\n   #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]\n   #[error(\"{error_type}: {description:?}\")]\n   Fields:\n   - error_type: String  \u2192 #[serde(rename=\"type\")]\n   - description: Option<String>  \u2192 #[serde(skip_serializing_if=\"Option::is_none\")]\n   Include const fn for common error types:\n   impl JmapError {\n     pub fn invalid_arguments(desc: impl Into<String>) -> Self { ... }\n     pub fn forbidden_method() -> Self { ... }\n     pub fn not_found() -> Self { ... }\n     pub fn server_fail(desc: impl Into<String>) -> Self { ... }\n   }\n4. Define KithError top-level enum wrapping other errors:\n   #[derive(Debug, thiserror::Error)]\n   Variants:\n   - Auth(#[from] AuthError)  \u2192 #[error(transparent)]\n   - Jmap(JmapError)  \u2192 #[error(transparent)]\n   - Store(String)  \u2192 #[error(\"storage error: {0}\")]\n   - Validation(String)  \u2192 #[error(\"validation error: {0}\")]\n5. Add 'pub mod error;' to src/lib.rs.\n6. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- Error messages must NOT include raw user-supplied data from untrusted sources\n- Use #[from] only for typed conversions, not for String (String errors are internal)\n- No unwrap() in error constructors\n\nTests (independent oracle: manually specified error type strings per RFC 8620 \u00a77.1):\n- JmapError::invalid_arguments(\"test\") serializes to {\"type\":\"invalidArguments\",\"description\":\"test\"}\n- JmapError::forbidden_method() serializes to {\"type\":\"forbiddenMethod\"} (no description key)\n- KithError::from(AuthError::Unauthorized) \u2014 verify From conversion works\n- AuthError Display: assert Display output is non-empty for each variant",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:34Z",
+  "closed_at": "2026-04-19T05:04:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-bhl.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:59:01Z"
+    }
+  ]
+}

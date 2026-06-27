@@ -1,0 +1,13 @@
+{
+  "id": "KITH-p6hg",
+  "title": "Cleanup: test cert OnceLock + outbox tx helper",
+  "description": "Two mechanical improvements with no design tradeoffs: (1) KITH-0z7.1: eliminate per-test TLS cert regeneration in spawn_test_pair using OnceLock; (2) KITH-8poe: extract shared transaction pattern from complete_delivery and mark_failed in OutboxStore.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:42:19Z",
+  "updated_at": "2026-04-20T03:49:34Z",
+  "closed_at": "2026-04-20T03:49:34Z"
+}

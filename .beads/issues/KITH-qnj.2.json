@@ -1,0 +1,19 @@
+{
+  "id": "KITH-qnj.2",
+  "title": "[R2-SEC1] config_drift_test only checks one direction: service files vs KNOWN_VARS",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:44:40Z",
+  "updated_at": "2026-04-19T18:46:15Z",
+  "closed_at": "2026-04-19T18:46:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qnj",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:44:40Z"
+    }
+  ]
+}

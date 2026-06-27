@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.11",
+  "title": "SEC4: Improve doc comment for AppState::input_cursor",
+  "description": "Line 51 comment 'always a UTF-8 char boundary' is correct but terse. Better: 'Byte offset of the insertion cursor within Self::input; always points to a valid UTF-8 character boundary (used for text editing operations).'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:56Z",
+  "updated_at": "2026-04-20T05:50:24Z",
+  "closed_at": "2026-04-20T05:50:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:56Z"
+    }
+  ]
+}

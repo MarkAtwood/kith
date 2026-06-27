@@ -1,0 +1,39 @@
+{
+  "assignee": "claude",
+  "close_reason": "SpaceBan get/set/changes handlers",
+  "closed_at": "2026-06-13T21:09:55Z",
+  "compaction_level": 0,
+  "content_hash": "0b3e81984ce73ab7980742ec028ad14a1d59fe00ad7b13b56faa6bf95f6a87b8",
+  "created_at": "2026-06-13T19:01:37Z",
+  "created_by": "Mark Atwood",
+  "description": "SpaceBan/get: ban permission holders see all, banned users see own ban only. SpaceBan/changes: standard. SpaceBan/set create: require ban permission, accepts spaceId+userId+reason+expiresAt. Update: reason, expiresAt. Destroy: lifts ban, requires ban permission. Register in METHOD_ROLES. Spec: \u00a75.13.2.",
+  "ephemeral": 0,
+  "id": "KITH-6ycq",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 2e: SpaceBan handlers",
+  "updated_at": "2026-06-13T21:09:55Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:01:58Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-3lya",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T12:01:59Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-w7rx",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

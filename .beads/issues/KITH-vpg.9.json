@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.9",
+  "title": "SEC6/decision: String keys in take_vars remove Box::leak without UAF risk",
+  "description": "In crates/kithd/src/config.rs, take_vars/restore_vars (lines 190-209) changed the key type from &'static str (which required Box::leak to extend the lifetime of dynamically constructed strings to 'static) to owned String. The change is safe because: the Vec<(String, Option<String>)> is kept alive by the caller for the full scope of the test, so the String keys are never used after the Vec drops, and restore_vars consumes the Vec by value. No unsafe lifetime extension is needed. Box::leak was previously used as a workaround for the 'static bound on set_var/remove_var; with owned Strings passed directly to env::set_var/remove_var (which accept AsRef<OsStr>), there is no 'static requirement to satisfy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:42:57Z",
+  "updated_at": "2026-04-19T23:44:00Z",
+  "closed_at": "2026-04-19T23:44:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:42:56Z"
+    }
+  ]
+}

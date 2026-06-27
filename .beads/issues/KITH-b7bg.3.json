@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.3",
+  "title": "Message/queryChanges: filter.chatId is required but sinceQueryState is parsed before chatId validation",
+  "description": "MessageQueryChangesHandler parses sinceQueryState (line 1011) before parsing chatId from filter (line 1017). If filter is absent or filter.chatId is missing, the method returns invalidArguments referencing 'filter.chatId is required', but the sinceQueryState was already validated. This order mismatch means an empty filter triggers chatId-specific error before the chatId absence is even checked. Minor: the error is correct but the argument parsing order is inconsistent with the single-step validation contract. The chat existence check at line 1044 happens inside the lock, after maxChanges is parsed at line 1025 \u2014 so an unknown chatId is not validated until lock acquisition, making the error message inconsistent with where it fires.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:12Z",
+  "updated_at": "2026-04-25T05:44:06Z",
+  "closed_at": "2026-04-25T05:44:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:11Z"
+    }
+  ]
+}

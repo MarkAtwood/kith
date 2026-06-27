@@ -1,0 +1,31 @@
+{
+  "close_reason": "Category/Invite/Ban CRUD: 22 methods, 26 tests",
+  "closed_at": "2026-06-13T20:41:59Z",
+  "compaction_level": 0,
+  "content_hash": "6aff243da713a903bac8b03943ce23dbfcfd0b01565a41e41f0ea35786cc9e63",
+  "created_at": "2026-06-13T19:01:14Z",
+  "created_by": "Mark Atwood",
+  "description": "Extend kith-store/src/space.rs or create separate files: CategoryStore (add/remove/reorder categories, manage channel assignments), SpaceInviteStore (create, resolve by code, increment uses, check expiry), SpaceBanStore (create, check, delete). Channel management: create channel chat with space_id, manage permission overrides. Tests.",
+  "ephemeral": 0,
+  "id": "KITH-3lya",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 1d: Store CRUD for Categories, Channels, SpaceInvite, SpaceBan",
+  "updated_at": "2026-06-13T20:41:59Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:01:55Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-fu3m",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

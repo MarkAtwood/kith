@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:06:28Z",
+  "compaction_level": 0,
+  "content_hash": "50e1763826259505c7c06152e5e8b3dfd5e5aef88327d7eaf04793edd4751d39",
+  "created_at": "2026-06-15T04:55:06Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer/src/lib.rs: PeerDeliveryError (line 679) is a pub enum, but is_permanent_delivery_error() (line 706) is private (fn, not pub fn).\n\nThis creates an API asymmetry: callers that receive a PeerDeliveryError from a pub function (e.g. via PeerHttpClient) cannot ask 'is this error permanent?' without re-implementing the logic themselves. The concept of permanence is defined in the private function but is not exposed as part of the public error type.\n\nSpecifically, the 4xx-vs-5xx permanence classification (permanent on 4xx except 429, transient on 5xx/timeout/network) is a retry policy that any outbox worker needs. If a caller maintains its own outbox retry loop, it must independently re-derive this classification from the PeerDeliveryError variant, duplicating logic that already exists in the crate.\n\nAdditionally, PeerDeliveryError derives #[derive(Debug, Error)] but not PartialEq, making it impossible to write clean unit tests that match on error variants by value.\n\nFix: add pub fn is_permanent(&self) -> bool to PeerDeliveryError (or impl PeerDeliveryError). Add #[derive(PartialEq)] so tests can use assert_eq! on error variants.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.50",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-peer: PeerDeliveryError is pub but is_permanent_delivery_error is private",
+  "updated_at": "2026-06-15T12:06:28Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:06Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

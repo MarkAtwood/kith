@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.15",
+  "title": "Three-layer sender_msg_id idempotency: app check + UNIQUE INDEX + BEFORE INSERT trigger",
+  "description": "Deduplication uses three independent guards: (1) app-level find_by_sender_msg_id before write, (2) UNIQUE INDEX messages_sender_msg_id on (chat_id, sender_msg_id), (3) BEFORE INSERT trigger aborting NULL sender_msg_id. Each catches a distinct failure mode the others don't. SQLite UNIQUE INDEX permits multiple NULLs, so removing the trigger would silently allow NULL-deduplication bypass. Future contributors should not remove any layer as 'redundant'.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:34Z",
+  "updated_at": "2026-04-24T15:44:10Z",
+  "closed_at": "2026-04-24T15:44:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:34Z"
+    }
+  ]
+}

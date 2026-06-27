@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.18",
+  "title": "ResultReference name field not validated against prior call method name",
+  "description": "RFC 8620 \u00a79: the ResultReference name field MUST equal the method name of the referenced call-id. resolve_args() checks only result_of (call-id) but never compares rr.name against the actual method name for that call-id in prior_responses. A client can pass any name and still get resolution. Low security impact (sandboxed), non-conformant with spec.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:35Z",
+  "updated_at": "2026-04-25T01:29:02Z",
+  "closed_at": "2026-04-25T01:29:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:35Z"
+    }
+  ]
+}

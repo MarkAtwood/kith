@@ -1,0 +1,25 @@
+{
+  "id": "KITH-kmn",
+  "title": "kith-peer: outbound HTTPS client to peer mailbox",
+  "description": "What: Implement an async HTTPS client in kith-peer that posts a JMAP Peer/deliver or Peer/receipt request to a peer mailbox and returns the parsed response.\n\nAlgorithm:\n1. Define PeerHttpClient struct wrapping a hyper_util::client::legacy::Client<HttpsConnector<HttpConnector>, Full<Bytes>>\n2. In PeerHttpClient::new(): build HttpsConnector via HttpsConnectorBuilder::new().with_webpki_roots().https_only().enable_http1().build(); build Client via Client::builder(TokioExecutor::new()).build(connector)\n3. Define fn build_jmap_request(method: &str, args: serde_json::Value) -> serde_json::Value: constructs { using: [...], methodCalls: [[method, args, \"0\"]] }\n4. Define async fn deliver(url: &str, message: &DeliverPayload, sender_user_id: &str) -> Result<(), PeerDeliveryError>:\n   a. Validate url starts with \"https://\" (not http); else PeerDeliveryError::InsecureUrl\n   b. Build JMAP request body via build_jmap_request(\"Peer/deliver\", serialize message args)\n   c. Build hyper Request::builder().method(POST).uri(url).header(content-type, application/json).body(Full::from(body_bytes))\n   d. Call client.request(req).await with a 30-second timeout via tokio::time::timeout\n   e. On timeout: return PeerDeliveryError::Timeout\n   f. Check response status: non-2xx -> PeerDeliveryError::HttpError(status)\n   g. Collect response body via BodyExt::collect().await -> PeerDeliveryError::NetworkError on Err\n   h. Parse JSON; check methodResponses[0] for error invocation vs success; return Ok(()) on accepted=true\n5. Define PeerDeliveryError enum: InsecureUrl, Timeout, NetworkError(String), HttpError(StatusCode), PeerRejected(String), InvalidResponse\n\nDefensive rules:\n- MUST validate URL starts with https:// (step 4a); reject http:// silently with typed error\n- MUST NOT follow redirects: use Client default (hyper does not follow redirects by default); verify\n- MUST apply 30-second timeout (step 4d); no infinite hangs\n- MUST NOT log request body (contains message content)\n- MUST NOT log full URL in errors (may contain hostname); log only error category\n- TLS certificate verification is ON by default with webpki_roots; do NOT disable\n- PeerDeliveryError must be non-exhaustive to allow future variants without breaking callers\n\nAgent team: Researcher R checks hyper-util Client builder and hyper-rustls connector pattern in the codebase (see kith-tslocal for hyper unix socket pattern). Implementer I writes PeerHttpClient. Tester T writes unit tests with a mock HTTPS server using axum in the test binary. Validator V runs cargo test -p kith-peer + clippy.\n\nTests (oracle = hyper/rustls crate docs + kith-architecture.md):\n- https:// URL succeeds (mock server at localhost responds with 200 + valid JMAP response) -> Ok(())\n- http:// URL -> PeerDeliveryError::InsecureUrl without making any network call\n- Timeout (mock server hangs) -> PeerDeliveryError::Timeout within 31 seconds\n- Non-200 response (mock returns 500) -> PeerDeliveryError::HttpError(500)\n- Peer rejects (methodResponses contains error invocation) -> PeerDeliveryError::PeerRejected",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:08:22Z",
+  "closed_at": "2026-04-19T09:08:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-8my.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:20Z"
+    }
+  ]
+}

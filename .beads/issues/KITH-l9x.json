@@ -1,0 +1,14 @@
+{
+  "id": "KITH-l9x",
+  "title": "Review round 1: Phase 2 attachments group chat cross-tailnet",
+  "description": "Review round 1 for KITH-3yb. Covers all Phase 2 changes: kith-attach BlobStore, upload/download endpoints, Message/set attachment handling, Peer/deliver attachment + group chat, ChatSetHandler group support.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:35:58Z",
+  "updated_at": "2026-04-20T01:18:17Z",
+  "closed_at": "2026-04-20T01:18:17Z",
+  "notes": "Confidence: 15% chance of missed bug. P0=3 P1=4 P2=7 (5 decision records + 2 real efficiency issues) P3=4 P4=4 (2 opinion-labeled). The P0s are real and concrete: sender-not-in-participants group chat exploit, a-self account alias rejected on download, and missing accountId in upload response. P1s are all real: non-transactional owner attachment write, duplicate validate_blob_id security rule, orphaned blob GC gap, silent IO error discard. The review is substantive and covers the attack surface of the new attachment and peer-delivery paths. We are running out of real complaints at P3+: the remaining open items are validation inconsistencies that have no active exploit path (content_type slash rule, filename slash rule), a de-duplication hygiene issue, and a double SQL query. The two opinion-labeled P4s (function length) have no engineering basis. The review is complete for a Phase 2 round-1 pass."
+}

@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "6fcca7e71be402387042f41ba454e4cc8b3be04a0f24de74648edac721e2f399",
+  "created_at": "2026-06-15T04:53:19Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-store/src/lib.rs: the Store accessor methods return sub-store views that carry a lifetime tied to the internal rusqlite::Connection:\n\n- pub fn chats(&self) -> chat::ChatStore<'_>\n- pub fn contacts(&self) -> contact::ContactStore<'_>\n- pub fn attachments(&self) -> attachment::AttachmentStore<'_>\n- pub fn messages(&self) -> message::MessageStore<'_>\n- pub fn outbox(&self) -> outbox::OutboxStore<'_>\n- pub fn spaces(&self) -> space::SpaceStore<'_>\n\nThe lifetime parameter '<'_> binds to &self.conn (a rusqlite::Connection). This means:\n1. The sub-store return types are part of the public API surface. ChatStore<'_>, ContactStore<'_> etc. are public types in their respective modules, and their lifetime parameter exposes that they borrow from a Connection internally.\n2. Any refactoring that changes how Store holds its connection (e.g. switching to a connection pool, wrapping in Arc, splitting read/write connections) requires changing these return types and breaks all callers that store a sub-store in a variable.\n3. The lifetime propagates into caller function signatures, forcing callers to annotate lifetimes explicitly rather than being able to treat sub-stores as owned values.\n\nFix: return owned sub-store objects that hold an Arc<Connection> or equivalent, removing the lifetime tie to Store. This decouples the public API from the internal storage model.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.17",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-store: Store sub-store methods return types tied to rusqlite lifetime",
+  "updated_at": "2026-06-15T04:53:19Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:19Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

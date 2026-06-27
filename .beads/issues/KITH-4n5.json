@@ -1,0 +1,20 @@
+{
+  "id": "KITH-4n5",
+  "title": "kith-core: Role and Identity types",
+  "description": "What: Define Role enum and Identity struct in src/auth.rs.\n\nModule file: crates/kith-core/src/auth.rs \u2014 create this file, then add 'pub mod auth;' to src/lib.rs.\n\nAlgorithm:\n1. Define Role enum with variants Owner and Peer.\n   Serde: rename_all = \"lowercase\".\n   Derives: Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize.\n2. Define Identity struct:\n   user_id: String  (opaque Tailscale UserProfile.ID \u2014 never parse)\n   login_name: String  (email-shaped or bare, may be empty on Headscale)\n   display_name: Option<String>  (may be absent)\n   Derives: Debug, Clone, PartialEq, Serialize, Deserialize.\n3. Add a comment on user_id: '// Opaque stable key. Never parse. Compare with == only.'\n4. Add a method: impl Identity { pub fn display(&self) -> &str { ... } }\n   Returns: display_name if Some and non-empty, else login_name if non-empty, else user_id.\n5. Add 'pub mod auth;' to src/lib.rs.\n6. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- Never add a method that parses user_id as email, UUID, or any structured format\n- display() method must never return empty string (always falls back to user_id)\n- No unwrap() in the display() method\n\nTests (independent oracle: test vectors manually constructed):\n- Role serialization: assert Role::Owner serializes to \"owner\", Role::Peer to \"peer\"\n- Identity.display(): test all three fallback cases (display_name present, absent/empty with login_name, both absent)\n- Round-trip: serialize/deserialize Identity, assert field equality",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:31Z",
+  "closed_at": "2026-04-19T05:04:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

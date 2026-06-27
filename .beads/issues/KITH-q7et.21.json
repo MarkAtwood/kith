@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "7de9c1976f8b58c8c5a51c2e0e3f82c47b2c434f0c6ebb7d1f7e032739bc2e61",
+  "created_at": "2026-06-15T04:53:32Z",
+  "created_by": "Mark Atwood",
+  "description": "OutboxStore::finish_message_delivery() (kith-store/src/outbox.rs:287) first runs a SELECT to check whether the message row exists and is not already delivered, then conditionally runs an UPDATE. This SELECT + branch + UPDATE pattern is more verbose than necessary.\n\nThe reason given in comments (line 308-316) is ordering: the state counter must be advanced before the UPDATE that stamps state_version on the row. The SELECT probe is used to decide whether to call advance_state_counter_in_tx at all.\n\nA cleaner alternative: run the UPDATE first (it already has AND delivery_state != 'delivered' in its WHERE clause), check rows_affected, and call advance_state_counter_in_tx only when rows_affected > 0. This eliminates the SELECT entirely:\n\n  let rows = tx.execute(\"UPDATE messages SET delivery_state = ?1 WHERE id = ?2 AND delivery_state != 'delivered'\", ...)?;\n  if rows > 0 {\n    let v = advance_state_counter_in_tx(&tx, \"message\")?;\n    tx.execute(\"UPDATE messages SET state_version = ?1 WHERE id = ?2\", params![v, entry.message_id])?;\n  }\n\nThis requires two UPDATEs in the delivery path instead of SELECT + UPDATE, but eliminates the existence probe and is easier to follow.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.21",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "finish_message_delivery uses SELECT then UPDATE instead of one conditional UPDATE",
+  "updated_at": "2026-06-19T20:45:43Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:31Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

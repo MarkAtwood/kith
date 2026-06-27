@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.5",
+  "title": "kith-store: prepare() on every query \u2014 use prepare_cached instead",
+  "description": "Every MessageStore, OutboxStore, and AttachmentStore method calls conn.prepare() freshly, causing SQL recompilation (VDBE bytecode) on every call. rusqlite provides prepare_cached which reuses compiled statements on the same connection. Fix: replace prepare() with prepare_cached() across kith-store query methods.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:09:39Z",
+  "updated_at": "2026-04-24T15:48:03Z",
+  "closed_at": "2026-04-24T15:48:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:09:38Z"
+    }
+  ]
+}

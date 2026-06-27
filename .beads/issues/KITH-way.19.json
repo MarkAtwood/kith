@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.19",
+  "title": "Unhandled panic in tokio::spawn SSE coalescing task",
+  "description": "What: events.rs lines 230-316 spawn a background task that owns the broadcast receiver and drives the SSE stream. The task has no panic handler. If a panic occurs during coalescing (e.g., during serde_json serialization, or an unwrap), the task silently dies without logging an ERROR-level message. The SSE stream hangs \u2014 the client receives no data and no connection reset.\n\nWhy: Tokio's task panic handling depends on runtime configuration. A solo maintainer may not realize that task panics are not automatically surfaced. Future refactorings (e.g., adding new field validation or unwrap on a lookup) could introduce panics. No integration test exercises the panic path.\n\nHow to apply: Wrap the coalescing loop in a catch_unwind or explicit panic=abort handler. Log panics at ERROR level with full context. Add an integration test that triggers a panic (e.g., by injecting a malformed StateChange) and verifies the connection closes cleanly instead of hanging.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:57Z",
+  "updated_at": "2026-04-19T20:15:55Z",
+  "closed_at": "2026-04-19T20:15:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:56Z"
+    }
+  ]
+}

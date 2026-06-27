@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.12",
+  "title": "e2e.rs test banner numbering is inconsistent \u2014 TLS regression test unnumbered",
+  "description": "Tests 1-9 have numbered banners; spawn_test_listener_binds_loopback_port and peer_http_client_new_accepts_self_signed_cert have no number. Fix: assign sequential numbers (Test 10, Test 11) or drop numbering from all banners \u2014 function names are self-documenting.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:09Z",
+  "updated_at": "2026-04-24T15:44:01Z",
+  "closed_at": "2026-04-24T15:44:01Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:09Z"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "id": "KITH-3d0",
+  "title": "kith-store: integration tests against in-memory SQLite",
+  "description": "End-to-end integration tests for all store layers using in-memory SQLite.\n\n**What:** Integration test suite exercising all stores against real SQL (no mocks), using Connection::open_in_memory() as the independent oracle.\n\n**Algorithm:**\n1. Each test function: let store = Store::open_in_memory()?; \u2014 creates fresh DB\n2. Test ContactStore happy path: upsert alice, upsert alice again (idempotent), is_permitted(alice.peer_user_id) = true, set_blocked, is_permitted = false\n3. Test ChatStore determinism: two identical participant sets produce same chat id (oracle: manually compute compute_chat_id result in test), get_or_create twice returns same row\n4. Test MessageStore ordering: insert 3 messages at t=100, t=200, t=300; list_by_chat returns [300, 200, 100] (descending)\n5. Test OutboxStore backoff: enqueue, record_failure x3, verify next_attempt_at doubles each time (oracle: manual calculation: 60, 120, 240 seconds)\n6. Test state token semantics: initial state is 's-0', advance once = 's-1', get_changes_since('s-0') returns the new record, get_changes_since('s-1') returns empty\n7. Test migration idempotency: run migrate() twice, no error, user_version still = 1\n8. Test FK enforcement: insert message with non-existent chat_id returns KithError::Store\n9. Test cascade delete: delete a message, its attachment rows disappear\n\n**Defensive programming rules:**\n- Each test uses a fresh in-memory DB (no shared state between tests)\n- No mocks \u2014 real rusqlite in-memory\n- Never derive expected values by running the store and checking its own output; use manually-constructed expected values or independent computations (e.g., compute_chat_id from kith-core)\n- Tests must cover rejection paths, not just happy paths\n\n**Acceptance:** cargo test -p kith-store passes with all integration tests green; no test uses todo!() or unimplemented!(); clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:31:18Z",
+  "closed_at": "2026-04-19T05:31:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3og",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:17:07Z"
+    },
+    {
+      "depends_on_id": "KITH-9xj",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:17:08Z"
+    },
+    {
+      "depends_on_id": "KITH-adr",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:17:06Z"
+    },
+    {
+      "depends_on_id": "KITH-g1l",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:17:06Z"
+    },
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-o8e",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:17:07Z"
+    }
+  ]
+}

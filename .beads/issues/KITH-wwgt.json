@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T23:56:31Z",
+  "compaction_level": 0,
+  "content_hash": "cde21dd19c0fdaf144af9fe5bd6020087f591f3eb65727b486dc7d9e9f264890",
+  "created_at": "2026-06-14T23:53:03Z",
+  "created_by": "Mark Atwood",
+  "description": "Feature-gated dev-only identity provider. When KITHD_DEV_IDENTITY is set, all inbound connections are identified as that user. Implements IdentityProvider. Behind cfg(feature = test-utils) so it cannot be compiled into production builds. Lets you test federation locally without tailscaled running.",
+  "ephemeral": 0,
+  "id": "KITH-wwgt",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Identity provider: dev-mode env var",
+  "updated_at": "2026-06-14T23:56:31Z"
+}

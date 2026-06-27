@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bwjs.4",
+  "title": "Single-lock queryChanges: RAII drop on early return is correct",
+  "description": "The early return inside the merged lock block (line 870, message.rs) fires while the MutexGuard is still in the enclosing block scope. Rust drops all locals in reverse declaration order when a closure returns, so the guard is released before the return value is handed back. No deadlock, no lock leak. A contributor might wrongly add an explicit drop() \u2014 unnecessary and would just add noise.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:40:36Z",
+  "updated_at": "2026-04-24T18:43:59Z",
+  "closed_at": "2026-04-24T18:43:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bwjs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:40:36Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.65",
+  "title": "get_position_in_chat casts i64 COUNT to u32, silently truncating at 4 billion messages",
+  "description": "MessageStore::get_position_in_chat() returns Ok(pos.map(|p| p as u32)) where p is an i64 from SQL COUNT(*). At > 2^32 messages the cast silently truncates. The return type should be u64 (or usize) to match count_by_chat() which returns usize. The public signature change propagates to callers. Example fix: change return type to Result<Option<u64>, KithError> and cast as u64 instead of u32.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:47Z",
+  "updated_at": "2026-04-25T08:26:22Z",
+  "closed_at": "2026-04-25T08:26:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:46Z"
+    }
+  ]
+}

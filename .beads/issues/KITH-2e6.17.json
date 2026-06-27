@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.17",
+  "title": "SEC0: Backup doesn't retry on SQLITE_BUSY/LOCKED",
+  "description": "backup.rs:39 calls Backup::run_to_completion() without handling SQLITE_BUSY or SQLITE_LOCKED errors. These are common when:\n- kithd is actively writing to the database\n- Another kithctl backup is in progress\n- A VACUUM is running\n\nCurrent behavior: backup fails with opaque rusqlite error message mentioning database is locked.\n\nExpected: Either automatically retry with backoff (since it is a transient error), or emit a helpful message like kithd appears to be running try again in a moment.\n\nFix: Add exponential backoff retry loop with max 3-5 attempts, or detect BUSY or LOCKED specifically and emit user-friendly guidance.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:34Z",
+  "updated_at": "2026-04-19T19:26:15Z",
+  "closed_at": "2026-04-19T19:26:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:33Z"
+    }
+  ]
+}

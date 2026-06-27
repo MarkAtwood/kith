@@ -1,0 +1,19 @@
+{
+  "id": "KITH-m55.7",
+  "title": "[SEC4] deserialize_as_string visitor pattern needs clearer context in comments",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:39:08Z",
+  "updated_at": "2026-04-19T18:43:34Z",
+  "closed_at": "2026-04-19T18:43:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-m55",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:39:07Z"
+    }
+  ]
+}

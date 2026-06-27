@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:51:28Z",
+  "compaction_level": 0,
+  "content_hash": "fea3ba25387fad72ee90a07e065d85d8000ef5289e2c1012670cce45395bd814",
+  "created_at": "2026-06-15T04:52:17Z",
+  "created_by": "Mark Atwood",
+  "description": "Store.conn is pub(crate) but Store.events_tx is fully pub. Both fields are internal implementation details; neither should be reachable by dependents outside the crate.\n\nkith-store/src/lib.rs line 63: pub(crate) conn \u2014 good, but inconsistent with line 69.\nkith-store/src/lib.rs line 69: pub events_tx: Option<broadcast::Sender<StateChange>> \u2014 should be pub(crate).\n\nThe broadcast::Sender type from tokio is a third-party type. Exposing it as a pub field leaks the tokio broadcast channel as a stable API surface. Any downstream crate could read or clone the sender without going through set_events_tx(), breaking the invariant that events_tx is set exactly once after construction.\n\nFix: change pub events_tx to pub(crate) events_tx. The only external caller is set_events_tx(), which is already a pub method providing the controlled write path.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.3",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-store: Store.events_tx and Store.conn are pub but should not be",
+  "updated_at": "2026-06-15T15:51:28Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:16Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

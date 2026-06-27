@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.11",
+  "title": "SEC6: Certificate pinning for self-signed tailnet endpoints",
+  "description": "PinnedCertVerifier (watch.rs:96-160) pins rustls verification to byte-exact certificate equality. Correct for kith threat model: operator controls their kithd host, so pinning is as strong as CA validation and simpler. Prevents MITM when certificate is copied locally.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:23Z",
+  "updated_at": "2026-04-19T19:21:48Z",
+  "closed_at": "2026-04-19T19:21:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:22Z"
+    }
+  ]
+}

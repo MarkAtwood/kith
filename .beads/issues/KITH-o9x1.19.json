@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.19",
+  "title": "advance_state_counter duplicated across store modules",
+  "description": "There are three nearly-identical implementations of the two-statement counter increment pattern: advance_state_counter_in_tx (lib.rs, pub(crate)), advance_state_counter (MessageStore, private), and advance_state (ContactStore module-level fn). MessageStore::advance_state_counter re-implements the UPDATE+SELECT sequence from scratch instead of using advance_state_counter_in_tx. ChatStore::advance_state also re-implements it. All three should call advance_state_counter_in_tx inside an unchecked_transaction, or advance_state_counter_in_tx should become the single call site and the duplicates removed.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:37Z",
+  "updated_at": "2026-04-25T02:24:56Z",
+  "closed_at": "2026-04-25T02:24:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:37Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-45h.3",
+  "title": "Risk: Authorization logic duplication between authorize() and Caller extractor",
+  "description": "MAINTAINER BURDEN RISK: The authorization decision logic is duplicated between two independent implementations:\n\n1. auth.rs::authorize() (lines 47-70) - used by business logic\n2. extractors.rs::Caller::from_request_parts() (lines 62-111) - used by HTTP layer\n\nBoth correctly check is_permitted() and map store errors to fail-closed HTTP responses today, but they are independent implementations that will diverge over time.\n\nFUTURE DIVERGENCE SCENARIO: When authorize() is extended with a new auth condition (e.g. 'is_permitted_for_group()') or store errors gain new variants, developers will update one path and forget the other. No compilation error, no test failure if tests only cover happy paths. This results in silent auth bypass where the HTTP layer accepts requests the business logic would reject (or vice versa).\n\nEXACT LOCATIONS:\n- auth.rs lines 65-69: store error mapping in authorize()\n- extractors.rs lines 102-107: store error mapping in from_request_parts()\n\nRECOMMENDATION: Extract shared authorization policy function that both paths call, or add a lint/test verifying they remain synchronized.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:50:09Z",
+  "updated_at": "2026-04-19T06:52:37Z",
+  "closed_at": "2026-04-19T06:52:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-45h",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:50:08Z"
+    }
+  ]
+}

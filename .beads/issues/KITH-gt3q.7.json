@@ -1,0 +1,21 @@
+{
+  "id": "KITH-gt3q.7",
+  "title": "blob_upload buffers up to 100 MiB in memory for SHA-256",
+  "description": "blob_upload_handler (blob.rs:84) calls axum::body::to_bytes(body, MAX_BLOB_BYTES+1) which buffers the full request body (up to 100 MiB) in heap before any I/O. SHA-256 is then computed over the in-memory bytes. This is 100 MiB heap per concurrent upload. KITH-hqrw.18 covers the symmetric read path. Fix: stream-hash using a rolling Sha256 digest as bytes arrive, write directly to disk during streaming, then finalize the hash. Avoids the full-body allocation. Non-trivial but necessary if concurrent uploads are expected at Phase 2.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:45:47Z",
+  "updated_at": "2026-04-25T06:35:57Z",
+  "closed_at": "2026-04-25T06:35:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:45:47Z"
+    }
+  ]
+}

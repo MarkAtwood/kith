@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.8",
+  "title": "[SEC6] Good: textContent vs innerHTML for XSS prevention",
+  "description": "Throughout app.js, the code consistently uses textContent instead of innerHTML when rendering user-supplied data:\n- renderContactList() line 168: 'nameSpan.textContent = getContactName(contact)'\n- renderChatList() line 267: 'nameSpan.textContent = getChatDisplayName(chat)'\n- createMessageBubble() line 364: 'body.textContent = msg.body' with CRITICAL comment\n- createMessageBubble() line 369: 'meta.textContent = getSenderLabel(msg) + ... ts'\n\nThis prevents XSS injection. A malicious peer could craft a displayName like '<img src=x onerror=alert(1)>' or message body with script tags. innerHTML would execute; textContent treats it as plain text.\n\nThe code even includes explicit security comments marking where this matters (lines 153-154, 352-353). The pattern is consistent and never breaks it.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:54Z",
+  "updated_at": "2026-04-19T18:21:59Z",
+  "closed_at": "2026-04-19T18:21:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:54Z"
+    }
+  ]
+}

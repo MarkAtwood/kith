@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ngr5",
+  "title": "Review: fix review findings KITH-0kl5 (P2/P3)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:49:37Z",
+  "updated_at": "2026-04-24T18:54:36Z",
+  "closed_at": "2026-04-24T18:54:36Z",
+  "notes": "Round 9 review: 1 real finding (P2 task: missing test for disconnect-while-blocking scenario), 4 confirmations of correct decisions. Confidence: 92% chance of no missed bug. The select! change is mechanically correct \u2014 live_tx.closed() semantics are right, cancel-safety under disconnect is safe, is_closed() secondary check is still valid. Uncertainty: tokio::select! pseudorandom branch selection under simultaneous ready is documented behavior and the consequence (discard event for disconnected client) is correct; however the interaction with a Lagged+continue loop iteration has not been exercised by any test. The missing test is the only real gap. Not bikeshedding: the missing test covers the exact scenario this commit was introduced to fix."
+}

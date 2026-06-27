@@ -1,0 +1,27 @@
+{
+  "id": "KITH-yvu.1",
+  "title": "kithctl watch: tail EventSource and fire desktop notifications",
+  "description": "Implement kithctl watch: subscribe to kithd EventSource at tailnet IP:port, parse SSE events, call JMAP Message/changes+get for new messages, fire desktop notifications via notify-send/osascript.\n\nWHAT: Bridge kithd state-change events to the desktop user's notification system.\n\nALGORITHM:\n1. Build Config from env + CLI overrides\n2. Get tailnet IPs from LocalApiClient::new(&config.ts_socket).status().await?; pick first IP\n3. Load TLS cert from config.cert_path() (data_dir/kith.crt): read DER bytes, add as root CA in rustls RootCertStore\n4. Build TLS client config with that root store; build TokioTlsConnector\n5. Open TCP stream to tailnet_ip:config.port; wrap in TLS via connector.connect(ServerName::try_from(\"kith.local\")?, stream).await?\n6. Send HTTP/1.1 GET /jmap/events?types=Message request with headers: Host: kith.local, Accept: text/event-stream, Last-Event-ID: (empty on first connect, then last seen id on reconnect)\n7. Read response line-by-line from streaming body; parse SSE frames:\n   - Accumulate lines until blank line\n   - Extract event type from \"event: \" prefix\n   - Extract data from \"data: \" prefix; parse as JSON\n   - Extract id from \"id: \" prefix; store as last_event_id\n8. On event type \"state\": deserialize data as {changed: {\"a-self\": {\"Message\": \"s-N\"}}}; if Message key present, proceed to step 9\n9. Call JMAP Message/changes: POST /jmap/api with body {\"using\":[\"urn:ietf:params:jmap:core\",\"urn:kith:chat:1\"],\"methodCalls\":[[\"Message/changes\",{\"accountId\":\"a-self\",\"sinceState\":\"{last_message_state}\"},\"c0\"]]}; parse response to get list of created message IDs\n10. For each created ID: POST /jmap/api with Message/get; extract sender login and body\n11. Truncate body to 80 chars (UTF-8 safe: use char_indices)\n12. Fire notification via std::process::Command::new (NOT sh -c):\n    - Linux: Command::new(\"notify-send\").arg(\"Kith\").arg(format!(\"{sender}: {preview}\")).status()\n    - macOS: Command::new(\"osascript\").args([\"-e\", &format!(\"display notification \\\"{preview}\\\" with title \\\"Kith\\\" with subtitle \\\"{sender}\\\"\")]).status()\n    - Detect platform with cfg!(target_os = ...) at compile time\n    - If command fails: log warning, continue (notification failure must not crash watch)\n13. On SSE disconnect or IO error: wait 2 seconds, reconnect from step 5 with Last-Event-ID header set\n14. Run until SIGINT/SIGTERM (use tokio::signal::ctrl_c().await)\n\nDEFENSIVE RULES:\n- NEVER use sh -c for notifications; use Command::new with explicit args\n- Truncate body to 80 chars BEFORE passing to notification; use char boundary: let n = body.char_indices().nth(80).map(|(i,_)| i).unwrap_or(body.len()); &body[..n]\n- Sanitize sender display name: strip newlines and NUL bytes before using in notification args\n- Do not log message body content (PII); only log sender identity and preview length\n- Verify TLS cert against pinned cert; fail if cert path does not exist (kithd not yet started)\n- on JMAP 403: print \"error: not recognized as owner; ensure kithctl runs as the tailnet node owner\" and exit(1)\n- on JMAP 401: same message\n- last_event_id must be a valid \"s-N\" string or empty string \u2014 never pass arbitrary server-supplied value to reconnect header without validation; validate with regex s-\\d+\n\nTESTS:\n- Unit test: body truncation to 80 chars preserves UTF-8 boundaries (test with emoji/multibyte at boundary)\n- Unit test: sender sanitization strips embedded newlines\n- Unit test: SSE frame parser correctly parses multi-line frame with event/data/id\n- Integration test: deferred to E2E bead (requires live kithd)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "feature",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:19:08Z",
+  "updated_at": "2026-04-19T19:17:05Z",
+  "closed_at": "2026-04-19T19:17:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0fs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:05:26Z"
+    },
+    {
+      "depends_on_id": "KITH-yvu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:19:07Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.35",
+  "title": "store lock poisoned message leaks implementation detail to peer callers",
+  "description": "kith-peer/src/lib.rs uses JmapError::server_fail('store lock poisoned') in DeliverHandler (line 173) and ReceiptHandler (line 432). This string is serialized into the JMAP response description field and returned to the peer. It leaks that kithd uses a Mutex for its store. Other lock-acquisition error sites use the generic 'internal error'. Change to 'internal error' for consistency.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:35Z",
+  "updated_at": "2026-04-25T02:23:42Z",
+  "closed_at": "2026-04-25T02:23:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:35Z"
+    }
+  ]
+}

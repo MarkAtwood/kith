@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.87",
+  "title": "kith-jmap: Session.is_read_only hardcoded false for peers \u2014 should be true",
+  "description": "In build_session(), the Account struct is constructed with is_read_only: false regardless of the caller's role. A Peer-role caller should have is_read_only: true because peers can only call Peer/deliver and Peer/receipt \u2014 they cannot modify any owner-side state. RFC 8620 \u00a72 says is_read_only=false signals that the account accepts writes. A peer-role session returning is_read_only=false is misleading: a JMAP client that respects this flag would believe it can perform set operations. The fix is: is_read_only: role == Role::Peer.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:42:03Z",
+  "updated_at": "2026-04-25T05:30:12Z",
+  "closed_at": "2026-04-25T05:30:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:42:03Z"
+    }
+  ]
+}

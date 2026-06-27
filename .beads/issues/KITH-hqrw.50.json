@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.50",
+  "title": "kithctl watch fires notification storm on every restart",
+  "description": "watch.rs cmd_watch initializes last_message_state to 's-0' on every process start (line 607). On restart, watch fetches all messages since s-0 and fires a desktop notification for each. With many messages this is a notification storm. The state token is not persisted between invocations. Fix: persist last_message_state to a file in config.data_dir, or initialize from a current-state endpoint call.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:17Z",
+  "updated_at": "2026-04-25T03:58:36Z",
+  "closed_at": "2026-04-25T03:58:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:17Z"
+    }
+  ]
+}

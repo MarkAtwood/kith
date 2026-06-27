@@ -1,0 +1,20 @@
+{
+  "id": "KITH-9399.14",
+  "title": "insert_outbound_message sets next_attempt_at to now() instead of immediate 0",
+  "description": "When a new outbox row is inserted, next_attempt_at is set to the current time rather than 0 (or epoch). This means the first delivery attempt is delayed by however long until the next outbox_tick fires instead of being attempted immediately. Fix: use 0 or a past timestamp for next_attempt_at on initial insert so the first tick picks it up immediately.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:11:36Z",
+  "updated_at": "2026-04-24T22:30:07Z",
+  "closed_at": "2026-04-24T22:30:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:11:36Z"
+    }
+  ]
+}

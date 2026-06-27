@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hnib.3",
+  "title": "Chat/set oldState captured outside batch lock \u2014 can return stale value",
+  "description": "In ChatSetHandler, oldState is captured by taking and immediately dropping the store mutex (lines ~198-203). The batch create lock is then acquired separately at line ~219. A concurrent Peer/deliver or Message/set executing between these two lock acquisitions advances the chat or message state, making oldState describe a state the method did not start from. Per RFC 8620 oldState must equal the server state immediately before this call's mutations. The fix is to capture oldState while already holding the batch lock, or use a single lock scope for both.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:26:36Z",
+  "updated_at": "2026-04-24T17:34:00Z",
+  "closed_at": "2026-04-24T17:34:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hnib",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:26:36Z"
+    }
+  ]
+}

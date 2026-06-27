@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.14",
+  "title": "SEC4: backup_progress callback lacks documentation",
+  "description": "Function backup_progress (lines 7-13, backup.rs) is private but undocumented:\n- References 'pagecount' and 'remaining' from SQLite's backup API without explanation\n- A maintainer unfamiliar with SQLite internals won't understand what 'pages' means\n- The eprint! format string has no comment explaining the output\n\nSUGGESTION: Add a doc comment above backup_progress like:\n  /// Progress callback for SQLite backup. 'pages' are SQLite internal chunks.\n  /// This prints live progress in the form 'Backing up... N/M pages'.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:27Z",
+  "updated_at": "2026-04-19T19:26:46Z",
+  "closed_at": "2026-04-19T19:26:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:27Z"
+    }
+  ]
+}

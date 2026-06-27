@@ -1,0 +1,21 @@
+{
+  "id": "KITH-3f2.2",
+  "title": "kith-peer: PeerHttpClient::new_with_root_cert for self-signed TLS",
+  "description": "What: Add PeerHttpClient::new_with_root_cert(cert_der: &[u8]) constructor that trusts a single self-signed certificate, for use in integration tests where kithd generates its own cert.\n\nAlgorithm:\n1. In kith-peer/src/lib.rs:\n   a. Import: rustls::RootCertStore, rustls::pki_types::CertificateDer (check exact rustls 0.23 API)\n   b. Add constructor:\n      pub fn new_with_root_cert(cert_der: &[u8]) -> Self {\n          let cert = CertificateDer::from(cert_der.to_vec());\n          let mut root_store = RootCertStore::empty();\n          root_store.add(cert).expect(\"valid DER cert in test setup\");\n          let tls_config = rustls::ClientConfig::builder()\n              .with_root_certificates(root_store)\n              .with_no_client_auth();\n          let connector = HttpsConnectorBuilder::new()\n              .with_tls_config(Arc::new(tls_config))\n              .https_only()\n              .enable_http1()\n              .build();\n          let client = Client::builder(TokioExecutor::new()).build(connector);\n          Self { client }\n      }\n2. Also need to handle hostname verification: kithd cert is for 'kith.local' but tests connect to 127.0.0.1. Add a custom ServerCertVerifier OR configure TLS with ServerName override. Simpler: check if rustls::ClientConfig allows setting a custom server_name per request. If not, implement a no-hostname-check verifier gated by cfg(test).\n3. Check: does hyper allow overriding the SNI hostname per connection? If so use that. If not, implement the verifier approach.\n4. PeerHttpClient::new() remains unchanged (webpki_roots, for production)\n\nDefensive programming:\n- .expect() on root_store.add is acceptable: invalid DER in test setup is a programmer error\n- Custom cert verifier (if needed) must be marked test-only or documented as 'not for production use'\n- Never disable cert verification globally; only for this specific root store\n\nTests: New unit test in kith-peer: create PeerHttpClient::new_with_root_cert with a cert from rcgen; verify no panic and a valid client is produced",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:55:25Z",
+  "updated_at": "2026-04-19T17:04:16Z",
+  "closed_at": "2026-04-19T17:04:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:55:25Z"
+    }
+  ]
+}

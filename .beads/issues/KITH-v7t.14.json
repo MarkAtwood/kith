@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.14",
+  "title": "Accept loop dies silently on error",
+  "description": "In main.rs, the tailnet accept loop breaks on any accept() error (line 116-118). The task exits with a single tracing::error\\! but no re-spawn, no process exit, no further log. The daemon appears healthy (process running, outbox ticking) but accepts no new connections on that IP. An operator monitoring the process would not notice. Fix: either re-spawn the accept task on break, or call std::process::exit(1), or at minimum emit a tracing::error\\! that is clearly fatal ('accept loop terminated, listener dead').",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:38Z",
+  "updated_at": "2026-04-19T16:37:22Z",
+  "closed_at": "2026-04-19T16:37:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:38Z"
+    }
+  ]
+}

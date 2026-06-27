@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.6",
+  "title": "load_startup_data: contact 'login' field used but wire field is 'loginName'",
+  "description": "In load_startup_data, the contact fallback for display name uses contact.get(\"login\"). But the JMAP wire field for Tailscale login name is 'loginName' per the kith-architecture.md and the Contact schema. The mock in the test uses 'login' so the test passes, but if the actual kithd Contact/get response uses 'loginName', the field will always be missing and every contact without a displayName will fall back to their raw contact ID. This causes every contact to appear as their JMAP ID in the chat list.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:36:57Z",
+  "updated_at": "2026-04-25T04:37:06Z",
+  "closed_at": "2026-04-25T04:37:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:36:57Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-oan",
+  "title": "kith-chat: Contact/changes and Contact/query",
+  "description": "What: Implement Contact/changes and Contact/query JmapHandler structs in kith-chat crate.\n\nContact/changes algorithm:\n1. Deserialize args: { accountId: String, sinceState: String, maxChanges: Option<u32> }.\n2. Verify accountId == 'a-self'.\n3. Acquire store lock.\n4. Call store.contacts().get_changes_since(sinceState)?; on KithError::Validation \u2192 return JmapError::state_mismatch().\n5. Return json!({ accountId, oldState: sinceState, newState: result.new_state, hasMoreChanges: false, created: result.added, updated: result.updated, destroyed: result.destroyed }).\n\nContact/query algorithm:\n1. Deserialize args: { accountId, filter: Option<Value>, sort: Option<Value>, position: Option<u32>, anchor: Option<String>, limit: Option<u32>, calculateTotal: Option<bool> }.\n2. Verify accountId == 'a-self'.\n3. Acquire store lock.\n4. store.contacts().list()? \u2192 all contacts (v1: no server-side filter/sort; client sorts).\n5. Extract IDs only from the list.\n6. Apply position+limit for pagination.\n7. queryState = store.contacts().get_state()?.\n8. Return json!({ accountId, queryState, canCalculateChanges: true, position: effective_position, ids: page_of_ids, total: if calculateTotal { Some(total) } else { None } }).\n\nDefensive programming rules:\n- sinceState is untrusted string: parse via get_changes_since which validates format.\n- position and limit bounds: treat None as 0 and usize::MAX respectively; never overflow.\n- filter and sort fields are ignored in v1 but must not panic if present.\n- Store lock poison \u2192 server_fail.\n\nAgent team:\n- Agent R: Read kith-store/src/contact.rs for get_changes_since (new as of KITH-vx6.1) and list signatures. Read kith-jmap/src/lib.rs for JmapError::state_mismatch.\n- Agent I: Implement ContactChangesHandler and ContactQueryHandler in kith-chat/src/contact.rs. State approach before writing.\n- Agent T: Write tests using hand-constructed state sequences. Oracle: RFC 8620 \u00a75.4/5.5 field names.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Contact/changes with sinceState==currentState \u2192 empty created/updated/destroyed\n- Contact/changes with sinceState=s-0 after one contact upsert \u2192 created contains contact ID\n- Contact/changes with malformed sinceState \u2192 error response (state_mismatch or invalidArguments)\n- Contact/query \u2192 returns IDs of all contacts\n- Contact/query with position+limit \u2192 correct page",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:33:32Z",
+  "closed_at": "2026-04-19T15:33:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:43Z"
+    }
+  ]
+}

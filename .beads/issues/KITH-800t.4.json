@@ -1,0 +1,20 @@
+{
+  "id": "KITH-800t.4",
+  "title": "kithctl watch: kithd restart causes spurious notifications for all messages",
+  "description": "When kithd restarts its cert changes. kithctl reloads the connector. The bootstrap step (Message/get ids=[]) is only run at startup, not on cert-rotation reconnect. After cert rotation, last_message_state is carried forward from before the restart \u2014 it is the correct cursor. However if kithd restarted and its SQLite DB is brand new (e.g. data loss, re-init), its state_counters start at 0. The client's last_message_state is s-N (N>0). kithd returns cannotCalculateChanges. The client logs the error and does not advance the cursor. On the next SSE event it retries and continues to get cannotCalculateChanges. Eventually the user stops getting notifications entirely. Trigger: kithd restarts with fresh DB while kithctl is running. Real scenario in dev, less likely in production.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:31:36Z",
+  "updated_at": "2026-04-25T09:37:22Z",
+  "closed_at": "2026-04-25T09:37:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-800t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:31:36Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-7t0.3",
+  "title": "[R3] Optimistic messages lost when EventSource calls renderThread",
+  "description": "Race condition in message compose:\n1. User sends message \u2192 appendMessageBubble(optimistic) at line 458 (temp bubble added to DOM)\n2. EventSource state event arrives with new messages for current chat\n3. Handler calls fetchMessages() at line 554 \u2192 renderThread() at line 333\n4. renderThread() does div.innerHTML = '' (line 384), clearing entire thread\n5. Optimistic bubble is lost (never replaced with real server response)\n6. User sees: message sent, then immediately disappears, then reappears from server\n\nSymptoms: Flickering/lost messages on send during concurrent state updates.\n\nFix: Merge incoming messages with optimistic messages rather than wholesale thread replacement. Check for temp-prefixed IDs (line 448) before clearing.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:02:36Z",
+  "updated_at": "2026-04-19T18:06:59Z",
+  "closed_at": "2026-04-19T18:06:59Z",
+  "notes": "opinion: cannotCalculateChanges triggers only on server-side state compaction; at MVP scale with 2 users on tailnet this is unreachable; optimistic bubble loss is theoretical",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7t0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:02:36Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.46",
+  "title": "TUI keyboard unresponsive during JMAP awaits in event loop",
+  "description": "event.rs run() awaits handle_state_change, load_messages_for_chat, send_message, and flush_unread_receipts directly in the event loop (lines 922, 876, 955, 975). During those awaits the tokio::select! is not selecting \u2014 keyboard events and SSE status updates are not processed. If kithd is slow (large response, slow write) the TUI freezes for the duration. The SSE task is separate so SSE events queue up. On a slow chat switch (load_messages_for_chat for 500 messages) the TUI may be visibly unresponsive for seconds.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:52Z",
+  "updated_at": "2026-04-25T07:42:01Z",
+  "closed_at": "2026-04-25T07:42:01Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:52Z"
+    }
+  ]
+}

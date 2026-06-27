@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T11:59:52Z",
+  "compaction_level": 0,
+  "content_hash": "09e49637b53bf527819abf0313dc2aaaea1f8a57bb0d7f78a16aabd810aeb76e",
+  "created_at": "2026-06-15T04:57:47Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer/src/lib.rs:656: production code uses unreachable!() in a match arm for the \"kind\" field of a Peer/receipt request.\n\nThe root cause: \"kind\" is parsed as a String (validated at line 543 against the literals \"delivered\" and \"read\"), then re-matched as a str at line 632. The wildcard arm at line 656 is logically unreachable but cannot be proven by the compiler.\n\nFix: introduce an enum ReceiptKind { Delivered, Read } and parse the string to this enum once at the validation site (returning an error for unknown kinds). Then match on ReceiptKind, eliminating the _ => unreachable! arm entirely. The compiler can then prove exhaustiveness.\n\nThis is idiomatic Rust: parse-dont-validate, then match on a type-safe enum.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.64",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "unreachable! in kith-peer ReceiptHandler can be eliminated with enum",
+  "updated_at": "2026-06-15T11:59:52Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:57:47Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

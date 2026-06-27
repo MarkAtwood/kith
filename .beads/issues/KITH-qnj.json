@@ -1,0 +1,14 @@
+{
+  "id": "KITH-qnj",
+  "title": "Review round 2: Deployment packaging",
+  "description": "Review round 2 for KITH-jh7. Covers fixes applied after round 1: bind_to_ips refactor (listener.rs), UserID warn in kith-tslocal, config drift test, cross-reference comments. Plus original scope.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:43:47Z",
+  "updated_at": "2026-04-19T18:46:30Z",
+  "closed_at": "2026-04-19T18:46:30Z",
+  "notes": "R2 Review complete. Correctness: all error paths verified (empty ips, invalid parse, bind failures). Confidence: 85% (primary risk: Headscale backend_state variants not fully testable in read-only mode; second risk: config_drift_test one-way check may miss new config.rs-only vars). Running out of real complaints: yes. Two SEC1 findings filed (bind_to_ips pub visibility, drift_test maintenance burden). Three good decisions documented (refactoring, optimization, security hardening)."
+}

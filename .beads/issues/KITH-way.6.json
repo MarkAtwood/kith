@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.6",
+  "title": "Decision: Attach events_tx after construction, not in constructor",
+  "description": "Store construction leaves events_tx as None (line 131, 141), then daemon calls set_events_tx after (line 151). This is non-obvious but correct:\n\n1. Avoids circular dependencies: Store doesn't need to know about event channel at construction\n2. Enables testing with in-memory stores that have None (no events needed in unit tests)\n3. Lazy initialization is safe because daemon sets it before serving any requests\n4. Sub-stores receive references and call .send() after writes (line 48-52)\n5. Comment at line 17-20 documents the lifecycle explicitly\n\nThis breaks the 'all initialization in constructor' pattern but is justified by the architectural constraint: the broadcast channel is created in main.rs, not in the Store.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:53Z",
+  "updated_at": "2026-04-19T20:16:11Z",
+  "closed_at": "2026-04-19T20:16:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:53Z"
+    }
+  ]
+}

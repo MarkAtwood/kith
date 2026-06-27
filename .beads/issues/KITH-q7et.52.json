@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "df70b2081f7ac707271e7a9c5d817cc76a6306b9606dc89b4df9e8e3ed7624c7",
+  "created_at": "2026-06-15T04:55:21Z",
+  "created_by": "Mark Atwood",
+  "description": "KithError in kith-core/src/error.rs has two variants that carry a String instead of a structured source error:\n\n```\nStore(String),       // line 29\nValidation(String),  // line 31\n```\n\nThe db_err() helper in kith-store/src/lib.rs (line 1211) converts rusqlite::Error to String via .to_string(), discarding the original error type and making programmatic matching impossible.\n\nFix: Add a From<rusqlite::Error> to KithError (possibly via a KithStoreError newtype), or at minimum change Store(String) \u2192 Store(#[from] rusqlite::Error) with the rusqlite dep promoted to kith-core. The Validation variant similarly should carry a more structured type rather than a bare String.\n\nImpact: all match arms on KithError::Store currently pattern-match on a string message, which is fragile.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.52",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "KithError::Store/Validation wrap String not source error",
+  "updated_at": "2026-06-15T04:55:21Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:20Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

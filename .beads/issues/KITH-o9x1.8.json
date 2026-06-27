@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.8",
+  "title": "self table allows multiple rows, singleton invariant not enforced",
+  "description": "The 'self' table is documented as always having exactly one row (the daemon's own identity), but the schema has no enforcement: no CHECK(rowid=1), no UNIQUE on any column that would prevent a second INSERT, no trigger. Code that relies on 'SELECT * FROM self LIMIT 1' silently returns the wrong row if two rows are ever present. Add a BEFORE INSERT trigger that raises ABORT when the table is non-empty, or a single-column UNIQUE constraint, to make the invariant enforceable.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:46Z",
+  "updated_at": "2026-04-25T01:53:50Z",
+  "closed_at": "2026-04-25T01:53:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:45Z"
+    }
+  ]
+}

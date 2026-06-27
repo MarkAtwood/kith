@@ -1,0 +1,13 @@
+{
+  "id": "KITH-v6tk",
+  "title": "Review: fix log warn SSE channel full + cargo fmt",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:54:26Z",
+  "updated_at": "2026-04-25T08:59:16Z",
+  "closed_at": "2026-04-25T08:59:16Z",
+  "notes": "Maintainer risk: LOW \u2014 the diff is mostly cargo fmt reformatting of test call sites. The one behavioral change (SSE warn log + Full/Closed split) is localized to events.rs. The only real risk is the inconsistency between the two try_send call sites in the same loop, which future contributors will use as a pattern.\nConfidence: 15% chance of missed bug. Uncertainty driven by: the close-signal path (line 393) is the only non-fmt change not updated to the new pattern; I verified it is a real inconsistency (filed P0). The rest of the diff is 100% cargo fmt with no logic changes. The 15% residual comes from not having a test that exercises the specific corner case where close_after_first=true, the batch is filtered to empty, AND the mpsc channel is simultaneously full \u2014 that combination is theoretically reachable but has no direct test coverage. Would raise confidence if: a test exercised closeafter=state + type filter mismatch + saturated channel simultaneously."
+}

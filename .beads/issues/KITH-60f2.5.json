@@ -1,0 +1,21 @@
+{
+  "id": "KITH-60f2.5",
+  "title": "kith-peer: is_valid_mailbox_host rejects all Headscale hostnames \u2014 outbox fails for Headscale deployments",
+  "description": "is_valid_mailbox_host (line 1124) accepts plain hostnames only if they end with '.ts.net'. The architecture doc explicitly supports Headscale as a canonical deployment and states Headscale users must use Tailscale-range IP addresses (100.64.0.0/10 or fc00::/7). However Headscale by default assigns addresses in the 100.64.x.x range so IP-based delivery should work, but any Headscale deployment using MagicDNS with its own domain (e.g. *.example.internal) will have all outbox deliveries permanently fail with 'invalid mailbox_host'. This is a latent footgun: works on Tailscale Inc., silently fails on Headscale with custom DNS. The comment says 'Headscale users must use Tailscale-range IP addresses' but this is not documented anywhere for operators and is easy to miss.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:14:09Z",
+  "updated_at": "2026-04-25T06:27:36Z",
+  "closed_at": "2026-04-25T06:27:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:14:09Z"
+    }
+  ]
+}

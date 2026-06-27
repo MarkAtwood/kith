@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bwjs.3",
+  "title": "Task leak: filtered-out SSE client disconnect undetected",
+  "description": "In the coalescing task inside events_handler, when close_after_first=false and all broadcast events are filtered by the type filter, the task never calls send() and therefore never observes that the mpsc receiver is gone (client disconnected). The task will loop indefinitely \u2014 blocking at recv().await between broadcasts, but never exiting \u2014 holding a broadcast receiver slot and the mpsc sender for the lifetime of the broadcast channel. A client that subscribes with types=ChatContact and then disconnects will leave a leaked task if only Message/Chat events are broadcast afterward. Fix: add an explicit liveness probe (e.g. live_tx.is_closed()) after the empty-batch continue, or restructure to always attempt a send when the client may have disconnected.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:40:31Z",
+  "updated_at": "2026-04-24T18:43:35Z",
+  "closed_at": "2026-04-24T18:43:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bwjs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:40:30Z"
+    }
+  ]
+}

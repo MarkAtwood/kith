@@ -1,0 +1,19 @@
+{
+  "id": "KITH-hqrw.25",
+  "title": "double DB read in process_update",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:31:57Z",
+  "updated_at": "2026-04-25T08:24:29Z",
+  "closed_at": "2026-04-25T08:24:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:31:57Z"
+    }
+  ]
+}

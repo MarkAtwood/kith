@@ -1,0 +1,12 @@
+{
+  "id": "KITH-8uaj",
+  "title": "SEC3: Clarify receipt branch structure in outbox_tick",
+  "description": "In kith-peer/src/lib.rs lines 934-974, the receipt branch in outbox_tick uses nested if-let guards for error handling. The structure differs subtly from the message branch (lines 997-1012) which uses more sequential error propagation. Harmonizing these patterns improves reader intuition about control flow. No functional issue, but style consistency matters.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:41Z",
+  "updated_at": "2026-04-20T03:56:09Z",
+  "closed_at": "2026-04-20T03:56:09Z"
+}

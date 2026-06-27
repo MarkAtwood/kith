@@ -1,0 +1,20 @@
+{
+  "id": "KITH-9399.13",
+  "title": "mark_delivered still referenced in outbox but should only be used for orphan cleanup",
+  "description": "mark_delivered is called in paths where complete_delivery should be used instead. Per project memory: complete_delivery is the atomic success path; mark_delivered is retained only for orphaned-outbox-row cleanup when the message no longer exists. Audit all call sites and replace incorrect uses of mark_delivered with complete_delivery.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:11:34Z",
+  "updated_at": "2026-04-24T22:02:19Z",
+  "closed_at": "2026-04-24T22:02:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:11:34Z"
+    }
+  ]
+}

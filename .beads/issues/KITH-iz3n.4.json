@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.4",
+  "title": "TypeFilter::allows _ arm is unreachable but not marked so",
+  "description": "TypeFilter::parse rejects unknown type names with Err(()) causing 400 BAD REQUEST, so any TypeFilter stored in type_filter only contains bits for {ChatContact, Chat, Message}. The _ arm of TypeFilter::allows can therefore only be reached by broadcast StateChange events with a type_name not in that set. Returning false silently drops those events, which is the correct behavior for unknown broadcast types. However, the arm has no comment explaining why it returns false rather than unreachable!() -- a future contributor adding a new type to the broadcast but forgetting to add it to allows will see their events silently dropped with no compile-time or runtime signal.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:10Z",
+  "updated_at": "2026-04-24T18:33:16Z",
+  "closed_at": "2026-04-24T18:33:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:09Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-gt3q.2",
+  "title": "Config.base_url field computed but never read; resolve_base_url() re-reads env",
+  "description": "config.rs parses KITHD_BASE_URL into Config.base_url (line 64-66), but main.rs ignores Config.base_url and calls kithd::resolve_base_url() independently (main.rs:194). The Config field is dead computation. Either have main.rs use config.base_url directly (after validation), or remove Config.base_url. A reader of the Config struct assumes all fields are consumed.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:38:50Z",
+  "updated_at": "2026-04-25T08:17:36Z",
+  "closed_at": "2026-04-25T08:17:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:38:50Z"
+    }
+  ]
+}

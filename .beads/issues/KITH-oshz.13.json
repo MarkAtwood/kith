@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.13",
+  "title": "Reconnect logic: Deliberately absent for Phase 1; caller responsibility",
+  "description": "CURRENT STATE: spawn_sse does NOT reconnect. If /jmap/events stream drops (network error, server restart, timeout), the task exits and the receiver goes silent. Callers must detect silence and restart.\n\nPHASE 1 DOCUMENTATION: kith-architecture.md (lines 163\u2013165) mentions EventSource push but does NOT address reconnect. CLAUDE.md project instructions explicitly ask 'No reconnect logic: ... acceptable for this phase?'\n\nANALYSIS: Is this maintainable?\n  - YES, if callers implement reconnect. spawn_sse can be called in a retry loop with exponential backoff.\n  - NO, if Phase 2 demands that the TUI client auto-recovers from network flaps. That requires spawn_sse to handle reconnect internally OR a wrapper layer.\n\nCURRENT TUI INTEGRATION: event.rs (lines 118\u2013165) does NOT call spawn_sse at all. The event loop handles keyboard and resize events only. SSE integration is not yet implemented in the TUI frontend.\n\nMAINTENANCE BURDEN: Low for Phase 1 (feature not yet used). High if Phase 2 requires auto-recovery without caller boilerplate.\n\nKNOWN ISSUE: If kithd restarts while a TUI client is connected, the client's SSE stream will break and will NOT reconnect. The client shows stale messages until user restarts the app.\n\nRECOMMENDATION: \n1. For Phase 1: Accept as-is. Document: 'spawn_sse does not reconnect; wrap in a retry loop if auto-recovery is needed.'\n2. File Phase 2 task: 'Implement exponential backoff reconnect for SSE in spawn_sse or new spawn_sse_with_reconnect wrapper.'\n3. Consider using tokio::task::JoinHandle to allow callers to observe task exit and trigger reconnect from outside.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:05:15Z",
+  "updated_at": "2026-04-20T05:07:35Z",
+  "closed_at": "2026-04-20T05:07:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:05:14Z"
+    }
+  ]
+}

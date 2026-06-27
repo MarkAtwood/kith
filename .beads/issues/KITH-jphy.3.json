@@ -1,0 +1,27 @@
+{
+  "id": "KITH-jphy.3",
+  "title": "kith-tui: UI rendering (ui.rs)",
+  "description": "What: Implement ui.rs with the draw() function that renders the full 3-panel layout using placeholder data from AppState.\n\nAlgorithm:\n1. pub fn draw(f: &mut ratatui::Frame, state: &AppState)\n2. Vertical split of f.area() into 3 parts:\n   - top: Constraint::Fill(1)\n   - input_area: Constraint::Length(3)\n   - status_area: Constraint::Length(1)\n3. Horizontal split of top into 2 parts:\n   - chat_list_area: Constraint::Percentage(25)\n   - message_area: Constraint::Fill(1)\n4. Chat list panel: render List widget with state.chat_list items as ListItem; highlight selected_chat with Style::default().add_modifier(Modifier::REVERSED); border Block::default().title(\"Chats\").borders(Borders::ALL), yellow border when focus==Focus::ChatList\n5. Message thread panel: render Paragraph with state.messages lines formatted as Line items; scroll to show bottom (apply scroll_offset); border Block::default().title(\"Messages\").borders(Borders::ALL)\n6. Input panel: render Paragraph with state.input text; border Block::default().title(\"Input\").borders(Borders::ALL), yellow border when focus==Focus::Input; set cursor position with f.set_cursor_position() when focused\n7. Status bar: render Paragraph with Span::raw(\" [placeholder]\") on dark gray background\n8. Cursor position: input_area.x + 1 + visible_cursor_col, input_area.y + 1; visible_cursor_col = UnicodeWidthStr::width(&state.input[..state.input_cursor]) as u16\n\nDefensive programming rules:\n- Guard against zero-size areas: if area.width < 4 || area.height < 4, skip rendering that panel\n- Use saturating_sub for all area dimension calculations\n- No unwrap()\n\nTests (unit):\n- test: draw() does not panic on a 80x24 area (use ratatui::backend::TestBackend)\n- test: draw() does not panic on minimum area 20x10\n- Oracle for both tests: TestBackend::new(w, h) + Terminal::new(backend) allows calling draw() synchronously; no panic = pass",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:32:45Z",
+  "updated_at": "2026-04-20T04:39:43Z",
+  "closed_at": "2026-04-20T04:39:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jphy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:44Z"
+    },
+    {
+      "depends_on_id": "KITH-jphy.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:50Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-02e1.10",
+  "title": "Wire error_notification into draw_status() in ui.rs",
+  "description": "**What:** Modify draw_status() to show error_notification (red background) when set, falling back to normal status otherwise.\n\n**Algorithm:**\n1. In draw_status() (ui.rs), read state.error_notification:\n   - If Some((msg, _instant)): use text = format!(' ERR: {}', msg), style = Style::default().bg(Color::Red).fg(Color::White)\n   - If None: use existing text = format!(' {} | {}', connection_status, chat_name), style = Style::default().bg(Color::DarkGray)\n2. Replace the single Paragraph render call with the conditional text/style.\n3. Color::Red is already imported via ratatui::style::Color.\n4. The timestamp is stored in AppState; draw_status does NOT check expiry \u2014 expiry is cleared by clear_stale_error() in the event loop tick.\n\n**Defensive rules:**\n- draw_status must NOT call Instant::now() or any time functions \u2014 it is a pure rendering function.\n- Do not truncate long error messages \u2014 let ratatui wrap/clip naturally.\n- Only show 'ERR: ' prefix, not the raw Err debug output (error must already be sanitized when set_error was called).\n\n**Agent team:** R reads draw_status() and existing draw_status_shows_connecting test; I modifies; T writes two tests: one for normal state (existing test updated), one for error_notification present shows ERR prefix with different bg; V runs cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:56:09Z",
+  "updated_at": "2026-04-20T12:01:50Z",
+  "closed_at": "2026-04-20T12:01:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:08Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:40Z"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-w5x",
+  "title": "Dev tooling: justfile quality gate targets",
+  "description": "Add a justfile with targets for cargo fmt --all, cargo clippy --all-features -- -D warnings, and cargo test. Needed so the three required quality gates can be run as a group before every commit.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T04:45:03Z",
+  "closed_at": "2026-04-19T04:45:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8iq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:40:36Z"
+    },
+    {
+      "depends_on_id": "KITH-ob0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

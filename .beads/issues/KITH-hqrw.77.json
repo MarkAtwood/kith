@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.77",
+  "title": "PinnedCertVerifier and test coverage are solid",
+  "description": "watch.rs PinnedCertVerifier does byte-exact DER comparison and delegates signature verification to aws_lc_rs. kith-tui has 25+ tests with independent oracle values via wiremock. sanitize_display, sanitize_sender, truncate_body all have vector tests. Test discipline good throughout both crates.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:39:16Z",
+  "updated_at": "2026-04-25T08:08:35Z",
+  "closed_at": "2026-04-25T08:08:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:39:22Z"
+    }
+  ]
+}

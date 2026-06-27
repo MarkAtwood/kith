@@ -1,0 +1,25 @@
+{
+  "id": "KITH-f5r",
+  "title": "kith-peer: Peer/receipt inbound handler",
+  "description": "What: Implement the Peer/receipt JMAP method handler in kith-peer \u2014 the inbound path where a peer confirms that a message we sent was delivered or read.\n\nAlgorithm:\n1. Deserialize args into PeerReceiptArgs struct: { accountId: String, messageId: String, kind: String, at: String }\n2. Validate kind is \"delivered\" or \"read\"; else JmapError::invalid_arguments\n3. Validate messageId is valid ULID; else JmapError::invalid_arguments\n4. Acquire store lock; call store.messages().get(&message_id) -> if None return JmapError::not_found\n5. Verify the message was sent BY this mailbox TO the calling peer: msg.sender_user_id must equal owner_id AND msg.delivery_state must be Pending or Delivered (not Received, which is an inbound message); else JmapError::not_found (don't leak existence)\n6. Match kind: \"delivered\" -> call store.messages().update_delivery_state(&id, &DeliveryState::Delivered, Some(now_unix)); \"read\" -> call store.messages().update_read_at(&id, now_unix)\n7. Release store lock; return Ok(json!({ \"accountId\": \"a-self\", \"accepted\": true }))\n\nDefensive rules:\n- Validate kind enum before any DB lookup (step 2)\n- Ownership check (step 5) MUST precede state update; a peer must not receipt someone else's message\n- Return JmapError::not_found for all ownership failures (do NOT distinguish 'not found' vs 'wrong owner' in response \u2014 that leaks information)\n- Never log message body; log only message_id\n- DeliveryState transitions: Delivered after Received is nonsensical; guard against regressions if needed\n\nAgent team: Researcher R reads kith-store message.rs and DeliveryState. Implementer I writes PeerReceiptArgs struct + ReceiptHandler. Tester T derives expected state transitions from kith-architecture.md. Validator V runs cargo test + clippy.\n\nTests (oracle = kith-architecture.md state machine):\n- Happy path delivered: Peer/receipt kind=delivered for outgoing message -> deliveryState=Delivered in DB\n- Happy path read: Peer/receipt kind=read -> readAt set in DB\n- Wrong kind: kind=\"seen\" -> JmapError::invalid_arguments\n- Non-existent messageId -> JmapError::not_found\n- messageId belongs to inbound message (delivery_state=Received): peer tries to receipt a message they sent us -> JmapError::not_found\n- messageId belongs to different peer (wrong caller identity) -> JmapError::not_found",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:08:20Z",
+  "closed_at": "2026-04-19T09:08:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-8my.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:19Z"
+    }
+  ]
+}

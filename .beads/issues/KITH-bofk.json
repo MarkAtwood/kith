@@ -1,0 +1,13 @@
+{
+  "id": "KITH-bofk",
+  "title": "Review: full project deep scan (pass 3)",
+  "description": "Full project code review pass 3 \u2014 verifying no new issues remain.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:52:46Z",
+  "updated_at": "2026-04-25T08:37:45Z",
+  "closed_at": "2026-04-25T08:37:45Z"
+}

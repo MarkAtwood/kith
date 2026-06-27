@@ -1,0 +1,13 @@
+{
+  "id": "KITH-tv70",
+  "title": "Review: chore + fix review findings KITH-oo4y",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:53:06Z",
+  "updated_at": "2026-04-24T20:55:10Z",
+  "closed_at": "2026-04-24T20:55:10Z",
+  "notes": "Maintainer risk: LOW \u2014 reviewed auth.rs, kith-peer/lib.rs (DeliverHandler, validate_attachments, is_valid_mailbox_host), kith-jmap/lib.rs (dispatch). All correct. Attachment validation (blobId, filename, content_type, size, sha256) is thorough. Role check happens before handler dispatch. Fail-closed auth (store errors map to WhoIsFailed, not Unauthorized).\nConfidence: 3% chance of missed bug. Uncertainty driven by: SSE coalescing task (kith-events) has complex interaction between close_after_first, ping, and Last-Event-ID replay \u2014 untested in combination. kith-tui and kithctl not reviewed. These are thin clients; risk is low. No real findings this pass \u2014 bikeshedding threshold reached."
+}

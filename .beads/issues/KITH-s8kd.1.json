@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.1",
+  "title": "finish_message_delivery implicit state_version ordering",
+  "description": "outbox.rs finish_message_delivery sets state_version via subquery inside UPDATE, then calls advance_state_counter_in_tx. If a refactor runs the advance first, state_version becomes counter+2 while StateChange says counter+1 \u2014 empty deltas on Message/changes. Fix: advance first, use captured value in both UPDATE and event.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:12Z",
+  "updated_at": "2026-04-25T05:33:52Z",
+  "closed_at": "2026-04-25T05:33:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:12Z"
+    }
+  ]
+}

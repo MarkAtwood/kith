@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.22",
+  "title": "WhoIs called per-request with no cache \u2014 correct security posture for revocation",
+  "description": "kith-tslocal/src/lib.rs opens a fresh Unix socket connection for every WhoIs call. This means a peer revoked from the tailnet is rejected on the next request, with only the in-flight request window (~5s timeout) as exposure. A future contributor might add caching for performance. Caching WhoIs results creates a revocation window (a removed peer retains access until cache TTL expires). The per-request cost is a local Unix socket round-trip \u2014 negligible. Do not cache WhoIs.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:46Z",
+  "updated_at": "2026-04-24T05:31:53Z",
+  "closed_at": "2026-04-24T05:31:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:46Z"
+    }
+  ]
+}

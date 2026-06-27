@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.10",
+  "title": "SEC2.3: cmd_contacts_list loads all contacts into memory before printing",
+  "description": "main.rs lines 93-127 (cmd_contacts_list) loads all contacts into a Vec via store.contacts().list() (line 101), then iterates over the Vec to print (lines 111-123). This loads the entire contacts table into memory before any output is produced.\n\nImpact: Memory usage scales with total number of contacts; large contact lists may be slow to display or use excess RAM.\nFix: Add a streaming variant of ContactStore::list that returns an iterator, or print as each contact is retrieved from the database.\nLocation: main.rs line 101.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:21Z",
+  "updated_at": "2026-04-19T19:22:19Z",
+  "closed_at": "2026-04-19T19:22:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:20Z"
+    }
+  ]
+}

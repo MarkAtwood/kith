@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.82",
+  "title": "delivery state Delivered terminal guard at SQL level is defensible",
+  "description": "update_delivery_state() guards the UPDATE with AND delivery_state \\!= 'delivered' at the SQL level, making Delivered terminal without application-layer races. The subsequent 0-rows disambiguation (does not exist vs already Delivered) correctly partitions Err vs Ok-idempotent. Defend against simplifying to application-layer check only.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:41:24Z",
+  "updated_at": "2026-04-25T08:13:51Z",
+  "closed_at": "2026-04-25T08:13:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:41:24Z"
+    }
+  ]
+}

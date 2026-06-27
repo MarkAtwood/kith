@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.10",
+  "title": "SEC2: outbox_tick fetches attachments twice per message",
+  "description": "In outbox_tick, messages().get() already hydrates msg.attachments via AttachmentStore::list_by_message internally (kith-store/src/message.rs line 177). outbox_tick then discards msg.attachments and immediately calls guard.attachments().list_by_message(&message.id) a second time (lib.rs lines 933-948). Every retry attempt runs two attachment queries instead of one. Fix: either use msg.attachments directly (it is already populated by get()), or add a messages-only get that skips attachment hydration for the outbox path. At Phase 1 scale this is two SQLite queries instead of one per retry \u2014 not urgent, but a clean fix.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:34Z",
+  "updated_at": "2026-04-20T01:18:05Z",
+  "closed_at": "2026-04-20T01:18:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:33Z"
+    }
+  ]
+}

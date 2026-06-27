@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.14",
+  "title": "kithctl JMAP response body read with no size cap \u2014 unbounded memory allocation",
+  "description": "watch.rs:541-548 jmap_post reads the response body via either read_exact(len) or read_to_end with no upper bound. A misbehaving or compromised kithd (or if the listener is somehow reachable by a non-kithd endpoint) can stream a multi-GiB response body and exhaust kithctl memory. Fix: wrap the reader with tokio::io::AsyncReadExt::take(10*1024*1024) before read_to_end, and cap the Content-Length-based path similarly.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:56Z",
+  "updated_at": "2026-04-24T05:26:52Z",
+  "closed_at": "2026-04-24T05:26:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:56Z"
+    }
+  ]
+}

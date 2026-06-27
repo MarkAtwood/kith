@@ -1,0 +1,12 @@
+{
+  "id": "KITH-p56",
+  "title": "Review round 2: kith-store",
+  "description": "Review round 2 findings for kith-store. P1 bugs: mark_failed skips state counter advance (Message/changes blind to failed delivery), get_or_create not atomic. P2: unconditional state advance on no-ops in get_or_create/set_blocked/update_last_message_at, shift overflow in record_failure, insert counter-before-INSERT not transactional.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:49:13Z",
+  "updated_at": "2026-04-19T05:56:59Z",
+  "closed_at": "2026-04-19T05:56:59Z"
+}

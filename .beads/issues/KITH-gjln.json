@@ -1,0 +1,31 @@
+{
+  "close_reason": "Message expiry implemented",
+  "closed_at": "2026-06-13T18:15:10Z",
+  "compaction_level": 0,
+  "content_hash": "0379d639eed5bf1e8421fe7becd5df7a4a318286bd68042a8f0a35cc569089c8",
+  "created_at": "2026-06-13T13:39:44Z",
+  "created_by": "Mark Atwood",
+  "description": "Spec defines sender-controlled message expiry. senderExpiresAt (UTCDate, optional, immutable): hard-deletion deadline, server MUST permanently delete the message (no tombstone) at or before this time. burnOnRead (Boolean, optional, immutable): server deletes after all recipients have read. Both are set at send time, immutable after. Needs: store support, background reaper task, Peer/deliver acceptance, interaction with messageExpirySeconds on Chat. Spec reference: draft-atwood-jmap-chat-00.md lines 618-619, 631-655.",
+  "ephemeral": 0,
+  "id": "KITH-gjln",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement Message expiry (senderExpiresAt, burnOnRead)",
+  "updated_at": "2026-06-13T18:15:10Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:12Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

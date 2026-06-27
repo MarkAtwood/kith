@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.3",
+  "title": "TOCTOU: messages lost from queryChanges between two store locks",
+  "description": "In MessageQueryChangesHandler, lock 1 collects chat_added and releases the mutex; lock 2 re-acquires it to read new_state and compute positions. Any message inserted between the two lock acquisitions has state_version > old counter and therefore appears in new_state (s-N) but is absent from chat_added. The client receives newQueryState=s-N with an incomplete added list. On the next queryChanges call using s-N as sinceQueryState, those messages are no longer > s-N so they are permanently dropped. Messages are silently lost from the client view.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:06Z",
+  "updated_at": "2026-04-24T18:32:24Z",
+  "closed_at": "2026-04-24T18:32:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:06Z"
+    }
+  ]
+}

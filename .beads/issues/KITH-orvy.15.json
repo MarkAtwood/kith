@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.15",
+  "title": "Tautological assertion P||!P in handle_state_change_unknown_type_is_noop",
+  "description": "kith-tui/src/event.rs:1268: the assertion !state.messages.is_empty() || state.messages.is_empty() is P || !P, unconditionally true regardless of state. It proves nothing. The correct oracle for this test (that an unknown state type is a no-op) is asserting the message count is unchanged from the initial AppState: assert_eq!(state.messages.len(), AppState::new().messages.len(), 'unknown type must not change messages').",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:38Z",
+  "updated_at": "2026-04-24T01:35:36Z",
+  "closed_at": "2026-04-24T01:35:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:38Z"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "close_reason": "Space/query and Space/join handlers, 8 tests",
+  "closed_at": "2026-06-13T21:29:40Z",
+  "compaction_level": 0,
+  "content_hash": "79315c85f01c7d2bee41956164d9b10faaef2c1bb1a1d8471ff810bb97748399",
+  "created_at": "2026-06-13T19:01:36Z",
+  "created_by": "Mark Atwood",
+  "description": "Space/query: filter by name (substring) and isPublic (boolean). Default sort: name ascending. Include non-member Spaces with isPublic+isPubliclyPreviewable when filtered. Space/queryChanges: standard RFC 8620 \u00a75.6. Space/join: accept exactly one of inviteCode or spaceId. Via inviteCode: resolve, check expiry/maxUses/not-banned, add member, increment uses. Via spaceId: check isPublic/not-banned, add member. Spec: \u00a75.10-5.12.",
+  "ephemeral": 0,
+  "id": "KITH-0nzf",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 2c: Space/query, Space/join handlers",
+  "updated_at": "2026-06-13T21:29:40Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:01:57Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-3lya",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T12:01:57Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-5hdh",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

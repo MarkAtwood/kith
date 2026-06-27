@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.11",
+  "title": "ChatQueryHandler loads full Chat objects to return only IDs",
+  "description": "ChatQueryHandler calls chats().list() which deserializes full Chat objects (all fields), then extracts only the id field for the ids response. The store query should accept an id-only variant (SELECT id FROM chats ...) rather than materializing all fields.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:35Z",
+  "updated_at": "2026-04-24T17:06:58Z",
+  "closed_at": "2026-04-24T17:06:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:35Z"
+    }
+  ]
+}

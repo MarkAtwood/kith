@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.52",
+  "title": "discovery: mailbox_host from peer apiUrl not validated against Tailscale identity",
+  "description": "In discovery.rs run_discovery_round(), the peer's owner_user_id (from the JMAP session response) is cross-validated against WhoIs at line 404: ps.owner_user_id == whois_user_id. However, ps.mailbox_host is extracted from the peer's apiUrl field (line 398-401) and stored verbatim as contact.mailbox_host without any equivalent Tailscale identity check. A peer can return an arbitrary apiUrl (e.g. pointing to a different tailnet node) that passes the SSRF guard in is_valid_fetch_host, causing all outbound deliveries for that contact to be routed to a different node than the one that Tailscale authenticated. The fix is to derive mailbox_host directly from the WhoIs-confirmed peer IP (peer_ip in the probe task) rather than trusting the peer-supplied apiUrl hostname.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:18:17Z",
+  "updated_at": "2026-04-25T01:46:20Z",
+  "closed_at": "2026-04-25T01:46:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:18:17Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.15",
+  "title": "DECISION: Database join preserves authorization boundary for peer blobs",
+  "description": "get_peer_mailbox_for_blob (kith-store/lib.rs:261-286) joins attachments \u2192 messages \u2192 contacts. Only returns blob info when sender_user_id has a contacts row (peer-sent messages). Owner-sent messages have no contacts row \u2192 returns None. Prevents owner from accidentally triggering peer fetch for their own attachments. Boundary is tested (kith-store tests:895-933).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:16:17Z",
+  "updated_at": "2026-04-20T17:20:58Z",
+  "closed_at": "2026-04-20T17:20:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:16:17Z"
+    }
+  ]
+}

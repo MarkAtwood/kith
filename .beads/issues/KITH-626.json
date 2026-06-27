@@ -1,0 +1,14 @@
+{
+  "id": "KITH-626",
+  "title": "Review round 1: kith-tslocal Tailscale LocalAPI client",
+  "description": "Round 1 review of KITH-uc4 (kith-tslocal) implementation",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:14:24Z",
+  "updated_at": "2026-04-19T06:20:31Z",
+  "closed_at": "2026-04-19T06:20:31Z",
+  "notes": "Confidence: 80% chance of missed bug. P0=0 P1=3 P2=2 after opinion filter. Are we running out of real complaints: YES.\n\nRemaining actionable P1: KITH-626.1 (hyper pin undocumented), KITH-626.2 (hyper semi-internal API stability note), KITH-626.6 (magic constants need security rationale).\nRemaining actionable P2: KITH-626.24 (test socket cleanup not RAII \u2014 real test fragility), KITH-626.26 (null-byte check missing security rationale comment).\n\nOpinion-labeled (22 items): All 'decision' type P2s (describing correct existing behavior, not issues), all P3/P4 style/readability items, KITH-626.10 (error prefix inconsistency \u2014 purely cosmetic, no incorrect behavior), KITH-626.22 (mock server hyper change concern \u2014 speculative, raw HTTP/1.1 parsing is not a regression risk).\n\nAssessment: The 5 remaining findings are real engineering issues, not noise. All are documentation/comment improvements that prevent future maintainer mistakes or fix test fragility. None represent a missed functional bug or security gap. The review has genuinely run out of real complaints about the implementation logic \u2014 what remains is all in the 'make it easier to maintain correctly' category."
+}

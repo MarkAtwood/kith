@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.14",
+  "title": "kith-chat/message.rs: get_message_count test helper derives count from state counter \u2014 misleading oracle",
+  "description": "message.rs test helper get_message_count (line 1121-1129) derives message count from the state counter (strip 's-' prefix, parse as i64). This is fragile: it assumes each message insert advances the counter by exactly 1 and that state counter == row count. The state counter is a monotone write counter, not a row count. If a readAt update fires (which also advances the message state counter), the helper will over-count messages. If a transaction rolls back after advancing the counter, the helper under-counts. The comment even says 'store doesn't expose a global count'. The test assertions using this helper (test_message_set_create_oversized_body, etc.) check == 0 which is only correct if nothing else has advanced the counter. For checking that a create was rejected the assertion should be 'state counter did not advance' not 'count == 0'. Rename to assert_state_counter_is_zero and explain what it actually measures.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:53:26Z",
+  "updated_at": "2026-04-25T08:23:52Z",
+  "closed_at": "2026-04-25T08:23:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:53:25Z"
+    }
+  ]
+}

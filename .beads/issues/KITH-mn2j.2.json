@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.2",
+  "title": "kith-jmap: max_size_request and max_size_upload in build_session are magic literals",
+  "description": "build_session advertises max_size_upload=104_857_600 and max_size_request=10_485_760 as standalone literals. max_size_upload matches kith_core::MAX_ATTACHMENT_BYTES but is not referenced from it. max_size_request has no corresponding constant at all. If the HTTP body limit changes, the session description lies to clients. Fix: introduce MAX_REQUEST_BYTES constant in kith-core and reference both from build_session.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:25Z",
+  "updated_at": "2026-04-25T07:00:04Z",
+  "closed_at": "2026-04-25T07:00:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:24Z"
+    }
+  ]
+}

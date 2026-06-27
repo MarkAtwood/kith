@@ -1,0 +1,12 @@
+{
+  "id": "KITH-kg2",
+  "title": "Hoist insert_if_allowed closure out of loop in events.rs",
+  "description": "In events_handler(), the insert_if_allowed closure (lines 250-258) is defined inside the outer loop at line 231 and redefined on every iteration. It's only used twice per iteration and captures type_filter which is immutable. Define the closure before the loop to improve clarity and efficiency.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:52Z",
+  "updated_at": "2026-04-19T23:37:47Z",
+  "closed_at": "2026-04-19T23:37:47Z"
+}

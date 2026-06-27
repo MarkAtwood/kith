@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Space types re-exported from jmap-chat-types. Serde helpers added for SpaceRole, SpaceMember, Category, ChannelPermission. SPACE_PERMISSION_NAMES constant added.",
+  "closed_at": "2026-06-13T20:19:50Z",
+  "compaction_level": 0,
+  "content_hash": "faef372122a8b5502805129bf1f03d0e82cfa410493b8b51c8cac00a1cd52173",
+  "created_at": "2026-06-13T19:01:13Z",
+  "created_by": "Mark Atwood",
+  "description": "Create types that jmap-chat-types already provides (Space, SpaceRole, SpaceMember, Category, SpaceInvite, SpaceBan, ChannelPermission). Since we adopted jmap-chat-types, most of these are already defined there \u2014 re-export them from kith-core. Add BroadcastMention-style helpers (make_space_role, etc.) for any #[non_exhaustive] types without constructors. Add space_id field to Chat (already present in jmap-chat-types Chat struct but not populated). Verify ChatKind::Channel is usable. No new code files needed if types are re-exported.",
+  "ephemeral": 0,
+  "id": "KITH-1sgc",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 1a: Define Space-layer types in kith-core",
+  "updated_at": "2026-06-13T20:19:50Z"
+}

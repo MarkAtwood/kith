@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "deca8f53fcd512aabc746d43798f16b630066d6f3e7520bd5954373c9a0ebdeb",
+  "created_at": "2026-06-15T04:52:51Z",
+  "created_by": "Mark Atwood",
+  "description": "OutboxEntry (kith-store/src/outbox.rs:20) has kind: String. The possible values are 'message' and 'receipt' \u2014 a closed set. String comparisons appear on lines 243 (entry.kind == \"receipt\"), 258, and in the SQL pk (kind = ?5).\n\nSuggestion:\n  #[derive(Debug, PartialEq, Eq)]\n  pub enum OutboxKind { Message, Receipt }\n  impl OutboxKind { fn as_str(&self) -> &'static str { ... } }\n\nThis makes the arms in complete_delivery() and mark_failed() exhaustive matches, eliminates branch-missing bugs if a third kind is added, and removes the string literal scattered across the file. The SQL parameter binding uses the &'static str from as_str(), so no allocation change.\n\nThe comment at line 23 ('\"message\" or \"receipt\"') would become unnecessary \u2014 the type expresses it.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.10",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "OutboxEntry.kind uses String instead of enum",
+  "updated_at": "2026-06-19T20:44:03Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:51Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

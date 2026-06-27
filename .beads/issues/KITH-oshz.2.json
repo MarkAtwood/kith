@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.2",
+  "title": "Decision: parse_sse_event is public to enable direct unit testing without HTTP",
+  "description": "parse_sse_event (line 125) is marked pub even though it could be private. The comment (line 123) explicitly states this allows the test suite to call it directly without an HTTP connection. This is good API design: parsing logic is testable in isolation, and callers can use it for custom SSE handling. Tests at lines 325-361 exercise the parser with hardcoded SSE blocks, validating the logic without mocking or network.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:27Z",
+  "updated_at": "2026-04-20T11:46:31Z",
+  "closed_at": "2026-04-20T11:46:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:27Z"
+    }
+  ]
+}

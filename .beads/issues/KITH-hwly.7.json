@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.7",
+  "title": "replyTo circular reference not validated \u2014 UI traversal hang risk",
+  "description": "Message/set create validates that replyTo references a message in the same chat that exists. It does not check whether the referenced message's replyTo creates a cycle (A\u2192B\u2192A). SQLite has no referential cycle constraint. A UI client that traverses the replyTo chain by following pointers will loop infinitely. This requires two colluding clients or a single corrupt insert. Not exploitable by a single peer via Peer/deliver (peer-delivered messages don't set replyTo). \u2014 Either add a cycle-detection check (walk up to depth N, fail if seen set repeats) or document the invariant as a known limitation with a code comment, so UI implementers know to cap traversal depth.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:20:05Z",
+  "updated_at": "2026-04-24T04:31:55Z",
+  "closed_at": "2026-04-24T04:31:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:20:04Z"
+    }
+  ]
+}

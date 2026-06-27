@@ -1,0 +1,20 @@
+{
+  "id": "KITH-7t0.1",
+  "title": "[R3] Chat state not synced on init; MessageChanges may use stale token",
+  "description": "When EventSource state event arrives with Chat changes before fetchChats() completes, chatState is null. Handler at line 540 silently skips Chat/changes (no token sync). Compare to Message handler (lines 532-536) which syncs token when messageState is null.\n\nSymptom: Chat list may miss updates on app startup if state events arrive during initial load.\n\nCurrent code:\n  if (changed.Chat && chatState !== null) {\n    methodCalls.push(['Chat/changes', ...]);\n  }\n\nShould handle chatState === null case symmetrically to messageState.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:02:28Z",
+  "updated_at": "2026-04-19T18:06:42Z",
+  "closed_at": "2026-04-19T18:06:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7t0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:02:28Z"
+    }
+  ]
+}

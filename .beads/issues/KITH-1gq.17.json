@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.17",
+  "title": "MAINTENANCE: LIMIT 50 in OutboxStore::get_due lacks design justification",
+  "description": "\n/crates/kith-store/src/outbox.rs:43-74 (get_due method)\n\nCurrent code:\n  pub fn get_due(&self, now_unix: i64) -> Result<Vec<OutboxEntry>, KithError> {\n      // ...\n      'SELECT ... FROM outbox WHERE next_attempt_at <= ?1 ORDER BY next_attempt_at LIMIT 50'\n\nThe hardcoded LIMIT 50 is a design choice without documentation.\n\nQuestions a maintainer might ask:\n- Why 50? Is it a performance guardrail (likely) or tied to retry loop cadence?\n- What happens if 100+ messages are due? Does the caller handle pagination?\n- Can it be tuned if outbox retry loop timing changes?\n\nRisk: MEDIUM. If a solo maintainer tunes the retry loop period (e.g., from 60s to 30s),\nthey might forget to also adjust LIMIT 50. This could result in messages never being\nretried if backlog grows faster than the batch can process.\n\nSolution: Add doc comment explaining the design choice:\n  /// Get up to 50 outbox entries due for delivery retry (next_attempt_at <= now_unix).\n  /// LIMIT 50: Performance guardrail to bound memory and CPU per call. Caller should\n  /// invoke frequently (e.g., every 60s) to process backlog. If retry loop period changes,\n  /// review this LIMIT to ensure backlog doesn't accumulate faster than it's drained.\n  ///\n  /// ORDER BY next_attempt_at ensures earliest-due-first processing (FIFO fairness).\n\nImpact: Prevents accidental performance degradation if retry loop timing is tuned.\n",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:52Z",
+  "updated_at": "2026-04-19T05:58:02Z",
+  "closed_at": "2026-04-19T05:58:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:51Z"
+    }
+  ]
+}

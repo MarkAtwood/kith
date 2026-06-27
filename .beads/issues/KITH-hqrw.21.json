@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.21",
+  "title": "Contact/query loads full contact list for pagination instead of SQL",
+  "description": "ChatContactQueryHandler loads ALL contacts via contacts().list() then skips/takes in Rust. Chat/query correctly uses SQL-level pagination. Fix: add list_ids_paged to the contact store and use it here.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:59Z",
+  "updated_at": "2026-04-25T07:12:25Z",
+  "closed_at": "2026-04-25T07:12:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:58Z"
+    }
+  ]
+}

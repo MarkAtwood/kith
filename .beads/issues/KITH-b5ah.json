@@ -1,0 +1,13 @@
+{
+  "id": "KITH-b5ah",
+  "title": "Review: fix P0-P3 review findings (KITH-orvy)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T02:30:38Z",
+  "updated_at": "2026-04-24T02:51:43Z",
+  "closed_at": "2026-04-24T02:51:43Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 One P0 (group chat outbox errors silently swallowed) remains from the orvy fixes. P1 migration risk is theoretical at Phase 1 with no prod databases. The _caller_identity protocol gap is a latent auth risk but only triggers when new peer methods are added.\nConfidence: 20% chance of missed bug. Uncertainty driven by: (1) group chat is Phase 2 and has minimal test coverage \u2014 the group chat outbox path and member auth paths were not fully traced through the HTTP stack. (2) The axum caller-identity injection layer was not in this diff so the axum side of the _caller_identity contract was not reviewed, only the handler side. (3) Migration correctness verified by code inspection only, not by running against a V4 database with real data. Would raise confidence if: cargo test -p kithd --features test-utils passes, a dedup-before-UNIQUE-INDEX migration test is added."
+}

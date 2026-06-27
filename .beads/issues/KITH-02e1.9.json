@@ -1,0 +1,32 @@
+{
+  "id": "KITH-02e1.9",
+  "title": "Wire message tracking + read receipts into load/SSE paths",
+  "description": "**What:** Populate message_ids/message_senders/unread_message_ids when messages are loaded or arrive via SSE; call send_read_receipts() after loading.\n\n**Algorithm:**\n1. In load_messages_for_chat(), change the function to also collect ids and senders.\n   Change return type to a struct OR tuple: return (lines: VecDeque<String>, ids: VecDeque<String>, senders: VecDeque<String>).\n   In the format loop (Step C), also push: entries_ids.push(received_at, id); entries_senders.push(received_at, sender_id).\n   After sort, return all three parallel VecDeques.\n2. In run(), after state.messages = ..., also set:\n   state.message_ids = ids;\n   state.message_senders = senders;\n   state.unread_message_ids = message_senders.iter().zip(message_ids.iter())\n     .filter(|(s, _)| s.as_str() != 'self')\n     .map(|(_, id)| id.clone())\n     .collect();\n3. After populating unread_message_ids (step 2), call:\n   let ids: Vec<String> = state.unread_message_ids.iter().cloned().collect();\n   if !ids.is_empty() {\n     if let Ok(()) = send_read_receipts(&http_client, &api_url, &ids).await {\n       state.unread_message_ids.clear();\n     }\n     // On Err: silently leave unread_message_ids populated; will retry next load\n   }\n4. In handle_state_change(), when appending a new message (line ~507 area), also push to state.message_ids and state.message_senders. If senderId != 'self', insert id into state.unread_message_ids and then call send_read_receipts immediately for just this ID.\n5. Update existing tests for load_messages_for_chat() to destructure the new return type.\n\n**Defensive rules:**\n- message_ids, message_senders, messages must ALWAYS be the same length \u2014 maintain in lockstep.\n- If load_messages_for_chat returns empty, set all three VecDeques to empty.\n- send_read_receipts failure is non-fatal \u2014 do NOT set error_notification for receipt failures.\n- Existing tests that call load_messages_for_chat must be updated to match new return type (this is a required interface change, not a test-weakening change).\n\n**Agent team:** R reads load_messages_for_chat() and handle_state_change(); I refactors and wires in; T updates existing tests + adds new receipt-flow tests; V runs cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:56:08Z",
+  "updated_at": "2026-04-20T12:11:45Z",
+  "closed_at": "2026-04-20T12:11:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:07Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:39Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:39Z"
+    }
+  ]
+}

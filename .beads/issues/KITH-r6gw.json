@@ -1,0 +1,22 @@
+{
+  "close_reason": "BroadcastMention added to jmap-chat-types in commit 51d046f (2026-06-13). Awaiting version bump and publish.",
+  "closed_at": "2026-06-13T21:35:34Z",
+  "compaction_level": 0,
+  "content_hash": "3b850342460beaedd37351313be815a93575a6f318ea53b8df52200b0cfb1298",
+  "created_at": "2026-06-13T19:03:52Z",
+  "created_by": "Mark Atwood",
+  "description": "Add BroadcastMention struct (scope: String, offset: u64, length: u64) and broadcast_mentions: Vec<BroadcastMention> field to Message in jmap-chat-types. Defined in draft-atwood-jmap-chat-00 \u00a74.14 lines 329-351. scope is one of 'everyone', 'here', 'admins'. Follow existing Mention pattern (same serde attrs, #[non_exhaustive], extra field). Add to Message alongside mentions field. Add VALID_BROADCAST_SCOPES constant or similar. This is upstream work in the jmap-chat-types repo, not in kith. kith will continue using the local workaround (BroadcastMention in kith-core, carried in Message.extra) until the next jmap-chat-types release.",
+  "ephemeral": 0,
+  "id": "KITH-r6gw",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add BroadcastMention type and field to jmap-chat-types",
+  "updated_at": "2026-06-13T21:35:34Z"
+}

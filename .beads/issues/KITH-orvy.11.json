@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.11",
+  "title": "Three-pass clone in load_messages_for_chat when single move pass is possible",
+  "description": "kith-tui/src/event.rs:434-436 iterates entries three times, cloning String fields on each pass. entries is a Vec<MessageEntry> consumed immediately after, so a single into_iter() pass moving fields avoids 3\u00d7N String clones. At the 50-message cap this is not a hot-path bottleneck, but the named MessageEntry struct introduced by this commit makes the move version natural \u2014 it is strictly better than the current three-pass clone.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:12Z",
+  "updated_at": "2026-04-24T01:35:23Z",
+  "closed_at": "2026-04-24T01:35:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:11Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.22",
+  "title": "Decision: State counter pattern for efficient change tracking",
+  "description": "All three stores (contact, chat, message) maintain a state_counters table with monotonic counters (lines 82-85 in lib.rs, initialized to 0, never reset). Each write operation advances its type's counter and returns the new state as 's-N'. This enables efficient get_changes_since queries that compare counter values instead of scanning timestamps. The counter is authoritative for change detection. Rejected alternative: timestamp-based tracking would lose precision and require careful clock handling.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:33:11Z",
+  "updated_at": "2026-04-19T05:58:12Z",
+  "closed_at": "2026-04-19T05:58:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:33:10Z"
+    }
+  ]
+}

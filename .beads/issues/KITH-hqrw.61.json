@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.61",
+  "title": "Message::sender_id field set to sender_user_id, but 'self' is used for outbound - client cannot distinguish direction",
+  "description": "In insert_outbound_message(), sender_user_id is hardcoded as 'self' in the SQL. row_to_message() then sets Message.sender_id = sender_user_id. So outbound messages always have sender_id='self'. This is documented in Message's field doc ('Contact id of sender, or self for outgoing messages'). However, 'self' is a reserved Rust identifier \u2014 any future code that tries to compare sender_id with a contact id needs to handle this sentinel explicitly. More importantly, if peer_user_id happens to be the literal string 'self' (possible on a misconfigured Headscale deployment with no OIDC), a received message from such a peer would be indistinguishable from an owner-sent message. The correct fix is to use the actual owner user_id (from the self table) rather than the literal string 'self'. This would also remove the need for the sentinel-based direction check.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:28Z",
+  "updated_at": "2026-04-25T07:25:06Z",
+  "closed_at": "2026-04-25T07:25:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:28Z"
+    }
+  ]
+}

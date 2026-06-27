@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.18",
+  "title": "DECISION: message + attachments in single SQLite transaction",
+  "description": "insert_message_with_attachments (crates/kith-store/src/lib.rs) inserts the message row and all attachment rows inside a single SQLite transaction, including the state counter advance. Alternative: separate insert calls with application-level cleanup on failure. Rejected because if the message INSERT succeeds and a subsequent attachment INSERT fails, the message exists in the DB with an incomplete attachment set \u2014 a client calling Message/get would see a message whose blobIds don't resolve. The single-transaction approach means either the full message+attachments commits or nothing does. The state counter is also advanced inside the transaction so a failed delivery does not consume a state version, keeping state tokens dense. Events are emitted after tx.commit(), not inside, so listeners never query a not-yet-committed row. Location: crates/kith-store/src/lib.rs insert_message_with_attachments.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:38:15Z",
+  "updated_at": "2026-04-20T01:17:53Z",
+  "closed_at": "2026-04-20T01:17:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:38:15Z"
+    }
+  ]
+}

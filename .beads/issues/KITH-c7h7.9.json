@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.9",
+  "title": "SEC2: process_update holds lock across multiple DB operations",
+  "description": "In kith-chat/src/message.rs process_update (lines 431-458), the store lock is held across 4 sequential DB operations: update_read_at, message get, contact get, and enqueue_receipt. While safe for single-threaded Phase 1, lock could be released after update_read_at and re-acquired for receipt path (message lookup, contact lookup, enqueue are all idempotent fallible ops). This is a minor optimization opportunity, not a bug.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:54Z",
+  "updated_at": "2026-04-20T03:20:55Z",
+  "closed_at": "2026-04-20T03:20:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:54Z"
+    }
+  ]
+}

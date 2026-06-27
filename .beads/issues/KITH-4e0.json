@@ -1,0 +1,20 @@
+{
+  "id": "KITH-4e0",
+  "title": "kith-chat: Message/queryChanges",
+  "description": "What: Implement Message/queryChanges JmapHandler in kith-chat crate per RFC 8620 \u00a75.6.\n\nAlgorithm:\n1. Deserialize args: { accountId, sinceQueryState: String, filter: Option<Value>, maxChanges: Option<u32> }.\n2. Verify accountId == 'a-self'.\n3. Extract filter.chatId (required; same constraint as Message/query).\n4. Acquire store lock.\n5. Validate chatId exists.\n6. Parse sinceQueryState as state token 's-N'; error if malformed.\n7. current_state = store.messages().get_state()?; parse current counter M.\n8. If N >= M: return { accountId, oldQueryState: sinceQueryState, newQueryState: sinceQueryState, removed: [], added: [] }.\n9. Get changes via store.messages().get_changes_since(sinceQueryState)?\n10. For each ID in added: find its position in the current list_by_chat result (index in full ordered list).\n11. Return { accountId, oldQueryState: sinceQueryState, newQueryState: new_state, removed: destroyed_ids, added: [{id, index}] }.\n\nNote: Since v1 get_changes_since returns all IDs as 'added' and no destroyed IDs, the queryChanges response will have added=[{id, index}...] and removed=[].\n\nDefensive programming rules:\n- chatId required in filter (same as Message/query).\n- sinceQueryState parse: return JmapError::state_mismatch() on malformed.\n- Index computation: must reflect actual current position in query result sorted by createdAt DESC.\n- If the message list is large and computing indexes is expensive: cap at 200 and set hasMoreChanges=true equivalent (but RFC 8620 \u00a75.6 doesn't have hasMoreChanges; return cannotCalculateChanges if too many changes).\n- Acquiring store lock for index computation: all reads inside same lock guard.\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs (get_changes_since, list_by_chat, get_state). Read RFC 8620 \u00a75.6 'added' field definition (id + index).\n- Agent I: Implement MessageQueryChangesHandler in kith-chat/src/message.rs.\n- Agent T: Oracle: RFC 8620 \u00a75.6 'added' field is array of {id: String, index: Number}. Test with known sequence.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- queryChanges with current state \u2192 empty added/removed\n- queryChanges after one new message \u2192 added: [{id, index: 0}] (newest first = position 0)\n- queryChanges without chatId \u2192 invalidArguments\n- queryChanges with malformed sinceQueryState \u2192 error",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:08Z",
+  "closed_at": "2026-04-19T15:30:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

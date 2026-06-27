@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.10",
+  "title": "chatId-contact mismatch rejection: no integration test through HTTP stack",
+  "description": "The unit test deliver_chatid_sender_mismatch_returns_invalid_arguments (kith-peer/src/lib.rs) exercises the handler directly. No integration test in kithd/tests/ exercises the full HTTP \u2192 Caller extractor \u2192 _caller_identity \u2192 DeliverHandler path for this case. If the Caller extractor or identity propagation changes, the unit test still passes but the real rejection silently disappears. e2e.rs only covers senderUserId mismatch, not chatId-belongs-to-different-contact.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:04Z",
+  "updated_at": "2026-04-24T01:30:38Z",
+  "closed_at": "2026-04-24T01:30:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:03Z"
+    }
+  ]
+}

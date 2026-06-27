@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.27",
+  "title": "MAX_BODY_BYTES and MAX_ATTACHMENT_BYTES duplicated between kith-peer and kith-jmap",
+  "description": "kith-peer/src/lib.rs defines MAX_BODY_BYTES=65536 and MAX_ATTACHMENT_BYTES=104857600. kith-jmap/src/lib.rs hardcodes the same values in build_session() as max_body_bytes and max_attachment_bytes in KithChatCapability. There is no compile-time enforcement that these stay in sync. If one is updated without the other, clients will see advertised limits that differ from the actual enforcement, creating either silent truncation or rejection of announced-valid messages.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:02Z",
+  "updated_at": "2026-04-25T01:53:20Z",
+  "closed_at": "2026-04-25T01:53:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:01Z"
+    }
+  ]
+}

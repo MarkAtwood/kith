@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.31",
+  "title": "kith-tui: two SSE parsers handle event: whitespace inconsistently",
+  "description": "watch.rs uses strip_prefix(\"event: \") (requiring exactly one space) while client.rs uses strip_prefix(\"event:\") + .trim() (any whitespace). An event:state frame (no space) is correctly parsed by client.rs but silently missed by watch.rs. Having two different SSE parsers in the same codebase with different rules is a maintenance hazard \u2014 one will break when the other works. Unify into one shared function or document the exact format both expect.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:09:02Z",
+  "updated_at": "2026-04-25T03:27:18Z",
+  "closed_at": "2026-04-25T03:27:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:09:02Z"
+    }
+  ]
+}

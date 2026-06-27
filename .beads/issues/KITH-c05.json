@@ -1,0 +1,19 @@
+{
+  "id": "KITH-c05",
+  "title": "kith-tslocal: WhoIs response types",
+  "description": "Define Rust structs for WhoIs response that map to Tailscale LocalAPI /localapi/v0/whois JSON.\n\nWhat: Define UserProfile, Node, WhoIsResponse in kith-tslocal/src/lib.rs (or dedicated module).\n\nTailscale JSON field names (from real tailscale source):\n- WhoIsResponse.UserProfile: { ID, LoginName, DisplayName, ProfilePicURL }\n- WhoIsResponse.Node: { Name, Addresses: [netip.Prefix], ... }\n\nAlgorithm:\n1. Define struct UserProfile with serde rename_all=PascalCase (or explicit rename per field):\n   - id: String  (maps to JSON 'ID')\n   - login_name: String  (maps to JSON 'LoginName')\n   - display_name: Option<String>  (maps to JSON 'DisplayName')\n   - profile_pic_url: Option<String>  (maps to JSON 'ProfilePicURL', not needed for auth but parse to avoid unknown field errors)\n2. Define struct Node with minimal fields needed:\n   - name: String  (maps to JSON 'Name')\n   - addresses: Vec<String>  (maps to JSON 'Addresses', netip.Prefix as string)\n   Use #[serde(default)] on fields that may be absent.\n3. Define struct WhoIsResponse:\n   - node: Node  (maps to JSON 'Node')\n   - user_profile: UserProfile  (maps to JSON 'UserProfile')\n   Use #[serde(rename_all = 'PascalCase')] at struct level.\n4. All structs derive: Debug, Clone, Deserialize (no Serialize needed - not sent on wire)\n5. Validate invariants: user_profile.id must not be empty; checked at use site, not in type\n6. Run: cargo test -p kith-tslocal; cargo clippy -p kith-tslocal -- -D warnings\n\nDefensive rules:\n- UserProfile.id is OPAQUE - do not add parsing methods or format assumptions\n- Use #[serde(default)] on optional Node fields that tailscale may add/remove across versions\n- Do NOT use #[serde(deny_unknown_fields)] - tailscale adds new fields in minor versions\n\nAgent team: standard (R + I + T)\nTests: unit-level deserialization tests using hardcoded JSON strings matching the spec.\n- Test: valid full WhoIsResponse JSON parses correctly (field mapping correct)  \n- Test: missing DisplayName field -> None (not an error)\n- Test: extra JSON fields are ignored (forward compat)\nOracle: the JSON fixtures are hand-constructed from Tailscale LocalAPI spec.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:07:45Z",
+  "closed_at": "2026-04-19T06:07:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

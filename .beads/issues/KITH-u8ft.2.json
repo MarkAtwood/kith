@@ -1,0 +1,21 @@
+{
+  "id": "KITH-u8ft.2",
+  "title": "stall warn with empty node_name unactionable on bare Headscale",
+  "description": "Identity.node_name is documented as 'May be empty on Headscale without node names configured' (kith-core/src/auth.rs:24). The stall warn logs 'peer = %peer_node' (events.rs:398,446). If node_name is empty, the log line emits 'peer=' with no identifying information, making it impossible for an operator to know which SSE client is stalled. An operator running bare Headscale would see a warn with no useful identity. Mitigation: fall back to login_name then user_id, consistent with Identity::display(). Requires capturing the full identity or at least the display() result instead of just node_name. Will generate a support issue from Headscale users who cannot correlate the warn log to a client.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:10:29Z",
+  "updated_at": "2026-04-25T09:12:39Z",
+  "closed_at": "2026-04-25T09:12:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-u8ft",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:10:28Z"
+    }
+  ]
+}

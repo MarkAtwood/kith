@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.68",
+  "title": "row_to_message falls back silently for null sender_msg_id masking DB invariant violation",
+  "description": "row_to_message(): sender_msg_id.unwrap_or_else(|| id.clone()) silently falls back when sender_msg_id is NULL, even though V6 trigger enforces NOT NULL. NULL means DB corruption or pre-V6 data; the fallback papers over it and makes the message appear valid. Better: return Err on NULL, matching how negative size_bytes is rejected.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:06Z",
+  "updated_at": "2026-04-25T08:21:27Z",
+  "closed_at": "2026-04-25T08:21:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:05Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-2058.2",
+  "title": "formatBytes() and uploadBlob() functions",
+  "description": "Add two exported helper functions to web/app.js: formatBytes for human-readable sizes, and uploadBlob for HTTP POST to the session uploadUrl.\n\n**What:** Two pure/async functions with no dependencies on other new beads.\n\n**File:** web/app.js\n\n**Algorithm \u2014 formatBytes(n):**\n1. Pure function, no I/O.\n2. If n >= 1_048_576: return `${(n / 1_048_576).toFixed(1)} MB`\n3. Else if n >= 1_024: return `${(n / 1_024).toFixed(1)} KB`\n4. Else: return `${n} B`\n5. Export as named export.\n\n**Algorithm \u2014 uploadBlob(file):**\n1. Construct URL: `session.uploadUrl.replace('{accountId}', 'a-self')`\n2. Send: `await fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file })`\n3. If !resp.ok:\n   - 413: throw `new Error('File too large (max 100 MB)')`\n   - other: throw `new Error('Upload failed: HTTP ' + resp.status)`\n4. Parse JSON: `const { blobId, size, type, sha256 } = await resp.json()`\n5. Return: `{ blobId, filename: file.name, contentType: type, size, sha256 }`\n6. Export as named export.\n\n**Defensive rules:**\n- Never log blobId, sha256, or file contents to console (treat as blob metadata).\n- Use `file.type || 'application/octet-stream'` \u2014 browser type may be empty string.\n- Do NOT use FormData \u2014 kithd expects raw binary body with Content-Type header, not multipart.\n- Session.uploadUrl must exist (bootstrap must have run); no guard needed (undefined would produce an invalid URL, fetch would throw).\n\n**Tests:**\n- formatBytes: oracle = manual arithmetic. 1023 \u2192 '1023 B'; 1024 \u2192 '1.0 KB'; 1048576 \u2192 '1.0 MB'; 2621440 \u2192 '2.5 MB'.\n- uploadBlob: verified by integration agent (W3 bead) since it requires a running server.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:09:04Z",
+  "updated_at": "2026-04-20T15:11:57Z",
+  "closed_at": "2026-04-20T15:11:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2058",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:09:04Z"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "KITH-0z7.1",
+  "title": "SEC2: per-test TLS cert gen in spawn_test_pair",
+  "description": "Each spawn_test_pair() call creates a fresh temp dir with a unique pid-subsecnanos suffix, so load_or_generate_cert always takes the generation branch (rcgen::generate_simple_self_signed \u2014 ECDSA keygen + self-sign). With the current 3 integration tests that is 3 cert generations per test run; as the suite grows this adds measurable wall time.\n\nLocation: crates/kithd/tests/harness.rs lines 139-146 (temp dir suffix), crates/kithd/src/tls.rs load_or_generate_cert (generation branch).\n\nFix direction: generate the cert once per test binary run (e.g. std::sync::OnceLock<(Vec<u8>, Vec<u8>)> holding the DER bytes) and pass the in-memory bytes into spawn_test_listener, bypassing the disk round-trip entirely for tests. Alternatively, use a fixed temp path shared across tests with a test-binary-scoped lock.",
+  "status": "deferred",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:19:03Z",
+  "updated_at": "2026-04-19T17:26:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:19:02Z"
+    }
+  ]
+}

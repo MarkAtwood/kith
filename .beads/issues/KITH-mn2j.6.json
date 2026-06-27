@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.6",
+  "title": "kith-jmap: register/register_peer don't validate method name against METHOD_ROLES",
+  "description": "Calling register('Foo/bar', handler) for a method not in METHOD_ROLES silently registers an unreachable handler \u2014 dispatch_one returns unknownMethod before reaching the handler map. Calling register_peer('Chat/get', handler) for an owner-role method causes Chat/get to silently return unknownMethod for owners (wrong map). The existing debug_assert only catches both-maps registration; it misses the wrong-map case. Add a debug_assert in register() that the method is in METHOD_ROLES with Role::Owner, and in register_peer() with Role::Peer.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:53Z",
+  "updated_at": "2026-04-25T08:28:54Z",
+  "closed_at": "2026-04-25T08:28:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:53Z"
+    }
+  ]
+}

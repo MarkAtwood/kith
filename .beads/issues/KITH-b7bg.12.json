@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.12",
+  "title": "ChatSetHandler: step comments are misnumbered (3+5 label the lock block, but steps 3 and 5 are documented separately)",
+  "description": "chat.rs ChatSetHandler has a comment block '// Step 3+5: Acquire the store lock once...' (line 205). Steps 3 and 5 were originally separate but were merged to fix a race condition. The comment explains the merge but the numbered steps in the comment still say 'Step 3+5' without renumbering the skipped steps. A reader counting the steps notices the jump from Step 2 to Step 3+5 to Step 6, missing Step 4. The intent was to remove the timestamp-outside-lock/create-in-loop structure. Rewrite as a flat unnumbered comment describing what the block does (acquire lock, capture old_state, create, capture new_state) rather than maintaining a broken step numbering.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:52:52Z",
+  "updated_at": "2026-04-25T08:30:29Z",
+  "closed_at": "2026-04-25T08:30:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:52:52Z"
+    }
+  ]
+}

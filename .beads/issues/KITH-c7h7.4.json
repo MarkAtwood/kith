@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.4",
+  "title": "Receipt enqueue failures are silently ignored in process_update",
+  "description": "When a user marks a message as read (Message/set update readAt), the code silently ignores receipt enqueue failures. Correct because: receipt delivery is best-effort, not core contract; failure must not fail the readAt update (UX impact); outbox retry loop handles eventual delivery or exhaustion. Alternative: propagate as HTTP error rejected because would unnecessarily couple UX to delivery infrastructure.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:33Z",
+  "updated_at": "2026-04-20T03:20:44Z",
+  "closed_at": "2026-04-20T03:20:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:33Z"
+    }
+  ]
+}

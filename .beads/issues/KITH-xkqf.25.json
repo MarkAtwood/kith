@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.25",
+  "title": "ChatContact/queryChanges missing from peer-rejection test matrix",
+  "description": "integration.rs:527-560: test_peer_cannot_call_owner_methods enumerates 13 owner methods but omits ChatContact/queryChanges. If the role gate for that method were accidentally removed, this dispatcher-level test would not catch it. Coverage exists at the e2e layer but the dispatch-layer test should be exhaustive. Add ChatContact/queryChanges to the list.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:40Z",
+  "updated_at": "2026-04-25T03:26:37Z",
+  "closed_at": "2026-04-25T03:26:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:40Z"
+    }
+  ]
+}

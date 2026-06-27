@@ -1,0 +1,13 @@
+{
+  "id": "KITH-o34d",
+  "title": "Review round 3: kith-tui compose/send/receipts",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:23:11Z",
+  "updated_at": "2026-04-20T12:27:12Z",
+  "closed_at": "2026-04-20T12:27:12Z",
+  "notes": "R3: Confidence: 92% chance of missed bug. Running out of real complaints: no.\nR3 coordinator assessment: P1 (ANSI injection on user input) is false positive \u2014 user injecting their own terminal is not a security threat; incoming messages already sanitized. P2 (empty-ID filter) is defensive programming, not design smell. Both labeled opinion. Stopping condition met: P0=0 P1=0 P2=0, SEC7 at 92% confidence running out of real complaints."
+}

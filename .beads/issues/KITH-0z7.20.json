@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.20",
+  "title": "SEC6: DeliverClient generic bound makes outbox_worker testable",
+  "description": "outbox_tick and outbox_worker are generic over C: DeliverClient. This means the retry/backoff logic is fully testable with MockClient or FailingClient without spawning a real HTTPS server or using process isolation. The trait requires only deliver_msg, which maps cleanly to PeerHttpClient::deliver in production. The borrow checker enforces that the lock is dropped before the .await on deliver_msg because MutexGuard is not Send \u2014 the generic bound actually tightens the lock discipline guarantee rather than weakening it.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:20:37Z",
+  "updated_at": "2026-04-19T17:26:54Z",
+  "closed_at": "2026-04-19T17:26:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:20:37Z"
+    }
+  ]
+}

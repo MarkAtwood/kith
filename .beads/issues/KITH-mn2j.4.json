@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.4",
+  "title": "kith-jmap: max_objects_in_get/set capability not enforced in handlers",
+  "description": "build_session advertises max_objects_in_get=500 and max_objects_in_set=500. These are RFC 8620 \u00a72 capability limits clients will use to size their requests. If the actual handlers in kith-chat accept more than 500 IDs without rejecting, the advertised limit is a lie. Need to audit ChatContact/get, Chat/get, Message/get for input-count enforcement.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:32Z",
+  "updated_at": "2026-04-25T07:00:15Z",
+  "closed_at": "2026-04-25T07:00:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:32Z"
+    }
+  ]
+}

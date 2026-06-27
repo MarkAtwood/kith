@@ -1,0 +1,20 @@
+{
+  "id": "KITH-pnlm.8",
+  "title": "compile_error! on non-Unix for TLS key generation: correct enforcement of 0o600 requirement",
+  "description": "tls.rs lines 133-139: compile_error! under #[cfg(not(unix))] ensures the binary cannot build on a platform where OpenOptions::mode() (0o600) is unavailable. The alternative \u2014 a runtime check \u2014 would silently produce a key file with wrong permissions on non-Unix, which is a security regression. The compile-time error is the correct enforcement point. A contributor porting to Windows might remove this error; they should know they must first implement OS-appropriate owner-only permissions before removing the guard.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:27:50Z",
+  "updated_at": "2026-04-24T20:34:12Z",
+  "closed_at": "2026-04-24T20:34:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:27:50Z"
+    }
+  ]
+}

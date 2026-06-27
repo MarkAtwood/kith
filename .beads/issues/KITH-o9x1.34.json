@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.34",
+  "title": "Good: response body size limits enforced during streaming not post-buffer",
+  "description": "kith-tslocal/src/lib.rs applies http_body_util::Limited at the body-streaming layer before JSON parsing. STATUS_MAX_BYTES=10MiB is justified (large tailnets with many peer entries) and documented. WHOIS_MAX_BYTES=100KiB is documented with the real response size (1-2KiB). A contributor might remove these limits for simplicity or raise them without justification. The limits should stay: tailscaled is local but its response is untrusted bytes; unbounded allocation before JSON parsing is a DoS vector if tailscaled is compromised or replaced.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:33Z",
+  "updated_at": "2026-04-25T01:57:02Z",
+  "closed_at": "2026-04-25T01:57:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:32Z"
+    }
+  ]
+}

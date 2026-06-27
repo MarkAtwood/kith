@@ -1,0 +1,20 @@
+{
+  "id": "KITH-pnlm.6",
+  "title": "TypeFilter u8 bitmask: zero-alloc Copy type for SSE coalescing closure capture",
+  "description": "events.rs TypeFilter wraps a u8 bitmask with named bit constants (0b001/010/100). This is correct for a 3-type fixed set: Copy capture in the spawned task's closure, no heap allocation, O(1) lookup via bitwise AND. A contributor might suggest replacing with Vec<String> for 'clarity'. Defend this: the type set is finite and explicitly enumerated; adding a new type requires updating both TypeFilter::parse() and TypeFilter::allows() (the comment explicitly calls this out). The bitmask is not premature optimization for an unknown future \u2014 it is the right data structure for a 3-element boolean set.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:27:45Z",
+  "updated_at": "2026-04-24T20:34:06Z",
+  "closed_at": "2026-04-24T20:34:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:27:44Z"
+    }
+  ]
+}

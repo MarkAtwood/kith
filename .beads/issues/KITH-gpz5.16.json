@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.16",
+  "title": "N+1 query pattern in ChatStore::list via unread_count",
+  "description": "ChatStore::list fetches all chat rows in one query, then calls self.unread_count(&id) for each row in a Rust loop \u2014 one extra SQL query per chat. ChatStore::get and find_direct_by_contact_id have the same pattern. For N chats, this produces N+1 queries. unread_count should be inlined as a subquery or correlated expression in the main SELECT.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:59Z",
+  "updated_at": "2026-04-24T17:07:21Z",
+  "closed_at": "2026-04-24T17:07:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:59Z"
+    }
+  ]
+}

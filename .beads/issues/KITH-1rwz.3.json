@@ -1,0 +1,21 @@
+{
+  "id": "KITH-1rwz.3",
+  "title": "backup: 0-byte dest file not cleaned up on Connection::open failure",
+  "description": "cmd_backup pre-creates dest_path with OpenOptions::create_new().mode(0o600). If Connection::open then fails, the ? propagates without removing the empty file. On retry, the exists() check at the top rejects with 'destination already exists', leaving the user stuck. The pre-creation was introduced in loop 1 as the TOCTOU fix.\n\nFix: wrap Connection::open in a block that calls std::fs::remove_file(&dest_path) before returning the error.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:54:29Z",
+  "updated_at": "2026-04-25T00:58:42Z",
+  "closed_at": "2026-04-25T00:58:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1rwz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:54:29Z"
+    }
+  ]
+}

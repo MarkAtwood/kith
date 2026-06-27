@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.13",
+  "title": "No index on contacts(peer_login) for ORDER BY and query_index",
+  "description": "ContactStore::list() orders by peer_login and ContactStore::query_index() runs a correlated subquery 'SELECT COUNT(*) FROM contacts c2 WHERE c2.peer_login < c1.peer_login'. Both require a full table scan of contacts without an index on peer_login. For a personal mailbox the contacts table stays small, so this is low severity today, but adding CREATE INDEX idx_contacts_peer_login ON contacts(peer_login) would make both queries index-range scans.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:08Z",
+  "updated_at": "2026-04-25T02:02:34Z",
+  "closed_at": "2026-04-25T02:02:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:07Z"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "KITH-tuw1.3",
+  "title": "kithd: peer_fetch.rs \u2014 fetch_peer_blob() implementation",
+  "description": "Implement fetch_peer_blob() in crates/kithd/src/peer_fetch.rs.\n\nWhat: given a peer's mailbox_host and a blob's metadata, fetch the blob bytes from the peer's kithd and cache locally.\n\nSignature:\n  pub async fn fetch_peer_blob(\n      blob_store: &kith_attach::BlobStore,\n      mailbox_host: &str,\n      blob_id: &str,\n      filename: &str,\n      content_type: &str,\n      expected_sha256: &str,\n      expected_size: u64,\n  ) -> Result<(), FetchBlobError>\n\nwhere FetchBlobError: { HostRejected, Network(String), HttpError(u16), HashMismatch { expected, got }, SizeExceeded, Timeout, BlobStore(io::Error) }\n\nAlgorithm:\n1. Validate mailbox_host with is_valid_fetch_host(); if invalid \u2192 HostRejected\n2. Validate blob_id with BlobStore::validate_blob_id(); if invalid \u2192 HostRejected\n3. Construct URL: https://{mailbox_host}/jmap/download/a-self/{blob_id}/{filename}?accept={content_type}\n4. Build TailnetCertVerifier + hyper Client via build_tailnet_https_client()\n5. Set timeout: max(30s, expected_size/65536 + 10s) capped at 300s (5 min for 100MB at ~330KB/s)\n6. Build GET request with Accept header matching content_type\n7. Execute request; on network error \u2192 Network; on timeout \u2192 Timeout\n8. If response status != 200 \u2192 HttpError(status)\n9. Check Content-Length header: if present and > expected_size \u2192 SizeExceeded (do not read body)\n10. Read body with Limited::new(resp.into_body(), expected_size as usize + 1)\n    \u2014 the +1 catches over-sized responses while still collecting exactly expected_size bytes\n11. If body exceeds expected_size bytes \u2192 SizeExceeded; discard\n12. Compute sha256 of received bytes (sha2::Sha256)\n13. If sha256 != expected_sha256 \u2192 HashMismatch { expected, got }; do NOT cache\n14. Write to blob_store with blob_id: blob_store.write_blob(blob_id, &bytes)?\n15. Return Ok(())\n\nDefensive programming:\n- Never log blob bytes or sha256 at error level (could expose content)\n- Do log blob_id + mailbox_host + error type at warn level on failure\n- Timeout must be a hard tokio::time::timeout wrapping the entire future (not just connect)\n- expected_size must be validated > 0 && <= MAX_ATTACHMENT_BYTES (100 MiB) before calling\n- Return Err (not panic) on all failure paths\n\nTests \u2014 integration (no real network; use httptest or axum::serve with tempdir):\n- Oracle: pre-compute sha256 of known test bytes offline (e.g. echo -n 'hello' | sha256sum)\n- happy path: mock server returns correct bytes \u2192 blob written to tempdir\n- hash mismatch: mock server returns different bytes \u2192 Err(HashMismatch), no file written\n- size exceeded: mock server returns more bytes than expected_size \u2192 Err(SizeExceeded)\n- connection refused: \u2192 Err(Network)\n- HTTP 404: \u2192 Err(HttpError(404))\n- SSRF rejected host: \u2192 Err(HostRejected)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:47:50Z",
+  "updated_at": "2026-04-20T16:57:51Z",
+  "closed_at": "2026-04-20T16:57:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tuw1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:47:50Z"
+    },
+    {
+      "depends_on_id": "KITH-tuw1.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:20Z"
+    },
+    {
+      "depends_on_id": "KITH-tuw1.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:21Z"
+    }
+  ]
+}

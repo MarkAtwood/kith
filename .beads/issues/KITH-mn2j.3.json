@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.3",
+  "title": "kith-jmap: no test that a panicking JMAP handler returns serverFail",
+  "description": "dispatch_one wraps every handler call in tokio::task::spawn to catch panics (lines 480-488 peer, 499-507 owner). The catch path returns serverFail. No test exercises this path \u2014 a regression in the spawn/catch logic would go undetected. Add a PanicHandler test fixture and a test that it produces serverFail not a task panic.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:29Z",
+  "updated_at": "2026-04-25T07:00:09Z",
+  "closed_at": "2026-04-25T07:00:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:29Z"
+    }
+  ]
+}

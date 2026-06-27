@@ -1,0 +1,26 @@
+{
+  "id": "KITH-0bb",
+  "title": "kith-jmap: method dispatch registry",
+  "description": "Method dispatch table: map JMAP method names to roles, enforce access control, and call handlers.\n\nWhat: Implement the dispatcher that iterates methodCalls, checks the caller's Role, and either calls the registered handler or returns an error Invocation.\n\nAlgorithm:\n1. Define const METHOD_ROLES: &[(&str, Role)] listing every known method name and its required role:\n   - ('Contact/get', Role::Owner), ('Contact/set', Role::Owner), ('Contact/changes', Role::Owner), ('Contact/query', Role::Owner)\n   - ('Chat/get', Role::Owner), ('Chat/set', Role::Owner), ('Chat/changes', Role::Owner), ('Chat/query', Role::Owner)\n   - ('Message/get', Role::Owner), ('Message/set', Role::Owner), ('Message/changes', Role::Owner), ('Message/query', Role::Owner), ('Message/queryChanges', Role::Owner)\n   - ('Peer/deliver', Role::Peer), ('Peer/receipt', Role::Peer)\n2. Define pub trait JmapHandler: Send + Sync { async fn call(&self, caller: &Caller, args: serde_json::Value, store: &Store) -> Result<serde_json::Value, JmapError> }\n3. Define pub struct Dispatcher { handlers: HashMap<String, Box<dyn JmapHandler>> }\n4. impl Dispatcher { pub fn register(&mut self, method: &str, handler: Box<dyn JmapHandler>) }\n5. impl Dispatcher { pub async fn dispatch(&self, request: JmapRequest, caller: &Caller, store: &Store, session_state: String) -> JmapResponse }\n   a. For each invocation (name, args, call_id) in request.method_calls:\n      - Look up name in METHOD_ROLES; if not found \u2192 error invocation (name, unknownMethod, call_id)\n      - Check caller.role matches required role; if not \u2192 error invocation (name, forbiddenMethod, call_id)\n      - Look up handler in self.handlers; if not registered \u2192 error invocation (name, unknownMethod, call_id)\n      - Call handler.call(caller, args, store); on Err \u2192 error invocation; on Ok \u2192 success invocation\n   b. Return JmapResponse { method_responses: collected invocations, session_state }\n\nDefensive programming rules:\n- Role check MUST happen before handler lookup and call (never call handler with wrong role)\n- No unwrap() in dispatch loop \u2014 every failure returns typed error invocation\n- Handler panics must not propagate (catch via Result; wrap in serverFail if needed)\n- Unknown method returns unknownMethod, not a 500\n- No key material in log statements\n\nTests:\n- Owner calls owner method \u2192 dispatched to handler\n- Peer calls peer method \u2192 dispatched to handler\n- Owner calls peer method \u2192 error invocation with forbiddenMethod\n- Peer calls owner method \u2192 error invocation with forbiddenMethod\n- Unknown method name \u2192 error invocation with unknownMethod\n- Mixed batch (some ok, some not) \u2192 correct per-invocation results\nOracle: Per-method expected errors constructed manually from RFC 8620 \u00a77.1 error type strings, not derived from dispatch code.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:32:44Z",
+  "closed_at": "2026-04-19T07:32:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-jrz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

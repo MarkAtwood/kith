@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.9",
+  "title": "message_query_response: 'total' field absent when server does not return calculateTotal",
+  "description": "In load_messages_for_chat, total_on_server falls back to ids.len() if the 'total' field is absent. The request sends calculateTotal:true. If kithd does not support calculateTotal, it may omit 'total' from the response. In that case total_on_server == ids.len() and the truncation notice is never shown. This is the intended fallback behavior but there is no test for the case where total is absent with ids.len()==500 (the limit). If the server returns exactly 500 IDs without total, the user sees no truncation warning even though older messages may exist. The fix would be to show a notice when ids.len() == 500 regardless of total. Minor correctness gap, not a crash.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:38Z",
+  "updated_at": "2026-04-25T05:33:43Z",
+  "closed_at": "2026-04-25T05:33:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:37Z"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "31ba57cd202d54bef3e9a2e13bc321fc06a5976886e1c77a5ae0fbbe0cf860f7",
+  "created_at": "2026-06-15T04:54:36Z",
+  "created_by": "Mark Atwood",
+  "description": "Unix timestamp parameters passed by callers are named inconsistently across the store methods:\n\n- ChatStore::create(&self, chat_id, kind, contact_id, now_unix: i64)  \u2014 crates/kith-store/src/chat.rs line 229\n- ContactStore::upsert(&self, peer_user_id, peer_login, peer_mailbox_host, display_name, now_unix: i64)  \u2014 crates/kith-store/src/contact.rs line 38\n- SpaceStore::create_space(&self, ..., created_at_unix: i64)  \u2014 crates/kith-store/src/space.rs line 194\n- SpaceStore::add_member(&self, space_id, user_id, nick, joined_at_unix: i64, role_ids)  \u2014 crates/kith-store/src/space.rs line 772\n- MessageStore::insert(&self, ..., created_at_unix: i64, ...)  \u2014 crates/kith-store/src/message.rs line 959\n\n'now_unix' (chat, contact) and 'created_at_unix' (space, message) both mean a caller-supplied current Unix timestamp in seconds, but they use different names. 'joined_at_unix' is unique to space members.\n\nFix: standardize on 'now_unix' for the 'current wall-clock time' parameter across all stores, and reserve 'created_at_unix'/'joined_at_unix' only when the timestamp represents something domain-specific that differs from now (e.g., a backfilled or peer-supplied timestamp).",
+  "ephemeral": 0,
+  "id": "KITH-q7et.43",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "Timestamp parameter named now_unix in some stores, created_at_unix/joined_at_unix in others",
+  "updated_at": "2026-06-19T20:45:47Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:35Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

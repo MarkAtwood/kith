@@ -1,0 +1,12 @@
+{
+  "id": "KITH-j9sb",
+  "title": "kith-chat: Message/set invalidProperties error missing properties array",
+  "description": "Message/set process_update returns {\"type\":\"invalidProperties\",\"description\":\"only readAt is patchable\"} without the required \"properties\" array. RFC 8620 \u00a75.3 specifies SetError of type invalidProperties MUST include a properties array listing the offending property names. The contact handler correctly includes \"properties\": [key]. The message handler does not. Fix: capture the unknown key in the for-loop body and include \"properties\": [key] in the error, matching the contact handler pattern.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:33:12Z",
+  "updated_at": "2026-04-25T02:51:43Z",
+  "closed_at": "2026-04-25T02:51:43Z"
+}

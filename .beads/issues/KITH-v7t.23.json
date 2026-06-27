@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.23",
+  "title": "Legacy env vars accepted silently with no deprecation log",
+  "description": "Config::resolve_owner_id() silently falls back from KITHD_OWNER_ID to KITH_OWNER_ID (config.rs:107-109). Config::resolve_data_dir() silently accepts KITH_DB_PATH (config.rs:77-84). No log is emitted when the legacy var is active. If both old and new vars are set with different values, the new var wins silently. A maintainer who sets KITH_OWNER_ID in a systemd unit (thinking it is correct) and also sets KITHD_OWNER_ID in a dotenv file will see the dotenv value win without any indication that the unit file value was ignored. Fix: emit tracing::warn\\! when a legacy var is in use: 'KITH_OWNER_ID is deprecated; rename to KITHD_OWNER_ID'. Ideally log this after logging is initialized, not via eprintln.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:31:21Z",
+  "updated_at": "2026-04-19T16:37:39Z",
+  "closed_at": "2026-04-19T16:37:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:31:20Z"
+    }
+  ]
+}

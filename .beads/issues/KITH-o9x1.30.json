@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.30",
+  "title": "finish_message_delivery duplicates UPDATE SQL for delivered_at branch",
+  "description": "Two near-identical UPDATE messages SQL strings in finish_message_delivery must stay in sync. A single UPDATE using COALESCE(?2, delivered_at) for the delivered_at column would remove the branch.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:16Z",
+  "updated_at": "2026-04-25T02:22:30Z",
+  "closed_at": "2026-04-25T02:22:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:15Z"
+    }
+  ]
+}

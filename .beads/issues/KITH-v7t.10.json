@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.10",
+  "title": "Decision: bind_tailnet_listeners is generic not dyn",
+  "description": "bind_tailnet_listeners takes T: StatusProvider as a concrete generic parameter rather than &dyn StatusProvider. This is correct for two reasons: (1) it avoids a vtable indirection on every call in production, where T is always LocalApiClient; (2) it allows test doubles (MockStatus in the tests) to be zero-cost inlined structs rather than heap-allocated trait objects, and the compiler checks conformance at instantiation time rather than at runtime.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:28Z",
+  "updated_at": "2026-04-19T23:32:48Z",
+  "closed_at": "2026-04-19T23:32:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:28Z"
+    }
+  ]
+}

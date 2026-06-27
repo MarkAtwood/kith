@@ -1,0 +1,13 @@
+{
+  "id": "KITH-hv3d",
+  "title": "Review: maxChanges overflow fix correction",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:17:16Z",
+  "updated_at": "2026-04-24T22:20:47Z",
+  "closed_at": "2026-04-24T22:20:47Z",
+  "notes": "Overflow fix verified correct. One doc comment typo fixed (is_destroyed \u2192 is_create). No real bugs found."
+}

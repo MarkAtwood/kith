@@ -1,0 +1,32 @@
+{
+  "close_reason": "Mentions implemented",
+  "closed_at": "2026-06-13T18:15:08Z",
+  "compaction_level": 0,
+  "content_hash": "e846bdb92b6173c5f2d6cd1357a37eb05cbcd1bf3870eb9e6f2fba6b4ced9f93",
+  "created_at": "2026-06-13T06:29:21Z",
+  "created_by": "Mark Atwood",
+  "description": "The Message struct (kith-core/src/message.rs:38-80) has no mentions field. The spec requires Message.mentions (Mention[]) for per-user mention annotations. Neither the Mention type nor any mention handling exists in the codebase. Spec reference: draft-atwood-jmap-chat-00.md line 588, section 4.15.",
+  "design": "## Plan: Implement mentions array on Message\n\n### Approach\nAdd Mention type and mentions field following the established attachment pattern (separate validation, stored in a related table, serialized as a nested array).\n\n### Steps\n\n**1. kith-core: Define Mention type and add to Message**\n- File: kith-core/src/message.rs\n- Add `Mention` struct: `{ id: String, offset: u64, length: u64 }` with serde(rename_all = \"camelCase\")\n- Add `mentions: Vec<Mention>` to `Message` struct (always present, default empty)\n- Export from kith-core/src/lib.rs\n\n**2. kith-store: Schema + storage for mentions**\n- File: kith-store/src/lib.rs (migration)\n- New table: `CREATE TABLE IF NOT EXISTS mentions (message_id TEXT REFERENCES messages(id) ON DELETE CASCADE, contact_id TEXT NOT NULL, offset INTEGER NOT NULL, length INTEGER NOT NULL, PRIMARY KEY (message_id, contact_id, offset))`\n- File: kith-store/src/message.rs\n  - `insert_mentions(msg_id, &[Mention])` \u2014 batch insert\n  - `get_mentions(msg_id) -> Vec<Mention>` \u2014 load for a message\n  - Update `row_to_message` and all SELECT paths to LEFT JOIN or post-load mentions (follow attachment pattern)\n  - Update `insert_message_with_attachments` \u2192 `insert_message_with_extras` or add a separate mentions insert step\n\n**3. kith-chat: Validate mentions in Message/set create**\n- File: kith-chat/src/message.rs, in process_create\n- Parse `mentions` from args (optional, default empty vec)\n- Validate each mention:\n  - `offset + length <= body.len()` (byte length)\n  - `offset` and `offset + length` are valid UTF-8 char boundaries (for text/plain and text/markdown)\n  - `id` references a valid ChatContact (check in store after lock acquisition)\n- Pass validated mentions to store insert\n- Include mentions in response Message\n\n**4. kith-chat: Support mentions in Message/set update (edit)**\n- When body/bodyType change, re-validate mentions if also changing\n- Store old mentions in MessageRevision if edit history is tracked\n\n**5. kith-peer: Add mentions to Peer/deliver wire format**\n- File: kith-peer/src/lib.rs\n- Add `mentions: Vec<Mention>` to `DeliverMessageArgs` (with serde default)\n- Validate inbound mentions: offset+length bounds check, scope check\n- Pass through to store insert\n\n**6. Tests**\n- Unit test: Mention serialization round-trip\n- Integration test: Message/set create with mentions, verify mentions returned in Message/get\n- Integration test: Peer/deliver with mentions\n- Integration test: reject mention with offset+length > body.len()\n- Integration test: reject mention with invalid UTF-8 boundary offset\n\n### Dependencies\n- None (standalone, but blocks KITH-895d broadcastMentions)\n\n### Files touched\n- kith-core/src/message.rs (Mention type + Message field)\n- kith-core/src/lib.rs (re-export)\n- kith-store/src/lib.rs (migration)\n- kith-store/src/message.rs (CRUD)\n- kith-chat/src/message.rs (validation in Message/set)\n- kith-peer/src/lib.rs (wire format + validation)\n- kith-architecture.md (update Message definition)",
+  "ephemeral": 0,
+  "id": "KITH-pqed",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement mentions array on Message",
+  "updated_at": "2026-06-13T18:15:08Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:40:10Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-52li",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

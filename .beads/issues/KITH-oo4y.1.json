@@ -1,0 +1,21 @@
+{
+  "id": "KITH-oo4y.1",
+  "title": "Chat/changes and Message/changes silently ignore maxChanges",
+  "description": "Chat/changes (chat.rs:413) and Message/changes (message.rs:696) hardcode hasMoreChanges:false and return all changes regardless of any maxChanges argument. RFC 8620 \u00a75.6: if maxChanges is provided, the server must not return more than that many changes. A JMAP client that sends maxChanges:5 to either endpoint receives all N changes with no pagination signal \u2014 a protocol violation. Newly-fixed Contact/changes (which correctly implements maxChanges) creates a visible behavioral inconsistency between sibling endpoints. At Phase 1 volumes this won't manifest, but any client exercising the standard JMAP changes-loop will be broken if message or chat counts grow.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:41:38Z",
+  "updated_at": "2026-04-24T20:45:51Z",
+  "closed_at": "2026-04-24T20:45:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oo4y",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:41:38Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nzfb.3",
+  "title": "receiver_count==1 assertion races task startup",
+  "description": "After app.oneshot(req).await returns, the test asserts tx.receiver_count() == 1 after a single yield_now(). This relies on the default single-threaded tokio test runtime scheduling the spawned coalescing task within one yield. This holds today because tokio's single-threaded scheduler typically runs newly spawned tasks on the next yield point \u2014 but this is undocumented scheduler behavior, not a language guarantee. A future tokio version that batches task wakeups differently, or a test run on a multi-threaded runtime, could observe receiver_count() == 0 at that assertion, producing an intermittent false failure. Using a watch channel or a semaphore to signal subscription would eliminate the race.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:01:48Z",
+  "updated_at": "2026-04-24T19:03:37Z",
+  "closed_at": "2026-04-24T19:03:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nzfb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:01:47Z"
+    }
+  ]
+}

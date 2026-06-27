@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.23",
+  "title": "static_files_test: make_app creates two separate blob stores (dispatcher and AppState diverge)",
+  "description": "static_files_test.rs:97,110: make_app() calls make_blob_store() twice \u2014 once for blob_store_for_dispatcher and once inline for AppState.blob_store. These are two different directories. Any upload-then-download test built on this factory would fail: upload writes to one directory, download reads from the other. Fix: create one blob store, pass Arc::clone to both dispatcher and AppState.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:30Z",
+  "updated_at": "2026-04-25T03:26:23Z",
+  "closed_at": "2026-04-25T03:26:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:30Z"
+    }
+  ]
+}

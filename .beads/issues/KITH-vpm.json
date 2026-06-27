@@ -1,0 +1,21 @@
+{
+  "id": "KITH-vpm",
+  "title": "kith-peer: add attachments to build_peer_deliver_request and outbox_tick",
+  "description": "KITH-3yb.7 was closed as done but build_peer_deliver_request has no attachments parameter and outbox_tick does not load or pass message attachments.\n\nImplement:\n1. Add attachments: &[Attachment] parameter to build_peer_deliver_request; serialize as 'attachments' array in message JSON\n2. In outbox_tick, after loading message, also load message.attachments via guard.messages().get() (which hydrates via AttachmentStore)\n3. Pass attachments to build_peer_deliver_request\n4. The PeerAttachment wire format: {blobId, filename, contentType, size, sha256}\n\nWhy: Without this, outgoing messages with attachments will be delivered with empty attachments; recipient will receive stripped messages.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:22:32Z",
+  "updated_at": "2026-04-20T01:51:56Z",
+  "closed_at": "2026-04-20T01:51:56Z",
+  "notes": "Part of Phase 2 peer delivery epic KITH-7w7",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-55a",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:22:59Z"
+    }
+  ]
+}

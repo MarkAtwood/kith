@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.5",
+  "title": "SSE buffer CRLF replacement is per-chunk: split CRLF across chunks becomes LF+\\r or LF+CR",
+  "description": "In run_sse: buf.push_str(&String::from_utf8_lossy(&bytes).replace(\"\\r\\n\", \"\\n\")). The replace operates on each chunk independently. If a chunk boundary falls exactly between \\r and \\n \u2014 i.e., one chunk ends with \\r and the next begins with \\n \u2014 the \\r\\n pair is never seen by replace(). The trailing \\r is appended to buf as a literal carriage return. Subsequent buf.find(\"\\n\\n\") finds a block boundary but the block contains a stray \\r before each \\n. parse_sse_event uses str::lines() which handles CRLF, so the block parse survives. However the blank-line delimiter is \\n\\n in the find() \u2014 CRLF/CRLF would be \\r\\n\\r\\n, and after per-chunk normalization this can be \\r\\n\\n (if the first \\r\\n split at boundary with the second \\r\\n complete). The \\r\\n\\n contains a \\n\\n so the event IS split correctly. But the block passed to parse_sse_event still has a leading \\r on each line, which str::lines() strips. This is filed as KITH-hqrw.81 already.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:36:42Z",
+  "updated_at": "2026-04-25T04:36:47Z",
+  "closed_at": "2026-04-25T04:36:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:36:42Z"
+    }
+  ]
+}

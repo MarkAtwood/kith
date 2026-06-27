@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.1",
+  "title": "SEC4: receipt branch in outbox_tick needs control-flow comment",
+  "description": "Lines 932-973 in crates/kith-peer/src/lib.rs: The receipt handling block is separated with a comment but doesn't explain the design: why the early `continue` completely diverges from the message-delivery path below. A new reader might ask: 'Why not unify these code paths?' A clarifying comment should state the reason: 'Receipt entries require no message payload or chat lookup\u2014full separation is simpler than conditional branching.'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:23Z",
+  "updated_at": "2026-04-20T03:22:13Z",
+  "closed_at": "2026-04-20T03:22:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:22Z"
+    }
+  ]
+}

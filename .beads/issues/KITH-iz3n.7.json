@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.7",
+  "title": "live_tx receiver-drop break only covers close_after_first path",
+  "description": "The new is_err() break on live_tx.send(None) in the close_after_first + empty-batch path (line 365) correctly stops the task when the client disconnects. However the analogous live_tx.send(Some(...)) call at line 391 already handled this with its own is_err() break. The two send sites now have matching error-handling shapes. The concern is that the close_after_first=false path with an empty batch still loops without attempting any send, so receiver-drop is not detected until the next non-empty batch or recv() closes -- that is correct behavior but undocumented. No functional bug; the fix is complete but the asymmetry in how quickly disconnection is detected across the two paths is worth noting.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:26Z",
+  "updated_at": "2026-04-24T18:33:22Z",
+  "closed_at": "2026-04-24T18:33:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:26Z"
+    }
+  ]
+}

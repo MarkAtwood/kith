@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.17",
+  "title": "DECISION: Saturating arithmetic for scroll navigation",
+  "description": "What: PageUp and PageDown operations use saturating_sub() to prevent underflow. PageUp does scroll_offset += height; PageDown does scroll_offset = scroll_offset.saturating_sub(height). Then clamp_scroll() ensures the result fits in [0, max_offset].\n\nWhy it's good: Scroll offset is a visual position, not a buffer index. Saturation arithmetic is the right primitive: if you scroll down past the bottom, stay at bottom; if you scroll up past the top, stay at top. No panics on edge cases. The two-step approach (saturating arithmetic + clamping) separates concerns: first we apply the user action, then we enforce bounds. Tested implicitly by e2e test exercising multiple chat loads.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:03Z",
+  "updated_at": "2026-04-20T05:45:59Z",
+  "closed_at": "2026-04-20T05:45:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:03Z"
+    }
+  ]
+}

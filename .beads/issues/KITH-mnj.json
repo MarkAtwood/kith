@@ -1,0 +1,13 @@
+{
+  "id": "KITH-mnj",
+  "title": "get_or_create advances state on cache hit (no-op INSERT)",
+  "description": "chat.rs::get_or_create calls advance_state() unconditionally even when INSERT OR IGNORE was a no-op (chat already existed). Every call to get_or_create on an existing chat produces a spurious Chat/changes delta, causing clients to poll for nothing. Fix: check conn.changes() after INSERT; only advance_state if affected > 0.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:49:57Z",
+  "updated_at": "2026-04-19T05:53:42Z",
+  "closed_at": "2026-04-19T05:53:42Z"
+}

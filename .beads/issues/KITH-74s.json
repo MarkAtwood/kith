@@ -1,0 +1,37 @@
+{
+  "id": "KITH-74s",
+  "title": "kith-peer: tests for delivery, retry, and rejection",
+  "description": "What: Comprehensive integration test suite for kith-peer: inbound Peer/deliver and Peer/receipt, outbox worker retry, and all rejection paths.\n\nAlgorithm:\n1. Create crates/kith-peer/src/tests/ module (or test file) with in-memory Store (Store::open_in_memory())\n2. Build test fixtures: mock WhoIs returning known Identity {user_id, login_name, display_name, node_name}; known owner_id; pre-seeded chat and message rows in store\n3. Test group A \u2014 Peer/deliver happy path:\n   - Construct valid PeerDeliverArgs with correct senderTailscaleUserId, correct chatId, valid ULID, small body, valid bodyType\n   - Call DeliverHandler::call() directly with mock Caller\n   - Assert: return value is Ok with accepted=true; messages table has one row with delivery_state=Received\n   - Assert: contacts table has auto-created row for sender\n4. Test group B \u2014 Peer/deliver rejections (each must verify ZERO DB writes):\n   - Mismatched senderTailscaleUserId -> JmapError returned; no message row\n   - Wrong chatId -> JmapError returned; no message row\n   - Body > 65536 bytes -> JmapError returned\n   - Invalid ULID id -> JmapError returned\n   - Invalid bodyType -> JmapError returned\n   - replyTo references non-existent message -> JmapError returned\n5. Test group C \u2014 Peer/receipt:\n   - Insert outgoing message (delivery_state=Pending) into store; call ReceiptHandler with kind=delivered -> delivery_state=Delivered in DB\n   - Call ReceiptHandler with kind=read -> read_at set in DB\n   - Call ReceiptHandler with messageId not in store -> JmapError::not_found\n   - Call ReceiptHandler with messageId of inbound message (delivery_state=Received) -> JmapError::not_found\n6. Test group D \u2014 Outbox worker retry:\n   - Insert outgoing message + outbox row; set up mock PeerHttpClient that fails N times then succeeds\n   - Advance time (or manipulate next_attempt_at); run one worker loop iteration\n   - Assert: on success, outbox row deleted and message delivery_state=Delivered\n   - Assert: on N failures, attempt_count increments; next_attempt_at advances per backoff formula\n7. Run: cargo test -p kith-peer\n8. Run: cargo clippy -p kith-peer -- -D warnings\n\nDefensive rules:\n- Tests MUST NOT use the code under test as oracle (no circular assertions)\n- Rejection tests MUST verify zero DB writes (count rows before and after; assert row count unchanged)\n- Each test is independent (fresh in-memory store per test)\n- No time-sensitive waits (avoid tokio::time::sleep in tests); use direct handler calls\n- Mock PeerHttpClient must implement a trait; not use real HTTPS in unit tests\n\nAgent team: Tester T derives test vectors from kith-architecture.md and RFC 8620 (NOT from reading the implementation). Implementer I writes test harness and mock client. Validator V runs full test suite + clippy.\n\nTests (oracle = kith-architecture.md + RFC 8620 \u00a73):\n- All tests in groups A-D above; expected values are hardcoded from spec, not derived from running the code",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:23:37Z",
+  "closed_at": "2026-04-19T09:23:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-f5r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:21Z"
+    },
+    {
+      "depends_on_id": "KITH-nu1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:20Z"
+    },
+    {
+      "depends_on_id": "KITH-vhv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:21Z"
+    }
+  ]
+}

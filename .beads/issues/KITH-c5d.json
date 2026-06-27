@@ -1,0 +1,12 @@
+{
+  "id": "KITH-c5d",
+  "title": "auth.rs: clarify fail-closed and async-safety comments",
+  "description": "Minor readability improvements in auth/extractors layer:\n\n1. auth.rs line 40-41: Comment about fail-closed error mapping is unclear. Explain why store errors must NOT return 401 (security boundary).\n\n2. extractors.rs line 70-77: Long async-safety explanation could be condensed. Key insight (Connection is !Send) is buried; lead with that.\n\n3. extractors.rs line 209: add_contact() helper lacks doc comment; should explain test setup role.\n\n4. extractors.rs line 150-152: Comment suggests code duplication across MockWhoIs implementations. Consider noting that extraction would require exposing test doubles, which trades readability for abstraction.\n\nAll issues are P4 (readability polish, not correctness). No logic changes needed.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:49:54Z",
+  "updated_at": "2026-04-19T23:38:56Z",
+  "closed_at": "2026-04-19T23:38:56Z"
+}

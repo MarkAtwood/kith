@@ -1,0 +1,20 @@
+{
+  "id": "KITH-7g5",
+  "title": "Deploy: validate musl cross-compile",
+  "description": "Validate that kithd cross-compiles to static musl binaries for x86_64 and aarch64. Document any toolchain requirements. Fix any build issues found.\n\nWhat: Confirm the musl static binary build works on this dev host and document what operators need.\n\nAlgorithm:\n1. Check if musl-tools is installed: which x86_64-linux-musl-gcc\n2. If not installed: document that 'sudo apt-get install musl-tools' is required; attempt to verify this works (run the install if sudo is available, or document the requirement)\n3. Attempt: cargo build --release --target x86_64-unknown-linux-musl\n   - If success: run ldd to confirm static linking ('ldd target/x86_64-unknown-linux-musl/release/kithd' must return 'not a dynamic executable')\n   - If failure: diagnose and fix (linker config is already in .cargo/config.toml)\n4. Attempt: cargo build --release --target aarch64-unknown-linux-musl\n   - Check if aarch64-linux-musl-gcc is available\n   - If not: document that 'sudo apt-get install gcc-aarch64-linux-gnu musl-tools' or 'cross' crate is needed; try cross crate as fallback\n   - Run ldd equivalent for aarch64 binary or use 'file' command to confirm static\n5. Update CLAUDE.md or AGENTS.md build section if the documented commands are wrong\n6. If any musl dependency issue found: fix it (but there should be none \u2014 rustls + rusqlite bundled are musl-safe)\n\nDefensive programming rules:\n- Never report success without actually running ldd and checking output\n- If aarch64 cross-compile requires special tooling not on this host, document clearly and do not claim it works\n- Do not modify build flags in a way that breaks the native build\n\nTests:\n- ldd output on x86_64 binary must contain 'not a dynamic executable'\n- 'file target/.../kithd' must say 'statically linked'\n- Native cargo test must still pass after any changes",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T18:34:21Z",
+  "closed_at": "2026-04-19T18:34:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jh7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

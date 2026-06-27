@@ -1,0 +1,12 @@
+{
+  "id": "KITH-wkky",
+  "title": "kith-chat: Chat/changes puts all changes in created[], never in updated[]",
+  "description": "Chat/changes handler puts all rows from get_changes_since_ordered into created[] and hardcodes updated=[]. The store returns (id, counter) 2-tuples with no is_create flag \u2014 there is no way to distinguish newly-created chats from chats that had last_message_at updated. RFC 8620 \u00a75.6 requires correct created/updated split. Fix: add is_create flag to ChatStore::get_changes_since_ordered (same pattern as message and contact stores), add created_at_counter column to chats table, and split in the handler.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:49Z",
+  "updated_at": "2026-04-25T02:51:42Z",
+  "closed_at": "2026-04-25T02:51:42Z"
+}

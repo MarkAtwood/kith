@@ -1,0 +1,31 @@
+{
+  "id": "KITH-xkq",
+  "title": "kith-tslocal: WhoIs client over Unix socket",
+  "description": "Implement async whois(addr: SocketAddr) -> Result<WhoIsResponse, AuthError> over Unix socket.\n\nWhat: HTTP GET /localapi/v0/whois?addr=<ip:port> to tailscaled Unix socket.\n\nAvailable: hyper 1.9.0, hyper-util 0.1.20 (tokio feature), tokio UnixStream.\n\nAlgorithm:\n1. Define struct LocalApiClient { socket_path: String } with new(path: &str) -> Self\n2. Implement whois(&self, addr: SocketAddr) -> Result<WhoIsResponse, AuthError>:\n   a. Format addr as 'ip:port' string for query param\n   b. Connect: tokio::net::UnixStream::connect(&self.socket_path).await map_err -> WhoIsFailed\n   c. Wrap: hyper_util::rt::TokioIo::new(stream)\n   d. Handshake: hyper::client::conn::http1::handshake(io).await map_err -> WhoIsFailed\n   e. Spawn connection task: tokio::spawn(async move { conn.await })\n   f. Build request: Request::builder().method('GET').uri('/localapi/v0/whois?addr=<addr>').header('Host', 'local').body(http_body_util::Empty::new())\n   g. Send: sender.send_request(req).await map_err -> WhoIsFailed\n   h. Check status: if !resp.status().is_success() -> WhoIsFailed('HTTP <status>')\n   i. Collect body: http_body_util::BodyExt::collect(resp.into_body()).await -> bytes\n   j. Size check: if bytes.len() > 102_400 -> WhoIsFailed('response too large')\n   k. Parse JSON: serde_json::from_slice(&bytes) map_err -> WhoIsFailed\n   l. Validate: if result.user_profile.id.is_empty() -> WhoIsFailed('empty user_id')\n   m. Validate: if result.user_profile.id.contains('\\0') -> WhoIsFailed('null byte in user_id')\n   n. Return Ok(result)\n3. Socket path default: const DEFAULT_SOCKET: &str = '/var/run/tailscale/tailscaled.sock'\n\nDefensive rules:\n- All network errors -> AuthError::WhoIsFailed(String), never panic or unwrap\n- Size limit 100KB enforced BEFORE serde parse\n- Validate user_profile.id non-empty and no null bytes\n- Do NOT log user_id or login_name in error messages\n- Wrap ALL await errors with context string ('connecting to tailscaled', 'sending whois request', etc.)\n- addr format for IPv6: SocketAddr Display already formats as [::1]:port\n\nAgent team: standard (R + I + T)\nTests: separate bead KITH-3oh",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:11:14Z",
+  "closed_at": "2026-04-19T06:11:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c05",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:19Z"
+    },
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-uc4.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:19Z"
+    }
+  ]
+}

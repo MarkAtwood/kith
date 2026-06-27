@@ -1,0 +1,14 @@
+{
+  "id": "KITH-45h",
+  "title": "Review round 1: KITH-eda Auth layer",
+  "description": "Review pass for KITH-eda auth layer implementation. Covers authorize(), check_sender(), AppState/Caller/CallerRejection extractor.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:49:15Z",
+  "updated_at": "2026-04-19T06:53:10Z",
+  "closed_at": "2026-04-19T06:53:10Z",
+  "notes": "Maintainer risk verdict: ONE P1 FINDING - Authorization logic duplication. The authorize() function and Caller::from_request_parts() extractor implement the same authorization decision independently, which will cause silent divergence as the code evolves. Both are correct today but they handle store errors in parallel codepaths that are not synchronized. Filed as KITH-45h.3 (Risk: Authorization logic duplication). This is the only maintainer burden issue found. Other findings: No P1 security bugs in error handling paths (both correctly fail-closed), good test coverage for auth boundaries, proper PII scrubbing in HTTP responses."
+}

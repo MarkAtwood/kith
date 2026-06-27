@@ -1,0 +1,27 @@
+{
+  "id": "KITH-vx6.4",
+  "title": "E2E: owner sends message and retrieves via Message/get",
+  "description": "What: End-to-end integration test: owner creates a contact, creates a chat, sends a message via Message/set create, retrieves it via Message/get, verifies JMAP response shape and field values.\n\nAlgorithm:\n1. Open in-memory Store::open_in_memory().\n2. Initialize test AppState with mock WhoIsProvider returning owner identity.\n3. Build full axum Router via test helper (same as main.rs but in-memory store).\n4. POST /.well-known/jmap \u2192 assert Session response shape.\n5. Contact/set create: { create: { c0: { tailscaleUserId, login, mailboxHost } } } \u2192 assert created.c0 has server id.\n6. Chat/set create: { create: { c0: { contactId: <from step 5> } } } \u2192 assert created.c0 has deterministic chat id.\n7. Message/set create: { create: { m0: { chatId, body: \"hello\", bodyType: \"text/plain\" } } } \u2192 assert created.m0 has id, deliveryState=pending.\n8. Message/get: { ids: [<id from step 7>] } \u2192 assert list[0].body == \"hello\", list[0].chatId == chatId.\n9. Message/changes: { sinceState: \"s-0\" } \u2192 assert created list contains message ID.\n10. Message/query: { chatId: <chatId> } \u2192 assert IDs list contains message ID.\n\nDefensive invariants tested:\n- Message with oversized body (>65536) \u2192 notCreated with invalidArguments\n- Message with wrong chatId \u2192 notCreated with invalidArguments\n- Contact/changes with malformed sinceState \u2192 methodResponse error cannotCalculateChanges or invalidArguments\n\nOracle: All expected values are hand-constructed from RFC 8620 spec; no values derived from code under test. Response shapes verified against RFC 8620 \u00a75.x field names (camelCase, exact type).\n\nAgent team:\n- Agent R: Read existing integration tests in kith-store/src/ for test helper patterns. Read kithd/src/main.rs for router construction.\n- Agent I: Implement E2E test in kith-chat/tests/e2e.rs or kithd/tests/e2e.rs.\n- Agent T: Independently derive expected JMAP field names and values from RFC 8620 text. Verify no oracle comes from code output.\n- Agent V: cargo test --workspace passes, clippy clean.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:17:51Z",
+  "updated_at": "2026-04-19T15:51:00Z",
+  "closed_at": "2026-04-19T15:51:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:17:51Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:50Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.4",
+  "title": "Non-atomic write in ChatStore::create loses new chat from changes",
+  "description": "ChatStore::create runs INSERT OR IGNORE (which commits immediately), then if a row was inserted opens a second transaction to advance the state counter and write changed_at_counter. Between the INSERT commit and the counter update, the new chat row exists with changed_at_counter=0. A Chat/changes(sinceState) query arriving in that window uses 'WHERE changed_at_counter > since_counter'. If since_counter >= 0, the newly created chat (counter=0) is invisible to all since states, not just since_counter=0. Fix: move the INSERT inside the same transaction that advances the counter.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:32Z",
+  "updated_at": "2026-04-25T01:27:33Z",
+  "closed_at": "2026-04-25T01:27:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:32Z"
+    }
+  ]
+}

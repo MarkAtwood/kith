@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "e567b064b6fef4dd8765f6520073a53b3c2a0b8801d495fe352e77c4fb305981",
+  "created_at": "2026-06-15T04:54:24Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer/src/lib.rs Peer/deliver handler (step 2, line 187) requires identity.user_id == msg.sender_user_id before any DB write. Combined with the WhoIs-based identity in the extractor, this means a peer cannot deliver a message claiming to be from someone else: the transport identity and the claimed sender must match.\n\nThis is the anti-spoof mechanism described in the architecture doc. It requires no signatures, no PKI, no challenge-response \u2014 just a structural invariant that the verified Tailscale caller identity must equal the senderUserId field.\n\nWorth defending if someone suggests removing the check as 'redundant with auth' (it is not: auth verifies the caller is a known permitted peer; this check verifies the caller is the same person they claim to be in the message payload). The empty identity.user_id guard (line 181) prevents the degenerate case where an empty string matches an empty stored sender_user_id.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.39",
+  "is_template": 0,
+  "issue_type": "decision",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DECISION: senderUserId anti-spoof check at Peer/deliver boundary",
+  "updated_at": "2026-06-15T04:54:24Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:23Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

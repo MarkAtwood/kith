@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.53",
+  "title": "query_index in ContactStore produces non-deterministic results for contacts with identical peer_login",
+  "description": "ContactStore::query_index() counts contacts whose peer_login sorts strictly before the target contact's peer_login (c2.peer_login < c1.peer_login). If two contacts share the same peer_login value (e.g. both have empty login names on a Headscale deployment without OIDC), both would receive the same index. This means Contact/queryChanges would report incorrect insertion positions for the duplicate. The JMAP RFC requires positions to be deterministic. Fix: add a secondary tie-breaking column to the ORDER BY (e.g. peer_user_id), matching the sort order used in list(). Note: the list() method currently only orders by peer_login with no tie-break. Both query_index and list() should be aligned on the same deterministic composite sort key.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:29Z",
+  "updated_at": "2026-04-25T06:14:49Z",
+  "closed_at": "2026-04-25T06:14:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:29Z"
+    }
+  ]
+}

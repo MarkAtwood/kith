@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.3",
+  "title": "SEC2: New hyper Client built on every fetch miss",
+  "description": "fetch_peer_blob builds a fresh hyper Client on every single download miss.\n\nFile: crates/kithd/src/peer_fetch.rs, line 375\n\nThe Client is stateless and reusable. Building it per-request prevents connection pooling/reuse and wastes TLS handshake overhead for repeated fetches to the same peer.\n\nImpact: Measurable on high-volume attachment downloads. Refactor to build once at daemon startup (AppState) and share across all peer fetches.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:29Z",
+  "updated_at": "2026-04-20T17:21:19Z",
+  "closed_at": "2026-04-20T17:21:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:28Z"
+    }
+  ]
+}

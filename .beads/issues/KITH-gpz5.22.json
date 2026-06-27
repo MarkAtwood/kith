@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.22",
+  "title": "unix_secs_to_rfc3339 doc claims correctness only from 1970-03-01",
+  "description": "kith_core::unix_secs_to_rfc3339 documents 'Correct for dates from 1970-03-01 through 2299' but the existing test oracle at t=0 returns 1970-01-01T00:00:00Z correctly, and t=86400 returns 1970-01-02T00:00:00Z correctly. The Hinnant algorithm handles the full range including the first 59 days of 1970; the lower-bound claim in the docstring is misleading and may cause a caller to add unnecessary validation.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:48:36Z",
+  "updated_at": "2026-04-24T16:59:51Z",
+  "closed_at": "2026-04-24T16:59:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:48:36Z"
+    }
+  ]
+}

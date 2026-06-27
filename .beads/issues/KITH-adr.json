@@ -1,0 +1,26 @@
+{
+  "id": "KITH-adr",
+  "title": "kith-store: ContactStore",
+  "description": "ContactStore: CRUD operations on contacts table plus JMAP state token tracking.\n\n**What:** ContactStore wraps a &Connection and implements contact persistence with get_by_peer_user_id, upsert, list, set_blocked, is_permitted, and JMAP state advance.\n\n**Algorithm:**\n1. Define pub struct ContactStore<'a> { conn: &'a Connection }\n2. upsert(peer_user_id, peer_login, peer_mailbox_host, display_name) -> Result<(), KithError>: INSERT OR REPLACE into contacts, advance state_counter for 'contact'\n3. get_by_peer_user_id(id: &str) -> Result<Option<Contact>, KithError>: SELECT with parameterized id, map row to Contact struct using RFC 3339 timestamp format for first_seen_at/last_seen_at (store as INTEGER unix seconds, return as formatted string)\n4. list(limit: usize, offset: usize) -> Result<Vec<Contact>, KithError>: SELECT all, ORDER BY first_seen_at\n5. set_blocked(peer_user_id: &str, blocked: bool) -> Result<(), KithError>: UPDATE contacts SET blocked=? WHERE peer_user_id=?, advance state\n6. is_permitted(peer_user_id: &str) -> Result<bool, KithError>: SELECT COUNT(*) WHERE peer_user_id=? AND blocked=0 > 0; must be O(1) lookup via PK\n7. get_state() -> Result<String, KithError>: SELECT counter FROM state_counters WHERE type_name='contact', return 's-{counter}'\n8. advance_state() -> Result<String, KithError>: UPDATE state_counters SET counter=counter+1 WHERE type_name='contact', return new state string\n\n**Defensive programming rules:**\n- All queries use params! macro (never string interpolation)\n- is_permitted must return false (not Err) if the peer is not in contacts at all\n- Timestamps stored as INTEGER (unix seconds) for efficient range queries; formatted as RFC 3339 on read\n- Never log body content or peer IDs at error level\n- Return KithError::Validation for not-found; KithError::Store for DB errors\n\n**Tests (independent oracle):**\n- upsert then get_by_peer_user_id returns identical Contact fields\n- upsert same peer_user_id twice: second upsert is idempotent (no duplicate row)\n- is_permitted: new peer not in contacts returns false\n- is_permitted: unblocked contact returns true\n- is_permitted: blocked contact returns false  \n- state advances after upsert and set_blocked\n- list returns contacts in insertion order by first_seen_at\n\n**Acceptance:** cargo test -p kith-store: all ContactStore tests pass; no unwrap() in production paths; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:29:31Z",
+  "closed_at": "2026-04-19T05:29:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-k64",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.14",
+  "title": "unix_secs_to_rfc3339 accepts negative timestamps silently",
+  "description": "kith-core/src/lib.rs unix_secs_to_rfc3339(secs: i64) is documented as correct from the Unix epoch (t=0) through 2299 but silently produces output for negative inputs (pre-1970 dates). The function is used by kith-store to format timestamps read from SQLite columns (message.rs lines 79-82, contact.rs lines 404-405). If a DB row somehow contains a negative timestamp (corruption, manual edit, or a test fixture), the function returns a plausible-looking but wrong date string that passes all downstream validation. An explicit panic or Err return for secs < 0 at the function boundary would catch this class of corruption earlier and more visibly.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:14Z",
+  "updated_at": "2026-04-25T01:53:04Z",
+  "closed_at": "2026-04-25T01:53:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:14Z"
+    }
+  ]
+}

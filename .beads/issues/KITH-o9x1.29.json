@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.29",
+  "title": "Good: null-byte rejection at WhoIs trust boundary",
+  "description": "kith-tslocal/src/lib.rs whois() explicitly checks user_id and login_name for null bytes before returning, with clear comments explaining why (SQL prepared statements, string comparison bugs). This is the correct place to enforce this invariant \u2014 at the point where untrusted network data crosses into the application's identity namespace. A contributor might be tempted to remove these checks as 'unnecessary' because Tailscale controls the API; the checks should stay because tailscaled is on the same host but is still a separate process whose response is untrusted bytes from the wire.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:07Z",
+  "updated_at": "2026-04-25T01:56:33Z",
+  "closed_at": "2026-04-25T01:56:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:07Z"
+    }
+  ]
+}

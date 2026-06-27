@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqk7.7",
+  "title": "SEC3: Inconsistent state sync in Contact/changes event handler (app.js)",
+  "description": "app.js lines 864-891: Contact/changes event handling is inconsistent with Message/Chat handlers. Message/Chat (lines 788-858) set state tokens before checking for errors, then sync from event data on error only (lines 820, 850). Contact handler sets contactState from result.newState (line 885) *after* the try-catch, without checking if result contains an error. If Contact/changes returns cannotCalculateChanges, state is synced from result instead of event data. This violates the error-recovery pattern used for Message/Chat. Better: Store result in variable, check for errors first, set state from event data on error (like Message/Chat lines 820, 850) or from result.newState on success. Brings Contact handling into alignment with Message/Chat patterns.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:15:52Z",
+  "updated_at": "2026-04-20T16:22:47Z",
+  "closed_at": "2026-04-20T16:22:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqk7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:15:51Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.2",
+  "title": "Panickable unwrap() on store lock in blob_download_handler",
+  "description": "File: crates/kithd/src/lib.rs, line 213\n\nThe blob_download_handler calls state.store.lock().unwrap() without handling lock poisoning:\n\n    let guard = state.store.lock().unwrap();\n    guard.get_peer_mailbox_for_blob(&blob_id)\n\nIf the lock is poisoned (from a previous panicked task), this unwrap() will panic and crash the HTTP handler for that request.\n\nFix: Match on Err and return INTERNAL_SERVER_ERROR, matching the pattern already used at line 268 in the same function:\n\n    let guard = match state.store.lock() {\n        Ok(g) => g,\n        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, \"store error\").into_response(),\n    };\n    guard.get_peer_mailbox_for_blob(&blob_id)",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:26Z",
+  "updated_at": "2026-04-20T17:20:03Z",
+  "closed_at": "2026-04-20T17:20:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:26Z"
+    }
+  ]
+}

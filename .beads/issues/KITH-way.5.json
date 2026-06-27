@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.5",
+  "title": "Document why advance_state_counter is unsafe for concurrent writers",
+  "description": "Lines 440-444 in kith-store/src/message.rs document that advance_state_counter uses separate UPDATE and SELECT statements and is safe only for Phase 1 single-threaded access. Add an explicit explanation of the failure mode: if two threads race, both might read the same counter value before either UPDATE completes, causing both to read the same new value and missing one increment. This will help contributors understand the exact constraint when Phase 2 parallelism is considered.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:49Z",
+  "updated_at": "2026-04-19T20:17:48Z",
+  "closed_at": "2026-04-19T20:17:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:49Z"
+    }
+  ]
+}

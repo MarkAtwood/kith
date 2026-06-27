@@ -1,0 +1,13 @@
+{
+  "id": "KITH-jphy",
+  "title": "kith-tui: crate scaffold + layout",
+  "description": "Add a new binary crate kith-tui to the workspace. Set up ratatui + crossterm + tokio. Implement terminal init/teardown (raw mode, alternate screen), an async event loop using tokio::select! over crossterm EventStream + a 50ms render tick, and the fixed 3-panel layout: chat list (left ~25%), message thread (right ~75%), text input (bottom 3 lines), status bar (bottom 1 line). All panels show placeholder/hardcoded content \u2014 no real data yet. App exits cleanly on q or Ctrl-C.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:11:40Z",
+  "updated_at": "2026-04-20T04:41:34Z",
+  "closed_at": "2026-04-20T04:41:34Z"
+}

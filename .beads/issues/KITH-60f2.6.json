@@ -1,0 +1,21 @@
+{
+  "id": "KITH-60f2.6",
+  "title": "kithctl watch: pinned cert loaded synchronously from disk \u2014 file not re-read on kithd cert rotation",
+  "description": "cmd_watch reads the kithd TLS cert once at startup (watch.rs line 634) and pins it for the lifetime of the process. If kithd rotates its self-signed cert (e.g. on restart after cert expiry), watch will fail TLS handshakes with 'server certificate does not match pinned certificate' and loop-reconnect forever, logging the error every 2 seconds. There is no cert-refresh path, no diagnostic distinguishing cert mismatch from other TLS failures, and no 'stop reconnecting on cert mismatch' logic. Operators will see an infinite error loop that looks like a network problem.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:14:19Z",
+  "updated_at": "2026-04-25T06:27:41Z",
+  "closed_at": "2026-04-25T06:27:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:14:19Z"
+    }
+  ]
+}

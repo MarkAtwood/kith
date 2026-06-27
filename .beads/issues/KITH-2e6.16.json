@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.16",
+  "title": "SEC6: UTF-8 character boundary truncation in truncate_body",
+  "description": "truncate_body (watch.rs:21-42) truncates at Unicode character boundaries using chars() iterator, not byte boundaries. Prevents silent UTF-8 corruption when multi-byte characters are present. Oracle: manual computation from specification, not code-derived.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:32Z",
+  "updated_at": "2026-04-19T19:21:51Z",
+  "closed_at": "2026-04-19T19:21:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:31Z"
+    }
+  ]
+}

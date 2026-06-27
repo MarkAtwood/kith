@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.14",
+  "title": "reply_to ON DELETE SET NULL silently modifies messages with no state counter advance",
+  "description": "messages table: reply_to column has REFERENCES messages(id) ON DELETE SET NULL. If a referenced message is deleted, reply_to silently becomes NULL \u2014 no state counter is advanced, no event is emitted, and Message/changes will not report the change. Client caches hold a stale replyTo that no longer exists in the store. Either prohibit message deletion (current stance) with an explicit constraint, or advance the state counter on SET NULL via a trigger.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:51Z",
+  "updated_at": "2026-04-25T03:25:19Z",
+  "closed_at": "2026-04-25T03:25:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:50Z"
+    }
+  ]
+}

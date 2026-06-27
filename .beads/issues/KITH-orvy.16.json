@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.16",
+  "title": "format_message_line silently drops messages missing receivedAt with no comment",
+  "description": "kith-tui/src/event.rs:271: receivedAt is the only field whose absence causes format_message_line to return None (via ?). Missing senderId and body both have fallbacks. A message with no body renders as 'HH:MM sender: '; a message with no receivedAt is silently dropped. This asymmetry is not apparent to a maintainer. A one-line comment at the ? operator would prevent confusion: // required; absence silently drops the message from display.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:40Z",
+  "updated_at": "2026-04-24T01:35:40Z",
+  "closed_at": "2026-04-24T01:35:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:39Z"
+    }
+  ]
+}

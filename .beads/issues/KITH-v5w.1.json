@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v5w.1",
+  "title": "[R2] handleStateEvent race condition fix is ineffective",
+  "description": "When messageState is null and both changed.Message and changed.Chat are present in the same event, the fix sets messageState but then calls Message/changes in the same cycle, violating the fix's intent to skip the Message call when catching up. State tokens from events (changed.Message) are not equivalent to state tokens from Message/get results.\n\nThe issue: lines 533-536 set messageState but don't prevent line 540-541 from calling Message/changes.\n\nFix should be: when messageState was null, DON'T call Message/changes on that same event. Only sync the state token and process any Chat changes. Message/changes should wait for the next event.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:00:17Z",
+  "updated_at": "2026-04-19T18:01:34Z",
+  "closed_at": "2026-04-19T18:01:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v5w",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:00:17Z"
+    }
+  ]
+}

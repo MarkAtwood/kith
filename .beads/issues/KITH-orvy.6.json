@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.6",
+  "title": "Chat/set create returns existing chat under 'created' key \u2014 RFC 8620 violation",
+  "description": "kith-chat/src/chat.rs:270: when find_direct_by_contact_id returns an existing chat, the handler inserts it into the created map. RFC 8620 \u00a75.3 requires the server to put the original id in notCreated with type alreadyExists. Returning the existing object in created causes the client to believe a new object was created, potentially tracking a phantom id that diverges from its cached state.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:04:40Z",
+  "updated_at": "2026-04-24T01:30:27Z",
+  "closed_at": "2026-04-24T01:30:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:04:40Z"
+    }
+  ]
+}

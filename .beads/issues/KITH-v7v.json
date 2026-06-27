@@ -1,0 +1,19 @@
+{
+  "id": "KITH-v7v",
+  "title": "kith-tslocal: Status response types",
+  "description": "Define Rust structs for Status response from Tailscale LocalAPI /localapi/v0/status.\n\nWhat: Define StatusResponse in kith-tslocal/src/lib.rs with only the fields kithd needs.\n\nTailscale JSON field names (from real tailscale source):\n- Status root: { TailscaleIPs: [netip.Addr], Self: {...}, User: {...}, BackendState: string, ... }\n\nAlgorithm:\n1. Define struct StatusResponse with only fields kithd needs:\n   - tailscale_ips: Vec<String>  (maps to JSON 'TailscaleIPs'; these are the listener bind IPs)\n   - backend_state: String  (maps to JSON 'BackendState'; check for 'Running')\n   Use #[serde(rename = 'TailscaleIPs')] on tailscale_ips.\n   Use #[serde(default)] on all fields (Status may have many more fields).\n2. Do NOT try to parse the full Status response - it's huge (all peer nodes).\n   Use #[serde(flatten)] or ignore extra fields by using #[serde(default)] without deny_unknown.\n3. All structs derive: Debug, Clone, Deserialize\n4. Run: cargo test -p kith-tslocal; cargo clippy -p kith-tslocal -- -D warnings\n\nDefensive rules:\n- tailscale_ips may be empty if tailscale is not fully connected - caller must check\n- Do NOT deny unknown fields (Status has dozens of fields not needed)\n- backend_state='Running' is the expected healthy state; 'NeedsLogin' means not ready\n\nAgent team: standard (R + I + T)\nTests: unit deserialization tests with hardcoded JSON.\n- Test: full Status JSON parses correctly, tailscale_ips extracted\n- Test: empty TailscaleIPs array parses as empty Vec (not error)\n- Test: extra JSON fields ignored\nOracle: JSON fixtures hand-constructed from Tailscale LocalAPI spec.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:06:50Z",
+  "closed_at": "2026-04-19T06:06:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

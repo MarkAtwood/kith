@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.60",
+  "title": "migrations/ dir empty but CLAUDE.md says it contains SQL files",
+  "description": "The /migrations directory contains only a .gitkeep. All migration SQL lives inline in crates/kith-store/src/lib.rs as Rust string literals. CLAUDE.md architecture table says 'migrations/ - SQLite migration files' which is misleading: reviewers waste time looking in the wrong place. Either move SQL to .sql files embedded via include_str\\!, or remove the directory and correct CLAUDE.md.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:22Z",
+  "updated_at": "2026-04-25T04:07:42Z",
+  "closed_at": "2026-04-25T04:07:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:22Z"
+    }
+  ]
+}

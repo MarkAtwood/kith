@@ -1,0 +1,21 @@
+{
+  "id": "KITH-7w7.2",
+  "title": "Wire types: AttachmentArg, update DeliverMessageArgs, update build_peer_deliver_request",
+  "description": "**What:** Add `AttachmentArg` wire struct to kith-peer and update `DeliverMessageArgs` + `build_peer_deliver_request()` to carry attachment metadata and chat participants in the Peer/deliver wire format.\n\n**Algorithm:**\n1. Open `crates/kith-peer/src/lib.rs`.\n2. Define a new struct (near `DeliverMessageArgs`):\n   ```rust\n   #[derive(Debug, Deserialize, Serialize)]\n   #[serde(rename_all = \"camelCase\")]\n   pub struct AttachmentArg {\n       pub blob_id: String,\n       pub filename: String,\n       pub content_type: String,\n       pub size: u64,\n       pub sha256: String,\n   }\n   ```\n3. Add two fields to `DeliverMessageArgs`:\n   ```rust\n   #[serde(default)]\n   pub attachments: Vec<AttachmentArg>,   // empty if sender doesn't include\n   #[serde(default)]\n   pub participants: Vec<String>,         // empty means 1:1 (sender + owner)\n   ```\n4. Update `build_peer_deliver_request()` signature to add two new trailing params:\n   `attachments: &[kith_core::Attachment]` and `participants: &[String]`\n5. In `build_peer_deliver_request()`'s JSON construction, add to the 'message' object:\n   - 'attachments': serialize as array of {blobId, filename, contentType, size, sha256}\n   - 'participants': serialize as the participants slice (include even if empty, for forward compat with group chats)\n6. Update ALL existing callers of `build_peer_deliver_request()` to pass `&[]` for both new params. Find callers with grep.\n7. Update existing unit tests that call `build_peer_deliver_request()` to pass `&[], &[]` as the new args.\n\n**Defensive programming rules:**\n- `#[serde(default)]` ensures old senders without attachments/participants fields remain deserializable.\n- No validation in this bead \u2014 `AttachmentArg` fields are raw wire values; validation happens in the DeliverHandler (KITH-7w7.4).\n- Participants slice must be passed as-is to JSON; sorting is the caller's responsibility.\n\n**Agent team:** R (read lib.rs lines 36-57 for DeliverMessageArgs and 588-617 for build_peer_deliver_request) \u2192 I (implement) \u2192 T (tests) \u2192 V (cargo test -p kith-peer + clippy + fmt).\n\n**Tests (independent oracle):**\n- 'build_peer_deliver_request with 1 attachment includes correct JSON': construct Attachment with known values, call build_peer_deliver_request. Parse result JSON. Assert `methodCalls[0][1].message.attachments[0].blobId` equals the input blob_id, and all other fields match. Oracle: the literal input values.\n- 'build_peer_deliver_request with empty attachments includes empty array': call with `&[]`, assert JSON `attachments` is `[]`.\n- 'build_peer_deliver_request with participants includes participants': call with 2 known participant IDs, assert JSON `participants` matches.\n- 'DeliverMessageArgs deserialization without attachments field': deserialize `{\"id\":\"...\", ... }` (no attachments key), assert `attachments` is empty vec.\n- 'DeliverMessageArgs deserialization with attachments': deserialize JSON with attachments array, assert fields match.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:50:00Z",
+  "updated_at": "2026-04-20T01:57:18Z",
+  "closed_at": "2026-04-20T01:57:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:50:00Z"
+    }
+  ]
+}

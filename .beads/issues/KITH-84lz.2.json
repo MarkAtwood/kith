@@ -1,0 +1,20 @@
+{
+  "id": "KITH-84lz.2",
+  "title": "assert! not debug_assert! in blob_path is correct defence-in-depth",
+  "description": "Upgrading debug_assert! to assert! in blob_path means path-traversal panics in release if a future caller bypasses validate_blob_id. Given the security invariant (no '/' or '..' in id \u2192 base_dir.join(id) cannot escape base_dir), having this fire in production on programming mistakes is strictly better than silently serving wrong paths. The companion change to blob_exists (early return false on invalid id rather than calling blob_path) correctly avoids the assert triggering on attacker-controlled input. A contributor might suggest reverting to debug_assert for performance \u2014 the assert is a single O(n\u2264128) pure function call on an infrequently called path and the security benefit is clear.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:20:12Z",
+  "updated_at": "2026-04-25T09:20:52Z",
+  "closed_at": "2026-04-25T09:20:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-84lz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:20:12Z"
+    }
+  ]
+}

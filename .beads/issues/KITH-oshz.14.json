@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.14",
+  "title": "SSE parser: handles LF-only, not CRLF line endings",
+  "description": "parse_sse_event splits on \"\\n\\n\" only. RFC 8620 \u00a77.1 allows both LF (\\n) and CRLF (\\r\\n) line terminators. If a server sends CRLF line endings (\\r\\n\\r\\n), the client will never find event boundaries and will buffer indefinitely until the connection closes.\n\nReproduction: Server sends SSE event with CRLF line endings. Client hangs.\n\nFix: Split on both \"\\n\\n\" and \"\\r\\n\\r\\n\", or strip CR before splitting.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:05:22Z",
+  "updated_at": "2026-04-20T05:08:46Z",
+  "closed_at": "2026-04-20T05:08:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:05:22Z"
+    }
+  ]
+}

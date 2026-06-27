@@ -1,0 +1,13 @@
+{
+  "id": "KITH-2058",
+  "title": "Web client: attachment upload, display, and download",
+  "description": "Add file attachment support to the kith web client (web/app.js + web/index.html + web/style.css).\n\nThe kithd backend is fully implemented: blob upload/download endpoints, attachment metadata in SQLite, Message/set create accepts an attachments array, Peer/deliver passes attachment metadata. The only missing piece is the browser UI.\n\n**User-visible outcome when done:**\n- User can click a paperclip icon or drag-drop a file into the compose area\n- File is uploaded via POST to the session uploadUrl, returning a blobId\n- Message/set create includes the attachment in the attachments array\n- Received messages (own and peer) display attachment metadata (filename, size) with a download link\n- Download link fetches from the blob download endpoint\n\n**Scope boundary:**\n- Browser JS/HTML/CSS only; no Rust changes\n- No TUI attachment UI (separate epic)\n- No peer-blob-fetch (separate epic)\n- No multi-file drag-drop (single file per message for MVP)\n\n**Security invariants:**\n- Filename displayed via textContent (never innerHTML) to prevent XSS\n- Upload size limit enforced by backend; UI handles 413/error gracefully\n- Download link is a bare anchor with the blob URL; no eval, no innerHTML",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:03:34Z",
+  "updated_at": "2026-04-20T15:26:43Z",
+  "closed_at": "2026-04-20T15:26:43Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.17",
+  "title": "kithctl backup: pre-create-0o600 + CleanupGuard pattern is correct for secure backup",
+  "description": "backup.rs pre-creates the destination file with mode 0o600 before SQLite opens it, avoiding the umask-0o644 race window. CleanupGuard provides RAII cleanup on failure. A contributor might suggest just using SQLite's Connection::open directly; that would expose the backup file as world-readable until the backup completes. This pattern is worth preserving and documenting.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:50Z",
+  "updated_at": "2026-04-25T08:12:54Z",
+  "closed_at": "2026-04-25T08:12:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:50Z"
+    }
+  ]
+}

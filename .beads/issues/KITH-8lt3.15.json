@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8lt3.15",
+  "title": "fetch_peer_blob: content_type query parameter incompletely percent-encoded",
+  "description": "In peer_fetch.rs::fetch_peer_blob (line 350), ct_encoded only replaces '/' and '+'. An attacker-controlled content_type (per the trust boundary table in CLAUDE.md) containing '&', '=', '#', or '?' would corrupt the query string. For example, content_type='image/png&x=y' produces '?accept=image%2Fpng&x=y', injecting an extra query parameter. A '#' would truncate the URL at the fragment boundary. The fix is to use full percent-encoding on the ct value (encode all chars except unreserved), consistent with how percent_encode_path_segment handles the filename. The content_type is also used directly as a header value (line 391), where Hyper validates and rejects CRLF, so no header injection is possible, but the query string is not validated.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:45:46Z",
+  "updated_at": "2026-04-24T17:55:57Z",
+  "closed_at": "2026-04-24T17:55:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8lt3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:45:46Z"
+    }
+  ]
+}

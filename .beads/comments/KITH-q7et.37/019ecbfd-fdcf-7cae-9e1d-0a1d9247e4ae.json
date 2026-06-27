@@ -1,0 +1,7 @@
+{
+  "author": "Mark Atwood",
+  "created_at": "2026-06-15T15:54:41Z",
+  "id": "019ecbfd-fdcf-7cae-9e1d-0a1d9247e4ae",
+  "issue_id": "KITH-q7et.37",
+  "text": "Design decision: replacing panicking constructors with Result-returning or type-safe constructors requires choosing between several approaches (builder, newtype arguments, Result). Needs human judgment."
+}

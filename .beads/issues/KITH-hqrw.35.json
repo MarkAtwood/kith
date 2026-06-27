@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.35",
+  "title": "build_client adds cert as CA root not leaf pin",
+  "description": "client.rs build_client uses reqwest::Certificate::from_der + add_root_certificate to pin the kithd cert. This adds the cert as a trusted CA root, not a pinned leaf. If kithd's self-signed cert is used directly (it is its own CA), this works. However the code comment says 'cert chain does not include it' which is imprecise: reqwest verifies that the cert chain terminates at a trusted root, meaning any cert signed by the pinned cert would also be trusted. For self-signed certs this is equivalent to leaf pinning. Risk: if cert handling changes in the future, the mental model matters. The comment should accurately describe what add_root_certificate does.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:02Z",
+  "updated_at": "2026-04-25T04:47:38Z",
+  "closed_at": "2026-04-25T04:47:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:02Z"
+    }
+  ]
+}

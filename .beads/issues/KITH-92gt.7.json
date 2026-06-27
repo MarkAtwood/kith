@@ -1,0 +1,21 @@
+{
+  "id": "KITH-92gt.7",
+  "title": "contact.rs: maxChanges silently ignored without validation",
+  "description": "kith-chat/src/contact.rs ChatContactChangesHandler line 443: the comment 'maxChanges is accepted but ignored in v1' is correct per the current design, but the field is accepted without any upper-bound check. RFC 8620 \u00a75.6 requires that if maxChanges is smaller than the actual change count, hasMoreChanges must be set to true. The handler always returns hasMoreChanges=false. Consequence: a conformant JMAP client that sends maxChanges=5 on a store with 100 changes will silently receive a truncated response and believe there are no more changes. This will be a real bug when the contact list grows beyond trivial size.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:37:44Z",
+  "updated_at": "2026-04-24T19:43:58Z",
+  "closed_at": "2026-04-24T19:43:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-92gt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:37:43Z"
+    }
+  ]
+}

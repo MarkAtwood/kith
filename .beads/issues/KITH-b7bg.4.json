@@ -1,0 +1,21 @@
+{
+  "id": "KITH-b7bg.4",
+  "title": "ChatContact/get: ids=[] (empty array) fetches zero contacts but returns empty notFound \u2014 correct but undocumented edge case",
+  "description": "RFC 8620 \u00a75.1 says if ids is an empty array the server SHOULD return an empty list without any notFound entries. The current code iterates the empty list and returns ([], []) which is correct. However there is no test for this boundary case, and the loop-based lookup is O(n) database calls for n IDs. An empty ids array triggers zero DB calls, which is fine, but the lack of a test means someone changing the implementation could silently break this boundary. File as P2 to add a test.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:20Z",
+  "updated_at": "2026-04-25T07:04:18Z",
+  "closed_at": "2026-04-25T07:04:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:20Z"
+    }
+  ]
+}

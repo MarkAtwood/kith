@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.16",
+  "title": "draw_messages allocates Vec<Line> for ALL messages on every 50ms tick",
+  "description": "In draw_messages, lines is built by collecting ALL state.messages into a Vec<Line> on every draw, then only a visible_height slice is scrolled into view by Paragraph::scroll(). With 500 messages this allocates 500 Line objects, 500 Span objects, and 500 &str references on every 50ms tick = 20 allocations/second * 500 = 10,000 small allocations/sec in steady state. The fix is to slice messages to only the visible window before building Lines: state.messages.iter().skip(top).take(visible_height). This is already tracked as KITH-hqrw.42.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:40:02Z",
+  "updated_at": "2026-04-25T04:40:15Z",
+  "closed_at": "2026-04-25T04:40:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:40:01Z"
+    }
+  ]
+}

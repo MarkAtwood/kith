@@ -1,0 +1,13 @@
+{
+  "id": "KITH-800t",
+  "title": "Review: SSE/watch/fixes batch (8a361ab)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:30:00Z",
+  "updated_at": "2026-04-25T09:38:45Z",
+  "closed_at": "2026-04-25T09:38:45Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 The primary risk is the kithctl watch notification pipeline (wrong field name, stale cursor on error). Both are user-visible on first use. The schema migrations (V18/V19) carry a one-time classification hazard for upgrading users but self-heals. The rest of the changes are solid.\nConfidence: 15% chance of missed bug. Uncertainty driven by: (1) kith-peer diff was large and I did not get to read all of the ReceiptHandler changes in detail; (2) the outbox complete_delivery_in_tx rewrite is subtle and the SELECT+UPDATE ordering has concurrency implications I may not have fully traced; (3) the equal-counter replay semantics interact with client state in ways that are hard to reason about without an end-to-end test that reconnects mid-stream. Would raise confidence if: end-to-end integration test covering reconnect-with-LEI and message delivery notification with correct sender display."
+}

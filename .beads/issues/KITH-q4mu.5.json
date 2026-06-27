@@ -1,0 +1,20 @@
+{
+  "id": "KITH-q4mu.5",
+  "title": "Fail-early host lookup before any INSERT prevents orphaned Pending messages",
+  "description": "Building outbox_peers before insert_outbound_message means a host-lookup failure fires before any INSERT touches the DB. The old code stored the message first, then enqueued \u2014 a failure between those two operations left a Pending message the retry loop would never deliver. The new order ensures atomicity at the application layer: either all targets resolve and everything is committed atomically, or nothing is committed. A contributor might suggest moving the host lookup back inside the transaction 'for simplicity' \u2014 the ordering is intentional and removes an entire class of orphaned-message bugs.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:00:11Z",
+  "updated_at": "2026-04-24T04:05:12Z",
+  "closed_at": "2026-04-24T04:05:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:00:11Z"
+    }
+  ]
+}

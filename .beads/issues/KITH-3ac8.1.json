@@ -1,0 +1,21 @@
+{
+  "id": "KITH-3ac8.1",
+  "title": "peer contentType CRLF panics blob_download_handler",
+  "description": "Trigger: peer sends Peer/deliver with attachment contentType containing CRLF (e.g. \"application/octet-stream\\r\\nX-Evil: injected\"). validate_attachments accepts it (checks only for '/' structure and length, not control chars). The value is stored in the attachments table. When the owner later requests GET /jmap/download/\u2026, blob_download_handler reads content_type from DB and passes it to Response::builder().header(CONTENT_TYPE, content_type). The http crate's HeaderValue::from_str rejects CRLF, the builder returns Err, and the trailing .unwrap() panics. The tokio task for that connection terminates; the client gets a connection reset. The malicious blob is permanently undownloadable.\n\nFix: in validate_attachments, after the split_once('/') check, add: if a.content_type.bytes().any(|b| b < 0x20 || b == 0x7f) { return Err(...) }",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:45:22Z",
+  "updated_at": "2026-04-24T06:01:31Z",
+  "closed_at": "2026-04-24T06:01:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3ac8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:45:22Z"
+    }
+  ]
+}

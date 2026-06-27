@@ -1,0 +1,20 @@
+{
+  "id": "KITH-ip1p.2",
+  "title": "Correct field rename in both request and response is a solid minimal fix",
+  "description": "The fix updates both the 'properties' request array and the response .get() call atomically in the same commit. This is correct: if only one side were updated, the field would either not be returned by the server or not be read from the response. A contributor might suggest splitting this into two commits or 'fixing' it by adding both names with a fallback; that would be wrong. The correct approach \u2014 one atomic rename of both sides \u2014 is what was done.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:40:03Z",
+  "updated_at": "2026-04-25T09:41:04Z",
+  "closed_at": "2026-04-25T09:41:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ip1p",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:40:02Z"
+    }
+  ]
+}

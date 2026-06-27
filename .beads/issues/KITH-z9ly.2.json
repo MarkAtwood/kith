@@ -1,0 +1,27 @@
+{
+  "id": "KITH-z9ly.2",
+  "title": "OutboxStore: composite PK API + enqueue_receipt",
+  "description": "Update OutboxStore to use the composite PK from V3 migration and add enqueue_receipt.\n\n**What:** Update OutboxEntry struct, update method signatures to use composite key, add enqueue_receipt, update existing tests.\n\n**Algorithm:**\n1. In crates/kith-store/src/outbox.rs, update OutboxEntry struct:\n   pub struct OutboxEntry {\n       pub message_id: String,\n       pub peer_user_id: String,\n       pub peer_mailbox_host: String,\n       pub kind: String,              // 'message' or 'receipt'\n       pub read_at_unix: Option<i64>, // Some(_) for kind='receipt'\n       pub next_attempt_at: i64,\n       pub attempt_count: u32,\n       pub last_error: Option<String>,\n   }\n\n2. Update get_due() SELECT query to include kind and read_at_unix columns (positions 3 and 4, shifting existing columns). Update query_map row indexing accordingly.\n\n3. Change record_failure(&self, message_id: &str, ...) to record_failure(&self, entry: &OutboxEntry, ...). Update WHERE clause to use all three PK fields: WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3.\n\n4. Change mark_delivered(&self, message_id: &str) to mark_delivered(&self, entry: &OutboxEntry). Update DELETE.\n\n5. Change complete_delivery(&self, message_id: &str, delivered_at_unix: i64) to complete_delivery(&self, entry: &OutboxEntry, delivered_at_unix: i64):\n   - If entry.kind == 'receipt': only DELETE the outbox row (no message state update; receipts have no local delivery_state to track).\n   - If entry.kind == 'message': existing behavior (advance state counter, UPDATE messages, DELETE outbox row). DELETE must use WHERE message_id = ?1 AND peer_user_id = ?2 AND kind = ?3.\n\n6. Change mark_failed(&self, message_id: &str, ...) to mark_failed(&self, entry: &OutboxEntry, ...):\n   - Same kind-based branching as complete_delivery.\n   - DELETE must use composite WHERE clause.\n\n7. Change get_by_message return type from Result<Option<OutboxEntry>> to Result<Vec<OutboxEntry>> (multiple peers per message now possible). Update existing callers in tests.\n\n8. Add enqueue_receipt(&self, message_id: &str, peer_user_id: &str, peer_mailbox_host: &str, read_at_unix: i64, now_unix: i64) -> Result<(), KithError>:\n   INSERT INTO outbox (message_id, peer_user_id, peer_mailbox_host, kind, read_at_unix, next_attempt_at, attempt_count) VALUES (?1, ?2, ?3, 'receipt', ?4, ?5, 0)\n\n9. Update all existing outbox tests to use new API:\n   - record_failure calls: get entry via get_by_message()[0] first, then pass &entry\n   - mark_delivered calls: same pattern\n   - complete_delivery calls: same pattern\n   - mark_failed calls: same pattern\n   - get_by_message calls: index [0] or unwrap first element\n\n**Defensive programming rules:**\n- DELETE WHERE clause must use all three PK columns \u2014 never delete by message_id alone (would remove all peers).\n- complete_delivery for kind='receipt' must NOT update messages table (receipts are not outbound messages).\n- mark_failed for kind='receipt' must NOT update messages table.\n- record_failure SELECT attempt_count must also use composite WHERE.\n\n**Agent team:** R (read outbox.rs and outbox_tick call sites) + I (implementer).\n\n**Tests:** All existing kith-store outbox tests must still pass with updated API.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:52:42Z",
+  "updated_at": "2026-04-20T03:00:54Z",
+  "closed_at": "2026-04-20T03:00:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:52:41Z"
+    },
+    {
+      "depends_on_id": "KITH-z9ly.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:31Z"
+    }
+  ]
+}

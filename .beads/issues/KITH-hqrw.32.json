@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.32",
+  "title": "kith-chat + kith-attach: strengths",
+  "description": "Strong points in kith-chat and kith-attach: (1) BlobStore validate_blob_id is thorough \u2014 rejects empty, dot-leading, slash, backslash, null, space, too-long, and non-alphanumeric IDs; blob_exists validates before path construction. (2) write_blob and write_blob_streaming both use atomic temp-file-then-rename pattern with unique per-write nonces to prevent concurrent write collisions. Cleanup on error (remove_file after sync_all or write_all failure) is correct. (3) old_state capture inside the first lock scope prevents sinceState drift from concurrent writes in all three set handlers \u2014 the design is intentional and well-commented. (4) maxChanges=0 returns invalidArguments rather than silently returning empty results, matching the RFC SHOULD as a MUST. (5) Attachment validation pipeline (blobId format, existence, filename path-traversal checks, content-type slash count, size range, sha256 format) is defense-in-depth at the right layer. (6) Group-chat fanout uses all-or-nothing delivery: if any member has no mailbox host the send fails rather than silently dropping members. (7) Test coverage is strong: unit tests use independent oracles from RFC spec, integration tests exercise multi-step workflows, boundary tests cover exact MAX_BODY_BYTES values, auth rejection tests verify both directions (peer cannot call owner methods AND owner cannot call peer methods).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:32:48Z",
+  "updated_at": "2026-04-25T08:21:59Z",
+  "closed_at": "2026-04-25T08:21:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:32:48Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bpmo.3",
+  "title": "combined_state() and session_handler silently return fake state on store error",
+  "description": "combined_state() (lib.rs:87-94) returns the hardcoded string 's-0-s-0-s-0' if get_all_states() fails. session_handler (lib.rs:102-104) similarly returns 's-0-s-0-s-0' if the store mutex is poisoned. Neither logs a warning. The consequence: the daemon appears healthy and returns HTTP 200 for session requests, but all state values are fake. SSE clients will receive state-change events but then find no delta when they call /changes. The daemon will appear stuck to users without any indication of the degraded state. Fix: log a tracing::error\\! when falling back to the stub state. If mutex is poisoned, propagate a 500 rather than serving a fake session.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:46:06Z",
+  "updated_at": "2026-04-24T22:52:16Z",
+  "closed_at": "2026-04-24T22:52:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bpmo",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:46:06Z"
+    }
+  ]
+}

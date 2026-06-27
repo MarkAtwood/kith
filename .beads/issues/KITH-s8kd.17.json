@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.17",
+  "title": "get_changes_since vs get_changes_since_ordered: divergent sentinel logic for is_create",
+  "description": "ContactStore::get_changes_since checks 'created_at > since_counter AND created_at > 0' for is_create. get_changes_since_ordered checks only 'created > since_counter' (no >0 guard). In the edge case of a row with created_at_counter=0 and since_counter=0, both methods agree (0>0=false). But if a corrupted row has created_at_counter=0 and since_counter<0 (malformed state token that somehow parses), get_changes_since says 'not created' (0>0 guard blocks), while get_changes_since_ordered says 'created' (0>-1=true). The two methods should apply identical sentinel logic to be interchangeable.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:42:48Z",
+  "updated_at": "2026-04-25T05:41:47Z",
+  "closed_at": "2026-04-25T05:41:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:42:48Z"
+    }
+  ]
+}

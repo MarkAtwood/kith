@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.6",
+  "title": "SEC1: Duplicated message formatting logic in load and update paths",
+  "description": "Message formatting logic is duplicated across two functions in event.rs:\n\n1. load_messages_for_chat (lines 315-331)\n2. handle_state_change Message path (lines 480-501)\n\nBoth extract and format the same fields identically:\n  - receivedAt timestamp \u2192 HH:MM\n  - senderId \u2192 display name lookup\n  - body text\n  - Format: '{hhmm} {sender_name}: {body}'\n\nRisk: If a solo maintainer changes the format in one place (e.g., to add delivery status, change time format, or sanitize differently), they must remember to update both. Easy to miss one, causing inconsistent display between initial load and SSE updates.\n\nSuggested fix: Extract formatting to a helper function: format_message(msg: &Value, contacts: &HashMap) -> String",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:43Z",
+  "updated_at": "2026-04-20T05:49:30Z",
+  "closed_at": "2026-04-20T05:49:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:42Z"
+    }
+  ]
+}

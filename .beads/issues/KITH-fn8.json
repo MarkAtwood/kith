@@ -1,0 +1,31 @@
+{
+  "id": "KITH-fn8",
+  "title": "kith-jmap: tests for resolver and error formatting",
+  "description": "Tests for ResultReference resolver and JMAP error response formatting.\n\nWhat: Write the test suite for KITH-2cs (resolver) and KITH-bdp (error formatting) with external oracles from RFC 8620.\n\nAlgorithm:\n1. Resolver tests (oracles from RFC 8620 \u00a79 and RFC 6901 \u00a75):\n   - Construct invocations manually: first call returns known JSON value, second call has '#ids' ResultReference pointing to '/list/*/id'\n   - Verify resolve_references transforms the second invocation's args correctly\n   - Test: simple path /list/0/id resolves to first element's id\n   - Test: path to nonexistent array index \u2192 Err\n   - Test: path to nonexistent object key \u2192 Err\n   - Test: forward reference (result_of of a later call) \u2192 Err\n   - Test: reference to error response \u2192 Err\n   - Test: escaped path ~1 in key name resolves correctly\n\n2. Error formatting tests (oracles from RFC 8620 \u00a77.1):\n   - Verify error_invocation produces [method_name, {type:X,...}, call_id] format\n   - Verify RequestError serializes to correct HTTP status + JSON body\n   - Verify all error_type strings are exactly 'invalidArguments', 'unknownMethod', 'forbiddenMethod', 'accountNotFound', 'serverFail', 'unknownCapability', 'invalidResultReference'\n   - Verify description omitted when None\n\n3. E2E integration test:\n   - Construct a multi-method JmapRequest with a valid ResultReference\n   - Run parse_request \u2192 resolve_references \u2192 (stub dispatch) \u2192 JmapResponse\n   - Verify response format, sessionState present, all call_ids echoed\n   - Oracle: manually constructed from RFC 8620 \u00a73 request/response examples\n\nDefensive programming rules:\n- All test expected values hand-crafted from RFC spec, never from code under test\n- Tests must cover the REJECTION paths, not just happy paths\n- No mocking of the resolver itself; test with real resolve_references function\n\nAgent team: Single Tester agent. Tester derives all expected values from RFC 8620 before looking at implementation.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:39:02Z",
+  "closed_at": "2026-04-19T07:39:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2cs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:17:24Z"
+    },
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-bdp",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:17:25Z"
+    }
+  ]
+}

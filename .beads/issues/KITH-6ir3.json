@@ -1,0 +1,22 @@
+{
+  "close_reason": "8 tests for message actions",
+  "closed_at": "2026-06-13T19:54:47Z",
+  "compaction_level": 0,
+  "content_hash": "877810f188a074074721f0a7191b3471a156e42bbe58676c3ee31c3bea965ead",
+  "created_at": "2026-06-13T19:28:29Z",
+  "created_by": "Mark Atwood",
+  "description": "MessageAction store has zero dedicated tests. Need: insert_actions round-trip, load_actions batch, action_type/uri non-empty validation, load via populate_message_extras, cascade delete when message deleted. ~5 tests.",
+  "ephemeral": 0,
+  "id": "KITH-6ir3",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add missing tests for message actions store layer",
+  "updated_at": "2026-06-13T19:54:47Z"
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-b5ah.2",
+  "title": "V5 migration fails on databases with existing duplicate sender_msg_id rows",
+  "description": "The V5 migration does CREATE UNIQUE INDEX on (chat_id, sender_msg_id). If a V4 database has duplicate rows from retransmission (the bug KITH-orvy.3 was fixing), the migration fails and kithd fails to start. No deduplication step precedes the CREATE UNIQUE INDEX. Fix: add DELETE FROM messages WHERE rowid NOT IN (SELECT MIN(rowid) FROM messages GROUP BY chat_id, sender_msg_id) before the DROP INDEX, or document that V4 databases with duplicates require manual cleanup.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T02:32:33Z",
+  "updated_at": "2026-04-24T02:44:56Z",
+  "closed_at": "2026-04-24T02:44:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b5ah",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T19:32:32Z"
+    }
+  ]
+}

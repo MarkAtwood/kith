@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.4",
+  "title": "is_valid_mailbox_host allows arbitrary .ts.net hostnames in outbox",
+  "description": "In kith-peer/lib.rs, is_valid_mailbox_host (used by outbox_tick to validate peer_mailbox_host before delivery) accepts any hostname ending in '.ts.net'. This is intentional per the SSRF design in peer_fetch.rs. However, the outbox function is_valid_mailbox_host has a character-set allowlist (a-z, 0-9, '.', '-', ':') that runs BEFORE the IP-vs-hostname dispatch. The allowlist check includes ':' (needed for [ipv6]:port) in the ip_part character check. But if the input is a bare hostname like 'alice.ts.net', the ip_part is 'alice.ts.net' which contains only alphanumeric and '.', so it passes. Then it fails IpAddr::parse, and hits the ends_with('.ts.net') check. This is correct. BUT: the character-set check for bare hostnames allows ':' in the hostname part (ip_part allowlist includes b':'). A malformed input like 'alice.ts.net:evil' with port 'evil' is caught by the port parse failing (returns false). So the character allowlist for hostnames is over-permissive (allows ':') but the port validation provides the safety net. This is a footgun: future maintainers may assume the character allowlist is the primary guard, not the secondary port check.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:29:49Z",
+  "updated_at": "2026-04-25T04:48:09Z",
+  "closed_at": "2026-04-25T04:48:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:29:48Z"
+    }
+  ]
+}

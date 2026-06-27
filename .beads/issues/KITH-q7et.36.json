@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "ad7f36dc0e7361d81896984190b40113d0fbe5236dab02d75168746681f48fa5",
+  "created_at": "2026-06-15T04:54:15Z",
+  "created_by": "Mark Atwood",
+  "description": "In kithd/src/peer_fetch.rs:466, the SHA-256 digest of a fetched blob is compared using string equality: if computed_hex != expected_sha256. SHA-256 used as an integrity hash (not a MAC) is not timing-sensitive in the same way an HMAC comparison is \u2014 an attacker who can guess the hash byte by byte gains nothing because they can compute their own SHA-256. However, it is a best-practice violation to use non-constant-time comparison for any security-derived value. Recommendation: use a constant-time comparison (e.g. subtle::ConstantTimeEq on the raw bytes, or ring::constant_time::verify_slices_are_equal) for defense in depth, even though the timing oracle here is not practically exploitable. Low priority but worth tracking as a hygiene item.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.36",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "SHA-256 integrity check uses non-constant-time string comparison",
+  "updated_at": "2026-06-19T20:45:46Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:14Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

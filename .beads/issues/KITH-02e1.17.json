@@ -1,0 +1,19 @@
+{
+  "id": "KITH-02e1.17",
+  "title": "DECISION: Parallelize read receipts and message loads for startup and chat selection",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:14:50Z",
+  "updated_at": "2026-04-24T00:06:43Z",
+  "closed_at": "2026-04-24T00:06:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T05:14:49Z"
+    }
+  ]
+}

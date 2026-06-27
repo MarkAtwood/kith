@@ -1,0 +1,13 @@
+{
+  "id": "KITH-u8ft",
+  "title": "Review: SSE stall-warn and peer-node logging",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:09:11Z",
+  "updated_at": "2026-04-25T09:12:42Z",
+  "closed_at": "2026-04-25T09:12:42Z",
+  "notes": "Maintainer risk: LOW \u2014 the behavioral change is correct and narrow (warn log on stall). The two P1 issues are naming confusion and a Headscale edge-case that makes the warn unactionable, neither of which causes data loss or security exposure. No correctness bugs found.\nConfidence: 5% chance of missed bug. Uncertainty driven by: the coalescing task's lifecycle after sending the None sentinel (it loops back to select\\! and exits via live_tx.closed() \u2014 correct, but the interaction was traced manually not via test). The Full-channel warning path is also untested. Would raise confidence if: a test exercised the Full path (requires a mock mpsc channel that reports Full on demand, or saturating the channel with 256 items before sending a broadcast) and if the post-None-sentinel task-exit path had a dedicated test. Both are non-trivial to test without a test-only hook."
+}

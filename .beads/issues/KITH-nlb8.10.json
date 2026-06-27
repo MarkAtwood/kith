@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nlb8.10",
+  "title": "WhoIs-on-every-request auth model: no session state, no replay window",
+  "description": "kithd/src/auth.rs \u2014 calling Tailscale LocalAPI WhoIs on every request is the correct design for a tailnet-native daemon. It means no session tokens to leak, no token refresh bugs, and no replay window. A future contributor might suggest caching WhoIs results for performance; that would introduce a window where a revoked node's identity is still accepted. The per-request overhead is bounded by the Unix socket round trip to tailscaled (sub-millisecond on localhost) and is worth the security property.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:27:51Z",
+  "updated_at": "2026-04-25T00:37:22Z",
+  "closed_at": "2026-04-25T00:37:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:27:50Z"
+    }
+  ]
+}

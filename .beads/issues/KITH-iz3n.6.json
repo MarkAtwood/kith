@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.6",
+  "title": "Vec::<String>::new() turbofish is non-idiomatic",
+  "description": "\"removed\": Vec::<String>::new() uses a turbofish where the type is fully inferrable from context (serde_json serializes any Vec<String> to a JSON array). Either json!([]) or Vec::new() with the type inferred is idiomatic Rust. The turbofish is not wrong but reads as if the type is otherwise ambiguous, which it is not.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:19Z",
+  "updated_at": "2026-04-24T18:32:27Z",
+  "closed_at": "2026-04-24T18:32:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:19Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.7",
+  "title": "Peer/deliver contact_id check rejects all inbound group chat messages",
+  "description": "kith-peer/src/lib.rs:219: the sender verification checks existing.contact_id.as_deref() \\!= Some(identity.user_id). Group chats store contact_id=NULL; None \\!= Some(_) is always true, so every Peer/deliver to a group chat is rejected with 'chatId sender mismatch'. The commit adds get_members() for group fanout implying group receipt was intended. Any group chat created now permanently rejects all inbound messages.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:04:54Z",
+  "updated_at": "2026-04-24T01:30:31Z",
+  "closed_at": "2026-04-24T01:30:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:04:53Z"
+    }
+  ]
+}

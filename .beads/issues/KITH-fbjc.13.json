@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.13",
+  "title": "SSE 'id:' field parsed in watch_once but silently discarded; reconnect resumes from wrong position",
+  "description": "watch.rs:339-387 parses the SSE 'id:' field into new_id and validates it via is_valid_last_event_id, then executes 'let _ = new_id;' \u2014 a no-op. The reconnect last_event_id is set from last_message_state (the Message state token), not from the SSE event ID. If no Message events arrive before a disconnect, reconnection resumes from s-0 and replays everything. The two dead 'let _ = new_id' blocks are also dead code. Fix: update last_event_id from the SSE id: field on each frame and pass it in the Reconnect header on reconnect.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:55Z",
+  "updated_at": "2026-04-24T05:26:45Z",
+  "closed_at": "2026-04-24T05:26:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:54Z"
+    }
+  ]
+}

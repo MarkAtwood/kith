@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nlb8.3",
+  "title": "size_bytes silently clamped to 0 on negative DB value (3 sites)",
+  "description": "kith-store/src/lib.rs:434, message.rs:135, attachment.rs:108 \u2014 all three use .max(0) as u64 when reading size_bytes (i64) from the DB. A negative value indicates DB corruption or a write-path bug; silently clamping to 0 hides the error. The caller receives a size of 0 for an attachment that has real bytes, which will cause downstream mismatches (fetch will disagree with claimed size). Should return Err(KithError::Store(...)) instead of clamping.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:26:55Z",
+  "updated_at": "2026-04-25T00:34:01Z",
+  "closed_at": "2026-04-25T00:34:01Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:26:54Z"
+    }
+  ]
+}

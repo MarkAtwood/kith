@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.43",
+  "title": "kith-jmap: ResultReference resolver ignores name field",
+  "description": "kith-jmap/src/lib.rs \u2014 resolve_args() looks up by resultOf call-id only, ignores the name field. RFC 8620 \u00a79 says SHOULD return invalidArguments if name doesn't match the referenced invocation. No security impact (client controls both call-id and path), but it is a spec conformance gap that a future JMAP test suite would flag. Fix: after finding prior response by call-id, verify its method name matches the ResultReference name field.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:16:49Z",
+  "updated_at": "2026-04-25T01:18:39Z",
+  "closed_at": "2026-04-25T01:18:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:16:49Z"
+    }
+  ]
+}

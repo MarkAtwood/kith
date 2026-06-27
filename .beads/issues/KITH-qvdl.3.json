@@ -1,0 +1,33 @@
+{
+  "id": "KITH-qvdl.3",
+  "title": "main.rs: CLI args, session init, update run() signature",
+  "description": "What: Add --url/--cert CLI args, bootstrap JMAP session and SSE in main.rs, update event::run() signature.\n\nAlgorithm:\n1. In main.rs: add #[derive(Parser)] struct Args { #[arg(long)] url: String, #[arg(long)] cert: std::path::PathBuf } using clap.\n2. Validate: args.url must start with \"https://\"; if not, eprintln! and return Err.\n3. Call client::read_cert_der(&args.cert)? \u2014 propagate error if file not found.\n4. Call client::build_client(&cert_der)? \u2014 propagate if cert invalid DER.\n5. Set state.connection_status = ConnectionStatus::Connecting.\n6. Call client::fetch_session(&http_client, &args.url).await?; on error, set state.connection_status = ConnectionStatus::Error(...) and return.\n7. Store session.api_url and session.event_source_url.\n8. Call client::spawn_sse(http_client.clone(), session.event_source_url.clone()) -> (sse_rx, _sse_handle). Store _sse_handle to keep it alive (let _sse_handle = ...).\n9. Update event::run() signature: pub async fn run(terminal, state, http_client: reqwest::Client, api_url: String, sse_rx: mpsc::Receiver<kith_core::StateChange>) -> Result<()>.\n   - Remove session parameter; pass only api_url (String) and http_client since account_id is always \"a-self\".\n10. Update the call site in main.rs to pass the new params.\n\nDefensive programming rules:\n- Never log cert bytes, URL query params, or any secret material.\n- If fetch_session fails, clean up terminal before returning.\n- No unwrap() in main.rs; all fallible calls use ?.\n- HTTPS-only: reject http:// URLs explicitly.\n\nAgent team: R reads main.rs, event.rs, client.rs; I implements; T writes unit tests for arg parsing and URL validation; V runs cargo test -p kith-tui + cargo clippy.\n\nTests:\n- Unit: Args::parse_from([\"kith-tui\", \"--url\", \"https://x\", \"--cert\", \"/tmp/x\"]) parses correctly (oracle: field values).\n- Unit: URL starting with http:// triggers error (oracle: error returned).\n- Integration (wiremock): mock /.well-known/jmap returns valid session JSON; fetch_session returns ClientSession with correct api_url.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:23:35Z",
+  "updated_at": "2026-04-20T05:30:16Z",
+  "closed_at": "2026-04-20T05:30:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:23:35Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:24:59Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:25:00Z"
+    }
+  ]
+}

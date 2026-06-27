@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.7",
+  "title": "kithctl watch: read_exact hangs if server sends fewer bytes than Content-Length claims",
+  "description": "watch.rs:535-539: when Content-Length is present, jmap_post allocates buf to exactly Content-Length bytes and calls read_exact. If the server closes the connection after sending fewer bytes, read_exact blocks indefinitely \u2014 there is no read timeout after TCP connection establishment. The watch loop hangs permanently. Fix: use read_to_limit with a timeout or read with a deadline.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:21Z",
+  "updated_at": "2026-04-25T03:24:31Z",
+  "closed_at": "2026-04-25T03:24:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:21Z"
+    }
+  ]
+}

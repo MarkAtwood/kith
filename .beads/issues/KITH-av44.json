@@ -1,0 +1,31 @@
+{
+  "close_reason": "Deferred from kith \u2014 FileNode is a hearth feature (shared workspace file storage). kith's P2P model uses attachments, not shared folders. Will implement in hearth when that project starts.",
+  "closed_at": "2026-06-15T01:46:36Z",
+  "compaction_level": 0,
+  "content_hash": "ee07bea28e7bb8baaffa89cd1ffb676e62a8e5b58d478e99cd3945e55298d310",
+  "created_at": "2026-06-14T03:21:20Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement urn:ietf:params:jmap:chat:filenode capability per draft-atwood-jmap-chat-filenode-00. Associates a FileNode tree with each Space via the urn:jmap:chat:filenode:space role and spaceId extension property. Maps Space roles to FileNode access (view\u2192read, send\u2192create, manage_channels\u2192delete, manage_space\u2192admin). Extends Attachment with optional filenodeId and thumbnailBlobId fields for linking message attachments to Space files. Handles Space deletion cascading to file tree (with optional grace period).",
+  "ephemeral": 0,
+  "id": "KITH-av44",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "JMAP Chat FileNode: Space-scoped file storage",
+  "updated_at": "2026-06-15T01:46:36Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T20:21:45Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-jvc1",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

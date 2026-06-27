@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.7",
+  "title": "deliver_args: dead _owner_id param not removed",
+  "description": "deliver_args() test helper still has _owner_id: &str in its signature even though the field was removed from DeliverHandler. Three call sites (deliver_valid_message_accepted, deliver_upserts_contact, deliver_oversized_body_returns_invalid_arguments) still declare let owner_id = 'uid-owner' solely to pass it. The cleanup in KITH-92gt removed the field and all handler instantiation sites but left the helper's signature and the three local variables that feed it. The underscore prefix suppresses the compiler warning but the parameter is genuinely unused \u2014 it should be removed from the function signature and the call sites simplified.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:48:11Z",
+  "updated_at": "2026-04-24T20:00:23Z",
+  "closed_at": "2026-04-24T20:00:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:48:10Z"
+    }
+  ]
+}

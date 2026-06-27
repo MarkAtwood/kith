@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.6",
+  "title": "SEC1: harness_smoke_test duplicates spawn_test_listener test",
+  "description": "crates/kithd/tests/harness.rs:290-307 vs crates/kithd/tests/e2e.rs:81-97. Both tests assert: bob_addr.ip() == LOCALHOST, port != 0, cert_der non-empty, TcpStream::connect succeeds. The harness smoke test adds state-counter and contacts checks (oracles 4-7) which are non-overlapping and should stay. But oracles 1-3 in harness_smoke_test are byte-for-byte identical to spawn_test_listener_binds_loopback_port. Maintainer burden: a failure in socket binding now produces two identical failures from two different test files, obscuring which layer broke.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:19:18Z",
+  "updated_at": "2026-04-19T17:26:16Z",
+  "closed_at": "2026-04-19T17:26:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:19:18Z"
+    }
+  ]
+}

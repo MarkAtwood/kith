@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.5",
+  "title": "outbox enqueue: INSERT without OR IGNORE allows duplicate (message_id, peer_user_id, message) rows",
+  "description": "OutboxStore::enqueue does a plain INSERT with no ON CONFLICT clause. The outbox PK is (message_id, peer_user_id, kind). If enqueue is called twice for the same (message_id, peer_user_id) \u2014 e.g. from a retry path or a double-call bug \u2014 the second INSERT will fail with a UNIQUE constraint violation, which db_err maps to KithError::Validation. The caller (kith-peer deliver handler or insert_outbound_message) will surface this as an invalidArguments error rather than a silent no-op. Compare with enqueue_receipt which uses INSERT ... ON CONFLICT DO UPDATE. For message kind, a duplicate enqueue call is a programming error and should fail loudly, which it does \u2014 but the error type (Validation, surfaced as invalidArguments) is wrong. It should surface as a serverFail (internal invariant violated). Document this clearly or add OR IGNORE to make it idempotent like enqueue_receipt. Note: KITH-hqrw.59 covers idempotency; this covers the error classification on duplicate.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:38:15Z",
+  "updated_at": "2026-04-25T05:01:32Z",
+  "closed_at": "2026-04-25T05:01:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:38:15Z"
+    }
+  ]
+}

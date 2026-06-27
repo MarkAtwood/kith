@@ -1,0 +1,13 @@
+{
+  "id": "KITH-83nt",
+  "title": "Review: kith-tui deep review loop 7",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:35:28Z",
+  "updated_at": "2026-04-25T08:30:14Z",
+  "closed_at": "2026-04-25T08:30:14Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 The hardcoded accountId and missing message_state initialization from startup are the main risks. The TUI will stop working correctly if kithd changes its account ID format or message delivery window, and the failure mode (contacts show as raw IDs, message window miss) is subtle and hard to debug without server logs.\nConfidence: 20% chance of missed bug. Uncertainty driven by: (1) no integration test against real kithd \u2014 all tests use wiremock mocks; (2) unread receipt logic complexity not fully exercised by tests; (3) stateMismatch recovery path tested manually but message_state capture is missing. Would raise confidence if: a real kithd integration test suite existed, or if message_state were captured from Message/get response during startup."
+}

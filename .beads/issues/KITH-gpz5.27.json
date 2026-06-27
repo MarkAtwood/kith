@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.27",
+  "title": "events.rs: unbounded SSE delivery channel allows memory growth on slow clients",
+  "description": "events_handler creates a tokio::sync::mpsc::unbounded_channel to bridge the coalescing task to the SSE stream. The coalescing task calls live_tx.send() and only stops when the receiver is dropped (client disconnects). A slow or stalled SSE consumer (e.g. a mobile client that suspends) does not drop the receiver, so the unbounded channel accumulates events without bound. In practice the broadcast ring (capacity 64) limits bursts, but a steady trickle of state changes against a stalled client can grow the mpsc queue indefinitely. Fix: use a bounded channel (e.g. capacity 16) and drop slow clients when the channel is full.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:52:07Z",
+  "updated_at": "2026-04-24T17:01:56Z",
+  "closed_at": "2026-04-24T17:01:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:52:07Z"
+    }
+  ]
+}

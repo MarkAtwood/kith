@@ -1,0 +1,12 @@
+{
+  "id": "KITH-jfjx",
+  "title": "kith-store: set_blocked advances state counter even when value is unchanged",
+  "description": "ContactStore::set_blocked runs UPDATE contacts SET blocked=?1 WHERE peer_user_id=?2 and unconditionally advances the state counter when affected>0. SQLite returns affected=1 even when the value was already equal to the new value \u2014 it counts matched rows, not rows where value changed. Result: every set_blocked(true) call on an already-blocked contact fires a spurious ChatContact/changes event. Fix: add AND blocked IS NOT ?1 to the WHERE clause so UPDATE only fires when value actually changes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:53Z",
+  "updated_at": "2026-04-25T02:39:56Z",
+  "closed_at": "2026-04-25T02:39:56Z"
+}

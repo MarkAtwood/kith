@@ -1,0 +1,20 @@
+{
+  "compaction_level": 0,
+  "content_hash": "2573295a0829dc11ac49d092fb905f692d85f33d965a1103e12d03013306c683",
+  "created_at": "2026-06-14T03:21:25Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement urn:ietf:params:jmap:did capability per draft-atwood-jmap-did-00. Binds each JMAP account to a Decentralized Identifier. Adds did, didDocumentUri, previousDid to account-level capability object. Defines DID-bearing property semantics (server-set, derived from binding, changes only on rotation). Handles DID lifecycle: rotation (with previousDid grace period), suspension (reject new creation, preserve existing objects), revocation (terminate sessions, orphan objects). Horizontal infrastructure \u2014 consuming specs opt in by declaring their DID-bearing types.",
+  "ephemeral": 0,
+  "id": "KITH-2v6o",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "JMAP DID: account-to-DID identity binding",
+  "updated_at": "2026-06-14T03:21:25Z"
+}

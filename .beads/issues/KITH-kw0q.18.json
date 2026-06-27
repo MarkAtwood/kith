@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.18",
+  "title": "TailnetCertVerifier delegates TLS handshake signature verification to provider",
+  "description": "verify_tls12_signature and verify_tls13_signature both delegate to rustls::crypto::verify_tls1{2,3}_signature. Cert chain trust is skipped (Tailscale authenticates at the network layer), but the cryptographic handshake is still fully verified, preserving confidentiality against on-path attackers. A contributor might ask 'if we skip cert validation, why not skip signature verification?' \u2014 the answer is these are orthogonal properties.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:38Z",
+  "updated_at": "2026-04-24T15:44:25Z",
+  "closed_at": "2026-04-24T15:44:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:38Z"
+    }
+  ]
+}

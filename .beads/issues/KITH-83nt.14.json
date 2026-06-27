@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.14",
+  "title": "load_messages_for_chat does not capture message state; message_state may be stale",
+  "description": "load_messages_for_chat returns LoadedMessages but does not return the 'state' field from the Message/get response. The caller in run() sets message_state = 's-4' as a literal in the e2e test (see line 1614 of event.rs tests). In the real run() startup path (lines 875-890), message_state is never set from the Message/get response. It remains empty until the first SSE Message event arrives and Message/changes is called. With empty message_state, the first call uses sinceState='s-0', which is correct as a fallback. But if messages were received between startup and the first SSE event, the changes from that window are missed until the next SSE event triggers a resync. LoadedMessages should carry the state field so the caller can initialize message_state correctly.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:33Z",
+  "updated_at": "2026-04-25T05:43:12Z",
+  "closed_at": "2026-04-25T05:43:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:33Z"
+    }
+  ]
+}

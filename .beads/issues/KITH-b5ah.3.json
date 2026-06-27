@@ -1,0 +1,21 @@
+{
+  "id": "KITH-b5ah.3",
+  "title": "_caller_identity injection contract not documented at trait level",
+  "description": "Every peer handler (DeliverHandler, ReceiptHandler) must extract _caller_identity from args as their first operation before any other parsing. This convention is not visible in the JmapHandler trait, not enforced by the type system, and not mentioned in CLAUDE.md or any doc comment on the trait. A contributor adding Peer/newMethod will write a handler that processes requests without verifying caller identity. Scenario: new peer method PR passes review, ships, provides an auth bypass. Consequence: every new peer handler is a security risk until someone notices the missing extraction step.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T02:32:34Z",
+  "updated_at": "2026-04-24T02:45:49Z",
+  "closed_at": "2026-04-24T02:45:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b5ah",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T19:32:34Z"
+    }
+  ]
+}

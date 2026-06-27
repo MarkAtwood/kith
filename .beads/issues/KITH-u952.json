@@ -1,0 +1,12 @@
+{
+  "id": "KITH-u952",
+  "title": "SEC0: Blocked contact check happens after update_read_at commit",
+  "description": "In kith-chat/src/message.rs process_update (lines 435-456):\n\nThe code commits update_read_at() on line 437, THEN checks if the contact is blocked on line 445. This creates a semantic inconsistency:\n\nIf a contact is blocked after update_read_at succeeds but before the blocked check, the receiver's read_at is updated but no receipt is enqueued (correct). However, the read_at update itself may be undesired for a blocked contact.\n\nThe fix: Check contact.blocked status BEFORE calling update_read_at, not after. This ensures blocked contacts cannot trigger read_at updates on the receiver's messages.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:18:14Z",
+  "updated_at": "2026-04-20T03:20:40Z",
+  "closed_at": "2026-04-20T03:20:40Z"
+}

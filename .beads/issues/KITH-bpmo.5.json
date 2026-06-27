@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bpmo.5",
+  "title": "Validation-order documentation in deliver_handler is a strong pattern",
+  "description": "kith-peer DeliverHandler documents its validation order explicitly (e.g., 'Step 1: validate senderUserId before any DB access'). This makes the security model auditable and prevents future contributors from reordering steps in ways that would allow TOCTOU issues. A future contributor might suggest 'simplifying' by inlining or reordering \u2014 defend it: the explicit order is a security property, not verbosity.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:46:27Z",
+  "updated_at": "2026-04-24T22:52:35Z",
+  "closed_at": "2026-04-24T22:52:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bpmo",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:46:27Z"
+    }
+  ]
+}

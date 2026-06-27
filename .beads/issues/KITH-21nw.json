@@ -1,0 +1,32 @@
+{
+  "close_reason": "Peer/deliver validation for broadcastMentions implemented as part of KITH-895d",
+  "closed_at": "2026-06-13T18:42:58Z",
+  "compaction_level": 0,
+  "content_hash": "db399fbef2677086d12bf383ea480f52e05b9a7cff4ce235515ee072a92e7ad6",
+  "created_at": "2026-06-13T06:29:24Z",
+  "created_by": "Mark Atwood",
+  "description": "Peer/deliver (kith-peer/src/lib.rs:105-399) does not validate mentions or broadcastMentions arrays on inbound messages because the Message struct lacks these fields. Once mentions are added, Peer/deliver must validate them on inbound federated messages. Spec reference: draft-atwood-jmap-chat-federation-00.md.",
+  "design": "## Plan: Validate broadcastMentions in Peer/deliver\n\n### Approach\nThis is the federation-side validation counterpart to the owner-side validation done in Message/set. When a peer delivers a message containing mentions or broadcastMentions, the receiving server must validate them before storing.\n\n### Steps\n\n**1. Validate mentions in Peer/deliver**\n- File: kith-peer/src/lib.rs, in DeliverHandler\n- After bodyType validation (existing), add mentions validation:\n  - For each mention: `offset + length <= body.len()`, offset/offset+length on UTF-8 boundaries\n  - For each mention: `id` should reference a known contact (but since peer messages come from external senders, the contact may not exist yet \u2014 validate format only, not existence)\n\n**2. Validate broadcastMentions in Peer/deliver**\n- Same file, same location\n- For each broadcastMention: `scope` must be \"everyone\", \"here\", or \"admins\" \u2014 reject with invalidArguments\n- For each broadcastMention: `offset + length <= body.len()`\n- For each broadcastMention: offset/offset+length on UTF-8 boundaries (for plaintext body types)\n- If bodyType is \"application/jmap-chat-rich\": reject non-empty mentions AND broadcastMentions arrays\n\n**3. No permission enforcement at Peer/deliver**\n- Per spec \u00a74.14: \"Each receiving server resolves its own set and acts on its own resolution\"\n- The receiving server does NOT enforce mention_broadcast permission on inbound peer messages \u2014 the sending server is responsible for that\n- The receiving server validates format only\n\n**4. Tests**\n- Peer/deliver with valid mentions \u2014 accepted\n- Peer/deliver with mention offset+length > body.len() \u2014 rejected\n- Peer/deliver with invalid broadcastMention scope \u2014 rejected\n- Peer/deliver with broadcastMentions and bodyType=application/jmap-chat-rich \u2014 rejected\n\n### Dependencies\n- KITH-pqed (mentions on Message) must be implemented first\n- KITH-895d (broadcastMentions on Message) must be implemented first\n- These provide the types, wire format, and store layer this issue validates against\n\n### Files touched\n- kith-peer/src/lib.rs (validation logic in DeliverHandler)",
+  "ephemeral": 0,
+  "id": "KITH-21nw",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Validate broadcastMentions in Peer/deliver",
+  "updated_at": "2026-06-13T18:42:58Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:35:14Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-895d",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

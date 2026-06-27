@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.6",
+  "title": "KNOWN_UPDATE_KEYS not co-located with Contact struct",
+  "description": "KNOWN_UPDATE_KEYS is defined inside the process_update function body in contact.rs. The Contact struct lives in kith-store. A contributor who adds a new field to Contact has no co-location signal to remind them to update KNOWN_UPDATE_KEYS, and there is no compile-time enforcement. The list should be moved to a location adjacent to the field definitions, or a compile-time test should enumerate the Contact fields and assert they are either in KNOWN_UPDATE_KEYS or in an explicit exclusion list.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:47:18Z",
+  "updated_at": "2026-04-24T20:00:20Z",
+  "closed_at": "2026-04-24T20:00:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:47:20Z"
+    }
+  ]
+}

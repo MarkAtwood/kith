@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.16",
+  "title": "CRLF guard on content_type placed at inbound boundary, not at serve time",
+  "description": "validate_attachments rejects control characters in content_type before storage. Validating at serve time (blob_download_handler) would be too late: the malicious value is already in the database and could be served to the owner. The inbound boundary is the only correct place for this check.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:36Z",
+  "updated_at": "2026-04-24T15:44:14Z",
+  "closed_at": "2026-04-24T15:44:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:35Z"
+    }
+  ]
+}

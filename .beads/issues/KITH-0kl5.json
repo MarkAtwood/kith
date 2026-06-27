@@ -1,0 +1,13 @@
+{
+  "id": "KITH-0kl5",
+  "title": "Review: fix review findings KITH-bwjs (P2/P4)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:45:03Z",
+  "updated_at": "2026-04-24T18:48:42Z",
+  "closed_at": "2026-04-24T18:48:42Z",
+  "notes": "Round 8 review: 2 findings (1 bug P2, 1 chore P3), 1 decision recorded. Confidence: 90% chance of no missed bug. Uncertainty: whether the zero-broadcast task-leak scenario (P2) is reachable in practice depends on deployment topology \u2014 if the daemon always emits some periodic heartbeat broadcast it becomes theoretical, but no such heartbeat exists in the current code."
+}

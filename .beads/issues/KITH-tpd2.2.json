@@ -1,0 +1,21 @@
+{
+  "id": "KITH-tpd2.2",
+  "title": "test: maxChanges=0 test missing liveness follow-up assertion",
+  "description": "test_contact_changes_max_changes_zero_does_not_regress_state only checks that newState does not regress (newState == sinceState when maxChanges=0 and changes are pending). It does not include a follow-up call with maxChanges>0 using the returned newState to verify that the pending change is actually deliverable (liveness property). A future change that breaks the paging-from-zero path would not be caught by this test. The existing test_contact_changes_newstate_correct_after_truncation covers maxChanges=1 paging but does not exercise the maxChanges=0 \u2192 maxChanges=1 sequence specifically. Add a follow-up call inside the existing test: after asserting newState==sinceState, call Contact/changes with sinceState=newState and maxChanges=1 and assert uid-r2 appears in created.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:09:49Z",
+  "updated_at": "2026-04-24T20:11:30Z",
+  "closed_at": "2026-04-24T20:11:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tpd2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:09:49Z"
+    }
+  ]
+}

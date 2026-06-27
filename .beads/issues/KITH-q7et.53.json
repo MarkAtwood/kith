@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:05:43Z",
+  "compaction_level": 0,
+  "content_hash": "aba0296a68acd8246c3b08d53cb95b265bae162a7d75f7b9d36c93cb5b424ce6",
+  "created_at": "2026-06-15T04:55:21Z",
+  "created_by": "Mark Atwood",
+  "description": "## Why this issue exists\n\nTwo nearly-identical SSRF guard functions exist in different modules:\n- `is_valid_tailscale_host()` in kithd/src/transport.rs\n- `is_valid_fetch_host()` in kithd/src/peer_fetch.rs\n\nBoth reject private RFC-1918 ranges, loopback, metadata IPs (169.254.x), and require the host to look like a valid Tailscale node name or IP. The implementations are similar but not identical \u2014 they can diverge independently, meaning a security fix applied to one may not be applied to the other.\n\nThis is especially risky because SSRF guards are security-critical: a missed case in either copy can be exploited to reach internal services.\n\n## What needs to be done\n\nConsolidate into a single `is_valid_tailscale_host()` function in `kith-core` or a shared internal module. Both `transport.rs` and `peer_fetch.rs` should call the same function. Add a unit test suite for the consolidated function that covers: loopback, RFC-1918, 169.254/16, 100.64/10 (CGNAT), valid Tailscale IP, valid node name.\n\n## Acceptance criteria\n\n- One canonical SSRF host-validation function used by both outbound HTTP paths\n- Removing the duplicate eliminates divergence risk\n- The shared function has tests covering all rejected and accepted address classes",
+  "ephemeral": 0,
+  "id": "KITH-q7et.53",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "SSRF host-validation logic duplicated in peer_fetch and transport",
+  "updated_at": "2026-06-15T12:05:43Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:21Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

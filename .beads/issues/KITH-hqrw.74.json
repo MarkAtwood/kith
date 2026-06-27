@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.74",
+  "title": "stamp_contact_counters reads created_at_counter inside transaction after affected-rows check is already known",
+  "description": "stamp_contact_counters() in contact.rs reads created_at_counter with a SELECT after the INSERT/UPDATE has already run (inside the same transaction). The SELECT is needed to distinguish the three sentinel cases (0 = fresh, <0 = pre-V8, >0 = existing). However, this could be combined with the upsert statement using RETURNING or a CTE in a future SQLite version that supports it, or simplified by reading created_at_counter in the upsert's ON CONFLICT clause. The current code is correct but requires an extra round-trip inside the transaction. For Phase 1 this is not a hot path. Document in a comment that the SELECT is intentional and cannot be avoided until SQLite supports RETURNING on upserts.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:37:04Z",
+  "updated_at": "2026-04-25T08:36:27Z",
+  "closed_at": "2026-04-25T08:36:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:37:04Z"
+    }
+  ]
+}

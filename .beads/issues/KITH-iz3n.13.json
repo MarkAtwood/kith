@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.13",
+  "title": "percent_encode_unreserved doc comment overstates generality",
+  "description": "The new doc comment says 'Suitable for both URL path segments and query parameter values.' This is true for the current two call sites (filename path segment, content_type query value) but is subtly misleading for future callers. The function encodes everything except RFC 3986 unreserved characters \u2014 that means '/' IS encoded, so the function is NOT suitable for encoding a multi-segment path (where slashes should pass through). A future contributor adding a call site for a path that should contain '/' separators could misread 'suitable for path segments' as meaning 'safe for paths'. The comment should be narrowed: state explicitly that '/' is encoded and that the function is for single path segments or single query parameter values, not full paths.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:28:19Z",
+  "updated_at": "2026-04-24T18:34:00Z",
+  "closed_at": "2026-04-24T18:34:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:28:19Z"
+    }
+  ]
+}

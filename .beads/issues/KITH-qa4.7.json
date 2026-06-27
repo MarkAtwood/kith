@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.7",
+  "title": "[SEC3] Strengthen SPA route detection in static_handler",
+  "description": "Line 20 in crates/kithd/src/static_files.rs uses '\\!path.contains(\".\")' as a heuristic to detect SPA fallback routes. This is overly broad: it would incorrectly route versioned API endpoints (e.g., /api/v1.0/something) or other paths containing dots. Better approach: enumerate safe static file extensions (.js, .css, .html, .png, .svg, .ico, .json, .wasm, .map) and check file extension explicitly, or check against known file patterns from rust_embed.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:53Z",
+  "updated_at": "2026-04-19T18:21:10Z",
+  "closed_at": "2026-04-19T18:21:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:53Z"
+    }
+  ]
+}

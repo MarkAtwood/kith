@@ -1,0 +1,11 @@
+{
+  "id": "KITH-omll",
+  "title": "Slack bridge: relay kith chats to/from Slack channels and DMs",
+  "description": "A standalone bridge process that relays messages bidirectionally between kith and Slack. Runs on any host with tailnet access to the user's kithd. No central server; the bridge is operated by the kith user.\n\nArchitecture:\n- Bridge process holds Slack app credentials (bot token) and kithd JMAP credentials\n- Slack \u2192 kith: receive Slack events via Events API (HTTP push) or Socket Mode (WebSocket, no public URL needed); call kithd Message/set create\n- kith \u2192 Slack: subscribe to kithd EventSource; on new message call Slack Web API chat.postMessage\n- Each bridged Slack channel/DM maps to a kith chat ID (stored in bridge config or SQLite)\n- Identity: Slack messages appear in kith attributed to a synthetic contact; kith messages appear in Slack as bot posts with sender name prefix (e.g. 'alice: hello')\n- Attachments: upload to Slack via files.uploadV2; download from Slack and forward to kithd blob upload\n\nScope:\n- Bridge config file: kithd URL, bot token, channel\u2192chatId mapping\n- Socket Mode preferred (no public ingress required \u2014 fits tailnet-only deployments)\n- Message deduplication (avoid echo loops)\n- Graceful reconnect on EventSource or WebSocket drop\n- Target: Rust binary (fits kith's single-static-binary ethos) or small Go binary\n- Distribution: same release artifact as kithd; systemd service unit included\n\nKey decisions for research phase:\n- Socket Mode vs Events API (public URL) \u2014 Socket Mode preferred for no-ingress deployments\n- Per-user bot (personal Slack app) vs shared app requiring Slack admin approval\n- How to handle Slack threads vs kith replyTo",
+  "status": "deferred",
+  "priority": 2,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:43:27Z",
+  "updated_at": "2026-04-24T02:25:31Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.2",
+  "title": "JS: addContact(userId, login, host, name) function",
+  "description": "Implement the addContact() async function that calls Contact/set create and updates local state.\n\nWhat: Pure JS function; does not touch the DOM modal (that is wired in a later bead).\n\nAlgorithm:\n1. Export async function addContact(tailscaleUserId, login, mailboxHost, displayName).\n2. Validate inputs: tailscaleUserId non-empty, login non-empty, mailboxHost non-empty; if any empty call showError() and return null.\n3. Build a Contact/set create request:\n   {\n     accountId: 'a-self',\n     create: {\n       c0: {\n         tailscaleUserId,\n         login,\n         mailboxHost,\n         ...(displayName ? { displayName } : {})\n       }\n     }\n   }\n4. Call callJmap([['Contact/set', args, 'm0']]).\n5. Read methodResponses[0]; if response name is 'error', throw new Error(response[1].description).\n6. Read result.notCreated?.c0; if present call showError('Could not add contact: ' + error.type + (error.description ? ': ' + error.description : '')) and return null.\n7. Extract newContact = result.created.c0 (the full Contact object from server).\n8. contacts.set(newContact.id, newContact).\n9. Re-render: renderContactList([...contacts.values()]).\n10. Return newContact.\n\nDefensive programming rules:\n- Use textContent (not innerHTML) for all displays \u2014 addContact does not render HTML directly but renderContactList does.\n- Never log tailscaleUserId or mailboxHost to console beyond debug.\n- Validate all three required fields before any JMAP call.\n- On JMAP-level error (HTTP non-2xx from callJmap), catch and call showError().\n\nTests (independent oracle: manually constructed JMAP request/response pairs from spec):\n- Test 1 'happy path': mock callJmap to return a well-formed created.c0 response; assert contacts map contains the new entry; assert renderContactList called with updated list.\n- Test 2 'server notCreated invalidArguments': mock callJmap to return notCreated.c0 with type=invalidArguments; assert showError called; assert function returns null.\n- Test 3 'server notCreated forbidden': mock callJmap to return notCreated.c0 with type=forbidden; assert showError called.\n- Test 4 'empty tailscaleUserId': call with empty string; assert showError called before any JMAP call.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:50:39Z",
+  "updated_at": "2026-04-20T15:57:19Z",
+  "closed_at": "2026-04-20T15:57:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:50:39Z"
+    }
+  ]
+}

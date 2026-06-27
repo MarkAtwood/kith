@@ -1,0 +1,11 @@
+{
+  "id": "KITH-lbqw",
+  "title": "Teams bridge: relay kith chats to/from Microsoft Teams",
+  "description": "A standalone bridge process that relays messages bidirectionally between kith and Microsoft Teams. Runs on any host with tailnet access to the user's kithd.\n\nArchitecture:\n- Bridge holds Azure AD app registration credentials (app ID + secret or certificate) and kithd JMAP credentials\n- Teams \u2192 kith: receive Teams messages via Bot Framework webhook or Graph API change notifications (webhooks require public URL; polling the Graph API is an alternative for no-ingress deployments)\n- kith \u2192 Teams: subscribe to kithd EventSource; post to Teams channel via Graph API sendChatMessage\n- Each bridged Teams channel/chat maps to a kith chat ID\n\nScope:\n- Azure AD app registration (documented setup steps; not automated)\n- Graph API: POST /teams/{id}/channels/{id}/messages, GET /chats/{id}/messages\n- Change notifications via Graph webhooks OR fallback polling (every 30s) for no-public-URL deployments\n- Message deduplication; graceful reconnect\n- Attachment bridging: download from Teams (Graph driveItem download URL), upload to kithd blob endpoint\n- Identity: Teams messages attributed to synthetic kith contact; kith messages posted as bot with sender prefix\n- Target: Rust or Go binary; systemd service unit included\n\nKey decisions for research phase:\n- Webhook vs polling for Teams\u2192kith direction (polling avoids public URL requirement, fits tailnet model)\n- Personal app (single-tenant AAD) vs multi-tenant \u2014 single-tenant preferred (user controls their own AAD app)\n- Teams personal chats vs channel posts vs both",
+  "status": "deferred",
+  "priority": 2,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:43:27Z",
+  "updated_at": "2026-04-24T02:25:31Z"
+}

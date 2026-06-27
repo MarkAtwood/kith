@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.5",
+  "title": "Message/get rejects ids=null violating RFC 8620 5.1",
+  "description": "Message/get requires ids to be a non-null array, returning invalidArguments for ids=null or ids absent. RFC 8620 section 5.1 specifies ids=null means return all objects. Every other get handler (Chat/get, Contact/get) correctly accepts ids=null. A standard JMAP client doing Message/get with ids=null gets an error instead of the full list. Fix: accept ids=null/absent and return all messages, matching RFC 8620 and the other get handlers.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:29:54Z",
+  "updated_at": "2026-04-25T05:51:55Z",
+  "closed_at": "2026-04-25T05:51:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:29:53Z"
+    }
+  ]
+}

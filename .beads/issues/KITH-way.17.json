@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.17",
+  "title": "Decision: Emit state event only when a row is actually affected",
+  "description": "Throughout message.rs and contact.rs, StateChange is emitted only when :\n  - update_delivery_state: emit only if UPDATE touched 1+ rows (line 292)\n  - update_read_at: emit only if UPDATE touched 1+ rows (line 362)\n  - set_blocked: emit only if UPDATE touched 1+ rows (not shown, but test at line 603 verifies)\n\nThis is correct because:\n1. RFC 8620 \u00a77.1 state tokens represent actual changes, not spurious advances\n2. If a query affects 0 rows (nonexistent ID or already-terminal state), the state should not advance\n3. Test 'test_set_blocked_noop_no_emit' (line 603) explicitly verifies no-op calls don't emit\n4. Test 'update_delivery_state_delivered_is_terminal' (line 782) verifies terminal state is idempotent\n5. Prevents phantom state counters: every state token has a matching row with state_version\n\nThis is correct application of RFC 8620 semantics: state is data, not a logical clock that advances on every call.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:43Z",
+  "updated_at": "2026-04-19T20:16:32Z",
+  "closed_at": "2026-04-19T20:16:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:42Z"
+    }
+  ]
+}

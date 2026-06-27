@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hdm.5",
+  "title": "Triplicate kith_to_jmap error mapper \u2014 consolidate to shared helper",
+  "description": "SEC1/SEC3 finding: contact.rs, chat.rs (inline), and message.rs each define their own KithError\u2192JmapError mapping. message.rs has the most complete version (handles KithError::Jmap passthrough). When new KithError variants are added, all three must be updated. Consolidate to one function in kith-jmap or kith-core.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:53:05Z",
+  "updated_at": "2026-04-19T15:59:06Z",
+  "closed_at": "2026-04-19T15:59:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hdm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:53:05Z"
+    }
+  ]
+}

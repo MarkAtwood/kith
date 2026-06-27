@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.20",
+  "title": "AppState parallel invariant (messages/message_ids/message_senders) documented in struct but not enforced",
+  "description": "The comment in AppState says 'Push/pop to all three together' and the invariant is documented. However: (1) in handle_state_change there is a push_back to messages BEFORE checking if format_message_line returns Some \u2014 the push to message_ids and message_senders only happens inside the if let Some() block, meaning if format_message_line returns None the three deques are NOT pushed together and the invariant would be broken. Reading the code: the messages.push_back(line) is inside the if let Some(line) block (line 808-826 of event.rs). This is actually correct. But the structure is: if let Some(line) = ..., then push to messages, then push to message_ids/senders. A reader unfamiliar with Rust match semantics might think the push happens unconditionally. An assert_eq\\!(state.messages.len(), state.message_ids.len()) after each modification site would catch violations during tests.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:42:11Z",
+  "updated_at": "2026-04-25T08:29:46Z",
+  "closed_at": "2026-04-25T08:29:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:42:11Z"
+    }
+  ]
+}

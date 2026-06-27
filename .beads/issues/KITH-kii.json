@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kii",
+  "title": "kith-peer: N-participant group chat delivery (send and receive)",
+  "description": "KITH-3yb.9 was closed as done but group chat delivery is not implemented. DeliverHandler computes chatId from exactly 2 participants (hardcoded) and DeliverMessageArgs has no participants field.\n\nImplement:\n1. Add participants: Option<Vec<String>> to DeliverMessageArgs (peer-supplied list)\n2. In DeliverHandler step 4: if participants present, build all_participants = participants + owner_id, sort, verify sender is in list, compute chatId from sorted list; if not present, fall back to 2-participant (direct chat)\n3. In build_peer_deliver_request: add participants: Option<&[String]> parameter; include in request JSON if Some\n4. In outbox_tick: load chat participants from store, pass to build_peer_deliver_request if chat.kind == 'group'\n5. For group chat fanout: outbox_tick must enqueue one outbox entry per participant (currently only one recipient per message)\n\nWhy: Without this, messages in group chats are undeliverable across peers; only owner-authored messages in the local DB reflect group membership.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:22:39Z",
+  "updated_at": "2026-04-20T03:16:12Z",
+  "closed_at": "2026-04-20T03:16:12Z",
+  "notes": "Part of Phase 2 peer delivery epic KITH-7w7",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:34Z"
+    }
+  ]
+}

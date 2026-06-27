@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v6tk.1",
+  "title": "try_send(None) close-signal swallowed when channel is Full",
+  "description": "When closeafter=state, batch filtered to empty, and the mpsc channel is Full: try_send(None).is_err() at line 393 breaks the coalescing task WITHOUT delivering the None close-signal. Unlike the event path at line 432 (which now matches Full vs Closed separately), the close-signal path treats Full and Closed identically. Full means the receiver is still alive but the channel is saturated; breaking without sending None leaves live_stream open (take_while never sees None), so the SSE connection hangs until the HTTP transport drops it. If the channel later drains, the client never gets the terminal None. Inconsistent with the event path's new explicit Full handling.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:54:42Z",
+  "updated_at": "2026-04-25T08:57:45Z",
+  "closed_at": "2026-04-25T08:57:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v6tk",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:54:41Z"
+    }
+  ]
+}

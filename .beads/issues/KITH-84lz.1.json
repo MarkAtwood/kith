@@ -1,0 +1,20 @@
+{
+  "id": "KITH-84lz.1",
+  "title": "pending_sc deferred dispatch pattern avoids TUI unresponsiveness",
+  "description": "The pending_sc pattern stores a StateChange from the select! arm and dispatches it AFTER select! returns. This prevents a long await (Message/changes + Message/get) from blocking all other select! arms (keyboard, tick, SSE status) during that call. A future contributor might see this as unnecessary indirection and inline the await back into the select! arm \u2014 which would re-introduce TUI lag under any SSE event. The comment is accurate and should be kept.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:20:09Z",
+  "updated_at": "2026-04-25T09:20:49Z",
+  "closed_at": "2026-04-25T09:20:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-84lz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:20:09Z"
+    }
+  ]
+}

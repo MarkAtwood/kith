@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.39",
+  "title": "backup progress missing final 100% line",
+  "description": "backup.rs backup_progress is called only on StepResult::More (line 94). On StepResult::Done the final count is never printed before eprintln() adds the newline. Terminal shows e.g. 900/1000 then newline then 'Backup complete' without ever displaying 1000/1000. Fix: call backup_progress(backup.progress()) before disarming the guard, or print the final count from backup.progress() after the loop exits.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:18Z",
+  "updated_at": "2026-04-25T08:25:26Z",
+  "closed_at": "2026-04-25T08:25:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:17Z"
+    }
+  ]
+}

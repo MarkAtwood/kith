@@ -1,0 +1,20 @@
+{
+  "id": "KITH-ngr5.5",
+  "title": "Test comment renames Contact\u2192ChatContact: logic unchanged",
+  "description": "Three test comment/assertion strings changed from 'Contact' to 'ChatContact'. All are in Oracle comment blocks or assertion messages, not in logic or type-name comparisons. The actual type name used in StateChange structs and type filter comparisons already used ChatContact. No behavioral change.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:51:21Z",
+  "updated_at": "2026-04-24T18:54:34Z",
+  "closed_at": "2026-04-24T18:54:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ngr5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:51:20Z"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "author": "Mark Atwood",
+  "created_at": "2026-06-15T15:54:40Z",
+  "id": "019ecbfd-faa2-73bb-a82c-2153aad3d4e9",
+  "issue_id": "KITH-q7et.52",
+  "text": "Deep refactor: db_err() is called ~60 times across kith-store. Changing KithError::Store(String) to preserve rusqlite::Error requires reworking every call site. Recommend as a separate PR."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.19",
+  "title": "SEC0: Peer/deliver group chat does not verify sender is in participants list",
+  "description": "kith-peer/src/lib.rs DeliverHandler lines 219-248: for group chats (msg.participants non-empty), the code ensures the owner is in all_participants but does NOT verify that identity.user_id (the verified sender) is also in all_participants. A malicious peer can send Peer/deliver with participants=[\"uid-bob\",\"uid-carol\"] (omitting themselves); the resulting chat row has members [uid-bob, uid-carol, owner] but a message with sender_user_id=uid-sender who is not a chat member. The chatId hash is also computed over a list that excludes the sender, so it won't match the sender's own chatId computation. Fix: after building all_participants, assert identity.user_id is present and return invalidArguments if not.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:38:21Z",
+  "updated_at": "2026-04-20T00:42:56Z",
+  "closed_at": "2026-04-20T00:42:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:38:20Z"
+    }
+  ]
+}

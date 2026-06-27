@@ -1,0 +1,31 @@
+{
+  "close_reason": "Not a bug: String is moved into StateChange.new_state; call sites pass fresh format!() strings. No redundant clones found.",
+  "closed_at": "2026-06-15T12:01:29Z",
+  "compaction_level": 0,
+  "content_hash": "589426ddc0c17d560a1e1bb7e0b43ccfa4ddac3d2c05504886cb3e5892e9b055",
+  "created_at": "2026-06-15T04:57:06Z",
+  "created_by": "Mark Atwood",
+  "description": "In kith-store, several internal emit() methods take String by value but only use it to construct a StateChange:\n\n- kith-store/src/contact.rs:23: fn emit(&self, new_state: String)\n- kith-store/src/outbox.rs:44: fn emit(&self, new_state: String)\n- kith-store/src/message.rs:646: fn emit(&self, new_state: String)\n- kith-store/src/chat.rs:178: fn emit(&self, new_state: String)\n\nStateChange has a new_state: String field, so the String is ultimately moved in. However, the call sites pass owned Strings constructed specifically for this call (e.g. format!(\"s-{}\", counter)). The parameter type is fine for call sites that already have a String.\n\nThis is a minor issue \u2014 the type is correct (String is moved into StateChange.new_state). However, if any call site has to .clone() a string to pass it here, that would be wasteful. A quick audit of call sites to confirm no redundant clones would close this.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.63",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "emit() takes String param where &str would suffice in kith-store",
+  "updated_at": "2026-06-15T12:01:29Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:57:05Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

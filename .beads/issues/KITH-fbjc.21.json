@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.21",
+  "title": "textContent used throughout web client \u2014 XSS via message content correctly prevented",
+  "description": "app.js uses textContent (never innerHTML) for all peer-supplied content: message bodies, sender names, contact names, attachment filenames. A future contributor might 'simplify' rendering by switching to innerHTML for rich-text support. That change would introduce XSS. The current uniformity is deliberate and must be preserved. Any rich-text rendering must go through a sanitizer (e.g. DOMPurify), not raw innerHTML.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:45Z",
+  "updated_at": "2026-04-24T05:31:49Z",
+  "closed_at": "2026-04-24T05:31:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:45Z"
+    }
+  ]
+}

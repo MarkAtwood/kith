@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "df2655466f9a81e447b96001dccc4764f341966a05695651dc20c75ac91ae459",
+  "created_at": "2026-06-14T00:02:22Z",
+  "created_by": "Mark Atwood",
+  "description": "End-to-end interop tests between kith (Rust) and moot (Python) proving the JMAP Chat federation spec works across codebases. Run both servers in containers (kith via Dockerfile, moot via its existing Dockerfile + docker-compose.test.yml). Use DNS+mTLS transport (or loopback transport if DNS isn't ready). Test vectors: (1) kith sends message to moot, moot receives via Peer/deliver, (2) moot sends message to kith, kith receives, (3) delivery receipt round-trip both directions, (4) typing indicator round-trip, (5) attachment upload on kith, fetch from moot across federation boundary, (6) broadcast mention in a Space channel, (7) rich body message round-trip, (8) message edit propagation, (9) message delete propagation, (10) invite code created on kith, joined from moot. Each test has an independent oracle: the receiving server's Message/get must return the exact fields the sender put in. This is the definitive validation of draft-atwood-jmap-chat-federation-00.",
+  "ephemeral": 0,
+  "id": "KITH-siwn",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith\u2194moot federation interop test suite",
+  "updated_at": "2026-06-14T00:02:22Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:02:26Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

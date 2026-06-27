@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-13T17:57:35Z",
+  "compaction_level": 0,
+  "content_hash": "2548866c0e40c0fe9459044c1645eced87d63587e70c1dfcee345ce5cedb8da4",
+  "created_at": "2026-06-13T17:45:19Z",
+  "created_by": "Mark Atwood",
+  "description": "Wire through delivery_receipts field on Message",
+  "ephemeral": 0,
+  "id": "KITH-m0rn",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Delivery receipts",
+  "updated_at": "2026-06-13T17:57:35Z"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "KITH-3yb.3",
+  "title": "kithd: GET /jmap/download/{accountId}/{blobId}/{name} download handler",
+  "description": "What: Implement the JMAP blob download endpoint that authenticates caller, validates blobId, and streams blob to client.\n\nAlgorithm:\n1. Add route GET /jmap/download/:account_id/:blob_id/:name to build_app.\n2. Handler: verify caller.role == Role::Owner OR (Role::Peer AND blob is in a message addressed to caller). For Phase 2, allow owner only to start; peer access can be added later if needed.\n3. Verify account_id == app.owner_id; else 400.\n4. Call validate_blob_id(&blob_id); return 400 if invalid.\n5. Lookup attachment metadata: store.attachments().get_blob_meta(&blob_id) -> Option<BlobMeta>. Return 404 if not found.\n6. Call app.blob_store.read_blob(&blob_id) -> Option<Vec<u8>>. Return 404 if not found on disk.\n7. Read ?accept= query param if present (max 256 bytes); use as Content-Type if provided, else use stored content_type.\n8. Return 200 with Content-Type header, Content-Disposition: attachment; filename={sanitized name from URL}, body = blob bytes.\n9. Sanitize the :name URL segment for response header: strip path separators, null bytes, limit to 255 chars.\n\nDefensive rules: validate_blob_id before any file I/O; return 404 not 403 for unauthorized blob access; sanitize filename from URL for Content-Disposition; never log blob content.\n\nAgent team: R reads existing download_url template in kith-jmap; I implements; T writes integration test: upload blob then download it, verify bytes identical; V runs cargo test -p kithd + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:55:50Z",
+  "updated_at": "2026-04-20T00:13:41Z",
+  "closed_at": "2026-04-20T00:13:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:55:50Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:18Z"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "close_reason": "kith-chat fixed by subagent",
+  "closed_at": "2026-06-13T14:09:21Z",
+  "compaction_level": 0,
+  "content_hash": "75c7234c59cd63698811219209a9c945b86bcb966138a4c72ce1197b360517bc",
+  "created_at": "2026-06-13T13:48:20Z",
+  "created_by": "Mark Atwood",
+  "description": "Update Message/set process_create/process_update. Update Chat/set, Chat/get. Update ChatContact handlers. Handle SenderId enum, ChatKind enum, Id newtype.",
+  "ephemeral": 0,
+  "id": "KITH-6kiv",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Phase 3: Fix kith-chat for jmap-types migration",
+  "updated_at": "2026-06-13T14:09:21Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:48:27Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-dhgl",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

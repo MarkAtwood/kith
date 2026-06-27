@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.63",
+  "title": "load_attachments_for_messages uses dynamic SQL with varying IN clause, bypassing prepare_cached",
+  "description": "load_attachments_for_messages() builds a SQL string with N '?' placeholders matching the message count, then calls conn.prepare() (not prepare_cached()). The code comment acknowledges this but calls it necessary to avoid unbounded cache growth. In practice, list_by_chat() fetches up to 'limit' messages per call, so the placeholder count is bounded by the limit parameter (typically 50-100). An alternative avoiding dynamic SQL entirely: batch the attachment lookup with a JOIN against a temporary table or use repeated single-message queries. For the Phase 1 single-user case with small limits this is not a hot path, but the prepare() call creates and destroys a prepared statement on every list_by_chat() invocation. A capped LRU prepare cache (e.g., sizes 1, 10, 25, 50, 100) would eliminate the allocation on common page sizes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:38Z",
+  "updated_at": "2026-04-25T07:59:21Z",
+  "closed_at": "2026-04-25T07:59:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:38Z"
+    }
+  ]
+}

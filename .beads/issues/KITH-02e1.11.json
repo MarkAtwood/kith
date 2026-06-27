@@ -1,0 +1,38 @@
+{
+  "id": "KITH-02e1.11",
+  "title": "E2E: send message + read receipt full flow",
+  "description": "**What:** End-to-end integration test covering compose\u2192send\u2192input-clear and inbound-message\u2192receipt flow using wiremock.\n\n**Algorithm:**\n\nScenario A \u2014 Send a message:\n1. Set up state: chat_ids=['chat-1'], selected_chat=0, input='hello world', input_cursor=11, should_send_message=true.\n2. Mock POST /jmap/api (up_to_n_times 1): return Message/set created response with id='new-msg-1'.\n3. Call the send path directly: let result = send_message(&client, &url, 'chat-1', 'hello world').await.\n4. Assert: Ok('new-msg-1') returned.\n5. Simulate what run() does on Ok: clear input, reset cursor.\n6. Assert: state.input.is_empty(), state.input_cursor == 0.\n\nScenario B \u2014 Send failure shows error:\n1. Set up state: should_send_message=true, input='hello'.\n2. Mock: return error method response {type:'serverFail'}.\n3. Call send path.\n4. Assert: Err returned; set_error called; state.error_notification is Some.\n5. Assert: error_notification message contains sanitize_display output (no raw escapes).\n\nScenario C \u2014 Inbound message triggers read receipt:\n1. Mock for Message/set update: return success ({updated:{'m-inbound': null}}).\n2. Call send_read_receipts(&client, &url, &['m-inbound']).await.\n3. Assert: Ok(()) returned.\n4. Simulate: unread_message_ids.remove('m-inbound').\n5. Assert: unread_message_ids is empty.\n\nScenario D \u2014 3s error notification clears:\n1. Set error_notification to Some(('Send failed: foo', Instant::now() - Duration::from_secs(4))).\n2. Call state.clear_stale_error().\n3. Assert: error_notification is None.\n\n**Defensive rules:**\n- All oracles derived from mock JSON, not from re-running the functions.\n- No real kithd or network; fully offline.\n- Each scenario is an independent #[tokio::test] function.\n\n**Agent team:** T writes all 4 scenario tests; V runs cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:56:25Z",
+  "updated_at": "2026-04-20T12:13:34Z",
+  "closed_at": "2026-04-20T12:13:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:24Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:41Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:40Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.9",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:41Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.16",
+  "title": "Error context strings omit sensitive values (user ID not logged)",
+  "description": "Error messages throughout whois() and status() (e.g., lines 95, 123, 194) provide context for operators but never include the actual user_id or sensitive identity data. The pattern uses format!() to build messages like 'HTTP {status}' rather than 'user={user}'. This is correct security practice. Keep this pattern.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:35Z",
+  "updated_at": "2026-04-19T19:51:56Z",
+  "closed_at": "2026-04-19T19:51:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:34Z"
+    }
+  ]
+}

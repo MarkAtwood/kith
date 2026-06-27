@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:11:17Z",
+  "compaction_level": 0,
+  "content_hash": "6820f5b08f402f9e6f4c446e8ec9d21cbe71e2405da26de2a111ea6571381afa",
+  "created_at": "2026-06-15T04:52:26Z",
+  "created_by": "Mark Atwood",
+  "description": "Public enums and structs across library crates lack #[non_exhaustive], making every new variant/field a breaking change.\n\nLocations:\n- kith-core/src/auth.rs: Role, Identity\n- kith-core/src/error.rs: AuthError, KithError\n- kith-peer/src/lib.rs: PeerDeliveryError\n- kithd/src/tls.rs: TlsError\n- kithd/src/extractors.rs: CallerRejection\n- kithd/src/listener.rs: ListenerError\n- kith-tui/src/client.rs: ClientError, SseStatus\n- kith-jmap/src/lib.rs: Session, CoreCapability, Capabilities, AccountCapabilities, Dispatcher, etc.\n- kith-store/src/lib.rs: PeerBlobInfo\n\nFix: add #[non_exhaustive] to all public enums, structs, and error types in library crates.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.5",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Public enums/structs across workspace missing #[non_exhaustive]",
+  "updated_at": "2026-06-15T12:11:17Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:26Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

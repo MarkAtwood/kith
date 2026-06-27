@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.6",
+  "title": "Duplicated unix_secs_to_rfc3339 across three modules",
+  "description": "Three independent implementations of unix_secs_to_rfc3339: contact.rs (lines 172\u2013227, loop-based), chat.rs (lines 196\u2013247, identical loop logic), and message.rs (lines 38\u201364, Howard Hinnant algorithm). Code duplication at this scale creates maintenance risk: if a bug is found, all three must be updated. The message.rs implementation is superior (well-vetted algorithm). Recommendation: extract a shared private helper in lib.rs or migrate all three to use the Hinnant algorithm. No functional issue today, but violates DRY and creates future risk.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:30Z",
+  "updated_at": "2026-04-19T05:58:00Z",
+  "closed_at": "2026-04-19T05:58:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:29Z"
+    }
+  ]
+}

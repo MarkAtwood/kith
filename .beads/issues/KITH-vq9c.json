@@ -1,0 +1,12 @@
+{
+  "id": "KITH-vq9c",
+  "title": "SEC3: Reduce nesting in process_update receipt logic",
+  "description": "In kith-chat/src/message.rs lines 442-456, the receipt enqueue path has 3 levels of nesting: if let Ok(Some(msg)), if sender_id check, if let Ok(Some(contact)). Consider flattening with early returns or extracting a helper function to improve readability. Current structure is correct but could be clearer.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:50Z",
+  "updated_at": "2026-04-20T03:56:09Z",
+  "closed_at": "2026-04-20T03:56:09Z"
+}

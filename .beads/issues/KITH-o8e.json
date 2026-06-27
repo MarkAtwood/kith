@@ -1,0 +1,26 @@
+{
+  "id": "KITH-o8e",
+  "title": "kith-store: OutboxStore",
+  "description": "OutboxStore: enqueue, get_due, record_failure, mark_delivered with exponential backoff.\n\n**What:** OutboxStore wraps &Connection and implements the outbox retry queue: insert pending deliveries, fetch due entries, update backoff, and remove on success.\n\n**Algorithm:**\n1. Define pub struct OutboxStore<'a> { conn: &'a Connection }\n2. enqueue(message_id: &str, peer_user_id: &str, peer_mailbox_host: &str, now_unix: i64) -> Result<(), KithError>:\n   INSERT INTO outbox(message_id, peer_user_id, peer_mailbox_host, next_attempt_at, attempt_count) VALUES(?,?,?,?,0)\n3. get_due(now_unix: i64) -> Result<Vec<OutboxEntry>, KithError>:\n   SELECT * FROM outbox WHERE next_attempt_at <= ? ORDER BY next_attempt_at LIMIT 50 (uses outbox_next index)\n4. record_failure(message_id: &str, last_error: &str, now_unix: i64) -> Result<(), KithError>:\n   a. SELECT attempt_count FROM outbox WHERE message_id=?\n   b. Compute delay: min(60 * 2^attempt_count, 3600) seconds  (cap at 1 hour)\n   c. UPDATE outbox SET attempt_count=attempt_count+1, last_error=?, next_attempt_at=now+delay WHERE message_id=?\n   d. If attempt_count >= 10: call mark_failed (move to permanent failure)\n5. mark_delivered(message_id: &str) -> Result<(), KithError>:\n   DELETE FROM outbox WHERE message_id=?\n6. mark_failed(message_id: &str, last_error: &str) -> Result<(), KithError>:\n   UPDATE messages SET delivery_state='failed' WHERE id=?; DELETE FROM outbox WHERE message_id=?\n\n**Defensive programming rules:**\n- LIMIT on get_due prevents runaway batch sizes\n- Backoff capped at 3600s to prevent unbounded delays\n- last_error truncated to 500 chars before storage (prevent oversized error blobs)\n- Never log message body content; log only message_id and error string\n\n**Tests (independent oracle):**\n- Enqueue then get_due(now) returns the entry (oracle: manually computed timestamps)\n- get_due(before_next_attempt) returns empty (not yet due)\n- record_failure increments attempt_count and doubles delay\n- After 10 failures, mark_failed is called; delivery_state='failed' in messages\n- mark_delivered removes the outbox row\n\n**Acceptance:** cargo test -p kith-store: all OutboxStore tests pass; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:29:35Z",
+  "closed_at": "2026-04-19T05:29:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-k64",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

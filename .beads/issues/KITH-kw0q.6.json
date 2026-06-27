@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.6",
+  "title": "outbox worker: first delivery always delayed 30s despite row being immediately due",
+  "description": "Message/set enqueues outbox row with next_attempt_at = now (immediately due). outbox_worker sleeps 30 seconds before first outbox_tick. Every message waits >=30s even when the peer is online. Fix: run outbox_tick once immediately on startup before entering the sleep loop.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:09:40Z",
+  "updated_at": "2026-04-24T15:34:41Z",
+  "closed_at": "2026-04-24T15:34:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:09:40Z"
+    }
+  ]
+}

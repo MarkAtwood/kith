@@ -1,0 +1,27 @@
+{
+  "id": "KITH-z9ly.3",
+  "title": "kith-peer: outbox_tick receipt handling + build_peer_receipt_request",
+  "description": "Extend outbox_tick to detect kind='receipt' entries and deliver them as Peer/receipt JMAP calls.\n\n**What:** Add build_peer_receipt_request() and dispatch receipt entries in outbox_tick.\n\n**Algorithm:**\n1. In crates/kith-peer/src/lib.rs, add:\n   pub fn build_peer_receipt_request(message_id: &str, kind: &str, at: &str) -> serde_json::Value {\n       serde_json::json!({\n           \"using\": [\"urn:ietf:params:jmap:core\", \"urn:kith:chat:1\"],\n           \"methodCalls\": [[\n               \"Peer/receipt\",\n               {\n                   \"accountId\": \"a-self\",\n                   \"messageId\": message_id,\n                   \"kind\": kind,\n                   \"at\": at\n               },\n               \"0\"\n           ]]\n       })\n   }\n   where kind is \"read\" (always for this feature; receipts are enqueued by process_update on readAt), and at is the RFC 3339 formatted read_at_unix timestamp.\n\n2. In outbox_tick, where it currently calls build_peer_deliver_request for each entry, add a branch:\n   - Load message if entry.kind == 'receipt': ONLY need to format read_at_unix as RFC 3339 timestamp. No need to load message body/attachments. Message_id from entry is sufficient.\n   - Compute at = chrono::DateTime::from_timestamp(read_at_unix, 0).format RFC 3339 UTC.\n   - If read_at_unix is None: call record_failure (malformed receipt row, skip).\n   - Build receipt request: build_peer_receipt_request(&entry.message_id, \"read\", &at_str)\n   - Deliver to entry.peer_mailbox_host via existing deliver_client.\n   - On success: call outbox.complete_delivery(&entry, now_unix_at_success) \u2014 this deletes the receipt outbox row (no message state update because entry.kind == 'receipt').\n   - On failure: call outbox.record_failure(&entry, error_str, now_unix) \u2014 same retry logic as messages.\n\n3. Update existing outbox_tick calls to record_failure, complete_delivery, mark_failed, mark_delivered to use the new &OutboxEntry signatures (from Z9LY.2).\n\n4. Update outbox_tick calls where message lookup returns None: currently calls mark_delivered(message_id) \u2014 update to mark_delivered(&entry).\n\n**Defensive programming rules:**\n- read_at_unix None for a receipt row: call record_failure (do not panic or silently skip).\n- Timestamp formatting must produce RFC 3339 UTC with Z suffix (consistent with rest of kith).\n- Delivery client call for receipts uses the SAME https client as messages \u2014 no special trust.\n- No logging of message body in receipt path.\n\n**Agent team:** R (read outbox_tick, build_peer_deliver_request) + I.\n\n**Tests:** cargo test -p kith-peer must pass clean.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:52:59Z",
+  "updated_at": "2026-04-20T03:04:05Z",
+  "closed_at": "2026-04-20T03:04:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:52:58Z"
+    },
+    {
+      "depends_on_id": "KITH-z9ly.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:32Z"
+    }
+  ]
+}

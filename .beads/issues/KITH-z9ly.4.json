@@ -1,0 +1,27 @@
+{
+  "id": "KITH-z9ly.4",
+  "title": "kith-chat: process_update enqueue_receipt after readAt",
+  "description": "In process_update, after update_read_at succeeds, enqueue a Peer/receipt if the message is inbound.\n\n**What:** Wire enqueue_receipt into the Message/set readAt update path.\n\n**Algorithm:**\n1. In crates/kith-chat/src/message.rs, fn process_update:\n   a. Rename _now_unix parameter to now_unix (remove leading underscore \u2014 it is now used).\n   b. After the successful guard.messages().update_read_at(server_id, read_at_unix) call:\n      i.  Look up the message: guard.messages().get(server_id). If None or Err, log and skip receipt (do not fail the update).\n      ii. Check if msg.sender_id != \"self\". If sender_id == \"self\" (outgoing message), skip receipt silently.\n      iii. Look up contact: guard.contacts().get_by_peer_user_id(&msg.sender_id). If None or Err or contact.blocked, skip receipt silently \u2014 do not fail the update.\n      iv. Call: let _ = guard.outbox().enqueue_receipt(server_id, &msg.sender_id, &contact.mailbox_host, read_at_unix, now_unix);\n         (Use let _ = to silently ignore enqueue errors \u2014 a failed receipt enqueue must not fail the readAt update.)\n   c. drop(guard) then return Ok(()) as before.\n\n2. All callers of process_update must pass now_unix (check process_update call sites \u2014 typically called from MessageSetHandler::call with a now_unix parameter already available).\n\n**Defensive programming rules:**\n- Receipt enqueue failure must NOT fail the readAt update (use let _ =).\n- Only enqueue for inbound messages (sender_id != \"self\"). Never send a receipt for your own outgoing messages.\n- Only enqueue if contact is found AND not blocked. If blocked, skip silently.\n- No logging of message body or any PII in this path.\n\n**Agent team:** R (read message.rs process_update + call sites) + I.\n\n**Tests:** cargo test -p kith-chat must pass clean. The existing test_read_receipt_incoming_message and test_read_receipt_outgoing_message tests in kith-chat serve as oracles \u2014 verify both still pass.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:53:15Z",
+  "updated_at": "2026-04-20T03:04:06Z",
+  "closed_at": "2026-04-20T03:04:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:14Z"
+    },
+    {
+      "depends_on_id": "KITH-z9ly.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:33Z"
+    }
+  ]
+}

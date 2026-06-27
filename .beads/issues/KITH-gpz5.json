@@ -1,0 +1,13 @@
+{
+  "id": "KITH-gpz5",
+  "title": "Review: post-kw0q full codebase",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:42:24Z",
+  "updated_at": "2026-04-24T17:08:07Z",
+  "closed_at": "2026-04-24T17:08:07Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 9 P0 correctness bugs found: cross-chat queryChanges contamination, replyTo stale-chatId mismatch, SSE closeafter drops replay events, debug_assert no-op in release, readAt accepts epoch-0, update_read_at no validation, blob.rs UTF-8 slice panic, upsert phantom state advances. All have real triggers. Security exposure is limited (tailnet-only service, no external attack surface for most issues).\nConfidence: 15% chance of missed bug. Uncertainty driven by: SSE replay edge cases not fully traced, SQL interaction with concurrent writes not tested. Would raise confidence if: end-to-end SSE tests existed."
+}

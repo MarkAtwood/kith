@@ -1,0 +1,31 @@
+{
+  "close_reason": "False positive: all config tests already have #[serial] attribute and serial_test is in dev-deps. The SAFETY comments document the serialization guarantee.",
+  "closed_at": "2026-06-15T11:53:56Z",
+  "compaction_level": 0,
+  "content_hash": "e0221418df272d9578ed61102f105fca9b1420737c821ab7c3a6b64b6adec4c4",
+  "created_at": "2026-06-15T04:54:58Z",
+  "created_by": "Mark Atwood",
+  "description": "## Why this issue exists\n\nkithd/src/config.rs has tests that call `unsafe { std::env::set_var(...) }` and `unsafe { std::env::remove_var(...) }` to exercise `Config::from_env()`. Cargo runs tests in parallel threads within the same process by default. Because the process environment is a single global resource, two test threads setting different values for the same variable (e.g. `KITH_BLOB_DIR`) race with each other, producing non-deterministic results and occasional spurious failures.\n\n## What needs to be done\n\nAdd `#[serial_test::serial]` (or equivalent) to every test function in config.rs that writes to the process environment. Add `serial_test` to `[dev-dependencies]` in kithd/Cargo.toml. Alternatively, refactor `Config::from_env()` to accept an explicit env map (e.g. `HashMap<String,String>`) so tests can pass isolated state without touching the real environment at all \u2014 this is the more robust fix.\n\n## Acceptance criteria\n\n- `cargo test -p kithd config` passes reliably when run with `--test-threads=8`\n- No test function in config.rs mutates the process environment without serialization or isolation",
+  "ephemeral": 0,
+  "id": "KITH-q7et.49",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 0,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "config tests race on process env without serial guard",
+  "updated_at": "2026-06-15T11:53:56Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:57Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

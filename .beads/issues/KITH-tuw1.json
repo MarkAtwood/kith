@@ -1,0 +1,13 @@
+{
+  "id": "KITH-tuw1",
+  "title": "Peer attachment fetch: proxy-fetch blobs from sender on download",
+  "description": "When Alice downloads an attachment from a message Bob sent her, Alice's kithd must fetch the blob bytes from Bob's kithd and cache them locally. Currently kithd stores only attachment metadata at Peer/deliver time; the download endpoint returns 404 for any inbound attachment blob.\n\nScope:\n1. Download handler: when blob not found locally, look up sender from the attachment's message, fetch from peer's downloadUrl, cache, serve\n2. kith-store: query to find sender contact by blobId (via message \u2192 contact join)\n3. kith-peer/fetch.rs: HTTP client to GET blob from remote kithd over tailnet (reuse TailnetCertVerifier; authenticate with TLS + tailnet identity)\n4. kith-attach: check-exists + store-fetched helpers\n5. Error handling: peer unreachable \u2192 502 with Retry-After; blob hash mismatch \u2192 500; size limit enforcement",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:44:22Z",
+  "updated_at": "2026-04-20T17:21:43Z",
+  "closed_at": "2026-04-20T17:21:43Z"
+}

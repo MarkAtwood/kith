@@ -1,0 +1,13 @@
+{
+  "id": "KITH-q4mu",
+  "title": "Review: fix review findings KITH-d6l6 (P0/P1/P3)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:59:01Z",
+  "updated_at": "2026-04-24T04:05:16Z",
+  "closed_at": "2026-04-24T04:05:16Z",
+  "notes": "Maintainer risk: LOW \u2014 no new auth surface, no wire format changes, no new public-facing config. The two findings are: one bug introduced via a comment/behavior mismatch (P0, self-contained fix), and one policy choice for group chats (P1, Phase 1 not yet exposed to users). No fossilized APIs introduced.\nConfidence: 8% chance of missed bug. Uncertainty driven by: (1) did not trace every integration test in kith-chat/tests/integration.rs for the new 4-arg dispatch signature \u2014 26 call sites updated by script, spot-checked but not exhausted; (2) did not verify that update_last_message_at is the ONLY post-commit operation that uses ? \u2014 if there are others they carry the same orphan-message risk. Would raise confidence if: read the full kith-chat/tests/integration.rs to confirm all new dispatch calls are correct and inspect any other post-insert operations in process_create for the same ? pattern."
+}

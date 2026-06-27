@@ -1,0 +1,20 @@
+{
+  "id": "KITH-m55.2",
+  "title": "[SEC1] Validate Tailscale UserID field presence and format",
+  "description": "Risk: SelfPeer deserialization via custom visitor silently defaults user_id to empty string if the 'Self' key is absent from Tailscale /status response. If Tailscale LocalAPI changes field name or response structure, kithd continues to start (with wrong owner_id), then rejects all auth requests with cryptic 401 errors. No easy way for an operator to diagnose.\n\nMitigation: Add explicit validation in LocalApiClient::status() to distinguish between 'missing Self field' (user not logged in, clear error) and 'Self field present but UserID missing' (Tailscale API change, also clear). Log a distinct warning for each case.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:38:38Z",
+  "updated_at": "2026-04-19T18:43:16Z",
+  "closed_at": "2026-04-19T18:43:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-m55",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:38:38Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.13",
+  "title": "[SEC6] Good: DisplayName fallback chain (empty-safe)",
+  "description": "In app.js getContactName() (lines 125-133), the code implements a safe fallback chain:\n1. displayName (if non-empty after trim)\n2. login (if non-empty after trim)\n3. tailscaleUserId (raw ID as last resort)\n\nThis is important because Headscale deployments without OIDC may have empty displayName and login, leaving only the Tailscale ID. The explicit trim() and length check prevent showing empty or whitespace-only strings.\n\nThe code also applies the same pattern in getChatDisplayName() (lines 243-248) for group chat names.\n\nAlternative (assume displayName is always populated) would break on Headscale. Alternative (truncate long names without trim) would include leading/trailing whitespace in display.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:18Z",
+  "updated_at": "2026-04-19T18:21:27Z",
+  "closed_at": "2026-04-19T18:21:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:17Z"
+    }
+  ]
+}

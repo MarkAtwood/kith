@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.25",
+  "title": "SEC2: Remove redundant sanitize_display call in draw_chat_list hot path",
+  "description": "File: ui.rs:77 (draw_chat_list inner map closure)\nIssue: sanitize_display() is called on every chat name on every 50ms redraw (20 FPS). Chat names are already sanitized at storage time in load_startup_data() (event.rs lines ~177, ~226). This is a double-sanitization \u2014 O(N) byte scan + String allocation per chat name per frame.\nFix: Remove the sanitize_display() call from draw_chat_list. Change:\n  ListItem::new(Span::raw(crate::app::sanitize_display(name.as_str()))).style(style)\nto:\n  ListItem::new(Span::raw(name.as_str())).style(style)\nData stored in state.chat_list is already sanitized at write time.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:46:22Z",
+  "updated_at": "2026-04-20T05:48:19Z",
+  "closed_at": "2026-04-20T05:48:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:46:21Z"
+    }
+  ]
+}

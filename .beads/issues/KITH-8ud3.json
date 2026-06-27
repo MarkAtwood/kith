@@ -1,0 +1,13 @@
+{
+  "id": "KITH-8ud3",
+  "title": "Decide and implement unknown capability handling in parse_request",
+  "description": "RFC 8620 \u00a73.3 requires servers to return unknownCapability for unsupported capabilities. This means any stock JMAP mail client (Thunderbird, etc.) that includes urn:ietf:params:jmap:mail in using will always get a hard rejection from Kith \u2014 spec-correct but not interoperable. The design choice is: (A) strict RFC compliance \u2014 keep current behavior, reject unknown using entries; (B) pragmatic compatibility \u2014 silently ignore unknown using entries, accept the request, only dispatch methods Kith knows about. Option B is a deliberate RFC deviation but allows stock clients to connect without error. A middle path: ignore unknown capabilities but log a warning. Decision must be made explicitly; then implement in parse_request in kith-jmap.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-22T15:24:57Z",
+  "updated_at": "2026-04-22T15:26:22Z",
+  "closed_at": "2026-04-22T15:26:22Z"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "KITH-92lb",
+  "title": "Review: SSE warn improvement batch (4551645)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:14:53Z",
+  "updated_at": "2026-04-25T09:16:40Z",
+  "closed_at": "2026-04-25T09:16:40Z",
+  "notes": "Maintainer risk: LOW \u2014 the only gap is an untested fallback code path (node_name empty \u2192 display() fallback) that has no behavioral consequence in production; the warn log in the stall path is correct and the rename is well-commented.\nConfidence: 5% chance of missed bug.   Uncertainty driven by: the stall/Full path is not exercised by any test (capacity-256 channel never fills in tests), so the warn log message text and client field are untested. The node_name-empty fallback is similarly untested. Neither is a behavioral correctness risk \u2014 the pre-existing break-on-any-error behavior is preserved.   Would raise confidence if: one test that manufactures a full channel (send 257 events before the task drains) verifies the warn fires and the connection is dropped, and one test with an empty node_name verifies the fallback identifier appears in any log capture."
+}

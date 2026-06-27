@@ -1,0 +1,12 @@
+{
+  "id": "KITH-8poe",
+  "title": "SEC3: Extract complete_delivery/mark_failed common transaction logic",
+  "description": "In kith-store/src/outbox.rs (lines 214-288), complete_delivery and mark_failed have nearly identical transaction patterns: check kind, DELETE if receipt, else wrap in tx + update message + delete outbox + commit. The UPDATE statement differs (delivery_state='delivered' vs 'failed'). Extract the common transaction scaffolding into a helper to reduce duplication and improve maintainability. Reference: complete_delivery lines 231-246, mark_failed lines 272-284.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:20Z",
+  "updated_at": "2026-04-20T03:54:47Z",
+  "closed_at": "2026-04-20T03:54:47Z"
+}

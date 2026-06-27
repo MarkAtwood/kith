@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:52:58Z",
+  "compaction_level": 0,
+  "content_hash": "2cd471e0a07f3bc2b9c88bdaedaafab43d7acca986e20fad7ec973c076fd7c46",
+  "created_at": "2026-06-15T04:54:56Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-jmap/src/lib.rs lines 85-93: RequestError is a pub tuple struct:\n\n    pub struct RequestError(pub StatusCode, pub JmapError);\n\nBoth fields are pub and are axum/http third-party types (StatusCode from the http crate, JmapError from jmap_types). This means:\n\n1. Any change to http::StatusCode (e.g. version bump with API changes) breaks RequestError's public API.\n2. jmap_types::JmapError is already a leakage point from KithError (separate finding); it appears here too, in a different crate.\n3. Any code that constructs RequestError via the tuple literal RequestError(status, err) is coupled to both third-party types.\n4. The convenience constructor request_error(err: JmapError) is provided (line 96-99) but callers can still construct directly via the tuple, bypassing the standard construction path.\n\nFix: make both tuple fields pub(crate). The only external use of RequestError is as an axum IntoResponse return type, which only requires the impl \u2014 not the field values. Callers should use request_error() or error_invocation() to construct error responses.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.48",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-jmap: RequestError exposes StatusCode and JmapError as pub tuple fields",
+  "updated_at": "2026-06-15T15:52:58Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:56Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

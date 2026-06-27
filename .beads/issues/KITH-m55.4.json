@@ -1,0 +1,20 @@
+{
+  "id": "KITH-m55.4",
+  "title": "[SEC1] Centralize environment variable documentation",
+  "description": "Risk: Environment variables documented in 4 places with no consistency enforcement:\n  - crates/kithd/src/config.rs (struct field comments)\n  - contrib/README.md (environment variables table, lines 118-129)\n  - contrib/systemd/kithd.service (lines 19-36)\n  - contrib/systemd/kithd@.service (lines 26-47)\n\nIf a developer adds KITHD_NEW_VAR but forgets one of the four locations, drift occurs silently.\n\nMaintainer burden: Manual review of every config change; easy to miss in refactors.\n\nMitigation: Generate README.md and/or systemd unit ENV tables from config.rs documentation via build script or pre-commit hook. Or consolidate all env var documentation into a single file and include it (via #[doc = include_str!()] or comments) in all 4 places.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:38:47Z",
+  "updated_at": "2026-04-19T18:43:19Z",
+  "closed_at": "2026-04-19T18:43:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-m55",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:38:47Z"
+    }
+  ]
+}

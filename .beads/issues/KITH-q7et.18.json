@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "9397d7c27b60dd147c3cb1a7457abf7c50651fb94e509b716abb3e7e4d6618b9",
+  "created_at": "2026-06-15T04:53:22Z",
+  "created_by": "Mark Atwood",
+  "description": "Store::insert_message_with_attachments() (kith-store/src/lib.rs:897) takes 16 positional arguments and is decorated with #[allow(clippy::too_many_arguments)]. The adjacent insert_outbound_message() was correctly converted to use OutboundMessageParams struct.\n\ninsert_message_with_attachments is called by Peer/deliver (kith-peer) and inbound delivery paths. The two functions have 13 parameters in common. Introducing an InboundMessageParams struct (mirroring OutboundMessageParams) would:\n- Remove the clippy suppression\n- Make call sites self-documenting (named fields vs positional)\n- Allow new parameters to be added without updating every call site\n\nThis is a refactor of existing code, not new functionality.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.18",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "insert_message_with_attachments has too_many_arguments suppression instead of a params struct",
+  "updated_at": "2026-06-19T20:44:05Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:21Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

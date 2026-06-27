@@ -1,0 +1,33 @@
+{
+  "id": "KITH-jh7.1",
+  "title": "Deploy: contrib/README.md setup guide",
+  "description": "Write contrib/README.md that explains how to deploy kithd using the systemd service files and musl static binary. This is the user-facing installation guide.\n\nWhat: A markdown document that takes a new operator from zero to a running kithd instance.\n\nAlgorithm:\n1. Create contrib/README.md with these sections:\n   a. Prerequisites: Tailscale running (tailscaled), kithd binary obtained (download or build from source), Linux with systemd\n   b. Installation steps (single user):\n      - Copy kithd binary to /usr/local/bin/kithd\n      - Copy contrib/systemd/kithd.service to /etc/systemd/system/\n      - Create kithd system user: useradd --system --home /var/lib/kithd --shell /usr/sbin/nologin kithd\n      - Create data directory: mkdir -p /var/lib/kithd && chown kithd:kithd /var/lib/kithd && chmod 700 /var/lib/kithd\n      - Edit kithd.service: set KITHD_OWNER_ID to your Tailscale user ID (how to get it: tailscale status --json | jq .Self.UserID)\n        NOTE: as of this version, KITHD_OWNER_ID can be omitted \u2014 kithd will auto-detect from Tailscale\n      - systemctl daemon-reload && systemctl enable kithd && systemctl start kithd\n      - systemctl status kithd (verify running)\n   c. First-run experience: what the logs will say, what URL to open\n   d. Multi-user template (org deployment): kithd@.service with %i substitution\n   e. Musl binary info: what it is, how to verify (ldd), build from source commands\n   f. Troubleshooting: Tailscale socket not found, port 443 permission issues, cert generation, journalctl commands\n   g. Environment variable reference table (all KITHD_* vars, defaults, required/optional)\n\nDefensive programming rules:\n- Never document KITHD_BIND_ADDR as a production setting \u2014 it is development-only\n- Include exact commands users should run; no hand-wavy instructions\n- Include verification step after each major action\n- Note that KITHD_OWNER_ID can be auto-detected but may be set explicitly as well",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:28:17Z",
+  "updated_at": "2026-04-19T18:36:29Z",
+  "closed_at": "2026-04-19T18:36:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-47k",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:28:20Z"
+    },
+    {
+      "depends_on_id": "KITH-jh7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:28:16Z"
+    },
+    {
+      "depends_on_id": "KITH-qjm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:28:19Z"
+    }
+  ]
+}

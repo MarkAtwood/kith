@@ -1,0 +1,13 @@
+{
+  "id": "KITH-3yb",
+  "title": "Phase 2: attachments, group chat, cross-tailnet node sharing",
+  "description": "What: Implement the Phase 2 feature set as described in kith-architecture.md.\n\nWhy: Phase 1 MVP (1:1 text chat, single static binary, minimal web client) is complete and stable. Phase 2 is the next planned milestone: richer message content (attachments), wider conversations (group chat), and extended tailnet reach (cross-tailnet via node sharing).\n\nFeatures (from kith-architecture.md):\n\n1. Attachments (kith-attach crate \u2014 currently empty stub)\n   - Blob storage on disk, served over kithd HTTPS, referenced by blobId in JMAP\n   - Lazy replication: recipient mailbox fetches from sender on first open\n   - maxAttachmentBytes: 104857600 (100 MB per attachment, already in session object)\n   - Path traversal and content_type validation at boundary (per CLAUDE.md)\n   - API surface: upload (owner), download (owner + authorized peer), blobId references in Message/set\n\n2. Group chat (N-participant fanout)\n   - Chat IDs remain deterministic: hex(sha256(sorted_participant_ids joined by \\x00))\n   - Sender outbox fans out to N recipients; each recipient stores independently\n   - No group coordinator node; all fanout is sender-side\n   - Peer/deliver payload unchanged; group membership derived from chatId\n\n3. Cross-tailnet via node sharing\n   - No code changes required per architecture doc \u2014 Tailscale node-sharing makes shared-in nodes appear as peers in WhoIs\n   - Work: test and document the node-sharing setup flow; verify peer-identity check accepts shared-in user IDs\n   - Write integration test using mocked WhoIs returning a shared-in identity\n\nNon-goals (permanent, per kith-architecture.md):\n- No E2EE (Phase 3 only)\n- No native desktop client in Phase 2 scope (Tauri deferred)\n- No central relay, no federation, no multi-tenant mode\n\nOutcome: kithd supports sending and receiving file attachments, group conversations among N tailnet peers, and verified operation across tailnets via node sharing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:33:31Z",
+  "updated_at": "2026-04-20T00:35:46Z",
+  "closed_at": "2026-04-20T00:35:46Z"
+}

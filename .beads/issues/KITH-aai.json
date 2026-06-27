@@ -1,0 +1,25 @@
+{
+  "id": "KITH-aai",
+  "title": "kith-events: in-process state change channel",
+  "description": "What: Define StateChange type in kith-core, create broadcast channel infrastructure in kith-events, add events_tx field to Store and AppState.\n\nAlgorithm:\n1. crates/kith-core/src/lib.rs (or new mod events): pub struct StateChange { pub type_name: String, pub new_state: String } with #[derive(Debug, Clone, Serialize, Deserialize)]; re-export from kith_core root\n2. crates/kith-events/src/lib.rs: pub use kith_core::StateChange; pub use tokio::sync::broadcast::{Sender as EventSender, Receiver as EventReceiver}; pub fn make_channel(capacity: usize) -> (EventSender<StateChange>, EventReceiver<StateChange>) wrapping tokio::sync::broadcast::channel(capacity)\n3. crates/kith-store/src/lib.rs - Store struct: add field pub events_tx: Option<tokio::sync::broadcast::Sender<kith_core::StateChange>> defaulting to None; add pub fn set_events_tx(&mut self, tx: tokio::sync::broadcast::Sender<kith_core::StateChange>)\n4. crates/kithd/src/extractors.rs - AppState<W>: add field pub events_tx: tokio::sync::broadcast::Sender<kith_events::StateChange> (Sender is already Arc-backed; no additional Arc needed)\n5. cargo check -p kith-core -p kith-events -p kith-store -p kithd\n\nDefensive rules:\n- StateChange must derive Clone (broadcast requires T: Clone)\n- Recommended channel capacity: 64 (use in tests and kithd startup)\n- kith-core must NOT depend on tokio; StateChange is a plain data struct\n- AppState holds Sender (not Receiver); each SSE client calls subscribe() for its own Receiver\n- No key material or PII in StateChange fields",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T08:12:56Z",
+  "closed_at": "2026-04-19T08:12:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-845",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-845.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:06:32Z"
+    }
+  ]
+}

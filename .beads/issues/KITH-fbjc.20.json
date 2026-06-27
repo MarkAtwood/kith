@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.20",
+  "title": "Empty status_command_compiles test \u2014 dead test code",
+  "description": "kithctl/tests/status_tests.rs:19-20 declares a test function with an empty body. It is not a compile-time test \u2014 Rust compiles all test functions. It proves nothing. Fix: delete or replace with a genuine property (e.g. Config construction + cmd_status returns Err when socket path is /nonexistent).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:21Z",
+  "updated_at": "2026-04-24T05:31:44Z",
+  "closed_at": "2026-04-24T05:31:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:21Z"
+    }
+  ]
+}

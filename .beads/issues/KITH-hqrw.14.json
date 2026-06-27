@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.14",
+  "title": "content-type validation too weak accepts spaces and control chars",
+  "description": "validate_content_type only checks for exactly one slash. Accepts spaces, null bytes, and other control chars verbatim. Fix: restrict to RFC 7230 token characters.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:32Z",
+  "updated_at": "2026-04-25T05:48:30Z",
+  "closed_at": "2026-04-25T05:48:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:32Z"
+    }
+  ]
+}

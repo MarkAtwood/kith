@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.13",
+  "title": "flush_unread_receipts redundantly guards against empty input",
+  "description": "kith-tui/src/event.rs:595: flush_unread_receipts checks !unread.is_empty() before calling send_read_receipts, but send_read_receipts is documented as a no-op on empty input and returns Ok(()) immediately. The outer guard is redundant and creates two independent checks that must be kept in sync manually. Either remove the outer guard or remove the 'no-op on empty input' claim from send_read_receipts.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:27Z",
+  "updated_at": "2026-04-24T01:35:30Z",
+  "closed_at": "2026-04-24T01:35:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:26Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-60f2.4",
+  "title": "kith-attach: tmp files created with process umask permissions (not 0o600)",
+  "description": "write_blob and write_blob_streaming both use tokio::fs::File::create(&tmp_path) without setting file permissions. On a system with umask 0022 the temp file is created world-readable (0o644). A race between creation and rename means a local attacker can read the attachment content during that window. The backup.rs in kithctl correctly uses OpenOptions::new().mode(0o600) for the same reason. BlobStore should use OpenOptions with mode(0o600) for both the tmp file and consider verifying the rename destination also has restricted permissions.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:13:59Z",
+  "updated_at": "2026-04-25T06:21:16Z",
+  "closed_at": "2026-04-25T06:21:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:13:58Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.13",
+  "title": "DECISION: atomic temp-file-rename for blob writes",
+  "description": "BlobStore::write_blob writes to <id>.tmp, calls sync_all, then renames atomically to <id>. Alternative considered: write directly to the final path. Rejected because a crash mid-write would leave a partial file visible to readers as a valid blob. The rename approach guarantees that a file at <id> is either absent or fully written. Trade-off: crash between sync_all and rename leaves an orphan .tmp; harmless since no DB row points to it. Location: crates/kith-attach/src/lib.rs BlobStore::write_blob.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:42Z",
+  "updated_at": "2026-04-20T01:17:49Z",
+  "closed_at": "2026-04-20T01:17:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:41Z"
+    }
+  ]
+}

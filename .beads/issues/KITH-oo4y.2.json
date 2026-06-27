@@ -1,0 +1,21 @@
+{
+  "id": "KITH-oo4y.2",
+  "title": "Dead unwrap_or_else fallback in truncation after max=0 rejection",
+  "description": "In contact.rs truncation block (~line 510): truncated.last().map(...).unwrap_or_else(|| since_state.clone()). The fallback branch is dead: max=0 is now rejected at parse time (RFC 8620 \u00a75.6), so max>=1 is an invariant here, and truncated always has at least one element. The comment says so ('so the slice index is always non-zero here') but the dead fallback code remains. Replace with .expect(\"truncated slice is non-empty: max>=1 established at parse time\") to make the invariant explicit and remove dead code.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:41:47Z",
+  "updated_at": "2026-04-24T20:42:35Z",
+  "closed_at": "2026-04-24T20:42:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oo4y",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:41:47Z"
+    }
+  ]
+}

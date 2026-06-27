@@ -1,0 +1,13 @@
+{
+  "id": "KITH-bwjs",
+  "title": "Review: fix review findings KITH-iz3n (P0/P1/P2/P3)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:39:05Z",
+  "updated_at": "2026-04-24T18:44:12Z",
+  "closed_at": "2026-04-24T18:44:12Z",
+  "notes": "message/store review: 2 real findings (O(N) queries under lock P3, stale Contact fixture P4), 2 decision records (RAII early-return, get_state ordering). n.max(0) removal is correct (COUNT(*) is never negative). TOCTOU doc comment is accurate and sufficient. events.rs doc fix from 'Contact' to 'ChatContact' is correct. Confidence: 90% chance of no missed bug. Uncertainty: did not audit the two-SQL-query structure of get_position_in_chat for correctness of the tie-break logic (separate from efficiency concern).\nevents/peer_fetch review: 1 real finding (bug: KITH-bwjs.3 \u2014 SSE coalescing task leaks when client disconnects with active type filter and close_after_first=false). 2 good-decision records filed. Confidence: 85% chance of no missed bugs. Uncertainty: the liveness-probe fix has multiple plausible shapes (is_closed() poll vs. send a sentinel vs. restructure); correctness of fix not reviewed. No findings on rename completeness, bit layout comment, LEI comment, @ placement, doc comment, or test coverage."
+}

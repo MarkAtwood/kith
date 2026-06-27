@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.92",
+  "title": "kith-tslocal: null byte rejection, response size cap, and cache design are solid",
+  "description": "LocalApiClient::whois() correctly: (1) rejects null bytes in user_id, login_name, node.name, and display_name with explicit WhoIsFailed errors; (2) caps response body size via http_body_util::Limited before JSON parsing for both WhoIs (100 KiB) and Status (10 MiB); (3) never holds the cache Mutex across an .await; (4) never caches failures. The cache retain() on every write is correct TTL eviction. The timeout wrapping via tokio::time::timeout with a 5-second window is appropriate. Integration tests cover 404, missing socket, null byte in login_name, and oversized body. Test fixtures are hand-constructed from the Tailscale LocalAPI spec, not derived from running the code.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:43:36Z",
+  "updated_at": "2026-04-25T08:14:19Z",
+  "closed_at": "2026-04-25T08:14:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:43:35Z"
+    }
+  ]
+}

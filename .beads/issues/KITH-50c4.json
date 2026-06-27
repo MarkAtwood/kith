@@ -1,0 +1,13 @@
+{
+  "id": "KITH-50c4",
+  "title": "kithctl watch: SSE parse wrong JSON level; notifications never fire",
+  "description": "kithctl/src/watch.rs calls state_map.get(\"Message\") on the top-level SSE data object. The actual SSE data shape is {\"changed\": {\"a-self\": {\"Message\": \"s-N\"}}}. state_map is parsed from the top level, so get(\"Message\") always returns None. Desktop notifications never fire for any state type.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:21:44Z",
+  "updated_at": "2026-04-25T09:22:16Z",
+  "closed_at": "2026-04-25T09:22:16Z"
+}

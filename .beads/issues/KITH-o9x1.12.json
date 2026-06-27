@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.12",
+  "title": "KithError::Store erases structured error for programmatic handling",
+  "description": "kith-core/src/error.rs KithError::Store(String) converts all storage errors to opaque strings at the boundary. This means the HTTP layer cannot distinguish 'row not found' from 'constraint violation' from 'disk full' without string-parsing the message. Currently the entire HTTP response for store errors is a generic serverFail, which is correct for clients but makes logging and monitoring blind to error class. If a future handler needs to return 404 vs 500 based on the store result, it cannot do so without breaking the KithError API. This is not currently causing wrong behavior but fossilizes the 'all store errors are strings' assumption in the public kith-core interface.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:01Z",
+  "updated_at": "2026-04-25T02:21:54Z",
+  "closed_at": "2026-04-25T02:21:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:00Z"
+    }
+  ]
+}

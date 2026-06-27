@@ -1,0 +1,21 @@
+{
+  "id": "KITH-9399.4",
+  "title": "Message/changes puts ALL state-version changes in created; updated messages appear as new creates",
+  "description": "MessageChangesHandler (message.rs): get_changes_since_ordered returns rows for both new inserts AND delivery_state/read_at updates (both advance state_version). All returned IDs are placed in created with updated hardcoded to []. RFC 8620 \u00a75.2 requires that IDs of pre-existing objects that changed appear in updated, not created. A conforming client will try to create a duplicate local object for each updated message. Fix: store a created_at_version column on messages (set at INSERT, never updated) and use it to distinguish created (created_at_version > since) from updated (state_version > since but created_at_version <= since).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:06:56Z",
+  "updated_at": "2026-04-24T21:24:43Z",
+  "closed_at": "2026-04-24T21:24:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:06:55Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vgq",
+  "title": "Auth: authorize() \u2014 WhoIs to Role",
+  "description": "Implement authorize() in crates/kithd/src/auth.rs (NOT kith-core \u2014 avoid circular dep: kith-store depends on kith-core, so kith-core cannot call ContactStore).\n\n**What:** Single function that classifies every request as Owner, Peer, or Unauthorized.\n\n**Algorithm:**\n1. Extract SocketAddr from axum ConnectInfo<SocketAddr> extension\n   - If missing: return Err(AuthError::NoPeerAddr)\n2. Call LocalApiClient::whois(addr) -> Result<WhoIsResponse, AuthError>\n   - On error: propagate AuthError::WhoIsFailed(_)\n3. Build Identity from WhoIsResponse::user_profile: { user_id: profile.id, login_name: profile.login_name, display_name: profile.display_name }\n4. Load self_owner_id from AppState (string loaded at daemon startup from 'self' table)\n5. If identity.user_id == self_owner_id \u2192 return Ok((Role::Owner, identity))\n6. Call ContactStore::is_permitted(&identity.user_id) -> Result<bool, KithError>\n   - On error: propagate (fail closed, not open)\n   - If true (exists and not blocked) \u2192 return Ok((Role::Peer, identity))\n7. Return Err(AuthError::Unauthorized)\n\n**Defensive rules:**\n- Never unwrap()/expect() on WhoIs or DB calls\n- On WhoIs error: fail closed (return error, not Unauthorized \u2014 distinction matters for 500 vs 401)\n- On DB error: fail closed (propagate, not default to unauthorized)\n- Never log identity.user_id or peer SocketAddr in error messages\n- Comparison is exact string equality only \u2014 never parse user_id as email/UUID\n- self_owner_id must come from DB/config, never from request\n\n**Crate:** crates/kithd/src/auth.rs (new file)\n**Signature:** pub async fn authorize(addr: SocketAddr, ts: &LocalApiClient, store: &Store, owner_id: &str) -> Result<(Role, Identity), AuthError>\n\n**Agent team:** Researcher (read kith-tslocal/src/lib.rs, kith-store/src/contact.rs, kith-core/src/auth.rs, kith-core/src/error.rs) + Implementer + Tester\n\n**Tests (oracle = hand-constructed fixtures, NOT code under test):**\n- owner_path: WhoIs returns user_id matching owner_id \u2192 Ok(Role::Owner)\n- peer_path: WhoIs returns user_id in contacts (unblocked) \u2192 Ok(Role::Peer)\n- unknown_path: WhoIs returns user_id not in contacts \u2192 Err(Unauthorized)\n- blocked_path: WhoIs returns user_id in contacts with blocked=true \u2192 Err(Unauthorized)\n- whois_error: WhoIs returns WhoIsFailed \u2192 Err(WhoIsFailed), not Unauthorized",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:41:32Z",
+  "closed_at": "2026-04-19T06:41:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-eda",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

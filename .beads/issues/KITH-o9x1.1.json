@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.1",
+  "title": "Non-atomic write in update_last_message_at loses chat changes",
+  "description": "update_last_message_at runs 'UPDATE chats SET last_message_at = ?' outside any transaction, commits it, then opens a second transaction to advance the state counter and write changed_at_counter. A process crash between the two writes leaves last_message_at updated but changed_at_counter stale. The chat then never appears in Chat/changes until the next modification. Fix: wrap both the initial UPDATE and the counter/changed_at_counter write in a single transaction.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:05Z",
+  "updated_at": "2026-04-25T01:23:25Z",
+  "closed_at": "2026-04-25T01:23:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:05Z"
+    }
+  ]
+}

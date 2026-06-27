@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.4",
+  "title": "SSE buffer: optimize drain and reduce copies in run_sse",
+  "description": "In run_sse (lines 179-212), the SSE event parser accumulates chunks into a String and uses drain() to remove processed events. Two inefficiencies:\n\n1. Line 201: buf[..pos].to_string() copies the entire event block before drain() invalidates it. Use a reference or take before draining.\n\n2. Line 202: String::drain() shifts all remaining bytes. With many small chunks or pathological patterns (1-byte chunks), this becomes O(n\u00b2). Profile under stress (100+ events/sec, small chunks) and consider BytesMut if drain shows up.\n\nImpact: Low for typical SSE (line-oriented, reasonably-sized chunks), but preventable. Recommend profiling first to confirm drain is a bottleneck before refactoring.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:33Z",
+  "updated_at": "2026-04-20T05:07:40Z",
+  "closed_at": "2026-04-20T05:07:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:33Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.22",
+  "title": "Test files leak temp blob directories (no TempDir guard)",
+  "description": "harness.rs:57-65, group_and_receipt.rs:94-102, static_files_test.rs:82-90: make_blob_store() creates subdirectories under std::env::temp_dir() with no tempfile::TempDir guard. Directories persist after test process exits, accumulating on CI runners. The e2e.rs version correctly returns a TempDir guard alongside the store. Fix all three to use tempfile::TempDir and return the guard so it lives as long as the store.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:27Z",
+  "updated_at": "2026-04-25T03:26:16Z",
+  "closed_at": "2026-04-25T03:26:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:27Z"
+    }
+  ]
+}

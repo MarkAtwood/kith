@@ -1,0 +1,13 @@
+{
+  "id": "KITH-5i4g",
+  "title": "kithctl watch: notifications show (unknown) sender \u2014 wrong JMAP field name",
+  "description": "fetch_and_notify requests properties:[\"sender\",\"body\"] and reads msg.get(\"sender\"). The JMAP wire field is \"senderId\", not \"sender\". Result: sender is always None, every notification shows \"(unknown)\" as sender. Two-line fix: change \"sender\" to \"senderId\" in the properties array and in the .get() call.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:35:31Z",
+  "updated_at": "2026-04-25T09:36:06Z",
+  "closed_at": "2026-04-25T09:36:06Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-69c",
+  "title": "Extract row-to-message deserialization helper in kith-store",
+  "description": "MessageStore::get() and list_by_chat() both use identical query_map patterns to extract 11 fields into tuples (lines 128-142 and 202-216). The subsequent destructuring and timestamp-conversion logic is also duplicated (lines 149-167 vs 222-240). Extract a fn row_to_message() helper like the existing row_to_attachment() pattern in attachment.rs to eliminate the duplication.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:40Z",
+  "updated_at": "2026-04-19T21:20:45Z",
+  "closed_at": "2026-04-19T21:20:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-104",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T14:20:45Z"
+    }
+  ]
+}

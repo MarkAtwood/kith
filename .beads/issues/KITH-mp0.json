@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mp0",
+  "title": "kith-chat: Contact/get and Contact/set",
+  "description": "What: Implement Contact/get and Contact/set JmapHandler structs in kith-chat crate.\n\nContact/get algorithm:\n1. Deserialize args: { accountId: String, ids: Option<Vec<String>>, properties: Option<Vec<String>> }.\n2. Verify accountId == \"a-self\"; else return JmapError::invalid_arguments(\"unknown accountId\").\n3. Acquire store lock (Arc<Mutex<Store>>); map lock poison \u2192 JmapError::server_fail.\n4. If ids is None: store.contacts().list()? \u2192 all contacts.\n   If ids is Some(list): for each id call store.contacts().get_by_peer_user_id(id)?; partition found vs. not_found.\n5. state = store.contacts().get_state()?\n6. Return json!({ 'accountId': 'a-self', 'list': [...], 'notFound': [...], 'state': state }).\n\nContact/set algorithm:\n1. Deserialize args: { accountId, create: Option<Map<String, Value>>, update: Option<Map<String, Value>>, destroy: Option<Vec<String>> }.\n2. For each create entry (client_id \u2192 fields):\n   a. Extract: tailscaleUserId (required), login (required), mailboxHost (required), displayName (optional), blocked (default false).\n   b. Validate displayName.len() <= 256 bytes; else notCreated[client_id] = invalidArguments.\n   c. Validate mailboxHost is non-empty and does not contain null bytes; else invalidArguments.\n   d. Validate blocked is bool.\n   e. Call store.contacts().upsert(tailscale_user_id, login, mailbox_host, display_name, now_unix)?\n   f. Fetch created contact; add to created map keyed by client_id.\n3. For each update entry (server_id \u2192 patch):\n   a. Load contact by server_id; notUpdated if not found.\n   b. Apply only present patch fields: displayName, blocked, mailboxHost.\n   c. Re-validate, save via upsert.\n4. For each destroy ID: return notDestroyed[id] = { type: 'forbidden', description: 'contacts are auto-managed' } (v1: no manual destroy).\n5. Return { accountId, oldState, created, updated, destroyed, notCreated, notUpdated, notDestroyed, newState }.\n\nDefensive programming rules:\n- Validate ALL fields before ANY store write.\n- displayName len check: count bytes, not chars.\n- mailboxHost: reject null bytes, reject empty.\n- blocked: must be JSON bool; reject string 'true'.\n- All SQL via parameterized queries (rusqlite params![] \u2014 never string concatenation).\n- Store lock poison \u2192 JmapError::server_fail, log error level (no user data in log).\n- KithError::Store \u2192 JmapError::server_fail.\n\nAgent team:\n- Agent R: Read kith-store/src/contact.rs (upsert, get_by_peer_user_id, list, get_state), kith-core/src/contact.rs (Contact struct, field names), kith-jmap/src/lib.rs (JmapHandler trait, HandlerFuture type).\n- Agent I: Implement ContactGetHandler and ContactSetHandler structs in kith-chat/src/contact.rs. State approach and rejected alternative before writing.\n- Agent T: Derive expected JSON field names from RFC 8620 \u00a75.1/5.3 and kith-core Contact serde attributes. Write tests before seeing implementation.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests (independent oracles from RFC 8620 and kith-core struct serde names):\n- Contact/get ids=None returns all contacts with correct camelCase field names\n- Contact/get ids=[unknown] returns notFound list\n- Contact/set create with valid fields \u2192 created entry with server-assigned id\n- Contact/set create oversized displayName \u2192 notCreated with invalidArguments\n- Contact/set update blocked=true \u2192 contact blocked flag set\n- Contact/set destroy \u2192 notDestroyed with forbidden",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:01Z",
+  "closed_at": "2026-04-19T15:30:01Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.62",
+  "title": "kith-tslocal: whois cache has no eviction bound; can grow unbounded",
+  "description": "LocalApiClient::whois() calls cache.retain(|_, (cached_at, _)| cached_at.elapsed() < WHOIS_CACHE_TTL) on every cache write. But if a node is never looked up again after being cached, the entry is never removed. In a large tailnet where many distinct addresses connect once-and-never-again (e.g. IP rotation, mobile nodes), the HashMap will grow monotonically. The retain() call is O(n) on every write but does not execute on cache hits. A long-running kithd on a busy network could accumulate thousands of stale entries. Fix: add an explicit max-entries cap (e.g. 1024) or switch to an LRU with bounded size.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:32Z",
+  "updated_at": "2026-04-25T04:56:25Z",
+  "closed_at": "2026-04-25T04:56:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:31Z"
+    }
+  ]
+}

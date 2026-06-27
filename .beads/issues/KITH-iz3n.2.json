@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.2",
+  "title": "StateChange doc comment still says \"Contact\" after rename",
+  "description": "crates/kith-core/src/events.rs line 12: struct doc says 'e.g. \"Contact\", \"Chat\", \"Message\"'. The type name was renamed to \"ChatContact\" in this commit but the canonical doc-comment example was not updated. A developer checking the doc to learn valid type names will use the stale value \"Contact\" and produce events that the TypeFilter silently drops.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:26:58Z",
+  "updated_at": "2026-04-24T18:33:07Z",
+  "closed_at": "2026-04-24T18:33:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:26:58Z"
+    }
+  ]
+}

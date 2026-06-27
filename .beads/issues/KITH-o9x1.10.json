@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.10",
+  "title": "peer_nodes_excluding: non-deterministic node selection for multi-device users",
+  "description": "StatusResponse::peer_nodes_excluding() (kith-tslocal/src/lib.rs line 130) deduplicates users by user_id but picks whichever node appears first during HashMap iteration, which is non-deterministic. The function is called in discovery (kithd/src/discovery.rs:352) to build the contact list. A user's two nodes (laptop + phone) yield an arbitrary dns_name for the mailbox_host. The doc comment says 'caller should not rely on which node is chosen' but does not say what the caller should do instead. In practice, if a peer has two nodes and the wrong one is selected, Peer/deliver will fail and the outbox retry loop will keep hitting the wrong host. Consequence: persistent delivery failures for multi-device peers are silent, not surfaced to the owner. The risk is not a crash but a correctness hole in the contact discovery flow.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:52Z",
+  "updated_at": "2026-04-25T01:55:55Z",
+  "closed_at": "2026-04-25T01:55:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:51Z"
+    }
+  ]
+}

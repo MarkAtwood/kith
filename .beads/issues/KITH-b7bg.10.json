@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.10",
+  "title": "kith-jmap: error_status maps notFound to HTTP 404 \u2014 should only apply to request-level errors",
+  "description": "Already tracked as KITH-hqrw.88. Skipping \u2014 already filed.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:46Z",
+  "updated_at": "2026-04-25T04:52:34Z",
+  "closed_at": "2026-04-25T04:52:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:46Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.3",
+  "title": "Decision: String::from_utf8_lossy for resilient SSE stream decoding",
+  "description": "Line 197 uses String::from_utf8_lossy(&bytes) to decode arriving SSE chunks. If a multi-byte UTF-8 sequence is split across two network packets, this gracefully skips invalid bytes rather than panicking. The buf accumulation pattern (lines 192, 200-202) ensures complete events are handled. This is intentional robustness: malformed UTF-8 on the network (from buggy servers or corruption) is handled without crashing.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:31Z",
+  "updated_at": "2026-04-20T11:46:33Z",
+  "closed_at": "2026-04-20T11:46:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:30Z"
+    }
+  ]
+}

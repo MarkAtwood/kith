@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.9",
+  "title": "SEC1: Silent error handling lacks UI feedback for startup failures",
+  "description": "Network and JMAP errors in startup and message loading are logged to stderr only:\n\n- load_startup_data (line 147): Chat/Contact fetch fails \u2192 eprintln\n- load_messages_for_chat (lines 265, 299): Message/query and Message/get fail \u2192 eprintln  \n- handle_state_change (lines 375, 459): Message/changes and Message/get fail \u2192 eprintln\n\nProblems for a solo maintainer:\n1. UI shows placeholder data with no error indication\n2. Errors disappear if stderr is redirected (systemd, cron, piped output)\n3. No visible recovery path \u2014 is it retrying? Gave up? Waiting?\n4. Debugging 'why is my chat list empty' requires checking stderr separately from UI\n\nThe silent-continue pattern is defensive, but leaves the user (and the maintainer) without visibility into failures.\n\nSuggested fix: \n- Display connection status in UI (Connecting \u2192 Connected/Reconnecting/Error)\n- Add error message field to AppState for transient display\n- Log to UI for transient errors; persistent errors should stop gracefully with visible indication",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:50Z",
+  "updated_at": "2026-04-20T05:49:34Z",
+  "closed_at": "2026-04-20T05:49:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:50Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.5",
+  "title": "SEC1: no maintainer-burden issues in other changes",
+  "description": "SEC1 review of commit 08810bf found no maintainer-burden issues in:\n\n- insert_if_allowed closure hoist (events.rs:263\u2013271): Correctly positioned with clear scope and explicit comment explaining Copy capture. Call sites immediately nearby (lines 291, 301). No obfuscation.\n\n- Helper extractions (kith-store, kith-tslocal, kith-jmap): Reduce duplication, improve code clarity, self-document intent. All positive.\n\n- Comment additions: Enhance readability across multiple files.\n\nIssues were limited to two specific config/env-var patterns, filed separately as KITH-vpg.3 and KITH-vpg.4.\n\nReview complete. Two tasks filed for follow-up.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:41:12Z",
+  "updated_at": "2026-04-19T23:43:57Z",
+  "closed_at": "2026-04-19T23:43:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:41:11Z"
+    }
+  ]
+}

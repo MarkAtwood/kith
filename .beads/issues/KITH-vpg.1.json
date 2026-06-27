@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.1",
+  "title": "SEC0: no correctness issues found",
+  "description": "Correctness review of recent changes:\n\n1. **events.rs: insert_if_allowed closure hoist** \u2014 CORRECT\n   - Closure captures Option<TypeFilter> by value\n   - TypeFilter is Copy (u8 wrapper with Copy derive)\n   - Closure is called repeatedly in same loop iteration\n   - No state mutations that would affect type_filter\n   - Semantically equivalent to original\n\n2. **config.rs: Box::leak removal** \u2014 CORRECT\n   - Changed from Vec<(&'static str, Option<String>)> to Vec<(String, Option<String>)>\n   - Strings are owned in the Vec, borrowed during iteration\n   - All unsafe env var operations complete before Vec drops\n   - No use-after-free or dangling references\n\n3. **lib.rs: KITHD_BASE_URL rename fallback** \u2014 CORRECT\n   - Tries KITHD_BASE_URL first (primary new name)\n   - Falls back to KITH_BASE_URL (deprecated) with warning\n   - Finally uses DEFAULT_BASE_URL hardcoded constant\n   - Read order prevents silent env var mismatches\n   - Matches config.rs pattern for other deprecated vars\n\n4. **Comments: whois parse error, backend_state, KITH_BIND_ADDR deprecation, fail-closed, make_svc.call** \u2014 CORRECT\n   - All comments accurately describe invariants and defensive rules\n   - Deprecation warnings are consistent across codebase\n   - Fail-closed comment in auth.rs (line 53) correctly describes store error handling",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:40:48Z",
+  "updated_at": "2026-04-19T23:43:54Z",
+  "closed_at": "2026-04-19T23:43:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:40:47Z"
+    }
+  ]
+}

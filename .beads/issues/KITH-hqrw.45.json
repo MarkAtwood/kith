@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.45",
+  "title": "standalone advance_state bypasses i64 overflow guard",
+  "description": "advance_state_counter_in_tx() has an overflow guard at i64::MAX-1. The three standalone variants ContactStore::advance_state(), ChatStore::advance_state(), MessageStore::advance_state_counter() skip this guard. Called from kithd/src/events.rs in production. At i64::MAX SQLite would silently wrap to i64::MIN. Purely defense-in-depth (impossible in practice), but creates an inconsistent invariant. Fix: route standalone advance_state methods through advance_state_counter_in_tx().",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:46Z",
+  "updated_at": "2026-04-25T06:15:31Z",
+  "closed_at": "2026-04-25T06:15:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:46Z"
+    }
+  ]
+}

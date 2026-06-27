@@ -1,0 +1,20 @@
+{
+  "id": "KITH-lr1g.2",
+  "title": "chat.rs get_changes_since_ordered missing >0 sentinel guard",
+  "description": "get_changes_since uses 'created_at > since_counter && created_at > 0' but get_changes_since_ordered uses only 'created > since_counter'. The >0 guard is functionally redundant (0 > any positive since_counter is always false) but the asymmetry looks like a missing guard and will confuse future maintainers. Add >0 to get_changes_since_ordered for consistency.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:32:16Z",
+  "updated_at": "2026-04-25T06:33:49Z",
+  "closed_at": "2026-04-25T06:33:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-lr1g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:32:16Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.18",
+  "title": "kith-store lib.rs: row_to_message pattern duplicated across get(), find_by_sender_msg_id() \u2014 already extracted but SELECT lists repeat",
+  "description": "The SELECT list for messages (12 columns) is copy-pasted identically in get(), list_by_chat(), list_by_chat_paged(), and find_by_sender_msg_id(). The row_to_message function centralizes deserialization but not the query string. A future column addition requires updating 4 SELECT lists. Extract the column list as a const &str and reference it in each prepare_cached call. Suggested: const MSG_COLS: &str = 'id, chat_id, sender_user_id, body, body_type, sent_at_peer, created_at, delivery_state, delivered_at, read_at, reply_to, sender_msg_id';",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:42:59Z",
+  "updated_at": "2026-04-25T08:28:58Z",
+  "closed_at": "2026-04-25T08:28:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:42:58Z"
+    }
+  ]
+}

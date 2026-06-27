@@ -1,0 +1,13 @@
+{
+  "id": "KITH-31c8",
+  "title": "Review: SSE warn log and try_send match pattern",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:03:40Z",
+  "updated_at": "2026-04-25T09:08:36Z",
+  "closed_at": "2026-04-25T09:08:36Z",
+  "notes": "Maintainer risk: LOW \u2014 The behavioral change is correct and the warn logging is a pure improvement. One P1 filed for missing structured log fields (no client identity in the stall warn). No security surface, no new public API, no lock-in.\nConfidence: 5% chance of missed bug. Uncertainty driven by: (1) the close_after_first + Full arm breaks without sending None \u2014 I traced the stream termination path through ReceiverStream and take_while and concluded it terminates cleanly, but this depends on tokio's ReceiverStream behavior when the sender drops, which I did not verify against tokio source; (2) the test suite exercises closeafter=state paths but the Full arm (channel full) is not tested \u2014 it would require a test that enqueues 256 items before the close-signal send. Would raise confidence if: a test covering the Full arm on the close-signal path existed, and if I had confirmed tokio ReceiverStream behavior on sender-drop against the tokio docs or source."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.17",
+  "title": "WhoIsNode.addresses is unused; consider omitting",
+  "description": "WhoIsNode struct captures addresses: Vec<String> from the Tailscale API, but this field is never read by any caller. Only node.name is used (once, in an integration test). Either omit addresses from the struct, or document why it's preserved for forward-compatibility with future API extensions.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:36Z",
+  "updated_at": "2026-04-19T23:32:39Z",
+  "closed_at": "2026-04-19T23:32:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:35Z"
+    }
+  ]
+}

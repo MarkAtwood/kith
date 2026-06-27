@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.11",
+  "title": "[SEC6] Good: cannotCalculateChanges fallback in event handler",
+  "description": "In app.js handleStateEvent() (lines 546-551), when Message/changes returns 'cannotCalculateChanges' (indicating a state gap), the code falls back to re-fetching all messages for the current chat.\n\nThis is correct defensive programming. State gaps can occur if:\n- The client was offline too long and missed intermediate state tokens\n- The server garbage-collected old state tokens\n- Time skew or clock rollback occurred\n\nRather than guessing or silently dropping messages, the code resyncs the entire thread. Same pattern applied to Chat/changes (lines 573-575).\n\nAlternative (ignore the error or just update from latest state) would leave messages out of the UI. Re-fetch is safe and complete.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:08Z",
+  "updated_at": "2026-04-19T18:21:19Z",
+  "closed_at": "2026-04-19T18:21:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:08Z"
+    }
+  ]
+}

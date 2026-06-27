@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.15",
+  "title": "Decision: TLS handshake failures log at debug and continue",
+  "description": "In the main.rs TLS accept loop, a failed TLS handshake is logged at tracing::debug! and the loop continues (not breaks). This is correct for two reasons: (1) a bad handshake from one peer is a normal event (scanner, misconfigured client, wrong port) and must not kill the accept loop for all other peers; (2) debug level is appropriate because in production this will be noisy from tailnet scanners, while the accept loop itself logging at info/error preserves signal-to-noise. Logging at warn or error and/or breaking would be incorrect.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:41Z",
+  "updated_at": "2026-04-19T23:32:49Z",
+  "closed_at": "2026-04-19T23:32:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:40Z"
+    }
+  ]
+}

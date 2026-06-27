@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.11",
+  "title": "discovery: probe_url tests missing pre-bracketed IPv6 edge case",
+  "description": "probe_url tests cover bare IPv6 ('fd7a::1') and IPv4 ('127.0.0.1') but not a pre-bracketed input like '[fd7a::1]'. The double-bracket bug (KITH-ygr0.10) would not be caught by the current test suite. A test asserting probe_url('[fd7a::1]', 4430) == 'https://[fd7a::1]:4430/.well-known/jmap' should be added as a regression guard.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:48:48Z",
+  "updated_at": "2026-04-24T20:07:27Z",
+  "closed_at": "2026-04-24T20:07:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:48:47Z"
+    }
+  ]
+}

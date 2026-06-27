@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0fs",
+  "title": "kithctl: CLI scaffold with clap",
+  "description": "Set up kithctl binary: add clap to workspace, update kithctl Cargo.toml with all deps (clap, kith-store, tokio, rustls, serde_json, http-body-util, hyper-util), create src/config.rs with Config struct, rewrite src/main.rs with #[tokio::main] and clap subcommand dispatch.\n\nWHAT: Establish the CLI scaffold that all other kithctl commands build on.\n\nALGORITHM:\n1. In workspace Cargo.toml: add clap = { version = \"4.5\", features = [\"derive\"] } to [workspace.dependencies]\n2. In crates/kithctl/Cargo.toml: add clap.workspace=true, kith-store.workspace=true, tokio.workspace=true, serde_json.workspace=true, http-body-util.workspace=true, hyper.workspace=true, hyper-util.workspace=true; also check if rustls and tokio-rustls are in workspace deps and add if available\n3. Create crates/kithctl/src/config.rs:\n   - struct Config { data_dir: PathBuf, ts_socket: String, port: u16 }\n   - fn from_env() reads KITHD_DATA_DIR (default: $HOME/.local/share/kithd), KITHD_TAILSCALED_SOCKET (default: /var/run/tailscale/tailscaled.sock), KITHD_PORT parsed as u16 (default: 443)\n   - fn db_path(&self) -> PathBuf { self.data_dir.join(\"kith.db\") }\n   - fn cert_path(&self) -> PathBuf { self.data_dir.join(\"kith.crt\") }\n4. Rewrite src/main.rs:\n   - #[derive(Parser)] struct Cli with #[command(version)] and global flags: --data-dir: Option<PathBuf>, --socket: Option<String>, --port: Option<u16>\n   - #[derive(Subcommand)] enum Commands { Status, Contacts { #[command(subcommand)] cmd: ContactsCmd }, Backup { dest: Option<PathBuf> }, Watch }\n   - #[derive(Subcommand)] enum ContactsCmd { List }\n   - #[tokio::main] async fn main(): parse Cli, build Config from_env() then apply CLI overrides, match on Commands and call stub fn for each\n   - Each stub: returns Ok(()) printing \"not yet implemented\" so compile-check passes\n5. Run cargo build -p kithctl; verify it compiles with exit 0\n\nDEFENSIVE RULES:\n- Never unwrap() env vars; use getenv + map + unwrap_or_else\n- Port parse: str.parse::<u16>() must be matched; invalid KITHD_PORT logs warning and uses default 443\n- data_dir: if HOME not set, fall back to /tmp/kithd with a warning; never panic\n- No secrets or paths logged\n\nTESTS: cargo build -p kithctl exits 0; binary accepts --help, --version, and all subcommand --help without panic",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T19:10:08Z",
+  "closed_at": "2026-04-19T19:10:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-yvu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:00:21Z",
+  "compaction_level": 0,
+  "content_hash": "e6d0862b390f3acdb3e18c2bc3bff249ba52505fd0a9397bd0b6f1db42682e31",
+  "created_at": "2026-06-15T04:54:26Z",
+  "created_by": "Mark Atwood",
+  "description": "The row type returned by get_changes_since_ordered has inconsistent visibility across the sibling stores:\n\n- crates/kith-store/src/chat.rs line 9:    pub type ChatChangeRow = (String, i64, bool);\n- crates/kith-store/src/contact.rs line 8: type ContactChangeRow = (String, i64, bool);   // private\n- crates/kith-store/src/message.rs line 12: type ChangeRow = (String, i64, bool);          // private, different name\n\nChatChangeRow is exported from the crate (used by kith-chat handlers), but the contact and message equivalents are private type aliases with different names. This means callers of get_changes_since_ordered on ChatStore can name the row type, but callers on ContactStore and MessageStore cannot.\n\nAdditionally, the type names are inconsistent: ChatChangeRow, ContactChangeRow (contact), ChangeRow (message). All three represent the same semantic (id, change_counter, is_create).\n\nFix: settle on a single name (e.g., StoreChangeRow) exported from kith-store, and use it for all three store modules.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.40",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "ChatChangeRow is pub type but ContactChangeRow is private type \u2014 inconsistent visibility for symmetric row types",
+  "updated_at": "2026-06-15T16:00:21Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:26Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

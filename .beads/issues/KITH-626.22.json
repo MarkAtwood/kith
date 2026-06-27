@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.22",
+  "title": "Mock server test pattern may break if hyper changes response parsing",
+  "description": "Integration tests (integration.rs lines 24-41) spawn a mock that writes raw HTTP/1.1 bytes and closes immediately. Tests assume hyper will:\n  1. Parse the response as valid HTTP/1.1\n  2. Not retry or re-negotiate on socket close\n  3. Return body to the caller before detecting connection close\n\nRISK: If hyper changes how it handles connection closure during response body streaming, these tests might pass while real tailscaled interaction breaks (or vice versa).\n\nISSUE: Mock server is too simple \u2014 it doesn't replicate tailscaled behavior (persistent connection, proper HTTP state machine).\n\nSUGGESTION: Consider using a real minimal HTTP server (http-crate or simple-server) that keeps connections alive, or add a comment explaining why the raw-write pattern is adequate.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:44Z",
+  "updated_at": "2026-04-19T19:56:55Z",
+  "closed_at": "2026-04-19T19:56:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:43Z"
+    }
+  ]
+}

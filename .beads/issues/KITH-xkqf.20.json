@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.20",
+  "title": "kithctl watch: Last-Event-ID on reconnect uses JMAP state token, not SSE event ID",
+  "description": "watch.rs:604-607: on reconnect after connection drop, last_event_id is set to last_message_state (a JMAP state token like s-42). SSE Last-Event-ID is a different namespace maintained by the SSE stream's own ID counter. Both happen to use the s-N format and pass is_valid_last_event_id, so it works today, but if kithd's SSE event counter and JMAP state counter diverge, the wrong namespace token is sent as Last-Event-ID and the server may replay wrong events or reject the reconnect.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:19Z",
+  "updated_at": "2026-04-25T03:26:00Z",
+  "closed_at": "2026-04-25T03:26:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:19Z"
+    }
+  ]
+}

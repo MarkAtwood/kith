@@ -1,0 +1,21 @@
+{
+  "id": "KITH-l9x.8",
+  "title": "SEC4: process_create in message.rs is 152 lines",
+  "description": "kith-chat/src/message.rs: process_create (lines 295-447) is 152 lines, well over the 60-line guideline. It handles field extraction, body/bodyType/attachment validation, chat existence check, replyTo validation, message insert, attachment insert, outbox enqueue, and a final fetch-for-response \u2014 all in sequence. A future maintainer adding a validation step or a new field would need to navigate the full block. Candidate extraction: a validate_create_args helper (field extraction + limits) and an enqueue_to_outbox helper.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:30Z",
+  "updated_at": "2026-04-20T01:18:10Z",
+  "closed_at": "2026-04-20T01:18:10Z",
+  "notes": "opinion: No project rule specifies a function length limit; the 60-line guideline cited does not exist in CLAUDE.md or any project doc. Long sequential functions in Rust are common and readable. A future maintainer can navigate process_create by reading it top-to-bottom. No correctness, safety, or project-rule consequence. Pure style preference.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:29Z"
+    }
+  ]
+}

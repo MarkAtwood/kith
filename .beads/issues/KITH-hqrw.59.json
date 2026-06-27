@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.59",
+  "title": "OutboxStore enqueue not idempotent unlike enqueue_receipt",
+  "description": "enqueue() uses plain INSERT so a duplicate (message_id, peer_user_id, kind='message') call returns KithError::Validation surfaced as invalidArguments. enqueue_receipt() uses ON CONFLICT DO UPDATE and is idempotent. The asymmetry is a contributor footgun. Fix: enqueue() should use INSERT OR IGNORE, or document that callers must never call it twice.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:35:19Z",
+  "updated_at": "2026-04-25T05:49:23Z",
+  "closed_at": "2026-04-25T05:49:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:35:18Z"
+    }
+  ]
+}

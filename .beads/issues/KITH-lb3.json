@@ -1,0 +1,20 @@
+{
+  "id": "KITH-lb3",
+  "title": "kith-core: Contact data type",
+  "description": "What: Define Contact struct in src/contact.rs.\n\nModule file: crates/kith-core/src/contact.rs \u2014 create this file, then add 'pub mod contact;' to src/lib.rs.\n\nAlgorithm:\n1. Define Contact struct:\n   id: String\n   tailscale_user_id: String  \u2192 #[serde(rename=\"tailscaleUserId\")]\n   login: String\n   mailbox_host: String  \u2192 #[serde(rename=\"mailboxHost\")]\n   display_name: Option<String>  \u2192 #[serde(rename=\"displayName\", skip_serializing_if=\"Option::is_none\")]\n   first_seen_at: String  \u2192 #[serde(rename=\"firstSeenAt\")]  (UTCDate)\n   last_seen_at: String  \u2192 #[serde(rename=\"lastSeenAt\")]  (UTCDate)\n   blocked: bool\n   Derives: Debug, Clone, PartialEq, Serialize, Deserialize.\n2. Add a comment on tailscale_user_id: '// Opaque stable key. Never parse or assume format.'\n3. Add display_name helper: impl Contact { pub fn display_name_or_fallback(&self) -> &str { ... } }\n   Returns: display_name if Some and non-empty, else login if non-empty, else tailscale_user_id.\n4. Add 'pub mod contact;' to src/lib.rs.\n5. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- tailscale_user_id is opaque \u2014 no methods that parse it as email or structured data\n- display_name_or_fallback must never return empty string\n- No unwrap() in helper methods\n\nTests (independent oracle: manually constructed JSON matching JMAP field names):\n- Round-trip: construct Contact, serialize to JSON, deserialize, assert equality\n- JSON field names: assert serialized JSON uses \"tailscaleUserId\", \"mailboxHost\", \"firstSeenAt\", \"lastSeenAt\"\n- display_name_or_fallback: test all three fallback cases\n- blocked=false: assert serializes as JSON false (not 0 or null)",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:32Z",
+  "closed_at": "2026-04-19T05:04:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.2",
+  "title": "Message/get silently drops non-string IDs instead of invalidArguments",
+  "description": "message.rs:629-636 uses filter_map(|v| v.as_str()) to extract IDs, silently discarding non-string elements. RFC 8620 \u00a75.1 requires that a malformed IDs array produce invalidArguments. A client sending [\"valid-id\", 42, null] gets only the first ID with no error, diverging from every other handler in the same file which do return invalidArguments for the same malformed input.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:04Z",
+  "updated_at": "2026-04-25T03:23:50Z",
+  "closed_at": "2026-04-25T03:23:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:04Z"
+    }
+  ]
+}

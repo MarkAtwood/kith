@@ -1,0 +1,21 @@
+{
+  "id": "KITH-v793.1",
+  "title": "ChatContact/changes maxChanges=0 regresses newState below oldState",
+  "description": "In ChatContactChangesHandler::call() (crates/kith-chat/src/contact.rs), when a client sends maxChanges=0 and at least one change is pending, the truncation branch executes:\n\n  let truncated = &added_with_counter[..0]; // empty slice\n  let last_counter = truncated.last().map(|(_, c)| *c).unwrap_or(0); // 0\n  (truncated.to_vec(), true, format!(\"s-{last_counter}\"))  // \"s-0\"\n\nThis sets newState=\"s-0\" regardless of sinceState. If sinceState is \"s-2\" (client already synced to s-2), the response returns newState=\"s-0\" which is less than sinceState. RFC 8620 \u00a75.6 requires that newState >= oldState in all cases, including the truncation path.\n\nConsequence: the client regresses to s-0 and re-fetches changes it has already seen, producing duplicate-delivery of contacts.\n\nRoot cause: when the truncated slice is empty, last_counter falls back to 0 via unwrap_or(0) instead of using since_counter as the floor.\n\nFix: when the truncated slice is empty (maxChanges=0 case), newState should be oldState (sinceState) since no progress was made. Alternative: reject maxChanges=0 as invalid at parse time before any store access. Either way, newState must never go below sinceState.\n\nNo existing test covers maxChanges=0. A test with sinceState=\"s-2\", 1 change pending, maxChanges=0 would catch this.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:05:04Z",
+  "updated_at": "2026-04-24T20:07:22Z",
+  "closed_at": "2026-04-24T20:07:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v793",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:05:04Z"
+    }
+  ]
+}

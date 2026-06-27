@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.91",
+  "title": "kith-tslocal: Argument<Value> footgun documented but not prevented",
+  "description": "resultref.rs has a detailed warning: 'Do not parameterize this type with serde_json::Value for deserialization. Value accepts any JSON, so the Ref variant can never be reached via serde when T = Value.' This is a real footgun \u2014 a handler author who writes Argument<serde_json::Value> for a field that might be a ResultReference will silently get the wrong behavior. The documentation is good but cannot prevent misuse. Consider: (a) adding a compile-time sealed-trait bound that prevents Argument<Value> from being instantiated, or (b) renaming the type to make the constraint obvious in the name (e.g. TypedArgument<T> with a note that T must be a non-Value type). Filed as P1 because the footgun is invisible until runtime and produces silent wrong behavior, not a compile error.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:43:22Z",
+  "updated_at": "2026-04-25T06:08:33Z",
+  "closed_at": "2026-04-25T06:08:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:43:21Z"
+    }
+  ]
+}

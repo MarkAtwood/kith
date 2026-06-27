@@ -1,0 +1,12 @@
+{
+  "id": "KITH-9oe3",
+  "title": "Sync implementation with draft-atwood-jmap-chat-00",
+  "description": "Align kith implementation with the updated JMAP Chat I-D. The spec diverges from the current codebase in 7 areas: capability URI, Contact\u2192ChatContact rename, ChatContact.id=userId, chat ID assignment model, participants\u2192contactId, senderMsgId on Message, and senderTailscaleUserId\u2192senderUserId. This epic tracks all alignment work.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "feature",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:49:39Z",
+  "updated_at": "2026-04-24T00:02:13Z",
+  "closed_at": "2026-04-24T00:02:13Z"
+}

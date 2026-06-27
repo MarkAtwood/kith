@@ -1,0 +1,12 @@
+{
+  "id": "KITH-rss0",
+  "title": "SEC0: TOCTOU race in process_update between update_read_at and receipt enqueue",
+  "description": "In kith-chat/src/message.rs process_update (lines 435-456):\n\nThe update_read_at() call succeeds on line 437, but the message lookup on line 442 could return None if the message was deleted between these calls. If this happens, the receipt enqueue is silently skipped, leaving read_at set but no receipt notification sent to the sender.\n\nThis violates the expected delivery contract: a successful readAt update should always enqueue a receipt to inform the peer of the read state.\n\nRoot cause: The code assumes the message still exists after update_read_at(), but does not validate it before enqueuing the receipt.\n\nRisk: In Phase 1 (single-user), the message can only be deleted by the same owner, so this is low risk. However, the logic is fragile and could be exposed by concurrent message-deletion features.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:39Z",
+  "updated_at": "2026-04-20T03:20:39Z",
+  "closed_at": "2026-04-20T03:20:39Z"
+}

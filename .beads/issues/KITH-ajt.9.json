@@ -1,0 +1,20 @@
+{
+  "id": "KITH-ajt.9",
+  "title": "musl cross-compile targets not installed",
+  "description": "CLAUDE.md Quality Gates requires cargo build --release --target x86_64-unknown-linux-musl before every push. However, the Rust targets are not installed in rustup. The .cargo/config.toml specifies linkers but assumes targets exist. Result: when a maintainer tries to follow CLAUDE.md, the build fails with 'can't find crate for core'. This is a silent failure mode \u2014 the justfile check succeeds, but the mandatory cross-compile step will fail. Need: either add setup automation (e.g., a setup script or pre-commit hook) or document the required rustup target add commands with clear warnings.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:46:58Z",
+  "updated_at": "2026-04-19T04:50:40Z",
+  "closed_at": "2026-04-19T04:50:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ajt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:46:57Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.22",
+  "title": "kith-store: message changes via get_changes_since always in added not updated",
+  "description": "MessageStore::get_changes_since puts all state-version changes into added[]. Per RFC 8620, delivery state changes and read-at updates on existing messages must appear in updated[], not created[]. get_changes_since_ordered correctly classifies via created_at_version but get_changes_since is used by the handler when maxChanges is not set.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:24Z",
+  "updated_at": "2026-04-25T04:51:28Z",
+  "closed_at": "2026-04-25T04:51:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:24Z"
+    }
+  ]
+}

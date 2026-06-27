@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.30",
+  "title": "tls.rs: self-signed cert always uses hardcoded SAN kith.local",
+  "description": "load_or_generate_cert generates a self-signed certificate with Subject Alternative Name hardcoded to 'kith.local' regardless of the actual node's tailnet hostname. The TailnetCertVerifier bypasses SAN validation, so this works today. However it creates an implicit invariant: any code path that adds standard TLS cert validation would silently fail because the SAN never matches the actual host (e.g. alice.tail-xxxxx.ts.net). The generation call should use the real tailnet hostname, or the SAN choice should be documented as intentionally non-matching with an explanation that it is irrelevant while TailnetCertVerifier is in use.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:52:33Z",
+  "updated_at": "2026-04-24T17:02:12Z",
+  "closed_at": "2026-04-24T17:02:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:52:32Z"
+    }
+  ]
+}

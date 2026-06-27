@@ -1,0 +1,26 @@
+{
+  "id": "KITH-g1l",
+  "title": "kith-store: ChatStore",
+  "description": "ChatStore: get_or_create_by_id, list, update_last_message_at, JMAP state tokens.\n\n**What:** ChatStore wraps &Connection and implements chat persistence: deterministic-ID creation, participant management via chat_members, and state tracking.\n\n**Algorithm:**\n1. Define pub struct ChatStore<'a> { conn: &'a Connection }\n2. get_or_create(id: &str, kind: &str, participant_user_ids: &[&str]) -> Result<Chat, KithError>:\n   a. Attempt INSERT OR IGNORE INTO chats(id, kind, created_at) VALUES(?,?,?)\n   b. INSERT OR IGNORE INTO chat_members(chat_id, peer_user_id) for each participant\n   c. SELECT to fetch the Chat row\n   d. Advance state counter\n3. get(id: &str) -> Result<Option<Chat>, KithError>: SELECT chats + join chat_members, map to Chat struct (participants = Vec of peer_user_ids)\n4. list() -> Result<Vec<Chat>, KithError>: SELECT all chats ORDER BY last_message_at DESC NULLS LAST\n5. update_last_message_at(id: &str, ts: i64) -> Result<(), KithError>: UPDATE chats SET last_message_at=? WHERE id=?; advance state\n6. get_state/advance_state: same pattern as ContactStore using type_name='chat'\n7. unread_count(chat_id: &str) -> Result<u32, KithError>: SELECT COUNT(*) FROM messages WHERE chat_id=? AND delivery_state='received' AND read_at IS NULL\n\n**Defensive programming rules:**\n- INSERT OR IGNORE avoids duplicates without REPLACE (preserves created_at)\n- All queries parameterized\n- participants list built from a secondary SELECT on chat_members, not from input\n- chat ID from caller is used as-is (caller validated by handler); do not re-derive\n\n**Tests:**\n- get_or_create with same id twice returns same chat (idempotent)\n- participants list equals what was inserted\n- list orders by last_message_at descending (nulls last)\n- update_last_message_at advances state\n- unread_count counts only delivery_state='received' AND read_at IS NULL\n\n**Acceptance:** cargo test -p kith-store: all ChatStore tests pass; clippy clean.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:29:32Z",
+  "closed_at": "2026-04-19T05:29:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-k64",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

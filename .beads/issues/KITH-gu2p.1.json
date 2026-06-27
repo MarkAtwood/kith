@@ -1,0 +1,21 @@
+{
+  "id": "KITH-gu2p.1",
+  "title": "queryChanges position race: lock gap between ID fetch and position lookup",
+  "description": "Message/queryChanges releases the store mutex after fetching changed IDs (message.rs lines 814-866), then re-acquires it per-message to call get_position_in_chat (lines 872-881). A write that lands between the lock release and the first re-acquisition inserts a new row, shifting positions of all previously-fetched IDs. The index returned for each added message is then off by the number of rows inserted in that window, producing a corrupted queryChanges response that misplaces messages in the client sort order.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:37:46Z",
+  "updated_at": "2026-04-24T17:42:24Z",
+  "closed_at": "2026-04-24T17:42:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gu2p",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:37:45Z"
+    }
+  ]
+}

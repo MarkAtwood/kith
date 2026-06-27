@@ -1,0 +1,31 @@
+{
+  "id": "KITH-n6t",
+  "title": "kith-events: push delivery and reconnect tests",
+  "description": "What: Integration tests for the full EventSource push pipeline. Oracles from JMAP RFC 8620 spec and manual inspection.\n\nTests to implement:\n1. test_push_delivery_new_message: Create make_channel(64); get Store with events_tx set; call message::insert; assert subscriber received StateChange{type_name:\"Message\", new_state matches store.messages().get_state()}. Oracle: RFC 8620 \u00a77.1 state type names are capitalized object type names.\n2. test_push_delivery_chat_update: call chat::update_last_message_at; assert Chat StateChange received.\n3. test_push_no_emit_noop: call contact::set_blocked with unknown peer_user_id (no-op); assert no StateChange emitted (receiver.try_recv() returns Empty).\n4. test_auth_peer_rejected: call events_handler with MockWhoIs returning a Peer identity; assert response status 403. Oracle: JMAP spec \u00a77.3 says EventSource is owner-only.\n5. test_types_filter: send Contact and Message StateChanges; subscribe with types=[\"Message\"]; assert only Message events appear in SSE stream.\n6. test_closeafter_state: subscribe with closeafter=state; send one StateChange; assert SSE stream ends after one event.\n7. test_reconnect_replay: insert message (advances state), then call events_handler with Last-Event-ID set to state BEFORE insert; assert replay SSE event emitted for Message type before live stream starts.\n8. test_lagged_receiver_skips: overflow broadcast channel buffer; assert stream continues (no panic, no 500); next real event is still received.\n\nOracle methodology:\n- Expected SSE event data is JSON fragment hardcoded from RFC 8620 \u00a77.1: {\"changed\":{\"a-self\":{\"Message\":\"s-N\"}}} where N is the integer returned by get_state()\n- Auth oracle: independent MockWhoIs fixture that explicitly returns Role::Peer\n- Never use code under test to derive expected values",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T08:28:20Z",
+  "closed_at": "2026-04-19T08:28:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-845",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-hry",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:06:33Z"
+    },
+    {
+      "depends_on_id": "KITH-t4z",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:06:33Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-vx6.2",
+  "title": "kith-store: ChatStore.get_changes_since",
+  "description": "What: Add get_changes_since(since_state: &str) -> Result<ChangesResult, KithError> to ChatStore in kith-store/src/chat.rs, mirroring the MessageStore/ContactStore pattern.\n\nAlgorithm:\n1. Parse since_state: strip 's-' prefix, parse remainder as i64; return KithError::Validation(\"invalid state token\") if malformed.\n2. Call self.get_state() to get current state \"s-M\"; parse M.\n3. If since_counter >= M: return ChangesResult { added: vec![], updated: vec![], destroyed: vec![], new_state: state }.\n4. If since_counter < M: SELECT id FROM chats ORDER BY created_at; collect all IDs.\n5. Return ChangesResult { added: all_ids, updated: vec![], destroyed: vec![], new_state: current_state }.\n\nDefensive programming rules:\n- State token parse must return KithError::Validation \u2014 never unwrap().\n- Empty chats table is valid: return empty added, not error.\n- No user input reaches SQL WHERE clauses.\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs get_changes_since and chat.rs for context.\n- Agent I: Implement. Import ChangesResult from kith-store crate root if needed.\n- Agent T: Write tests with known state sequences (hand-constructed).\n- Agent V: cargo test -p kith-store && clippy && fmt.\n\nTests:\n- sinceState==current \u2192 empty result (oracle: hardcoded expectation)\n- sinceState<current \u2192 all chat IDs returned as added\n- malformed sinceState \u2192 KithError::Validation",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:17:17Z",
+  "updated_at": "2026-04-19T15:29:59Z",
+  "closed_at": "2026-04-19T15:29:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:17:16Z"
+    }
+  ]
+}

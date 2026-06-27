@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.23",
+  "title": "idempotency response missing accountId field",
+  "description": "In peer_deliver, when a retransmitted sender_msg_id is detected (idempotency path, lines 260-265), the returned JSON is { accepted, id, receivedAt } \u2014 missing accountId. The successful first-delivery response includes accountId: 'a-self'. Any client code that pattern-matches on the full response shape will see an inconsistent structure on retransmit. The JMAP spec expects consistent response shapes across the same method.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:49:23Z",
+  "updated_at": "2026-04-24T16:58:09Z",
+  "closed_at": "2026-04-24T16:58:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:49:22Z"
+    }
+  ]
+}

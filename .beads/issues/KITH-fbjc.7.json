@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.7",
+  "title": ".tmp file not cleaned up when write_all fails mid-write (disk full path)",
+  "description": "kith-attach/src/lib.rs:117 write_blob_streaming: if write_all returns Err (e.g. disk full), the '?' propagates the error but the .tmp file is left stranded on disk. Same issue in write_blob (line 61). The rename never happens so the final blob path is not created, but the orphaned .tmp accumulates. Fix: add a cleanup guard that removes the .tmp file whenever the function returns an error after the file is created.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:47Z",
+  "updated_at": "2026-04-24T05:26:13Z",
+  "closed_at": "2026-04-24T05:26:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:46Z"
+    }
+  ]
+}

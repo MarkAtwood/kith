@@ -1,0 +1,13 @@
+{
+  "id": "KITH-jla",
+  "title": "Add compile-time check: METHOD_ROLES keys match registered handlers",
+  "description": "What: Add a #[test] to kith-jmap that asserts METHOD_ROLES.len() == the number of handlers registered in Dispatcher::new(), and that every key in METHOD_ROLES appears in the registered handler set.\n\nAlgorithm:\n1. Read kith-jmap/src/dispatch.rs to find Dispatcher::new() and METHOD_ROLES definition\n2. Add test fn method_roles_matches_registered_handlers():\n   - Build a Dispatcher (or call its register path)\n   - Collect the set of registered method names\n   - Assert METHOD_ROLES.len() == registered.len()\n   - For each key in METHOD_ROLES, assert it appears in registered set\n3. Test should fail at compile time or test time if anyone adds a handler without adding a role entry\n\nDefensive programming rules:\n- Test must not depend on count of methods hardcoded \u2014 it must compare the two sets dynamically\n- If Dispatcher does not expose its handler names, add a pub(crate) fn handler_names() -> Vec<&str> method limited to #[cfg(test)]\n- Do not change the production dispatch path\n\nAgent team: single R+I+T agent (kith-jmap only)\n\nTests:\n- cargo test -p kith-jmap method_roles_matches passes\n- Manually verify the test fails if you add a bogus entry to METHOD_ROLES with no matching handler",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:19:19Z",
+  "updated_at": "2026-04-19T21:25:06Z",
+  "closed_at": "2026-04-19T21:25:06Z"
+}

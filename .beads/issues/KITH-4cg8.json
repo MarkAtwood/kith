@@ -1,0 +1,13 @@
+{
+  "id": "KITH-4cg8",
+  "title": "Review: consistent match pattern for try_send in SSE handler",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:00:09Z",
+  "updated_at": "2026-04-25T09:03:11Z",
+  "closed_at": "2026-04-25T09:03:11Z",
+  "notes": "Maintainer risk: LOW \u2014 both try_send sites break on Full/Closed identically to the old code; the only change is a warn log. The log ambiguity is real but does not affect correctness or security. No new API surface, no new invariants.\nConfidence: 5% chance of missed bug.   Uncertainty driven by: (1) no test exercises the Full path \u2014 the behavior on a genuinely full channel cannot be verified from the test suite; (2) the interaction between the coalescing task exiting via break-without-None and the ReceiverStream termination is implicit in tokio channel drop semantics \u2014 this was verified by reading the code but not by a test.   Would raise confidence if: a test filled the mpsc channel and verified the SSE stream terminated cleanly without hanging."
+}

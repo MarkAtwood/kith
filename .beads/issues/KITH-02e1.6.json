@@ -1,0 +1,26 @@
+{
+  "id": "KITH-02e1.6",
+  "title": "Tests: send_message() wiremock suite",
+  "description": "**What:** Write independent test suite for send_message() using wiremock as oracle.\n\n**Algorithm (test-first \u2014 write before looking at implementation):**\nOracle: all expected values derived from mock JSON payloads, not from running send_message as its own oracle.\n\nTest 1 \u2014 success path:\n- Mock POST /jmap/api responds: {methodResponses: [['Message/set', {accountId:'a-self', newState:'s-2', created:{'k-1':{id:'msg-001', senderId:'self', deliveryState:'pending'}}, notCreated:{}}, 's0']]}\n- Call send_message(client, url, 'chat-abc', 'hello')\n- Assert: Ok('msg-001') returned.\n\nTest 2 \u2014 notCreated error:\n- Mock responds: {methodResponses: [['Message/set', {accountId:'a-self', newState:'s-1', created:{}, notCreated:{'k-1':{type:'invalidArguments', description:'body too long'}}}, 's0']]}\n- Call send_message(client, url, 'chat-abc', 'x')\n- Assert: Err returned; error string contains 'invalidArguments' or 'body too long'.\n\nTest 3 \u2014 JMAP method-level error:\n- Mock responds: {methodResponses: [['error', {type:'serverFail'}, 's0']]}\n- Call send_message(client, url, 'chat-abc', 'hi')\n- Assert: Err returned; error string contains 'serverFail'.\n\nTest 4 \u2014 empty body:\n- No mock server needed (must short-circuit before HTTP).\n- Call send_message(client, url, 'chat-abc', '')\n- Assert: Err returned without making any HTTP call (verify by not mounting any mock and using http://127.0.0.1:1 as unreachable URL).\n\nTest 5 \u2014 whitespace body:\n- Same as Test 4 with body = '   '.\n- Assert: Err returned.\n\nTest 6 \u2014 network error:\n- No mock; use http://127.0.0.1:1 as URL.\n- Call send_message(client, url, 'chat-abc', 'hello')\n- Assert: Err returned.\n\n**Defensive rules:**\n- Never use send_message return value as the expected value. \n- All expected values ('msg-001', error types) come from the mock JSON above.\n- Tests must be fully offline \u2014 no real kithd.\n\n**Agent team:** T writes tests independently from bead spec; I (the W1A implementer) is not consulted; V runs cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:55:25Z",
+  "updated_at": "2026-04-20T12:04:55Z",
+  "closed_at": "2026-04-20T12:04:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:55:25Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:36Z"
+    }
+  ]
+}

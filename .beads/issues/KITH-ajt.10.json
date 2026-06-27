@@ -1,0 +1,20 @@
+{
+  "id": "KITH-ajt.10",
+  "title": "justfile missing musl cross-compile recipes",
+  "description": "CLAUDE.md Quality Gates lists 'cargo build --release --target x86_64-unknown-linux-musl' and 'cargo build --release --target aarch64-unknown-linux-musl' as required before pushing when touching cross-compile targets. However, justfile has no recipes for these builds. A solo maintainer will forget to run these conditional gates because: (1) 'just check' doesn't include them, (2) no recipe makes them easy to run, (3) the deployment target is static musl binary, so this is not optional. Fix: add recipes 'musl-x86' and 'musl-aarch64' to justfile, or add them to a conditional 'check' variant.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:46:59Z",
+  "updated_at": "2026-04-19T04:50:38Z",
+  "closed_at": "2026-04-19T04:50:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ajt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:46:59Z"
+    }
+  ]
+}

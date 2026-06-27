@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nbg",
+  "title": "kith-core: ResultReference and Argument types",
+  "description": "What: Define ResultReference and Argument<T> types in src/resultref.rs.\n\nModule file: crates/kith-core/src/resultref.rs \u2014 create this file, then add 'pub mod resultref;' to src/lib.rs.\n\nAlgorithm:\n1. Define ResultReference struct:\n   result_of: String  \u2192 #[serde(rename=\"resultOf\")]  (call-id of prior invocation)\n   name: String  (method name of prior invocation, e.g. \"Contact/get\")\n   path: String  (JSON Pointer per RFC 6901, e.g. \"/list/0/id\")\n   Derives: Debug, Clone, PartialEq, Serialize, Deserialize.\n2. Define Argument<T> enum for JMAP argument fields:\n   pub enum Argument<T> {\n     Value(T),\n     Ref(ResultReference),\n   }\n   Derives: Debug, Clone, Serialize, Deserialize with #[serde(untagged)].\n   The untagged repr means: try to deserialize as T first; if that fails, try ResultReference.\n   For serialization, both variants serialize transparently.\n3. Add 'pub mod resultref;' to src/lib.rs.\n4. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- Argument<T> uses #[serde(untagged)] \u2014 this means deserialization tries T first, then Ref\n  Order matters: if T is also a struct with similar fields, ambiguity arises. Document this.\n- path field is a JSON Pointer string \u2014 the kith-jmap resolver validates it, not kith-core\n- No validation in these types\n\nTests (independent oracle: RFC 8620 \u00a79 ResultReference example):\n- ResultReference round-trip: construct {resultOf:\"0\", name:\"Contact/get\", path:\"/list/0/id\"}, serialize, deserialize, assert equality\n- Argument::Value(42u32): serializes as just 42 (not wrapped)\n- Argument::Ref(rr): serializes as the ResultReference object\n- Argument<Vec<String>> deserialization: JSON array [\"a\",\"b\"] \u2192 Argument::Value([\"a\",\"b\"])",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:33Z",
+  "closed_at": "2026-04-19T05:04:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

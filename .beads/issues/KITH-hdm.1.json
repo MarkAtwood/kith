@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hdm.1",
+  "title": "Message/query pagination off-by-one: list_by_chat(limit+position) then skip(position)",
+  "description": "SEC1 finding: message.rs Message/query handler calls list_by_chat(limit+position) then applies .skip(position). If list_by_chat treats the argument as an absolute LIMIT (not a window size), the result at position>0 is wrong: requesting limit+position rows, skipping position, returns only limit rows correctly, BUT only if the table has >=limit+position rows. The contract of list_by_chat must be confirmed and tests added for position>0 with non-zero offset to verify actual pagination behavior is correct.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:52:55Z",
+  "updated_at": "2026-04-19T15:54:51Z",
+  "closed_at": "2026-04-19T15:54:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hdm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:52:54Z"
+    }
+  ]
+}

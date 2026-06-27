@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hwly.10",
+  "title": "State-counter-as-oracle test pattern is the correct non-self-certifying approach",
+  "description": "e2e tests for rejection paths (auth failure, senderUserId mismatch, chatId mismatch) verify behavior by reading the message state counter before and after the request and asserting it did not advance. This pattern is stronger than checking only the error response, because a handler could return an error AND still write to the DB. A contributor might suggest simplifying to just assert the HTTP status code; this would miss bugs where the handler returns the right error but still performs the write. The two-sided oracle (error response + state counter unchanged) must be preserved in new tests.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:20:25Z",
+  "updated_at": "2026-04-24T04:32:11Z",
+  "closed_at": "2026-04-24T04:32:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:20:25Z"
+    }
+  ]
+}

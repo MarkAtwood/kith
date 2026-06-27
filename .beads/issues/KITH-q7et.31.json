@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "053c39cc64c51be55e9151848bf29c8d3e9652cc725b61547e25306da066e19c",
+  "created_at": "2026-06-15T04:54:02Z",
+  "created_by": "Mark Atwood",
+  "description": "ContactStore::upsert() and upsert_discovered_contact() use SQLite's 'ON CONFLICT DO UPDATE WHERE ...' clause to make the UPDATE a no-op when no column value changed, then check rows_affected to decide whether to advance the state counter. This prevents spurious state advances when peers repeatedly call Peer/deliver with the same sender metadata.\n\nSame pattern appears in set_blocked(), set_presence_fields(), and the outbox enqueue_receipt(). The WHERE clauses use IS NOT comparisons (NULL-safe) rather than != so NULL-to-NULL is correctly treated as 'no change'.\n\nThis is correct and subtle. The alternative (always advance state on upsert calls) would cause JMAP clients to poll /changes on every incoming message even when no contact metadata changed, producing empty /changes responses and unnecessary round-trips. Worth defending against suggestions to simplify by removing the WHERE guard and always advancing.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.31",
+  "is_template": 0,
+  "issue_type": "decision",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DECISION: idempotent upserts only advance state counter on actual change",
+  "updated_at": "2026-06-15T04:54:02Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:02Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

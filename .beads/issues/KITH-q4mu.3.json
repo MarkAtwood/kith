@@ -1,0 +1,21 @@
+{
+  "id": "KITH-q4mu.3",
+  "title": "missing debug_assert for OutboundMessageParams::outbox_peers non-empty invariant",
+  "description": "crates/kith-store/src/lib.rs: OutboundMessageParams.outbox_peers has doc comment 'Must be non-empty' but insert_outbound_message has no debug_assert. The call-site guard in message.rs enforces this today, but the struct is pub and the precondition is invisible at the implementation boundary. Suggested rewrite: add at the top of insert_outbound_message: debug_assert\\!(\\!params.outbox_peers.is_empty(), \"insert_outbound_message requires at least one outbox peer\");",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:59:40Z",
+  "updated_at": "2026-04-24T04:05:05Z",
+  "closed_at": "2026-04-24T04:05:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:59:39Z"
+    }
+  ]
+}

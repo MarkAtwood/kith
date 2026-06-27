@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.16",
+  "title": "Message/get ids=null design deviation needs explicit documentation",
+  "description": "Message/get intentionally rejects ids=null (v1 design choice to prevent full-table scans) but this deviates from RFC 8620 section 5.1 without any comment explaining the departure. The test name says 'v1 requirement' but the RFC says ids=null is valid. Future maintainers will not know if the rejection is intentional or a bug. Fix: add a comment explaining the deliberate deviation and the intended migration path (e.g. add pagination then enable null ids).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:39Z",
+  "updated_at": "2026-04-25T06:00:03Z",
+  "closed_at": "2026-04-25T06:00:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:39Z"
+    }
+  ]
+}

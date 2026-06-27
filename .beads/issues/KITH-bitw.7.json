@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.7",
+  "title": "SEC3: JMAP call pattern repeated 4+ times; extract wrapper function",
+  "description": "Pattern: build JmapRequest, call client::call_jmap, match response, log error appears in load_startup_data, load_messages_for_chat, handle_state_change (multiple places). Consider call_jmap_or_log wrapper that returns early on error to reduce boilerplate.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:45Z",
+  "updated_at": "2026-04-20T05:50:10Z",
+  "closed_at": "2026-04-20T05:50:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:44Z"
+    }
+  ]
+}

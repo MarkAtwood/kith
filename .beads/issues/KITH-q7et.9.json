@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:02:37Z",
+  "compaction_level": 0,
+  "content_hash": "3bb0c7184fc02da3e6df644d2f2f4aebf5d9114373ce145a88da488bfd07ed9a",
+  "created_at": "2026-06-15T04:52:47Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-store/src/lib.rs lines 31-59: OutboundMessageParams is a public struct used as the parameter to Store::insert_outbound_message(). Several fields carry invariants that are stated only in field comments rather than encoded in types or documented as checked preconditions vs. caller responsibilities:\n\n1. outbox_peers field says 'Must be non-empty' (line 48). This is a runtime check in the callee (line 1042), not a type guarantee. The doc comment does not state what error is returned on violation or that insert_outbound_message() will validate it.\n\n2. thread_root_id field says 'Must reference a top-level message (one without its own thread_root_id) in the same chat.' This precondition is NOT validated by insert_outbound_message() \u2014 the doc comment states the constraint but the function does not enforce it. A caller that passes a threaded message's ID as thread_root_id will silently create an invalid chain. The precondition is caller-enforced but not documented as such.\n\n3. sender_user_id field says 'Never the literal string self'. This is a social contract with no type enforcement and no error if violated.\n\n4. No doc on what happens if id already exists (UNIQUE constraint \u2192 KithError::Validation, but this isn't stated in insert_outbound_message() docs).\n\nFix: document each precondition explicitly as either 'caller must ensure' or 'this function validates and returns Err if'. Consider using a newtype or builder to enforce thread_root_id validity.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.9",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-store: OutboundMessageParams pub struct fields lack precondition docs",
+  "updated_at": "2026-06-15T16:02:37Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:47Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

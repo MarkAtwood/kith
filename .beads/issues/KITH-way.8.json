@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.8",
+  "title": "Clarify TryRecvError handling distinction in SSE coalescing loop",
+  "description": "Lines 262-286 in kithd/src/events.rs drain available StateChange events in a try_recv loop, handling TryRecvError::Empty, Lagged, and Closed. The comment at line 280 says 'Buffer exhausted and all senders gone' but doesn't explain why Closed (broadcast channel dead) breaks the same way as Empty (temporary lack of messages). New contributors need to understand: Empty means 'try again later (after next recv)', Closed means 'channel is dead (final state)', both need to emit and break, but for different reasons. Add a sentence before the Closed branch explaining the semantic difference.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:03Z",
+  "updated_at": "2026-04-19T20:17:53Z",
+  "closed_at": "2026-04-19T20:17:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:03Z"
+    }
+  ]
+}

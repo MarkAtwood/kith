@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0kl5.3",
+  "title": "is_closed() check on empty-batch disconnect is correct and consistent",
+  "description": "Using is_closed() rather than a no-op send() to detect disconnect in the close_after_first=false empty-batch path is the right call. A no-op send() would needlessly wake the receiver-side stream consumer. The TOCTOU between is_closed() returning false and the next send() call is benign: the next send() catches the disconnect. This is better than forcing a spurious wakeup just for symmetry.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:46:20Z",
+  "updated_at": "2026-04-24T18:48:40Z",
+  "closed_at": "2026-04-24T18:48:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0kl5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:46:19Z"
+    }
+  ]
+}

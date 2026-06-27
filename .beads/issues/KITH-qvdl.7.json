@@ -1,0 +1,27 @@
+{
+  "id": "KITH-qvdl.7",
+  "title": "E2E: wiremock end-to-end initialization + SSE sequence",
+  "description": "What: End-to-end integration test using wiremock to verify the full KITH-qvdl initialization sequence: session fetch -> Chat/get -> Contact/get -> Message/query -> Message/get -> SSE state change -> Message/changes -> state.messages updated.\n\nAlgorithm:\n1. Start wiremock MockServer.\n2. Mount mocks:\n   a. GET /.well-known/jmap -> ClientSession JSON with api_url, event_source_url, primaryAccounts: {\"urn:kith:chat:1\":\"a-self\"}.\n   b. POST /jmap/api (Chat/get call) -> {methodResponses:[[\"Chat/get\",{accountId:\"a-self\",list:[{id:\"chat-abc\",kind:\"direct\",participants:[\"c-1\"],unreadCount:1,createdAt:\"2026-01-01T00:00:00Z\"}],state:\"s-3\"},\"c0\"],[\"Contact/get\",{accountId:\"a-self\",list:[{id:\"c-1\",login:\"bob@x.com\"}],state:\"s-2\"},\"c1\"]],sessionState:\"s-1\"}.\n   c. POST /jmap/api (Message/query call) -> {methodResponses:[[\"Message/query\",{accountId:\"a-self\",queryState:\"s-3\",ids:[\"m-1\"],position:0},\"mq0\"]],sessionState:\"s-1\"}.\n   d. POST /jmap/api (Message/get call) -> {methodResponses:[[\"Message/get\",{accountId:\"a-self\",list:[{id:\"m-1\",chatId:\"chat-abc\",senderId:\"c-1\",body:\"Hello world\",bodyType:\"text/plain\",attachments:[],sentAt:\"2026-04-19T10:00:00Z\",receivedAt:\"2026-04-19T10:00:01Z\",deliveryState:\"received\"}],state:\"s-3\"},\"mg0\"]],sessionState:\"s-1\"}.\n   e. POST /jmap/api (Message/changes call) -> {methodResponses:[[\"Message/changes\",{accountId:\"a-self\",oldState:\"s-3\",newState:\"s-4\",hasMoreChanges:false,created:[\"m-2\"],updated:[],destroyed:[]},\"mc0\"]],sessionState:\"s-1\"}.\n   f. POST /jmap/api (second Message/get) -> {methodResponses:[[\"Message/get\",{accountId:\"a-self\",list:[{id:\"m-2\",chatId:\"chat-abc\",senderId:\"self\",body:\"Reply\",bodyType:\"text/plain\",attachments:[],sentAt:\"2026-04-19T10:01:00Z\",receivedAt:\"2026-04-19T10:01:00Z\",deliveryState:\"pending\"}],state:\"s-4\"},\"mg0\"]],sessionState:\"s-1\"}.\n3. Run initialization sequence: fetch_session -> call_jmap(Chat/get+Contact/get) -> call_jmap(Message/query) -> call_jmap(Message/get).\n4. Assert after init: state.chat_list=[\"bob@x.com (1)\"], state.chat_ids=[\"chat-abc\"], state.messages contains \"10:00:01 bob@x.com: Hello world\" (or similar format).\n5. Simulate SSE StateChange: send StateChange{type_name:\"Message\",new_state:\"s-4\"} on sse_tx.\n6. Run Message/changes + Message/get sequence.\n7. Assert state.messages now also contains \"10:01:00 me: Reply\"; state.message_state==\"s-4\".\n\nDefensive rules:\n- All assertions use explicit expected strings derived from mock data (never from the code under test).\n- Test is async (#[tokio::test]).\n\nAgent team: R reads existing wiremock tests in client.rs for patterns; T writes the full test (this is a test-only bead); V runs cargo test -p kith-tui.\n\nTests: this bead IS the test. Pass condition: all assertions green; no panics.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:24:53Z",
+  "updated_at": "2026-04-20T05:41:18Z",
+  "closed_at": "2026-04-20T05:41:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:24:53Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:25:03Z"
+    }
+  ]
+}

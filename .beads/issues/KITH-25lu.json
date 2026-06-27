@@ -1,0 +1,13 @@
+{
+  "id": "KITH-25lu",
+  "title": "Review: kithd blob, discovery, peer_fetch, lib",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:36:10Z",
+  "updated_at": "2026-04-25T06:48:00Z",
+  "closed_at": "2026-04-25T06:48:00Z",
+  "notes": "Maintainer risk: LOW \u2014 blob.rs is clean after streaming refactor. peer_fetch has wrong error variant for oversized bodies (P1, wrong 502 vs 500). lib.rs tests leave temp dir artifacts (P3, cosmetic). discovery user_id cross-validation is a deployability concern for Headscale (existing issue)."
+}

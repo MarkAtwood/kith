@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.1",
+  "title": "Extract hardcoded 'a-self' account ID to semantic value",
+  "description": "kithd/src/events.rs lines 143, 165 hardcode 'a-self' as account ID in JSON serialization. Should derive from AppState or StateChange struct to support future account ID scheme changes. Current: magic string. Alternative: pass account ID through context or extend StateChange to carry it.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:13Z",
+  "updated_at": "2026-04-19T08:41:39Z",
+  "closed_at": "2026-04-19T08:41:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:12Z"
+    }
+  ]
+}

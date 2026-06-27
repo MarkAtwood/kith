@@ -1,0 +1,20 @@
+{
+  "id": "KITH-6je",
+  "title": "kith-core: JMAP Request/Response/Invocation types",
+  "description": "What: Define JMAP Request, Response, and Invocation types in src/jmap.rs.\n\nModule file: crates/kith-core/src/jmap.rs \u2014 create this file, then add 'pub mod jmap;' to src/lib.rs.\n\nAlso define: pub type UTCDate = String; and pub type Id = String; in this file.\n\nAlgorithm:\n1. Define type aliases:\n   pub type UTCDate = String;  (RFC 3339 timestamp string, e.g. \"2026-04-18T20:14:00Z\")\n   pub type Id = String;  (opaque non-empty string)\n2. Define Invocation as a tuple struct that serializes as a 3-element JSON array:\n   [method_name: String, arguments: serde_json::Value, call_id: String]\n   Use #[serde(rename_all = \"camelCase\")] is not applicable to tuple structs.\n   Simplest: pub type Invocation = (String, serde_json::Value, String);\n3. Define JmapRequest struct:\n   using: Vec<String>  (capability URIs, e.g. [\"urn:ietf:params:jmap:core\", \"urn:kith:chat:1\"])\n   method_calls: Vec<Invocation>  \u2192 #[serde(rename=\"methodCalls\")]\n   Derives: Debug, Clone, Serialize, Deserialize.\n4. Define JmapResponse struct:\n   method_responses: Vec<Invocation>  \u2192 #[serde(rename=\"methodResponses\")]\n   session_state: String  \u2192 #[serde(rename=\"sessionState\")]\n   Derives: Debug, Clone, Serialize, Deserialize.\n5. Define MethodError struct (used in error invocations):\n   error_type: String  \u2192 #[serde(rename=\"type\")]\n   description: Option<String>  \u2192 #[serde(skip_serializing_if=\"Option::is_none\")]\n   Derives: Debug, Clone, Serialize, Deserialize.\n6. Add 'pub mod jmap;' to src/lib.rs.\n7. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- Invocation tuple is untyped (serde_json::Value for args) \u2014 type safety is handled at dispatch time in kith-jmap\n- No validation in these types \u2014 they are wire envelopes\n\nTests (independent oracle: RFC 8620 \u00a73.3 and \u00a73.4 example JSON):\n- JmapRequest round-trip: build a request with two invocations, serialize, assert JSON matches RFC example format\n- JmapResponse round-trip: build response, serialize, deserialize, assert fields match\n- MethodError: serialize with and without description, assert JSON field presence",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:31Z",
+  "closed_at": "2026-04-19T05:04:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

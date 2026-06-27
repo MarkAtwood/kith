@@ -1,0 +1,13 @@
+{
+  "id": "KITH-qa4",
+  "title": "Review round 1: Minimal web client",
+  "description": "Review round 1 for KITH-f0g epic. Covers all web client code: static_files.rs, /web/index.html, /web/style.css, /web/app.js.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:53:29Z",
+  "updated_at": "2026-04-19T18:22:02Z",
+  "closed_at": "2026-04-19T18:22:02Z"
+}

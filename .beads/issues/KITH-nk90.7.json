@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.7",
+  "title": "SEC3: FetchBlobError mixes validation failures with runtime errors",
+  "description": "FetchBlobError enum (lines 304-322 in peer_fetch.rs) groups HostRejected and BlobIdInvalid (validation errors that should fail before network I/O) alongside Timeout and Network (transient failures).\n\nIn blob_download_handler (lib.rs lines 253-255), HostRejected/BlobIdInvalid map to 403 Forbidden, which is semantically odd for validation failures (400 Bad Request is clearer).\n\nRefactor: Separate validation errors (BlobIdInvalid) from runtime errors. Consider Result<T, enum { Validation(String), Runtime(RuntimeError) }> to allow different error handling policies.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:38Z",
+  "updated_at": "2026-04-20T17:21:13Z",
+  "closed_at": "2026-04-20T17:21:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:37Z"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "KITH-qvdl.4",
+  "title": "run(): Chat/get + Contact/get on startup",
+  "description": "What: After session init in run(), call Chat/get and Contact/get to replace placeholder data with live JMAP data.\n\nAlgorithm:\n1. In event::run(), immediately after the initial terminal draw, build a JmapRequest with two method_calls:\n   a. [\"Chat/get\", {\"accountId\": \"a-self\"}, \"c0\"] (ids absent = all chats)\n   b. [\"Contact/get\", {\"accountId\": \"a-self\"}, \"c1\"] (ids absent = all contacts)\n2. Call client::call_jmap(&http_client, &api_url, &req).await.\n3. Parse method_responses[0] (Chat/get): deserialize args Value as {list: Vec<serde_json::Value>, state: String}. For each chat Value, extract id:String, kind:String, participants:Vec<String>, unreadCount:u32.\n4. Parse method_responses[1] (Contact/get): deserialize args Value as {list: Vec<serde_json::Value>}. For each contact, extract id:String and compute display name: displayName field if present and non-empty, else login field, else id.\n5. Build state.contacts: HashMap<String,String> = { contact_id -> display_name }.\n6. Build state.chat_ids: Vec<String> from chat ids.\n7. Build state.chat_list: Vec<String> for display:\n   - For kind==\"direct\": look up each participant in contacts map; join with \", \" if multiple; sanitize_display.\n   - For kind==\"group\": use \"Group\" + participant count.\n   - Append unread count if > 0: format!(\"{}  ({})\", name, unread_count).\n8. Clear placeholder: state.chat_list replaces the hardcoded values; state.chat_ids populated.\n9. Clamp state.selected_chat to 0 if list is shorter.\n10. If call_jmap returns error: set state.connection_status = Error, leave placeholders cleared to empty.\n\nDefensive programming rules:\n- All serde parsing via serde_json::from_value \u2014 on error, log and skip the item (never panic).\n- sanitize_display() on all contact display names before storing.\n- Handle empty list (0 chats) gracefully \u2014 no panic, empty chat_list.\n- Never unwrap() on the Value extractions; use get().and_then().\n\nAgent team: R reads event.rs, app.rs, client.rs, kith-core/chat.rs; I implements; T writes wiremock tests; V runs cargo test + clippy.\n\nTests (wiremock oracle):\n- Mock Chat/get returning [{id:\"abc\",kind:\"direct\",participants:[\"c-1\"],unreadCount:2}] + Contact/get returning [{id:\"c-1\",login:\"alice@x\",displayName:\"Alice\"}] -> state.chat_list=[\"Alice (2)\"], state.chat_ids=[\"abc\"].\n- Mock Chat/get returning empty list -> state.chat_list=[], state.chat_ids=[], no panic.\n- Mock Chat/get with ANSI in contact name -> sanitize_display strips escapes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:23:53Z",
+  "updated_at": "2026-04-20T05:33:15Z",
+  "closed_at": "2026-04-20T05:33:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:23:53Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:25:00Z"
+    }
+  ]
+}

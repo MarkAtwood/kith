@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.17",
+  "title": "JMAP-level error in load_startup_data silently empties chat list",
+  "description": "If Chat/get or ChatContact/get returns a JMAP method-level error response (e.g. [\"error\", {\"type\": \"accountNotFound\"}, \"c0\"]), load_startup_data treats the missing 'list' field as an empty array and replaces state.chat_list and state.chat_ids with empty vecs. connection_status is not updated. The user sees a blank chat panel with no error indicator and the status bar still shows 'Connecting'.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:31Z",
+  "updated_at": "2026-04-25T01:29:28Z",
+  "closed_at": "2026-04-25T01:29:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:31Z"
+    }
+  ]
+}

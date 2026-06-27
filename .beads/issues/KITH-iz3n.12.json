@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.12",
+  "title": "is_valid_fetch_host allows @ in hostname, enabling userinfo injection",
+  "description": "A mailbox_host value like 'attacker@peer.ts.net' passes is_valid_fetch_host because ends_with('.ts.net') matches without stripping userinfo first. The URL becomes https://attacker@peer.ts.net/... which most HTTP clients interpret as userinfo, not as a hostname prefix. In practice today mailbox_host comes from WhoIs node_name (Tailscale-controlled, no @ allowed), so this is not immediately exploitable. But the guard does not enforce its own stated contract: it is supposed to validate the host portion only. Any future code path that stores or supplies a mailbox_host from a less-vetted source (e.g. a Contact/set owner call, a migration, or a test fixture) would bypass the SSRF check silently. Fix: add an explicit early return false if the ip_part (or the raw host before port stripping) contains '@'.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:28:09Z",
+  "updated_at": "2026-04-24T18:33:55Z",
+  "closed_at": "2026-04-24T18:33:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:28:09Z"
+    }
+  ]
+}

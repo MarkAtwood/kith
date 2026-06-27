@@ -1,0 +1,20 @@
+{
+  "id": "KITH-e9c",
+  "title": "kith-chat: Message/get and Message/set update",
+  "description": "What: Implement Message/get and Message/set update (patch readAt) JmapHandler structs in kith-chat crate.\n\nMessage/get algorithm:\n1. Deserialize args: { accountId, ids: Option<Vec<String>>, properties: Option<Vec<String>> }.\n2. Verify accountId.\n3. Acquire store lock.\n4. If ids is None: return invalidArguments ('ids required for Message/get in v1').\n   If ids is Some: for each id call store.messages().get(id)?; partition found/notFound.\n5. state = store.messages().get_state()?\n6. Return { accountId, list: [Message...], notFound, state }.\n\nMessage/set update algorithm (readAt patch only for v1):\n1. Deserialize args: { accountId, update: Option<Map<String, Value>> }.\n2. For each update entry (server_id \u2192 patch):\n   a. Load message: store.messages().get(server_id)?; if None \u2192 notUpdated/notFound.\n   b. Extract patch field readAt (String, RFC 3339). Only readAt is patchable in v1; other fields \u2192 notUpdated/invalidArguments('cannot patch field X').\n   c. Validate readAt parses as valid RFC 3339 UTC timestamp.\n   d. Call store.messages().update_read_at(server_id, unix_ts)?\n   e. Add to updated map.\n3. newState = store.messages().get_state()?\n4. Return { accountId, oldState, created: {}, updated, destroyed: [], notCreated: {}, notUpdated, notDestroyed: {}, newState }.\n\nDefensive programming rules:\n- Message/get: ids=None is rejected (unbounded list not supported in v1 \u2014 too expensive).\n- Message/set update: only readAt patchable; any other field key \u2192 notUpdated/invalidArguments.\n- readAt RFC 3339 parse: use chrono::DateTime::parse_from_rfc3339; reject malformed.\n- Never use client-supplied readAt for ordering \u2014 it goes into the readAt column for display only.\n- Cross-chat access: Message/get returns message regardless of chatId (owner can get any message by ID since there is only one account). No cross-user risk.\n- Store lock released before returning.\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs (get, update_read_at, get_state), kith-core/src/message.rs (Message struct serde field names).\n- Agent I: Implement MessageGetHandler and MessageSetUpdateHandler in kith-chat/src/message.rs.\n- Agent T: Oracle: RFC 8620 \u00a75.1/5.3 response field names, Message struct serde names from kith-core.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Message/get known id \u2192 correct Message fields (body, chatId, senderId, receivedAt, readAt=null)\n- Message/get unknown id \u2192 notFound list\n- Message/set update readAt valid RFC 3339 \u2192 updated, message.readAt set\n- Message/set update with non-patchable field \u2192 notUpdated/invalidArguments\n- Message/set update malformed readAt \u2192 notUpdated/invalidArguments",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:05Z",
+  "closed_at": "2026-04-19T15:30:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

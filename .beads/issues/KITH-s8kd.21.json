@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.21",
+  "title": "kith-store: get_changes_since (Message) returns all changes as added[], never updated[]",
+  "description": "MessageStore::get_changes_since comments 'Phase 1: all changes are reported as added; no distinction between creates and updates'. This means a delivery state change (pending\u2192delivered) or a read receipt update appears in Message/changes created[] \u2014 the client is told the message is new. RFC 8620 requires updated[] for mutations of existing objects. The companion method get_changes_since_ordered correctly classifies via created_at_version. But get_changes_since is the method called by kith-jmap MessageChangesHandler when maxChanges is not set. This is a confirmed protocol bug: any message state update will appear as a creation in the response.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:45:54Z",
+  "updated_at": "2026-04-25T05:54:18Z",
+  "closed_at": "2026-04-25T05:54:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:45:53Z"
+    }
+  ]
+}

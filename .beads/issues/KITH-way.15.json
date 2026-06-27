@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.15",
+  "title": "Decision: Event coalescing via try_recv drain without sleeping",
+  "description": "In kithd events.rs (lines 232-286), rapid-fire StateChange events are coalesced:\n  1. Receive first event (blocking await)\n  2. Drain all immediately available events via try_recv() without sleeping\n  3. Emit one merged SSE frame\n\nComment at line 219-227 explains the rationale:\n  Store writes are synchronous, so all StateChange events emitted by a single JMAP method call (e.g. Peer/deliver touching Contact + Chat + Message) are queued before any async yield. After the first recv().await unblocks, try_recv() captures all of them without sleeping, producing one merged SSE frame instead of three.\n\nThis is correct because:\n1. JMAP method execution is synchronous (single-threaded Phase 1)\n2. All state changes from one method land in the broadcast buffer before any async yield\n3. try_recv() is non-blocking, so no sleep needed\n4. Produces RFC 8620 \u00a77.3 compliant merged state object\n5. Test coverage confirms multi-type coalescing (line 1266+)\n\nThis is a non-obvious but correct optimization of the SSE output shape.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:29Z",
+  "updated_at": "2026-04-19T20:16:26Z",
+  "closed_at": "2026-04-19T20:16:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:29Z"
+    }
+  ]
+}

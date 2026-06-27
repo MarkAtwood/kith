@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ecbt",
+  "title": "kith-tui: JMAP client + EventSource",
+  "description": "Implement an async JMAP client module inside kith-tui that talks to a running kithd instance. Covers: (1) read kithd TLS cert DER from data dir so reqwest can pin it; (2) GET /jmap/session to discover accountId and state; (3) POST /jmap/api wrapper that sends a JmapRequest and returns the parsed response; (4) SSE client for GET /jmap/events that emits StateChange events over an mpsc channel. No UI wiring yet \u2014 just the client layer with unit tests using a mock HTTP server (wiremock or axum-test).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:11:43Z",
+  "updated_at": "2026-04-20T05:12:49Z",
+  "closed_at": "2026-04-20T05:12:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jphy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:11:51Z"
+    }
+  ]
+}

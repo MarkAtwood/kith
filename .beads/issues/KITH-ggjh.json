@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ggjh",
+  "title": "Review: fix disconnect test coverage KITH-nzfb",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:29:35Z",
+  "updated_at": "2026-04-24T19:34:21Z",
+  "closed_at": "2026-04-24T19:34:21Z",
+  "notes": "Round 11 review: 4 findings. Confidence: 90%. Finding 1 (P2, correctness): the oracle comment on the first test is factually wrong \u2014 it claims the task exits via is_closed() but it exits via select! closed(). Finding 2 (P2, correctness): the is_closed() branch at line 379 has no test coverage and is unreachable in the single-threaded runtime. Finding 3 (P3, correctness): both tests exercise the same code path, making one redundant. Finding 4 (P4, maintainer-burden): the 10-yield count in the second test is underdocumented. No bikeshedding \u2014 all findings have engineering basis."
+}

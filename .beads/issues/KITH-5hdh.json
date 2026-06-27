@@ -1,0 +1,31 @@
+{
+  "close_reason": "Space/set handler with semantic mutations, 8 tests",
+  "closed_at": "2026-06-13T21:09:54Z",
+  "compaction_level": 0,
+  "content_hash": "2487f3445a800080f5dfdd85fe94296c8967d05d7f4bf26145a4ef338240b731",
+  "created_at": "2026-06-13T19:01:36Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement Space/set with semantic mutation model (NOT PatchObject). Create: name required, creator auto-added as member with full admin role. Update semantic keys: name/description/iconBlobId (manage_space), addRoles/removeRoles/updateRoles (manage_roles, enforce position hierarchy), addMembers/removeMembers/updateMembers (manage_members), addChannels/removeChannels/updateChannels (manage_channels), addCategories/removeCategories/updateCategories (manage_channels). Destroy: require manage_space, cascade. Spec: \u00a75.9.",
+  "ephemeral": 0,
+  "id": "KITH-5hdh",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 2b: Space/set handler (semantic mutations)",
+  "updated_at": "2026-06-13T21:09:54Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:01:56Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-w7rx",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

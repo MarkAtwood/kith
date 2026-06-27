@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oo4y.3",
+  "title": "resolve_since_counters refactor: clean elimination of duplicated state-parse logic",
+  "description": "The resolve_since_counters private helper correctly factors out 12 lines of identical token-parse + DB-read logic shared between get_changes_since and get_changes_since_ordered. The helper is private (not pub), has a clear single responsibility, and is the right level of abstraction \u2014 not thinner than the boilerplate it replaces. Resist any future suggestion to inline it back; the duplication was a footgun and will return if the state token format ever needs to change.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:41:54Z",
+  "updated_at": "2026-04-24T20:42:09Z",
+  "closed_at": "2026-04-24T20:42:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oo4y",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:41:53Z"
+    }
+  ]
+}

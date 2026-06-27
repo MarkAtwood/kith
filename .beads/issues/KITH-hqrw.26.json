@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.26",
+  "title": "outbox delivery does not send read receipts back to sender after inbound message",
+  "description": "When DeliverHandler receives an inbound message, it does NOT enqueue an outbox entry for a Peer/receipt 'delivered' acknowledgement. The outbox only handles 'receipt' entries for messages the owner read (read receipts). According to the architecture, 'delivered' receipts are reserved for future use (commented in build_peer_receipt_request: 'delivered is reserved for future use'). This is intentional and documented. No bug. Filing as P2 efficiency note: if delivered receipts are added later, the enqueue must happen in DeliverHandler immediately on message receipt, not in a separate step.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:32:01Z",
+  "updated_at": "2026-04-25T07:58:24Z",
+  "closed_at": "2026-04-25T07:58:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:32:01Z"
+    }
+  ]
+}

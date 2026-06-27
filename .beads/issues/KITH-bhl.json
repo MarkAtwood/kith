@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bhl",
+  "title": "kith-core: shared types",
+  "description": "Define all shared types used across crates: JMAP envelope, data types, error types, Role/Identity auth primitives. No dependencies on other kith crates.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:47Z",
+  "updated_at": "2026-04-19T05:04:37Z",
+  "closed_at": "2026-04-19T05:04:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ob0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

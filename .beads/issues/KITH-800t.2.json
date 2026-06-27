@@ -1,0 +1,20 @@
+{
+  "id": "KITH-800t.2",
+  "title": "kithctl watch: last_message_state not updated on JMAP fetch error",
+  "description": "In fetch_and_notify, last_message_state is only advanced when Ok(()). On a transient JMAP error (e.g. network blip), the cursor stays at the old position. The next SSE event re-fetches from the same since_state, which re-computes the same created-ID list. Because notifications fire per-notification without dedup, this means a transient error during delivery causes duplicate desktop notifications for the same batch of messages. Trigger: network error between SSE event arrival and JMAP changes fetch, followed by another SSE event. Bad behavior: user sees the same message notification twice. The fix is to either track notified IDs locally, or advance the cursor even on partial failure.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:31:05Z",
+  "updated_at": "2026-04-25T09:37:59Z",
+  "closed_at": "2026-04-25T09:37:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-800t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:31:05Z"
+    }
+  ]
+}

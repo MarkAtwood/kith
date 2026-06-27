@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.15",
+  "title": "SEC1: download drops IO errors silently",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:51Z",
+  "updated_at": "2026-04-20T01:17:17Z",
+  "closed_at": "2026-04-20T01:17:17Z",
+  "notes": "In blob_download_handler (kithd/src/lib.rs line ~171), the error branch is Err(_e) => return (500, 'read error'). The error is bound to _e and discarded; no tracing::error call. A disk I/O error on blob read will produce a 500 with no log entry, making production debugging impossible. Compare: the upload handler correctly logs with tracing::error. Fix: add tracing::error\\!(err = ?e, ...) before returning 500.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:50Z"
+    }
+  ]
+}

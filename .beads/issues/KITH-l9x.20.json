@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.20",
+  "title": "DECISION: chatId recomputed server-side from verified identity, peer value ignored",
+  "description": "Peer/deliver handler (crates/kith-peer/src/lib.rs Step 4) recomputes the chatId from the WhoIs-verified sender identity and the local owner_id (for direct chats) or the provided participants list (for group chats), then compares against the peer-supplied chatId field and rejects on mismatch. Alternative: accept the peer-supplied chatId and use it directly to look up or create the chat. Rejected because a malicious peer could supply any chatId and route a message into a chat they are not a member of \u2014 including chats with other contacts. The recomputation is the only enforcement that the chatId reflects the actual verified participants. For group chats the owner is always injected into the participant list before hashing, so a peer cannot omit the owner to produce a different chatId. The peer-supplied chatId field is retained in the wire format only as an integrity check: if the sender's client computed a different hash than the receiver's server, it signals a client bug or protocol version mismatch. Location: crates/kith-peer/src/lib.rs DeliverHandler::call Step 4, crates/kith-core compute_chat_id.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:38:24Z",
+  "updated_at": "2026-04-20T01:17:56Z",
+  "closed_at": "2026-04-20T01:17:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:38:24Z"
+    }
+  ]
+}

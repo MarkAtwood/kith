@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.2",
+  "title": "[SEC0] Race condition: state events before chat selection lose messages",
+  "description": "Location: web/app.js lines 519-587, specifically the check at line 532\n\nThe renderApp() function calls startEventSource() immediately after fetchChats(), but fetchMessages() (which sets messageState) is not called until the user selects a chat via selectChat().\n\nIf a state event arrives before messageState is set:\n- Line 532 checks `messageState !== null` and skips the Message/changes call\n- The event is silently ignored\n- New messages arriving before the user selects a chat are never fetched\n\nCorrect behavior: Either (1) fetch initial messages for the most recent chat during bootstrap, setting messageState early, or (2) when a state event arrives with messages for a chat that hasn't been loaded yet, fetch those messages anyway.\n\nCurrent behavior: Messages arriving during startup (before user clicks a chat) are dropped. This is a data loss bug.\n\nAffected code:\n- line 532: `if (changed.Message && messageState !== null)` skips Message/changes if messageState is null\n- The Message/changes call on line 533 is the only way to learn about new messages\n- If currentChatId is null (no chat selected), the messages are still fetched on line 555-567 but only if the call succeeded; however if messageState was null the call wasn't made at all.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:30Z",
+  "updated_at": "2026-04-19T17:59:02Z",
+  "closed_at": "2026-04-19T17:59:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:29Z"
+    }
+  ]
+}

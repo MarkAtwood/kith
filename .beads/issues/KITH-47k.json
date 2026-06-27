@@ -1,0 +1,20 @@
+{
+  "id": "KITH-47k",
+  "title": "Deploy: first-run experience",
+  "description": "Improve kithd startup for first-time users: auto-detect owner identity from Tailscale Status if not configured, add early Tailscale availability check, detect first run and log welcome message, log 'kithd ready at https://...' after binding.\n\nWhat: Transform opaque daemon startup into a clear, guided first-boot experience.\n\nAlgorithm (changes to crates/kithd/src/main.rs):\n1. Move LocalApiClient construction BEFORE owner_id validation (currently at step 8, must move to step 3):\n   let ts = Arc::new(LocalApiClient::new(&config.ts_socket));\n2. Add early Tailscale availability check (new step after ts creation):\n   let status = ts.status().await (using a helper or direct call);\n   - If fails: log error with remediation message:\n     'kithd: Tailscale is not available at {socket}. Is tailscaled running? (sudo systemctl status tailscaled). Will attempt fallback if KITHD_BIND_ADDR is set.'\n   - Store status for reuse (avoid calling status() twice)\n3. Auto-detect owner_id if KITHD_OWNER_ID not set:\n   - If config.owner_id is None AND status succeeded: use status.self_user_id (the node's own Tailscale user ID)\n     - Log: info!('auto-detected owner identity from Tailscale: {}', owner_id)\n   - If config.owner_id is None AND status failed: exit(1) with:\n     'KITHD_OWNER_ID is not set and Tailscale is unavailable. Set KITHD_OWNER_ID to your Tailscale user ID (tailscale status --json | jq .Self.UserID)'\n   - If config.owner_id is Some: keep existing value (no validation against status needed for MVP)\n4. After DB open: detect first run\n   - Query: SELECT value FROM state_counters WHERE type='message' \u2014 if returns 0 AND contacts table has 0 rows: this is first run\n   - Add pub fn is_first_run(&self) -> Result<bool, KithError> to Store\n   - If first run: log at info level:\n     'Kith mailbox initialized. To start chatting, add yourself as a contact in the web UI.'\n5. After binding tailnet listeners: log actual bound addresses:\n   for each bound addr: info!('kithd ready at https://{}/', addr)\n   - This gives the user the URL to open in their browser\n\nDefensive programming rules:\n- Store the Result<StatusResponse> from step 2 in a variable; do not call status() again in step 3 (avoid double round-trip to tailscaled)\n- Auto-detected owner_id must be trimmed and non-empty; if status returns empty UserID, fall back to requiring explicit env var\n- Never log the owner_id as a 'secret' \u2014 it is a Tailscale user identity string, not a credential\n- is_first_run() must not fail silently; propagate errors with ?\n- Log messages must use tracing::info! (not eprintln!) so they appear in systemd journal in JSON format\n- Do not change the behavior when KITHD_OWNER_ID IS explicitly set \u2014 backward-compatible\n\nStatusResponse shape (from kith-tslocal): check crates/kith-tslocal/src/lib.rs for exact field name of self user ID; use the same field already used in auth.rs\n\nTests (in crates/kithd/tests/):\n- Test: if KITHD_OWNER_ID is unset and mock Status returns a valid UserID, the daemon starts with auto-detected ID (oracle: hardcoded test UserID from mock)\n- Test: if KITHD_OWNER_ID is unset and Status fails, startup returns error/exits (oracle: error path reached)\n- Test: is_first_run() returns true on fresh empty store, false after inserting a contact (oracle: independent DB state)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T18:34:22Z",
+  "closed_at": "2026-04-19T18:34:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jh7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "KITH-d6l6",
+  "title": "Review: atomic outbound msg + fail-early host lookup",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:08:25Z",
+  "updated_at": "2026-04-24T03:37:22Z",
+  "closed_at": "2026-04-24T03:37:22Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 _caller_identity enforcement gap is a latent auth bypass on next peer handler; orphaned-pending message is a low-frequency UX cliff. Core change (atomic transaction + fail-early host lookup) is sound.\nConfidence: 15% chance of missed bug. Uncertainty driven by: (1) _caller_identity extraction in existing Peer/deliver and Peer/receipt handlers not re-audited in this review \u2014 if either has a latent omission it wouldn't be visible in this diff; (2) empty-outbox behavior for group chats not covered by any test. Would raise confidence if: a test covers Message/set create to a group chat with zero members (verify delivery_state or error), and a grep confirms both existing Peer/* handlers do extract _caller_identity as their first operation."
+}

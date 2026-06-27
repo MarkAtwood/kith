@@ -1,0 +1,21 @@
+{
+  "id": "KITH-yodi.1",
+  "title": "kith-tui: owner_user_id silently empty if server omits ownerUserId \u2014 outbound messages misclassified as inbound",
+  "description": "ClientSession.owner_user_id uses #[serde(default)]. If kithd omits ownerUserId from the session response, owner_user_id = '' and sender_id \\!= '' treats every message as inbound \u2014 owner's own messages get added to unread_message_ids and spurious read receipts are sent. Fix: reject empty owner_user_id early in run_app with a clear error.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:05:22Z",
+  "updated_at": "2026-04-25T08:05:58Z",
+  "closed_at": "2026-04-25T08:05:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-yodi",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:05:22Z"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:02:39Z",
+  "compaction_level": 0,
+  "content_hash": "861a1fcc01ecc1373515f0a1e6cb15680479f8264c329de7bb12dd7e983b62ac",
+  "created_at": "2026-06-15T04:56:35Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-attach/src/lib.rs has several public methods on BlobStore without doc comments:\n\n- BlobStore::new() (line 18)\n- BlobStore::init() (line 24)\n- BlobStore::generate_blob_id() (line 28)\n- BlobStore::validate_blob_id() (line 33)\n- BlobStore::blob_path() (line 54)\n\nThe struct itself has a doc comment but the individual methods do not. For a storage API these are important to document \u2014 particularly validate_blob_id() which has non-obvious rules (max 128 chars, no leading dot, only alphanumeric/-/_).",
+  "ephemeral": 0,
+  "id": "KITH-q7et.60",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-attach public methods missing doc comments",
+  "updated_at": "2026-06-15T16:02:39Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:56:35Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

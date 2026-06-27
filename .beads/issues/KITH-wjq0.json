@@ -1,0 +1,13 @@
+{
+  "id": "KITH-wjq0",
+  "title": "Review round 2: kith-tui compose/send/receipts",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:19:05Z",
+  "updated_at": "2026-04-20T12:23:07Z",
+  "closed_at": "2026-04-20T12:23:07Z",
+  "notes": "SEC0/R2: Three fixes verified (all correct). New P1 race detected: read receipts sent async while same message can re-arrive via SSE, causing stale unread state. Confidence: 85% chance of missed edge case. Running out of real complaints: no \u2014 active correctness issues remain.\nSEC1/R2 findings:\n- Silent return on empty chat_ids at lines 743-745 lacks maintainer comment\n- SSE Message skip at line 585 when chat_ids empty lacks maintainer comment\n- Filed KITH-wjq0.3 (P2) for SEC1 risk\n\nSEC2/R2 findings:\n- Lines 626-632: O(n\u00b2) ID deduplication using Vec::contains loop\n- Recommendation: use HashSet for dedup in handle_state_change\n- Filed KITH-wjq0.4 (P3) for efficiency\n- Redundant iteration at lines 698-708 is minor (already batched)"
+}

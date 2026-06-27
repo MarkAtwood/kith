@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.1",
+  "title": "calculateTotal calls list_ids() instead of COUNT(*)",
+  "description": "In kith-chat/src/chat.rs ChatQueryHandler, when calculateTotal=true, the handler calls guard.chats().list_ids() (line 500-505) which fetches ALL chat IDs into a Vec<String> just to call .len() on it. For a user with many chats this is O(n) memory allocation and a full table scan when a COUNT(*) SQL query would be O(1). The store already has a pattern for count-via-SQL (unread_count uses COUNT(*)). A new store method like count_chats() -> Result<usize, KithError> executing SELECT COUNT(*) FROM chats would eliminate the allocation entirely.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:04:33Z",
+  "updated_at": "2026-04-24T18:11:13Z",
+  "closed_at": "2026-04-24T18:11:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:04:32Z"
+    }
+  ]
+}

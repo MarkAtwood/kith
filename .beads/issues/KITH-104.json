@@ -1,0 +1,13 @@
+{
+  "id": "KITH-104",
+  "title": "Extract row_to_message helper in kith-store/message.rs",
+  "description": "What: The column-index-based row deserialization for Message is duplicated in get() and list_by_chat() in kith-store/src/message.rs. Extract it into a private fn row_to_message(row: &Row) -> rusqlite::Result<Message>, paralleling the existing row_to_contact() helper.\n\nAlgorithm:\n1. Read message.rs; find both deserialization blocks in get() and list_by_chat()\n2. Write private fn row_to_message(row: &Row<'_>) -> rusqlite::Result<Message>:\n   - Extract each column in order: id, chat_id, sender_id, body, sent_at, received_at, delivery_state, state_version, read_at\n   - Handle Option fields correctly (read_at, received_at may be NULL)\n3. Replace both call sites with row_to_message(row)?\n4. Ensure the SELECT column order in both queries matches the row_to_message column indices exactly\n\nDefensive programming rules:\n- Column indices in row_to_message must match the SELECT list in BOTH queries \u2014 read both SELECT statements before writing the helper\n- If the two queries select different column sets, align them first before extracting\n- Do not change the SQL queries themselves unless needed to align column order\n- Run cargo test -p kith-store after each substitution\n\nAgent team: single R+I+T agent (one file)\n\nTests:\n- cargo test -p kith-store passes with all existing tests unchanged\n- cargo clippy -p kith-store -D warnings passes",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:19:56Z",
+  "updated_at": "2026-04-19T21:28:32Z",
+  "closed_at": "2026-04-19T21:28:32Z"
+}

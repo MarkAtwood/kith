@@ -1,0 +1,21 @@
+{
+  "id": "KITH-1tsc.3",
+  "title": "72-attempt limit uses magic number 71 in condition",
+  "description": "kith-store/src/outbox.rs record_failure() uses the literal 71 in its termination condition (if attempt >= 71, call mark_failed). The number is 0-indexed so attempt=71 means the 72nd failure, but this is non-obvious. A maintainer who wants to change the limit to 100 attempts would need to know to write 99. \u2014 Add a named constant MAX_DELIVERY_ATTEMPTS: i64 = 72 and rewrite the condition as attempt >= MAX_DELIVERY_ATTEMPTS - 1 with a comment explaining 0-indexing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:40:45Z",
+  "updated_at": "2026-04-24T04:46:43Z",
+  "closed_at": "2026-04-24T04:46:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1tsc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:40:44Z"
+    }
+  ]
+}

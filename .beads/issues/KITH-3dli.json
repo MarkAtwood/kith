@@ -1,0 +1,20 @@
+{
+  "compaction_level": 0,
+  "content_hash": "db7451560969592201dffcf949b1e290e5caaedcb264a03b39dbbd552a89f410",
+  "created_at": "2026-06-14T18:10:37Z",
+  "created_by": "Mark Atwood",
+  "description": "AppState holds a composite transport that wraps N concrete transports. Routes identify_caller, discover_peers, and is_valid_host to the appropriate inner transport based on connection metadata. Discovery runs on all transports and merges results. Implements FederationTransport so the rest of kithd doesn't change.",
+  "ephemeral": 0,
+  "id": "KITH-3dli",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Multi-transport: composite transport dispatcher",
+  "updated_at": "2026-06-14T18:10:37Z"
+}

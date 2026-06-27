@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.20",
+  "title": "kith-jmap: no MSRV set in workspace or per-crate Cargo.toml",
+  "description": "workspace Cargo.toml has no rust-version field; neither do crates/kith-jmap, crates/kith-events, or crates/kith-tslocal per-crate manifests. Without an MSRV: CI cannot enforce a minimum compiler version; contributors can silently introduce syntax that breaks users on older toolchains. axum 0.8 requires Rust 1.75+ and hyper 1.x requires 1.70+. Add rust-version = \"1.75\" (or determined real floor) to [workspace.package].",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:54Z",
+  "updated_at": "2026-04-25T04:08:03Z",
+  "closed_at": "2026-04-25T04:08:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:54Z"
+    }
+  ]
+}

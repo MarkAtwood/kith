@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.5",
+  "title": "Receipt branch in outbox_tick uses continue, not separate function",
+  "description": "The receipt delivery logic (lines 932-973 in kith-peer/src/lib.rs) uses continue to skip message-specific code rather than extracting a separate function. Correct because: receipts and messages have fundamentally different validation and payloads; continue makes control flow crystal clear (handle receipt, skip message logic); avoids function parameter explosion; keeps lock acquisition points explicit. Alternative: separate function rejected because would obfuscate bypassing all message-specific loading.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:38Z",
+  "updated_at": "2026-04-20T03:20:46Z",
+  "closed_at": "2026-04-20T03:20:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:38Z"
+    }
+  ]
+}

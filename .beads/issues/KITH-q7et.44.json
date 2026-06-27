@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:53:43Z",
+  "compaction_level": 0,
+  "content_hash": "191250dbe8959b41c8d0100172fc7a73670bb96ea55f95db36b41a03f1dd9119",
+  "created_at": "2026-06-15T04:54:46Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer defines its own PeerDeliveryError (crates/kith-peer/src/lib.rs line 679) with variants: InsecureUrl, Timeout, Network, HttpError, PeerRejected, InvalidResponse.\n\nThis error type has no From<PeerDeliveryError> for KithError (defined in kith-core), so delivery errors cannot propagate through the standard ? operator into functions that return KithError. The outbox_tick function handles PeerDeliveryError locally and never surfaces it to KithError callers, meaning any cross-boundary propagation requires manual matching.\n\nBy contrast, all other subsystem errors (storage, auth) ultimately convert to KithError via From impls. PeerDeliveryError stands alone.\n\nFix: add impl From<PeerDeliveryError> for KithError in kith-core (or kith-peer via a KithError::Delivery variant), making peer delivery errors first-class members of the shared error hierarchy. This enables ? propagation and uniform error logging at the boundary.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.44",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "PeerDeliveryError in kith-peer has no conversion path to KithError, creating an error-type island",
+  "updated_at": "2026-06-15T15:53:43Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:45Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

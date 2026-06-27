@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.24",
+  "title": "Terminal restore on failure: correct \u2014 cleanup in main runs even on run_app Err",
+  "description": "main.rs structure: enable_raw_mode, then cleanup block that always runs (not in a defer but explicitly before result?), then run_app. The fix in loop 6 placed cleanup AFTER run_app returns and used let _ = ignore errors on cleanup calls. This is correct: the result? happens after cleanup so even if run_app returns Err, disable_raw_mode and LeaveAlternateScreen run. A future contributor might try to 'simplify' by using a RAII guard \u2014 the explicit cleanup is actually safer because RAII guard drop order can be surprising. The panic hook also covers the panic path. Defend this pattern.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:43:23Z",
+  "updated_at": "2026-04-25T08:12:06Z",
+  "closed_at": "2026-04-25T08:12:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:43:23Z"
+    }
+  ]
+}

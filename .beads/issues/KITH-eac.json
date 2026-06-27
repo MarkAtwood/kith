@@ -1,0 +1,13 @@
+{
+  "id": "KITH-eac",
+  "title": "Review round 2: KITH-eda Auth layer",
+  "description": "Second review pass after classify() refactor. Verify P1 fix and check for any remaining issues.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:53:17Z",
+  "updated_at": "2026-04-19T06:55:13Z",
+  "closed_at": "2026-04-19T06:55:13Z"
+}

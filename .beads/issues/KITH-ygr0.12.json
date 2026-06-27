@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.12",
+  "title": "tls: cert generation writes cert before key, leaving inconsistent state on key-write failure",
+  "description": "In load_or_generate_cert (generation path), std::fs::write(cert_path) is called first (line 116), then the key file is opened and written (lines 122-128). If the key write fails (disk full, permission error), the cert file is left on disk with no matching key \u2014 the exact inconsistent state the partial-presence guard was designed to prevent. On the next startup the daemon will refuse to start with 'cert exists but key does not'. The writes should either be done atomically (write to temp files then rename both) or the cert file should be written after the key file succeeds.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:48:56Z",
+  "updated_at": "2026-04-24T20:07:31Z",
+  "closed_at": "2026-04-24T20:07:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:48:56Z"
+    }
+  ]
+}

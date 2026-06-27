@@ -1,0 +1,12 @@
+{
+  "id": "KITH-a01",
+  "title": "kith-jmap: add compile/test check for METHOD_ROLES vs register() sync",
+  "description": "METHOD_ROLES and Dispatcher::register() are decoupled. A handler registered without a corresponding METHOD_ROLES entry silently fails with unknownMethod. A METHOD_ROLES entry without a registered handler also silently fails. Neither is caught at compile time or by the test suite. Add a test that iterates METHOD_ROLES and asserts every method name has been registered in a Dispatcher, or restructure so registration and role metadata live together.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:45:48Z",
+  "updated_at": "2026-04-19T23:32:39Z",
+  "closed_at": "2026-04-19T23:32:39Z"
+}

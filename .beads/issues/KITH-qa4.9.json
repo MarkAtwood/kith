@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.9",
+  "title": "[SEC4] static_files.rs: SPA fallback heuristic not explained",
+  "description": "The SPA fallback logic at lines 20-21 uses !path.contains('.') to decide whether to serve index.html. The comment says 'route has no extension, serve index.html' but does NOT explain the critical invariant:\n\nThe heuristic ASSUMES that all actual static assets (CSS, JS, images, fonts, etc.) have file extensions, and all SPA routes are extensionless. This breaks if:\n- A new API endpoint is added that is extensionless (e.g., /api/endpoint).\n- A static asset is added without an extension.\n\nA maintainer adding new routes or static files needs to understand this constraint to avoid silent failures (extensionless paths serving index.html instead of 404-ing).\n\nAdd a comment explaining: 'Routes with no file extension are assumed to be SPA routes; all static assets must have extensions (.js, .css, .png, etc.)'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:58Z",
+  "updated_at": "2026-04-19T18:21:13Z",
+  "closed_at": "2026-04-19T18:21:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:57Z"
+    }
+  ]
+}

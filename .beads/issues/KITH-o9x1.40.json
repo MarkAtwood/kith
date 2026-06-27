@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.40",
+  "title": "kith-tslocal: whois() null-byte check omits node.name",
+  "description": "kith-tslocal/src/lib.rs:349-355 \u2014 whois() checks user_profile.id and user_profile.login_name for null bytes but not WhoIsNode.name, which becomes mailbox_host in the DB. The stated rationale (SQL/string safety) applies equally. No current exploit path (is_valid_fetch_host would reject a null-byte host), but the validation is inconsistently applied. Fix: add null-byte check for result.node.name after the existing checks at line 355.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:16:28Z",
+  "updated_at": "2026-04-25T01:18:29Z",
+  "closed_at": "2026-04-25T01:18:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:16:27Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.10",
+  "title": "Decision: Size limits enforced during streaming before JSON parsing",
+  "description": "In kith-tslocal lib.rs, response body limits are enforced during streaming via http_body_util::Limited (lines 210, 302):\n  - STATUS_MAX_BYTES = 10 MiB (line 134)\n  - WHOIS_MAX_BYTES = 100 KiB (line 142)\n\nLimits are applied BEFORE serde_json::from_slice parses the JSON:\n  let body = http_body_util::Limited::new(resp.into_body(), WHOIS_MAX_BYTES)\n    .collect().await...\n\nThis is correct defensive design:\n1. Prevents unbounded memory allocation during streaming\n2. Rejects oversized responses before any JSON parsing\n3. Accurate sizing: Status includes full peer map (multi-MiB for large tailnets), WhoIs ~1-2 KiB\n4. Comments justify limits and warn against raising them without re-evaluation\n5. Applied consistently to both Status and WhoIs endpoints\n\nThis follows defense-in-depth: size limit is a security boundary.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:07Z",
+  "updated_at": "2026-04-19T20:16:17Z",
+  "closed_at": "2026-04-19T20:16:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:07Z"
+    }
+  ]
+}

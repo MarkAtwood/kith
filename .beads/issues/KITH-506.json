@@ -1,0 +1,20 @@
+{
+  "id": "KITH-506",
+  "title": "kith-chat: outbound read receipt sending via OutboxStore",
+  "description": "When an owner marks a received message as read (Message/set update with readAt), kithd should enqueue a Peer/receipt to the original sender. This was supposed to be done in KITH-df2 but was left as dead code (empty if block) because OutboxStore has no receipt enqueue method.\n\nImplement:\n1. Add OutboxStore::enqueue_receipt(message_id, peer_user_id, peer_mailbox_host, kind, read_at_unix, now_unix) \u2014 stores a receipt delivery task\n2. Add receipt handling to outbox_tick: detect receipt entries, build Peer/receipt JMAP request, deliver to peer\n3. In kith-chat message.rs process_update: after update_read_at, look up message + contact and call outbox.enqueue_receipt if contact is known and unblocked\n4. Add OutboxEntry::kind field to distinguish message delivery vs receipt delivery\n\nWhy: Without this, read receipts are never sent; peers never see 'read' state on their outgoing messages.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "feature",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:22:48Z",
+  "updated_at": "2026-04-20T03:16:12Z",
+  "closed_at": "2026-04-20T03:16:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-z9ly.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T19:53:35Z"
+    }
+  ]
+}

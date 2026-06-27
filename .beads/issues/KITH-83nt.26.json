@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.26",
+  "title": "SSE 1MiB buffer cap is correct",
+  "description": "SSE carries state tokens not message bodies. 1MiB = 5000x a normal frame. Cap triggers reconnect not crash. Correct.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:35Z",
+  "updated_at": "2026-04-25T08:12:25Z",
+  "closed_at": "2026-04-25T08:12:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:35Z"
+    }
+  ]
+}

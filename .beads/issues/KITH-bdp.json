@@ -1,0 +1,25 @@
+{
+  "id": "KITH-bdp",
+  "title": "kith-jmap: JMAP error response formatting",
+  "description": "JMAP error response formatting: map errors to method-level and request-level JMAP wire format.\n\nWhat: Implement helper functions that convert errors to the correct JMAP wire format \u2014 method-level (error Invocation in methodResponses) and request-level (HTTP 4xx with JMAP error body).\n\nAlgorithm:\n1. Define pub fn error_invocation(method_name: &str, call_id: &str, err: JmapError) -> Invocation\n   - Returns (method_name.to_string(), serde_json::to_value(err).unwrap(), call_id.to_string())\n   - Used inside dispatcher loop for per-method errors\n\n2. Define pub struct RequestError(pub StatusCode, pub JmapError) that implements axum::IntoResponse:\n   - Serializes JmapError to JSON body\n   - Sets Content-Type: application/json\n   - Returns the given StatusCode\n\n3. Define mapping fn error_status(err: &JmapError) -> StatusCode:\n   - 'unknownCapability' \u2192 400\n   - 'invalidArguments' \u2192 400\n   - 'forbiddenMethod' \u2192 403\n   - 'accountNotFound' \u2192 404\n   - 'serverFail' \u2192 500\n   - All others \u2192 400\n\n4. Expose: pub fn request_error(err: JmapError) -> RequestError\n\nDefensive programming rules:\n- error_type strings must match RFC 8620 \u00a77.1 exactly (already enforced by JmapError factory methods)\n- description field omitted when None (serde skip_serializing_if already on JmapError)\n- Method-level errors still return HTTP 200 (the error is inside methodResponses)\n- Request-level errors return HTTP 4xx before any methodCalls are processed\n- No PII (user IDs, IPs) in any error description\n\nTests:\n- error_invocation('Contact/get', '0', JmapError::invalid_arguments('bad args')) serializes to ['Contact/get', {type:'invalidArguments',description:'bad args'}, '0']\n- RequestError(400, JmapError::unknown_capability('x')) responds with HTTP 400 and correct JSON body\n- error_status for each known type returns documented HTTP status\nOracle: RFC 8620 \u00a77.1 error type strings and \u00a73 invocation format, manually verified.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:27:28Z",
+  "closed_at": "2026-04-19T07:27:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-3kv.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:17:24Z"
+    }
+  ]
+}

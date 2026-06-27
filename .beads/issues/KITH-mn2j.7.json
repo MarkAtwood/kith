@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.7",
+  "title": "kith-jmap: sequential dispatch is correct for result reference ordering",
+  "description": "dispatch processes calls serially (.await each dispatch_one). A future contributor might suggest parallelizing for throughput. This is wrong: RFC 8620 \u00a79 result references require a call to see results from all prior calls in the same request. Parallel dispatch cannot satisfy this. The sequential design is load-bearing and must not be changed.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:57Z",
+  "updated_at": "2026-04-25T08:15:44Z",
+  "closed_at": "2026-04-25T08:15:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:57Z"
+    }
+  ]
+}

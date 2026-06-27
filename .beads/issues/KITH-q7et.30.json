@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:51:30Z",
+  "compaction_level": 0,
+  "content_hash": "91a4698af6ab438e3795a69f441b1802115167c9a491a31e3b4ef205e8984eab",
+  "created_at": "2026-06-15T04:54:01Z",
+  "created_by": "Mark Atwood",
+  "description": "get_changes_since has inconsistent return types across store modules:\n- ChatStore, ContactStore, MessageStore: Result<ChangesResult, KithError>  where ChangesResult is a named struct with fields added, updated, destroyed, new_state\n- SpaceStore: Result<(Vec<String>, Vec<String>, String), KithError>  \u2014 a bare tuple with no field names\n\nThis means callers of SpaceStore::get_changes_since must know positional tuple semantics (index 0=created, 1=updated(?), 2=new_state) rather than named fields, while the other stores provide a self-documenting struct. The asymmetry will cause confusion when the space handler diverges from the chat/contact/message pattern.\n\nFiles:\n  crates/kith-store/src/space.rs line 419\n  crates/kith-store/src/message.rs line 24 (ChangesResult definition)\n\nFix: make SpaceStore::get_changes_since return ChangesResult (or a parallel SpaceChangesResult if space needs different fields).",
+  "ephemeral": 0,
+  "id": "KITH-q7et.30",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "get_changes_since returns named struct in chat/contact/message but bare tuple in SpaceStore",
+  "updated_at": "2026-06-15T15:51:30Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:01Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

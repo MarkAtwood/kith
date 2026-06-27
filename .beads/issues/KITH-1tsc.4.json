@@ -1,0 +1,21 @@
+{
+  "id": "KITH-1tsc.4",
+  "title": "PeerReceiptArgs.at field accepted but silently discarded \u2014 no comment",
+  "description": "ReceiptHandler parses PeerReceiptArgs which includes an 'at: String' field (RFC 3339 timestamp from the peer). The field is fully parsed but never referenced in the success path \u2014 delivered_at and read_at are populated from the local clock (now_unix). This is correct per CLAUDE.md (peer timestamps are untrusted), but there is no comment explaining the intentional discard. A contributor seeing the unused field will either try to use it (wrong) or remove it (may break protocol compatibility). \u2014 Add a comment on the at field or in the success path explaining: 'peer-supplied timestamp is accepted for protocol compatibility but discarded; local clock is used for delivered_at/read_at per the defensive input policy'.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:40:46Z",
+  "updated_at": "2026-04-24T04:46:45Z",
+  "closed_at": "2026-04-24T04:46:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1tsc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:40:46Z"
+    }
+  ]
+}

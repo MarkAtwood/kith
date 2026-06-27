@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "CID capability advertised in Session. Upload response already returns sha256 (was implemented since day one). Test verifies urn:ietf:params:jmap:cid is present as empty object per spec.",
+  "closed_at": "2026-06-15T00:30:11Z",
+  "compaction_level": 0,
+  "content_hash": "a6b648e523f4b93162810b04f90db5a309e32b8abaf0fd5f87c9b6920823f74d",
+  "created_at": "2026-06-14T03:21:16Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement urn:ietf:params:jmap:cid capability per draft-atwood-jmap-cid-00. Extends blob upload response with sha256 field (lowercase hex, 64 chars). Server computes SHA-256 at upload time, returns it unconditionally. When FileNode is also supported, adds sha256 property to FileNode objects (null for directories). Enables client-side integrity verification on upload and download, duplicate detection without downloading, and content-addressed storage patterns.",
+  "ephemeral": 0,
+  "id": "KITH-jvc1",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "JMAP CID: blob content identifiers",
+  "updated_at": "2026-06-15T00:30:11Z"
+}

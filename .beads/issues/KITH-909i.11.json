@@ -1,0 +1,20 @@
+{
+  "id": "KITH-909i.11",
+  "title": "kith-peer: build_peer_deliver_request 8 positional args suppress clippy warning",
+  "description": "8 positional string args with allow(clippy::too_many_arguments). Callers must get order right with no compiler aid. Replace with a named struct (reuse DeliverMessageArgs fields) so argument-order bugs are caught at compile time.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:40:36Z",
+  "updated_at": "2026-04-25T08:23:45Z",
+  "closed_at": "2026-04-25T08:23:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-909i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:40:35Z"
+    }
+  ]
+}

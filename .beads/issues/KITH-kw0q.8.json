@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.8",
+  "title": "validate_attachments: Unicode line terminators (U+0085 etc) bypass CRLF byte check",
+  "description": "content_type byte check (b < 0x20 || b == 0x7f) passes multi-byte UTF-8 sequences including U+0085 (NEL), U+2028, U+2029 \u2014 Unicode line terminators that some HTTP/1.1 parsers treat as CRLF. In practice hyper's HeaderValue rejects non-ASCII at serve time, but the stated contract ('no control characters') is not fully enforced at the boundary. Fix: add a check that content_type is ASCII-only (all bytes <= 0x7e) after the control-char check, or use content_type.is_ascii() as a precondition.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:09:43Z",
+  "updated_at": "2026-04-24T15:42:50Z",
+  "closed_at": "2026-04-24T15:42:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:09:42Z"
+    }
+  ]
+}

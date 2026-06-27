@@ -1,0 +1,13 @@
+{
+  "id": "KITH-hn0",
+  "title": "set_blocked advances state when peer does not exist",
+  "description": "contact.rs::set_blocked calls advance_state() unconditionally even when the UPDATE matches 0 rows (peer_user_id does not exist). Produces spurious Contact/changes deltas. Same issue exists in chat.rs::update_last_message_at. Fix: check execute() return value; skip advance_state when affected == 0.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:50:01Z",
+  "updated_at": "2026-04-19T05:53:42Z",
+  "closed_at": "2026-04-19T05:53:42Z"
+}

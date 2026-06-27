@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.7",
+  "title": "SEC4: DEFAULT_BASE_URL doc does not describe KITH_BASE_URL fallback",
+  "description": "The DEFAULT_BASE_URL doc comment (crates/kithd/src/lib.rs lines 32-37) accurately names KITHD_BASE_URL but a reader cannot tell from the doc that there is also a deprecated KITH_BASE_URL fallback checked at runtime. The runtime behavior is: (1) try KITHD_BASE_URL, (2) try KITH_BASE_URL with a deprecation eprintln, (3) use DEFAULT_BASE_URL. Only step (1) and (3) are visible in the doc. This is a documentation gap, not a code bug. The make_svc.call(peer_addr) comment in main.rs (line 224) is clear and accurate; no issue there.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:42:41Z",
+  "updated_at": "2026-04-19T23:43:53Z",
+  "closed_at": "2026-04-19T23:43:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:42:41Z"
+    }
+  ]
+}

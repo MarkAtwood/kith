@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bnk1.5",
+  "title": "atomicity fix for state counter + changed_at_counter updates is correct and complete",
+  "description": "The consolidation of advance_state() and the row's changed_at_counter update into a single unchecked_transaction() in contact.rs/chat.rs correctly eliminates the crash window where state_counters.counter was visible to readers before the row's counter was updated. The emit() call is correctly placed after commit. This is the right pattern and should not be 'simplified' by splitting into two calls again.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:11:38Z",
+  "updated_at": "2026-04-24T22:14:40Z",
+  "closed_at": "2026-04-24T22:14:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bnk1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:11:38Z"
+    }
+  ]
+}

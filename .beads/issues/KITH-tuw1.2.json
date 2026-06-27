@@ -1,0 +1,20 @@
+{
+  "id": "KITH-tuw1.2",
+  "title": "kithd: peer_fetch.rs \u2014 SSRF validator + TailnetCertVerifier extract",
+  "description": "Create crates/kithd/src/peer_fetch.rs with:\n1. is_valid_fetch_host(host: &str) -> bool \u2014 SSRF-safe validator\n2. TailnetCertVerifier extracted from discovery.rs (make it pub(crate) and import in both places)\n3. build_tailnet_https_client() -> Client<_, Full<Bytes>> \u2014 shared client builder\n\nWhat: factored-out network utilities for any kithd code that makes outbound HTTPS calls to tailnet peers.\n\nAlgorithm for is_valid_fetch_host:\n1. Parse host (strip optional :port)\n2. Reject if host is empty\n3. Reject loopback: 127.0.0.1, ::1, localhost (case-insensitive)\n4. Reject unspecified: 0.0.0.0, ::\n5. Reject RFC1918: 10.x, 172.16-31.x, 192.168.x (parse as IP; if parsing fails it's a hostname, skip this check)\n6. Reject link-local: 169.254.x.x, fe80::/10\n7. Port (if present) must parse as u16 and be 1-65535\n8. Accept all other values (MagicDNS hostnames, tailnet IPs 100.x.x.x)\n\nDefensive programming:\n- IP range checks use std::net::IpAddr::parse; never do string matching on IP prefixes\n- Never log the host value at level above debug\n- build_tailnet_https_client must call rustls::crypto::CryptoProvider::get_default() to avoid panic on missing provider\n\nTests (unit, no I/O):\n- Oracle: known-bad inputs (loopback, RFC1918, link-local) and known-good inputs (100.x.x.x Tailscale IP, MagicDNS hostname, custom port); expected results from the validation rules above\n- loopback rejected: 127.0.0.1, ::1, localhost\n- RFC1918 rejected: 10.0.0.1, 172.16.0.1, 192.168.1.1\n- link-local rejected: 169.254.1.1\n- valid Tailscale IP accepted: 100.64.0.1\n- valid MagicDNS hostname accepted: alice-kith.tail-xxxxx.ts.net\n- custom port accepted: alice.ts.net:8443\n- port 0 rejected\n- invalid port (99999) rejected",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:47:31Z",
+  "updated_at": "2026-04-20T16:51:23Z",
+  "closed_at": "2026-04-20T16:51:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tuw1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:47:30Z"
+    }
+  ]
+}

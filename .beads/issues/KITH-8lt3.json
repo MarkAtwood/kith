@@ -1,0 +1,13 @@
+{
+  "id": "KITH-8lt3",
+  "title": "Review: post-gu2p fixes codebase",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:42:43Z",
+  "updated_at": "2026-04-24T17:56:07Z",
+  "closed_at": "2026-04-24T17:56:07Z",
+  "notes": "store(chat/lib)/core review: 4 findings. P1 bug risk in advance_state_counter_in_tx (silent stale counter), P1 missing V7 index test, P2 extra unread_count round-trip in get/find_direct, P3 misleading test name; no correctness bugs in migrations, partial index composition, upsert_discovered_contact logic, or unix_secs_to_rfc3339.\nkith-chat(message/chat) review: 5 findings. P1: Message/set old_state captured in separate lock (RFC 8620 atomicity violation) and queryChanges positions inconsistent with returned newQueryState; P2: O(N) per-message DB reads in queryChanges chat filter, and ChatQuery loads all IDs for Rust-side pagination; P3: blocked-sender receipt suppression policy undocumented.\npeer/store(msg/contact/outbox) review: 2 findings. P1: outbox finish_message_delivery lacks the delivery_state regression guard present in MessageStore::update_delivery_state, allowing a mark_failed call to overwrite a Delivered message; P2: list_by_chat and list_by_chat_paged duplicate a 35-line attachment batch-load block.\nkithd(events/peer_fetch/discovery/blob/tls) review: 6 findings. P1: closeafter=state stalls open when all live events are type-filtered (events.rs); IPv6 probe URLs are malformed (discovery.rs). P2: LEI replay fires for stale state tokens; content_type query param incompletely encoded; key file world-readable on non-Unix; HTTPS client rebuilt per blob fetch."
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nlb8.8",
+  "title": "outbox: MAX_DELIVERY_ATTEMPTS condition uses >= MAX-1 which is opaque",
+  "description": "kith-store/src/outbox.rs:9,150 \u2014 MAX_DELIVERY_ATTEMPTS = 72, but the check is attempt >= MAX_DELIVERY_ATTEMPTS - 1. The intent is 'fire on the 72nd attempt (0-indexed attempt_count of 71)', but the expression requires mental subtraction. A clearer approach: rename the constant to MAX_DELIVERY_ATTEMPTS: i64 = 72 and check attempt >= MAX_DELIVERY_ATTEMPTS - 1, or introduce a LAST_DELIVERY_ATTEMPT_INDEX constant = MAX_DELIVERY_ATTEMPTS - 1 with a comment.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:27:31Z",
+  "updated_at": "2026-04-25T00:43:05Z",
+  "closed_at": "2026-04-25T00:43:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:27:31Z"
+    }
+  ]
+}

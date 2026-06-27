@@ -1,0 +1,20 @@
+{
+  "id": "KITH-8it.3",
+  "title": "Rename KITH_BASE_URL env var to KITHD_BASE_URL",
+  "description": "What: Rename the KITH_BASE_URL environment variable to KITHD_BASE_URL in kithd/src/lib.rs, with a deprecated fallback that logs a warning.\n\nWhy: All other kithd env vars use the KITHD_ prefix (KITHD_BIND_ADDR, KITHD_DATA_DIR, etc.). KITH_BASE_URL uses the old KITH_ prefix, creating an inconsistency that confuses operators.\n\nAlgorithm:\n1. In kithd/src/lib.rs (around line 59), find:\n     let base_url = std::env::var(\"KITH_BASE_URL\").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());\n2. Replace with:\n     let base_url = if let Ok(v) = std::env::var(\"KITHD_BASE_URL\") {\n         v\n     } else if let Ok(v) = std::env::var(\"KITH_BASE_URL\") {\n         eprintln!(\"kithd: KITH_BASE_URL is deprecated, use KITHD_BASE_URL\");\n         v\n     } else {\n         DEFAULT_BASE_URL.to_string()\n     };\n3. Update the doc comment at lines 32-37 to say KITHD_BASE_URL (not KITH_BASE_URL).\n4. Search for any tests in kithd/tests/ or kithd/src/ that set KITH_BASE_URL and update them to KITHD_BASE_URL.\n5. Run cargo fmt, cargo clippy, cargo test -p kithd.\n\nDefensive rules:\n- Keep the deprecated KITH_BASE_URL fallback so existing deployments don't break silently.\n- Only emit the deprecation warning; do not fail.\n- Do not change the DEFAULT_BASE_URL constant.\n\nCloses: KITH-v7t.8",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:36:28Z",
+  "updated_at": "2026-04-19T23:37:53Z",
+  "closed_at": "2026-04-19T23:37:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8it",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:36:28Z"
+    }
+  ]
+}

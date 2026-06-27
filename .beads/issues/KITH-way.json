@@ -1,0 +1,14 @@
+{
+  "id": "KITH-way",
+  "title": "Review round 1: KITH-le0 deferred fixes",
+  "description": "Review round 1 for KITH-le0. Changes reviewed: PRAGMA busy_timeout, attachment i64::try_from, delivery state regression guard (WHERE clause), update_delivery_state/update_read_at transaction wrapping, kith-tslocal error prefix standardization, kith-events SSE coalescing.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:00Z",
+  "updated_at": "2026-04-19T20:17:59Z",
+  "closed_at": "2026-04-19T20:17:59Z",
+  "notes": "Review converged after 1 round. P0=P1=P2=0. Fixes applied: KITH-way.9 (transaction atomicity), KITH-way.20 (warn log level), KITH-20t (HashMap reuse). SEC7: running out of real complaints. 12 good decisions recorded."
+}

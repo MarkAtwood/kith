@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.31",
+  "title": "Good: broadcast Lagged error handled without stream termination",
+  "description": "kith-events/src/lib.rs documents (and tests) that a slow EventSource subscriber receives RecvError::Lagged and must resync via Type/changes rather than treating the error as fatal. The test_lagged_receiver_skips test confirms the BroadcastStream filter_map pattern yields subsequent messages normally after a Lagged error. A contributor unfamiliar with tokio broadcast semantics might replace the filter_map with an unwrap or a stream-terminating error handler, which would disconnect all EventSource clients on any burst of store writes. The design is correct: events are hints, not the source of truth; the resync path via Type/changes is the correct recovery.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:17Z",
+  "updated_at": "2026-04-25T01:56:48Z",
+  "closed_at": "2026-04-25T01:56:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:17Z"
+    }
+  ]
+}

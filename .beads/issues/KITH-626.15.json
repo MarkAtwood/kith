@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.15",
+  "title": "Null-byte check needs security context comment",
+  "description": "Line 216-218 validates that user_profile.id contains no null bytes, but the check lacks a comment explaining why (prevents injection in downstream string handling, logging, or path operations). A new contributor seeing this might think it's defensive over-engineering or might not understand when to apply the same pattern elsewhere in the codebase. Suggest adding: '// Null bytes could break downstream string handling or path operations \u2014 reject early.'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:33Z",
+  "updated_at": "2026-04-19T23:35:41Z",
+  "closed_at": "2026-04-19T23:35:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:33Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-6iy",
+  "title": "kithd: config from env vars",
+  "description": "Create kithd::config module with Config struct parsed from env vars. Each field maps to a KITHD_* env var with documented defaults. db_path, cert_path, key_path are derived from data_dir. No panics in from_env(); log warnings for invalid values and use defaults. Keep KITH_DB_PATH and KITH_OWNER_ID as silent fallbacks for backward compat during transition.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T16:18:11Z",
+  "closed_at": "2026-04-19T16:18:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-it6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

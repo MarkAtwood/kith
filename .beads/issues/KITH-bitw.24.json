@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.24",
+  "title": "DECISION: Display state.messages as immutable view, edited only in key handler",
+  "description": "What: state.messages is a VecDeque<String> that is displayed in read-only mode by ui::draw. Messages are only appended by async functions (load_messages_for_chat, handle_state_change). The input buffer (state.input) is edited directly by handle_key.\n\nWhy it's good: Separates concerns: network-sourced data (messages) vs. user-edited data (input). Only async operations can mutate messages, reducing contention. The UI never tries to edit the message thread, only display it. The input buffer is fully under the key handler's control, so the full UTF-8 and bounds logic can be in one place.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:32Z",
+  "updated_at": "2026-04-20T05:46:19Z",
+  "closed_at": "2026-04-20T05:46:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:32Z"
+    }
+  ]
+}

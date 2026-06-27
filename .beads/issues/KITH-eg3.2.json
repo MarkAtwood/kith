@@ -1,0 +1,19 @@
+{
+  "id": "KITH-eg3.2",
+  "title": "Round 3 analysis: no P0/P1 bugs found",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:26:47Z",
+  "updated_at": "2026-04-19T23:32:46Z",
+  "closed_at": "2026-04-19T23:32:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-eg3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:26:47Z"
+    }
+  ]
+}

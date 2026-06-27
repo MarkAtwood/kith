@@ -1,0 +1,31 @@
+{
+  "id": "KITH-efh",
+  "title": "kith-peer: Peer/deliver inbound handler",
+  "description": "What: Implement the Peer/deliver JMAP method handler in kith-peer \u2014 the inbound path that accepts a message from a peer mailbox, validates it, stores it, and emits a state-change push.\n\nAlgorithm:\n1. Deserialize args (serde_json::Value) into PeerDeliverArgs struct: { accountId: String, message: { id: String, chatId: String, senderTailscaleUserId: String, body: String, bodyType: String, attachments: Vec, replyTo: Option<String>, sentAt: String } }\n2. Acquire AppState lock briefly to get owner_id\n3. Call check_sender(&caller.identity, &args.message.sender_tailscale_user_id) -> Err maps to JmapError::invalid_arguments(\"senderTailscaleUserId mismatch\"); this MUST happen before any DB write\n4. Validate args.message.body.len() <= 65536 bytes; return JmapError::request_too_large if exceeded\n5. Validate args.message.body_type is \"text/plain\" or \"text/markdown\"; else JmapError::invalid_arguments\n6. Validate args.message.id is valid ULID via ulid::Ulid::from_string; else JmapError::invalid_arguments\n7. Compute expected_chat_id = kith_core::compute_chat_id(&[caller.identity.user_id, owner_id]); compare to args.message.chat_id; reject if mismatch\n8. Acquire store lock; if replyTo is Some, call store.messages().get(&reply_to_id) -> verify exists and chat_id matches; else JmapError::invalid_arguments\n9. Call store.messages().insert(id, chat_id, sender_user_id, body, body_type, Some(sent_at_peer), created_at_unix, &DeliveryState::Received, reply_to) -> propagate as JmapError::server_fail on Err\n10. Call store.contacts().upsert(peer_user_id, login_name, node_name, display_name, now_unix) -> propagate as JmapError::server_fail on Err (auto-create contact here, not in separate bead)\n11. Release store lock; return Ok(json!({ \"accountId\": \"a-self\", \"accepted\": true, \"receivedAt\": received_at_rfc3339 }))\n\nNote: KITH-nu1 (auto-create Contact) is folded into step 10 above; KITH-nu1 bead closes as covered here.\n\nDefensive rules:\n- check_sender MUST be called before any DB write (step 3)\n- chatId MUST be recomputed (step 7); never trust peer-supplied value\n- replyTo MUST be validated in same chat before insert (step 8)\n- node_name comes from caller.identity.node_name (WhoIs); NOT from request body\n- Never log message body; log only message_id and chat_id\n- Return JmapError on all validation failures; never unwrap() on args parsing\n\nAgent team: Researcher R reads kith-core auth.rs, kith-store message.rs, kith-jmap Dispatcher pattern. Implementer I writes PeerDeliverArgs struct + DeliverHandler implementing JmapHandler. Tester T derives expected JSON from RFC 8620 \u00a73 and kith protocol spec. Validator V runs cargo test --workspace + clippy.\n\nTests (T's independent oracle = RFC 8620 + kith-architecture.md spec):\n- Happy path: valid Peer/deliver args -> Ok response with accepted=true and receivedAt set\n- check_sender mismatch: senderTailscaleUserId != WhoIs user_id -> JmapError before any DB write; verify no message row created\n- Bad chatId: chatId != compute_chat_id([sender, owner]) -> JmapError::invalid_arguments\n- Body too large: body.len() > 65536 -> JmapError::request_too_large\n- Invalid ULID: id=\"not-a-ulid\" -> JmapError::invalid_arguments\n- Invalid bodyType: bodyType=\"text/html\" -> JmapError::invalid_arguments\n- Bad replyTo: replyTo references non-existent message -> JmapError::invalid_arguments",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:08:18Z",
+  "closed_at": "2026-04-19T09:08:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-8my.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:18Z"
+    },
+    {
+      "depends_on_id": "KITH-8my.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:19Z"
+    }
+  ]
+}

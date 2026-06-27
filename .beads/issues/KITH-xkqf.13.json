@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.13",
+  "title": "advance_state (contact/chat/message) issues bare UPDATE+SELECT outside a transaction",
+  "description": "contact.rs:499-513, chat.rs:402-410, message.rs:811-839: each advance_state method runs UPDATE state_counters then reads back the new value as two separate statements with no wrapping transaction. If the process crashes between the UPDATE and SELECT, the counter advanced but the caller never observed the new state string. Additionally, a caller that also triggers upsert/insert (which use advance_state_counter_in_tx internally) would double-advance the counter. These should be wrapped in a transaction.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:47Z",
+  "updated_at": "2026-04-25T03:25:12Z",
+  "closed_at": "2026-04-25T03:25:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:47Z"
+    }
+  ]
+}

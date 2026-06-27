@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.26",
+  "title": "peer_fetch.rs: SSRF guard skips DNS name resolution check",
+  "description": "is_valid_fetch_host applies IP-range restrictions only when the host string parses as an IpAddr. Bare hostnames (e.g. evil.attacker.com) pass unconditionally. A malicious peer can store a mailbox_host that resolves to 192.168.x.x or 10.x.x.x at fetch time, reaching internal services. Tailscale MagicDNS names are the intended use case, but there is no enforcement that a stored mailbox_host is actually a MagicDNS name. Mitigation: validate that stored mailbox_host values end with a known tailnet domain suffix, or perform a pre-resolve check before fetch.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:51:59Z",
+  "updated_at": "2026-04-24T17:07:30Z",
+  "closed_at": "2026-04-24T17:07:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:51:59Z"
+    }
+  ]
+}

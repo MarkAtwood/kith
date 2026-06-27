@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.16",
+  "title": "kith-chat: old_state/new_state captured inside lock scope prevents newState race condition",
+  "description": "ChatContactSetHandler, ChatSetHandler, and MessageSetHandler all capture old_state before the first write and new_state after the last write, both inside the same Mutex lock scope as the write. This prevents a concurrent Peer/deliver from slipping in between the write and the state read, which would produce a newState that under-reports this Set's changes (causing clients to miss the concurrent change on their next /changes call). A contributor might suggest reading state outside the lock for simplicity, but that would reintroduce the race. The comment in ChatContactSetHandler (lines 199-210) documents the invariant and why it matters.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:53:42Z",
+  "updated_at": "2026-04-25T08:13:12Z",
+  "closed_at": "2026-04-25T08:13:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:53:42Z"
+    }
+  ]
+}

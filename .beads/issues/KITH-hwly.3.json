@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.3",
+  "title": "ChatContact/queryChanges missing from integration test dispatcher",
+  "description": "kithd/src/lib.rs builds a dispatcher with 14 owner methods including ChatContact/queryChanges. kith-chat/tests/integration.rs:make_dispatcher() registers only 13, missing ChatContact/queryChanges. Any contributor writing an integration test for this handler will find it returns methodNotFound and assume the handler is broken. Worse, next method added to production will be silently missing from integration tests if the copy-paste pattern is followed. \u2014 Add ChatContact/queryChanges registration to make_dispatcher().",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:19:31Z",
+  "updated_at": "2026-04-24T04:27:46Z",
+  "closed_at": "2026-04-24T04:27:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:19:31Z"
+    }
+  ]
+}

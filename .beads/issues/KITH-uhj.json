@@ -1,0 +1,12 @@
+{
+  "id": "KITH-uhj",
+  "title": "update_delivery_state allows state regressions (delivered\u2192pending)",
+  "description": "message.rs::update_delivery_state updates delivery_state unconditionally with no WHERE clause constraining prior state. A caller bug or retry race could flip a 'delivered' message back to 'pending'. Fix: add WHERE delivery_state NOT IN ('delivered','received','failed') or a typed state machine guard at the call site. Phase 1: outbox retry loop is the only caller and it is single-threaded, so this is latent not active.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:56:44Z",
+  "updated_at": "2026-04-19T19:56:54Z",
+  "closed_at": "2026-04-19T19:56:54Z"
+}

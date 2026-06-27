@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.3",
+  "title": "SEC3: duplicate validate_blob_id in kith-chat",
+  "description": "kith-chat/src/message.rs contains a local fn validate_blob_id that mirrors BlobStore::validate_blob_id from kith-attach, documented with 'Rules mirror ...' comment. kith-chat does not depend on kith-attach, so the copy cannot be kept in sync automatically. kith-peer avoids this by calling kith_attach::BlobStore::validate_blob_id directly. Fix: add kith-attach as a dependency of kith-chat and replace the local copy with the canonical function. This is a single-authority security rule that should have a single implementation.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:19Z",
+  "updated_at": "2026-04-20T01:17:27Z",
+  "closed_at": "2026-04-20T01:17:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:19Z"
+    }
+  ]
+}

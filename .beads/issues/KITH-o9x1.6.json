@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.6",
+  "title": "backup: stub file not cleaned up after Backup::new or step() failure",
+  "description": "After Connection::open creates the 0-byte stub file at dest_path (mode 0o600), if Backup::new fails or any backup.step()? call returns an error (including the MAX_BUSY_RETRIES path), the stub file is left on disk. On the next invocation the 'destination already exists' guard fires and the user must manually delete the orphaned file before they can retry. Only Connection::open failure is cleaned up (via inspect_err). All later failure paths are uncovered.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:39Z",
+  "updated_at": "2026-04-25T01:28:51Z",
+  "closed_at": "2026-04-25T01:28:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:38Z"
+    }
+  ]
+}

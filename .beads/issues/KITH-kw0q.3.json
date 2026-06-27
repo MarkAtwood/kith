@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.3",
+  "title": "Message/queryChanges: index positions wrong for chats with >200 messages",
+  "description": "Trigger: chat has >200 messages. MessageQueryChangesHandler calls list_by_chat(&chat_id, 200) to fetch the positional reference list (hard cap), then for each added_id in the changeset calls full_list.iter().position(...). Any message at position >=200 in the real order is absent from full_list, so position() returns None and that message is either omitted from 'added' or assigned a wrong index. The client receives a queryChanges response with incorrect 'index' values, causing the client to re-fetch from the wrong offset. Fix: either remove the 200-cap for queryChanges (use unbounded list_by_chat), or use a SQL-level row-number query instead of in-memory position scanning.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:09:18Z",
+  "updated_at": "2026-04-24T15:34:33Z",
+  "closed_at": "2026-04-24T15:34:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:09:18Z"
+    }
+  ]
+}

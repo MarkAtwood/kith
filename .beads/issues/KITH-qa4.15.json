@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.15",
+  "title": "[SEC6] Good: ResultReference chaining for Chat/query + Chat/get",
+  "description": "In app.js fetchChats() (lines 216-235), the code uses JMAP ResultReference (RFC 8620 \u00a79) to chain Chat/query and Chat/get in a single request:\n\nQuery returns IDs, then immediately Get uses those IDs without a round-trip:\n  '#ids': { resultOf: 'q0', name: 'Chat/query', path: '/ids' }\n\nThis:\n- Eliminates a network round-trip\n- Keeps ID list and chat objects in sync (no time gap)\n- Is the correct JMAP pattern for this use case\n\nSame pattern used in fetchMessages() (lines 313-335).\n\nAlternative (fetch IDs, then make a second request) is less efficient and risks state skew if the chat list changes between requests.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:27Z",
+  "updated_at": "2026-04-19T18:21:35Z",
+  "closed_at": "2026-04-19T18:21:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:27Z"
+    }
+  ]
+}

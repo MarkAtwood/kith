@@ -1,0 +1,25 @@
+{
+  "id": "KITH-5ie",
+  "title": "kith-jmap: Session object for /.well-known/jmap",
+  "description": "Session object handler: GET /.well-known/jmap returns RFC 8620 \u00a72 Session JSON.\n\nWhat: Implement an axum GET handler that builds and returns the JMAP Session object with all RFC 8620-required fields, populating role from the caller's verified identity.\n\nAlgorithm:\n1. Define struct Session and all nested structs (Capabilities, Account, AccountCapabilities) with serde Serialize\n2. Handler signature: pub async fn session_handler(caller: Caller, State(state): State<AppState<LocalApiClient>>) -> Json<Session>\n3. Build Session:\n   a. capabilities.urn:ietf:params:jmap:core = { maxSizeUpload: 104857600, maxConcurrentUpload: 4, maxSizeRequest: 10485760, maxConcurrentRequests: 4, maxCallsInRequest: 16, maxObjectsInGet: 500, maxObjectsInSet: 500, collationAlgorithms: ['i;unicode-casemap'] }\n   b. capabilities.urn:kith:chat:1 = { maxBodyBytes: 65536, maxAttachmentBytes: 104857600, supportedBodyTypes: ['text/plain', 'text/markdown'] }\n   c. accounts.a-self.name = caller.identity.display() (never empty \u2014 Identity::display() guarantees fallback)\n   d. accounts.a-self.isPersonal = true, isReadOnly = false\n   e. accounts.a-self.accountCapabilities.urn:kith:chat:1.role = match caller.role { Role::Owner => 'owner', Role::Peer => 'peer' }\n   f. primaryAccounts.urn:kith:chat:1 = 'a-self'\n   g. username = caller.identity.display()\n   h. apiUrl, uploadUrl, downloadUrl, eventSourceUrl: construct from base URL (hardcoded or from config)\n   i. state = TODO session state token from store (use '0' stub initially, wired later)\n4. Return Json(session)\n\nDefensive programming rules:\n- All string fields must be non-empty; use Identity::display() which guarantees non-empty\n- Capability limit values are hardcoded constants (no user input involved)\n- Role comes from verified Caller extractor, never from request body\n- URLs are hardcoded templates, not constructed from user input\n\nTests:\n- Owner caller \u2192 role = 'owner' in accountCapabilities\n- Peer caller \u2192 role = 'peer' in accountCapabilities\n- Response has all required RFC 8620 \u00a72 fields (capabilities, accounts, primaryAccounts, username, apiUrl, uploadUrl, downloadUrl, eventSourceUrl)\n- username is never empty even if identity has empty display_name\nOracle: RFC 8620 \u00a72 field list and required field inventory, not derived from handler code.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:27:32Z",
+  "closed_at": "2026-04-19T07:27:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-3kv.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:17:23Z"
+    }
+  ]
+}

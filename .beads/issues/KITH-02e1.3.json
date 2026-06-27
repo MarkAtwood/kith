@@ -1,0 +1,32 @@
+{
+  "id": "KITH-02e1.3",
+  "title": "send_message(): Message/set create in event.rs",
+  "description": "**What:** Implement async send_message() function that sends a message via JMAP Message/set create.\n\n**Algorithm:**\n1. Function signature: pub(crate) async fn send_message(http_client: &reqwest::Client, api_url: &str, chat_id: &str, body: &str) -> Result<String, Box<dyn std::error::Error>>\n2. Validate: if body is empty or whitespace-only, return Err('empty message body').\n3. Generate sentAt: use chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true).\n4. Build JmapRequest with method_call 'Message/set', args: {accountId: 'a-self', create: {'k-1': {chatId, body, bodyType: 'text/plain', sentAt}}}.\n5. Call client::call_jmap(http_client, api_url, &req).await \u2014 propagate network/parse error via ?.\n6. Extract method_responses[0]. If method name is 'error', return Err with the error type string.\n7. Extract args['created'] map. If 'k-1' key exists and has 'id' string, return Ok(id_string).\n8. Check args['notCreated']['k-1'] for an error type. If present, return Err with description.\n9. Otherwise return Err('unexpected response format').\n\n**Defensive rules:**\n- Never log body text (may contain sensitive message content).\n- Never unwrap() on method_responses or JSON fields \u2014 use ? or match with explicit Err.\n- Pass body through as-is (already validated/limited to 65536 bytes by handle_key).\n- Do not include 'id', 'senderId', 'deliveryState', 'receivedAt' in the create object \u2014 server sets these.\n- Return typed error not a raw String for integration test clarity.\n\n**Agent team:** R reads event.rs (existing load_startup_data as pattern) and kith-core JmapRequest; I implements; T writes tests (see acceptance); V runs cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:54:55Z",
+  "updated_at": "2026-04-20T12:01:40Z",
+  "closed_at": "2026-04-20T12:01:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:54:54Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:33Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:34Z"
+    }
+  ]
+}

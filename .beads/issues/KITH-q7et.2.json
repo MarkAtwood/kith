@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "01ea9eda73fc6525f1af0c406dfa88387a280ed3f7f7c2a6dd66464640d0f75d",
+  "created_at": "2026-06-15T04:52:11Z",
+  "created_by": "Mark Atwood",
+  "description": "ChatStore::set_pinned_messages() validates each message ID against the DB with a separate SELECT EXISTS query in a loop (chat.rs lines 609-623). For M pins this is M round-trips before the transaction even opens.\n\nFor the common case (few pins, single-user mailbox) this is harmless. However the fix is trivial and makes the code obviously correct: replace the loop with a single query that counts messages matching the given IDs in the given chat, then compare the count to the input slice length. Any discrepancy means an invalid ID was supplied.\n\nExample: SELECT COUNT(*) FROM messages WHERE id IN (?,?,?) AND chat_id = ? \u2014 if result != pin_count, one of the IDs is bad.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.2",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "set_pinned_messages validates message IDs with N sequential queries",
+  "updated_at": "2026-06-19T20:44:01Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:11Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

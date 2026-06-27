@@ -1,0 +1,27 @@
+{
+  "id": "KITH-3yb.14",
+  "title": "Tests: cross-tailnet shared-in WhoIs identity accepted in Peer/deliver",
+  "description": "What: Integration test verifying that Peer/deliver accepts a verified WhoIs identity from a shared-in tailnet node (no code changes needed per architecture doc \u2014 test only).\n\nAlgorithm:\n1. Create a WhoIs stub that returns a shared-in identity: UserProfile with ID from a different tailnet (e.g., id=remote:alice@example.com vs local:alice@example.com format \u2014 or simply a distinct opaque ID not in the local tailnet's typical namespace).\n2. Add the shared-in identity to the contacts table (mailbox_host set, permitted=true).\n3. Send Peer/deliver request with senderTailscaleUserId = shared-in identity.\n4. Verify: request accepted (200 OK), message stored in DB with correct sender_id.\n5. Verify rejection path: Peer/deliver with non-contact shared-in identity returns 401.\n\nOracle: Tailscale guarantees WhoIs returns correct identity regardless of node-sharing status. Test fixture uses opaque ID strings; no format assumptions made.\n\nAgent team: R reads WhoIs stub setup in existing tests; T writes test using stub; V runs cargo test -p kithd --features test-utils + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:57:49Z",
+  "updated_at": "2026-04-20T00:31:50Z",
+  "closed_at": "2026-04-20T00:31:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:57:49Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:28Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.49",
+  "title": "V16 migration sets PRAGMA foreign_keys inside a transaction where SQLite docs warn it may have no effect",
+  "description": "SCHEMA_V16 uses the standard SQLite table-recreation pattern with PRAGMA foreign_keys = OFF at the start and ON at the end. The migrate() runner wraps each migration in unchecked_transaction(), so V16's SQL runs inside an active transaction. SQLite's documentation warns that PRAGMA foreign_keys cannot be changed in the middle of a multi-statement transaction and the change may be silently ignored. In practice the Python sqlite3 module and rusqlite succeed because SQLite evaluates the PRAGMA at statement execution time, but the behavior is implementation-defined. If FK enforcement is ON during the DROP TABLE messages step, it could fail in a future SQLite version or on a database with referential dependencies. The safe fix is to commit the current transaction before applying V16 (by splitting the migration runner to execute V16 outside a transaction, or by making the migrate() function aware of which migrations require no-transaction DDL). Alternatively, explicitly test that the migration succeeds on a populated database with messages, outbox rows, and attachments, including reply_to populated.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:09Z",
+  "updated_at": "2026-04-25T05:48:56Z",
+  "closed_at": "2026-04-25T05:48:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:09Z"
+    }
+  ]
+}

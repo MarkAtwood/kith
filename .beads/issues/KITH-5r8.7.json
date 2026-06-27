@@ -1,0 +1,20 @@
+{
+  "id": "KITH-5r8.7",
+  "title": "Request-level validation prevents attacks from reaching handlers",
+  "description": "parse_request function (lib.rs:21-45) validates capability requirements, rejects unknown capabilities, and enforces MAX_CALLS_IN_REQUEST=16 at parse boundary, not dispatch. This prevents oversized/malformed requests from consuming handler resources. Returns JmapError early with RFC-compliant type strings (unknownCapability, requestTooLarge).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:40:58Z",
+  "updated_at": "2026-04-19T07:46:02Z",
+  "closed_at": "2026-04-19T07:46:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5r8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:40:58Z"
+    }
+  ]
+}

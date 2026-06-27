@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T11:58:50Z",
+  "compaction_level": 0,
+  "content_hash": "028492ae4d129294041465dac58741746782cb8ef23ddbf78ee218460d5fc491",
+  "created_at": "2026-06-15T04:53:53Z",
+  "created_by": "Mark Atwood",
+  "description": "ChatStore::list_ids_paged takes (limit: u32, offset: u32) but ContactStore::list_ids_paged takes (offset: u32, limit: u32). The parameter order is reversed between the two sibling stores. A caller passing (limit, offset) to the ContactStore variant will silently apply them backwards, returning wrong pages without any compiler error.\n\nFile: crates/kith-store/src/chat.rs line 449: pub fn list_ids_paged(&self, limit: u32, offset: u32)\nFile: crates/kith-store/src/contact.rs line 207: pub fn list_ids_paged(&self, offset: u32, limit: u32)\n\nFix: align both to (limit: u32, offset: u32) matching the SQL parameter order (?1=LIMIT, ?2=OFFSET) which is already used by both implementations internally.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.27",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "list_ids_paged: swapped (limit,offset) vs (offset,limit) between ChatStore and ContactStore",
+  "updated_at": "2026-06-15T11:58:50Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:53Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

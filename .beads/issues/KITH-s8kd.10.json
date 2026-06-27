@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.10",
+  "title": "ContactStore::advance_state exposed as pub but bypasses per-row counter stamp",
+  "description": "ContactStore::advance_state() is public and calls the private advance_state() fn which only bumps state_counters \u2014 it does NOT stamp any contact row's changed_at_counter. Any caller that uses advance_state() directly will advance the global counter without marking any row as changed. A subsequent ChatContact/changes call would see new_state > since_state, run the SQL query, find no rows with changed_at_counter > since_counter, and return empty added/updated lists \u2014 a phantom state advance that confuses clients. ChatStore::advance_state() has the same problem. Both should either be removed or should require a peer_user_id / chat_id argument. Currently only ContactChangesHandler (JMAP) calls advance_state \u2014 checking what it does with it is needed before closing this.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:39Z",
+  "updated_at": "2026-04-25T05:41:36Z",
+  "closed_at": "2026-04-25T05:41:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:39Z"
+    }
+  ]
+}

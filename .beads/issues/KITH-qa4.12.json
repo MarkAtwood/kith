@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.12",
+  "title": "[SEC6] Good: SPA fallback handler with extension-based routing",
+  "description": "In crates/kithd/src/static_files.rs, the static_handler() (lines 11-33) implements a smart SPA fallback:\n\n- If the path has no extension (no '.'), treat it as a client-side route and serve index.html\n- If the path has an extension (e.g., '.js', '.css', '.html'), try to serve it as a file\n- 404 only if the file truly doesn't exist and it's not an extensionless path\n\nThis allows the browser's JavaScript router to handle paths like /chats/abc without 404ing. The heuristic 'no extension = SPA route' is simple and correct for this use case.\n\nAlternative (always 404 missing files) breaks client-side routing. Alternative (always serve index.html) breaks static asset loading.\n\nBonus: Use of rust_embed compiles static assets into the binary\u2014no separate file deployment needed. Phase 1 requirement: single musl binary.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:13Z",
+  "updated_at": "2026-04-19T18:21:22Z",
+  "closed_at": "2026-04-19T18:21:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:13Z"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "KITH-m4t",
+  "title": "Review round 3: kithd HTTP daemon",
+  "description": "Review round 3 for KITH-it6. Final verification pass.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:43:05Z",
+  "updated_at": "2026-04-19T16:45:05Z",
+  "closed_at": "2026-04-19T16:45:05Z",
+  "notes": "Round 3 \u2014 P0=0 P1=1 P2=0. Confidence: 95%. Running out of real complaints: yes. Stopping condition: met."
+}

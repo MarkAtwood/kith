@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.9",
+  "title": "lone use-item after code with misplaced comment",
+  "description": "crates/kith-peer/src/lib.rs line 1063: 'use kith_core::unix_secs_to_rfc3339' appears in the middle of the file, after hundreds of lines of impl blocks, with only a regular comment above it. Rust allows use-items anywhere, but placing one here with no cfg-gate or feature gate is unconventional and suggests it was a stray import left when the unix_secs_to_rfc3339 helper function was deduplicated. The comment '// Format a Unix timestamp...' describes the imported item, not a code section. The use-item should be moved to the top-level use block at the top of the file where all other imports live.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:48:25Z",
+  "updated_at": "2026-04-24T20:00:26Z",
+  "closed_at": "2026-04-24T20:00:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:48:25Z"
+    }
+  ]
+}

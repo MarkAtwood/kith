@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "60ea7a75daf08c04e124a018d80850d072ae602eb0706f9aa1f32927de3e8977",
+  "created_at": "2026-06-14T00:03:44Z",
+  "created_by": "Mark Atwood",
+  "description": "Certificate-based mesh VPN created by Slack infrastructure team. No central coordination server \u2014 you issue certs from your own CA. Identity is certificate-based, not provider-based. Fully open source (MIT). More operational overhead but zero vendor dependency. Appeals to the Headscale/self-hosted crowd. Requires the abstract transport trait (KITH-lhaj).",
+  "ephemeral": 0,
+  "id": "KITH-fhz8",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Federation transport: Nebula mesh",
+  "updated_at": "2026-06-14T00:03:44Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:03:50Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

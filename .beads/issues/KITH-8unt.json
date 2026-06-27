@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "726988256a8de9ede59d6877cbbd9881b1dc90678db92eb5c6e764164c3a4f53",
+  "created_at": "2026-06-14T18:11:21Z",
+  "created_by": "Mark Atwood",
+  "description": "Verify peer identity by fetching their SSH or GPG public keys from GitHub (https://github.com/<user>.keys, https://api.github.com/users/<user>/gpg_keys). Peer presents a GitHub username + signs a challenge with a key listed on their GitHub profile. Stronger than bare TOFU because the key is bound to a GitHub identity with social proof (commit history, repos, followers). No infrastructure to operate \u2014 GitHub is the directory. Could also use GitHub's OIDC (OAuth app or GitHub App) as an alternative path. Works well for developer-to-developer chat where everyone already has a GitHub account.",
+  "ephemeral": 0,
+  "id": "KITH-8unt",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Identity provider: GitHub key directory",
+  "updated_at": "2026-06-14T18:11:21Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T11:11:25Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-uq27",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

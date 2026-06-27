@@ -1,0 +1,13 @@
+{
+  "id": "KITH-kw0q",
+  "title": "Review: post-KITH-3ac8 full codebase",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:05:40Z",
+  "updated_at": "2026-04-24T15:58:50Z",
+  "closed_at": "2026-04-24T15:58:50Z",
+  "notes": "Maintainer risk: HIGH \u2014 three separate P1 correctness bugs (SSRF gap in outbox delivery path, chatId conflict permanent-serverFail loop, queryChanges wrong positions for long chats), two of which are security-adjacent. Distinct from prior review cycles.\nConfidence: 15% chance of missed bug. Uncertainty driven by: Message/queryChanges index calculation not fully traced, outbox retry state machine not exhaustively modeled, web client JS not reviewed. Would raise confidence if: integration tests cover chats with >200 messages and queryChanges after a gap, and outbox retry is tested with a DB error injected during complete_delivery.\nMaintainer risk: HIGH \u2014 two P0 web client bugs (Contact/* method names wrong, chat.participants field doesn't exist) mean the web client is non-functional for contacts and chat naming. These were missed in all prior review cycles."
+}

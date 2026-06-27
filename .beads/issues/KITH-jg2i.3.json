@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.3",
+  "title": "pre-V6 NULL sender_msg_id breaks Message/get for old databases",
+  "description": "row_to_message() now returns Err on NULL sender_msg_id (pre-V6 row or DB corruption). Before this commit, NULL fell back to using the message ID. Any user who ran kithd before V6 migration ran and somehow ended up with pre-V6 data will get hard errors on every Message/get or Message/query call \u2014 their entire message history becomes unreadable. Scenario: edge case where V4\u2192V5 migration left NULL rows (schema_v4 backfills sender_msg_id=id but ALTER TABLE ADD COLUMN can fail mid-migration leaving NULLs); V6 trigger only guards new inserts. Migration was UPDATE messages SET sender_msg_id = id; if this failed the rows remain NULL. Consequence: user files bug report about empty message list; debugging requires direct SQLite access.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:45:12Z",
+  "updated_at": "2026-04-25T08:49:50Z",
+  "closed_at": "2026-04-25T08:49:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:45:12Z"
+    }
+  ]
+}

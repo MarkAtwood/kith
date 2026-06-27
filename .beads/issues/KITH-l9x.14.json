@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.14",
+  "title": "SEC0: blob upload response missing accountId (RFC 8620 \u00a76.1)",
+  "description": "kithd/src/blob.rs blob_upload_handler lines 93-101: the 201 response JSON includes blobId, size, type, sha256 but NOT accountId. RFC 8620 \u00a76.1 requires accountId in the upload response. A strictly-compliant JMAP client that reads accountId from the upload response to validate it matches the requested account will fail. Fix: add \"accountId\": account_id (or \"a-self\") to the response JSON object.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:49Z",
+  "updated_at": "2026-04-20T01:17:12Z",
+  "closed_at": "2026-04-20T01:17:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:48Z"
+    }
+  ]
+}

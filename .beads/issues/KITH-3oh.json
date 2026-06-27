@@ -1,0 +1,31 @@
+{
+  "id": "KITH-3oh",
+  "title": "kith-tslocal: tests with mock Unix socket server",
+  "description": "Tests for WhoIs and Status clients using a mock HTTP-over-Unix-socket server.\n\nWhat: Offline test suite covering valid parse, HTTP errors, socket not found. No real tailscaled needed.\n\nAlgorithm:\n1. Create a mock Unix socket server in tests/integration_test.rs (or #[cfg(test)] mod):\n   - Bind a tokio::net::UnixListener to a temp path (use tempfile::TempDir or std::env::temp_dir() + unique name)\n   - Accept one connection, respond with canned HTTP/1.1 response (handcrafted bytes or hyper server)\n   - Run listener in a tokio::spawn background task\n2. Test cases (each spawns its own mock server on a unique socket path):\n\n   Test A - whois valid parse:\n   - Server returns: HTTP/1.1 200 OK + JSON body with known UserProfile\n   - Assert: WhoIsResponse.user_profile.id == expected value (hardcoded from fixture)\n   - Oracle: JSON fixture hand-constructed matching Tailscale spec\n\n   Test B - whois HTTP 404:\n   - Server returns: HTTP/1.1 404 Not Found\n   - Assert: Err(AuthError::WhoIsFailed(_))\n\n   Test C - socket not found:\n   - Use a nonexistent socket path\n   - Assert: Err(AuthError::WhoIsFailed(_)) - clean error, not panic\n\n   Test D - status valid parse:\n   - Server returns: HTTP/1.1 200 OK + JSON body with TailscaleIPs array\n   - Assert: StatusResponse.tailscale_ips == expected vec\n\n   Test E - status empty TailscaleIPs:\n   - Server returns JSON with TailscaleIPs: []\n   - Assert: Err(AuthError::WhoIsFailed(_)) - empty IPs rejected\n\n   Test F - response too large (whois):\n   - Server returns 200 OK + body > 100KB\n   - Assert: Err(AuthError::WhoIsFailed(_)) - size limit enforced\n\n3. JSON fixtures (hardcoded, not derived from code under test):\n   WHOIS_JSON = '{\"Node\":{\"Name\":\"mynode.tailnet.ts.net\",\"Addresses\":[\"100.64.0.1/32\"]},\"UserProfile\":{\"ID\":\"12345\",\"LoginName\":\"alice@example.com\",\"DisplayName\":\"Alice\"},\"CapMap\":{}}'\n   STATUS_JSON = '{\"TailscaleIPs\":[\"100.64.0.1\",\"fd7a::1\"],\"BackendState\":\"Running\"}'\n\nDefensive rules:\n- Each test must use a unique socket path (no shared state between tests)\n- Tests must not require tailscaled to be running\n- Never use code under test to generate expected values\n- Clean up temp sockets after each test\n\nAgent team: standard (R + I + T)\nOracle: JSON fixtures constructed from Tailscale LocalAPI spec, not from running the client code",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:13:10Z",
+  "closed_at": "2026-04-19T06:13:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ebq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:23Z"
+    },
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-xkq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:23Z"
+    }
+  ]
+}

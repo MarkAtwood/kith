@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bnk1.3",
+  "title": "is_valid_mailbox_host rejects non-.ts.net hostnames with no user-facing error",
+  "description": "When outbox_tick calls is_valid_mailbox_host and it returns false, record_failure is called with message 'invalid mailbox_host' \u2014 but this is an internal log line only. A user whose contact has an arbitrary hostname (e.g. Headscale without Tailscale-range IP) will see messages stuck in the outbox and eventually fail after 72 retries with no clear explanation. Add documentation in CLAUDE.md or in the Headscale section stating that peer_mailbox_host must be a 100.x.x.x IP or *.ts.net FQDN.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:11:20Z",
+  "updated_at": "2026-04-24T22:14:33Z",
+  "closed_at": "2026-04-24T22:14:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bnk1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:11:19Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-d6l6.5",
+  "title": "V5 dedup-before-UNIQUE-INDEX migration is the correct upgrade path",
+  "description": "The DELETE ... WHERE rowid NOT IN (SELECT MIN(rowid) ...) idiom for deduplicating before CREATE UNIQUE INDEX is the right approach for a live upgrade. A future contributor might suggest skipping the dedup (assuming the bug was caught early enough that no duplicates exist in the wild). That assumption is unsafe: the bug window (KITH-orvy.1) was in production long enough that any database that received a retransmitted message would have a duplicate row and the migration would fail. Keep the dedup; it is a no-op on clean databases and correct on dirty ones.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:09:25Z",
+  "updated_at": "2026-04-24T03:35:08Z",
+  "closed_at": "2026-04-24T03:35:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d6l6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:09:24Z"
+    }
+  ]
+}

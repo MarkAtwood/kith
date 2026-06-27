@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bnk1.2",
+  "title": "maxChanges=usize::MAX overflow in Message/queryChanges",
+  "description": "In get_querychanges_since_for_chat: limit = max_changes.saturating_add(1) as i64. If max_changes=usize::MAX (from a client sending maxChanges=18446744073709551615), saturating_add(1) stays at usize::MAX, then as i64 overflows to -1. SQLite interprets LIMIT -1 as no limit. has_more detection fails (rows.len() > n is false since n=usize::MAX). Fix: cap max_changes to a reasonable maximum or use .min(i64::MAX as usize) before the cast.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:10:19Z",
+  "updated_at": "2026-04-24T22:14:29Z",
+  "closed_at": "2026-04-24T22:14:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bnk1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:10:19Z"
+    }
+  ]
+}

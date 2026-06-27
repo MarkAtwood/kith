@@ -1,0 +1,22 @@
+{
+  "close_reason": "2 peer + 14 handler tests for rich body",
+  "closed_at": "2026-06-13T19:54:47Z",
+  "compaction_level": 0,
+  "content_hash": "9973c93344792012fe42ce3a0ba8ebc7f48a51f7737a2b53dbe689fa6006610b",
+  "created_at": "2026-06-13T19:28:28Z",
+  "created_by": "Mark Atwood",
+  "description": "validate_rich_body() exists in kith-chat and kith-peer but has zero unit tests. Need: valid spans accepted, invalid JSON rejected, missing spans key rejected, spans not array rejected, span missing type rejected, span missing text rejected, unrecognized span types accepted (forward compat), broadcast span with invalid scope rejected, broadcast span valid scopes, case sensitivity. ~12 tests.",
+  "ephemeral": 0,
+  "id": "KITH-nwxp",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add missing tests for validate_rich_body",
+  "updated_at": "2026-06-13T19:54:47Z"
+}

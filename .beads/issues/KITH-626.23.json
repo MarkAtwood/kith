@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.23",
+  "title": "Optional display_name field with fallback guidance in docstring",
+  "description": "UserProfile.display_name is Option<String> (lines 46), marked #[serde(default)]. The docstring (lines 37-38) explicitly documents the Headscale-without-OIDC case and specifies fallback behavior: try display_name, then login_name, then id. This is excellent API design: the type system forces callers to handle None, and the docs guide them on correct fallback logic. Keep this pattern.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:46Z",
+  "updated_at": "2026-04-19T19:51:56Z",
+  "closed_at": "2026-04-19T19:51:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:45Z"
+    }
+  ]
+}

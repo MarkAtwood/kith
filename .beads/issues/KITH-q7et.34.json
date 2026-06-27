@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Working as designed: SpaceStore manages 3 type counters (Space, SpaceInvite, SpaceBan), requiring the type_name parameter. Other stores each manage exactly one type. The divergence reflects a genuine structural difference, not inconsistency.",
+  "closed_at": "2026-06-15T15:51:31Z",
+  "compaction_level": 0,
+  "content_hash": "9d9c51b6ac68cbbb077d793d6bcfcbb40c8bd84cde08c02dedf3288760b1e5f3",
+  "created_at": "2026-06-15T04:54:09Z",
+  "created_by": "Mark Atwood",
+  "description": "The private emit() helper has a different signature in SpaceStore vs the three other stores:\n\n- ChatStore::emit(&self, new_state: String)      \u2014 crates/kith-store/src/chat.rs line 178\n- ContactStore::emit(&self, new_state: String)   \u2014 crates/kith-store/src/contact.rs line 23\n- MessageStore::emit(&self, new_state: String)   \u2014 crates/kith-store/src/message.rs line 646\n- SpaceStore::emit(&self, type_name: &str, new_state: String)  \u2014 crates/kith-store/src/space.rs line 173\n\nSpaceStore manages multiple state counters (Space, SpaceInvite, SpaceBan) which is why it needs the type_name parameter. However, this makes SpaceStore::emit diverge from the pattern established by all other stores, making it harder to extract a common trait or helper.\n\nFix: either add a type_name parameter to all stores (and hardcode it in each, as SpaceStore already requires it at call sites), or refactor SpaceStore to use separate per-type emit helpers matching the other stores' single-type pattern.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.34",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "SpaceStore::emit takes (type_name, new_state) but other stores take only (new_state)",
+  "updated_at": "2026-06-15T15:51:31Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:09Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

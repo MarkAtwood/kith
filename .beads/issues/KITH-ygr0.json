@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ygr0",
+  "title": "Review: fix review findings KITH-92gt (P2/P3/P4)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:45:25Z",
+  "updated_at": "2026-04-24T20:08:02Z",
+  "closed_at": "2026-04-24T20:08:02Z",
+  "notes": "contact.rs review: 4 findings. Confidence: 90%. P1: newState is set to current store state after maxChanges truncation \u2014 paging clients will drop changes silently. P2: test_contact_changes_max_changes_truncation does not assert newState value so the P1 bug has no test coverage. P2: unknown patch key error type is invalidArguments but RFC 8620 \u00a75.3 requires invalidProperties for per-object set errors. P3 (maintainer): KNOWN_UPDATE_KEYS is inside process_update function body, not co-located with the Contact struct definition in kith-store.\nkith-peer review: 2 findings. Confidence: 95%.\ntls/discovery review: 5 findings. Confidence: 90%. Issues: KITH-ygr0.3 (wrong error variant), KITH-ygr0.5 (missing symmetric partial-presence test), KITH-ygr0.10 (double-bracket bug for pre-bracketed IPv6 input), KITH-ygr0.11 (missing test for pre-bracketed IPv6), KITH-ygr0.12 (cert written before key \u2014 inconsistent state on key-write failure). No issues with OnceLock init, build_probe_client retained correctly, error message quality adequate, IPv4/IPv6 bracketing logic correct for non-pre-bracketed input."
+}

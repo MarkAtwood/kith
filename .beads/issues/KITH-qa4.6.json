@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.6",
+  "title": "[SEC4] buildEventsUrl: missing JMAP Session origin documentation",
+  "description": "The buildEventsUrl function's comment (lines 51-53) explains what placeholders are replaced but NOT where the template comes from. A maintainer should know:\n\n1. The eventsUrl template is populated from the JMAP Session object returned by /.well-known/jmap (RFC 8620 \u00a72).\n2. The placeholder format {types}, {closeafter}, {ping} is defined by RFC 8620 \u00a77.2 (EventSource template).\n3. A maintainer should never invent new placeholders without checking RFC 8620 \u00a77.2.\n\nThis is a non-obvious invariant that would trip up someone trying to extend the EventSource subscription behavior.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:49Z",
+  "updated_at": "2026-04-19T18:21:07Z",
+  "closed_at": "2026-04-19T18:21:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:49Z"
+    }
+  ]
+}

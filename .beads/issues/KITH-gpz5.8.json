@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.8",
+  "title": "Message/queryChanges loads all messages into memory via list_by_chat(u32::MAX)",
+  "description": "queryChanges calls list_by_chat(&chat_id, u32::MAX) to build a reference list for position() lookups. On a busy chat this loads every message row into memory on every queryChanges call. Position should be computed in SQL (e.g. ROW_NUMBER() or a subquery COUNT) rather than by deserializing all rows.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:20Z",
+  "updated_at": "2026-04-24T17:06:43Z",
+  "closed_at": "2026-04-24T17:06:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:19Z"
+    }
+  ]
+}

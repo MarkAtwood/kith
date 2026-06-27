@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.1",
+  "title": "HTML+CSS: add-contact button and modal dialog",
+  "description": "Add the static HTML and CSS needed for the Add Contact feature. No JS logic.\n\nWhat: Add an 'Add Contact' button to the #contact-section header and a <dialog> modal form for entering contact details.\n\nAlgorithm:\n1. In index.html, inside #contact-section, add a <button id='add-contact-btn'> labeled 'Add Contact' (or '+').\n2. Add a <dialog id='add-contact-dialog'> element (after #app or at end of body) containing:\n   - A <form method='dialog'> with fields:\n     - tailscaleUserId (required text input, id='act-userid')\n     - login (required text input, id='act-login')\n     - mailboxHost (required text input, id='act-host', placeholder like 'alice-kith.tail-xxxxx.ts.net')\n     - displayName (optional text input, id='act-name')\n   - A submit button ('Add Contact')\n   - A cancel button (form method dialog with value='cancel', or a close-dialog button)\n   - Labels for each input (accessibility)\n3. In style.css, add rules for:\n   - #add-contact-btn: positioned in the #contact-section header area, small, unobtrusive\n   - #add-contact-dialog: centered modal style; backdrop dimming; form layout (label+input pairs stacked)\n   - Input fields: full width within form\n   - Submit/cancel buttons row\n   - Error text element inside modal for inline error feedback\n\nDefensive programming rules:\n- No JS in this bead \u2014 HTML/CSS only\n- All form inputs must have id, name, and label for accessibility\n- dialog element used (native browser modal \u2014 no custom event loop needed)\n- All textContent rendering (no innerHTML patterns)\n\nTests:\n- Visual: open index.html in browser, click Add Contact, dialog appears\n- Accessibility: all inputs have <label for=...>\n- No regression: existing layout unchanged (no id conflicts)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:50:39Z",
+  "updated_at": "2026-04-20T15:57:18Z",
+  "closed_at": "2026-04-20T15:57:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:50:38Z"
+    }
+  ]
+}

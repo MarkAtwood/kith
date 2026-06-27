@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.50",
+  "title": "Message/set allows zero-length body",
+  "description": "message.rs process_create checks body.len() > MAX_BODY_BYTES (65536) but has no lower bound. A zero-length body string passes validation and is stored as a message with no visible text. Peer/deliver in kith-peer similarly has no zero-length body check (only the upper bound). A message with an empty body creates an invisible chat entry that clients must handle. Given that the recent fix KITH-bpmo explicitly rejected zero-size attachments to match Peer/deliver behaviour, the same reasoning applies to body: Message/set should require body.len() >= 1 to produce a consistent minimum-size constraint on both the owner-send and peer-deliver paths.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:17:43Z",
+  "updated_at": "2026-04-25T01:54:13Z",
+  "closed_at": "2026-04-25T01:54:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:17:43Z"
+    }
+  ]
+}

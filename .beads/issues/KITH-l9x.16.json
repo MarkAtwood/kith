@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.16",
+  "title": "SEC0: blob_download_handler rejects \"a-self\" account ID alias",
+  "description": "kithd/src/lib.rs blob_download_handler line 158: the handler checks account_id != state.owner_id and returns 400 for any other value. The session object (kith-jmap/src/lib.rs line 207-209) advertises downloadUrl as {base}/jmap/download/{accountId}/{blobId}/{name} and exposes the account under the key \"a-self\". A client correctly substituting \"a-self\" as the accountId template will always get 400 on download, while upload (blob.rs line 38) correctly accepts both \"a-self\" and state.owner_id. Fix: accept \"a-self\" as an alias in blob_download_handler, mirroring blob_upload_handler.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:56Z",
+  "updated_at": "2026-04-20T01:17:15Z",
+  "closed_at": "2026-04-20T01:17:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:55Z"
+    }
+  ]
+}

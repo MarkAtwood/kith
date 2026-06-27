@@ -1,0 +1,36 @@
+{
+  "compaction_level": 0,
+  "content_hash": "cd49bdc3a1dc3fa8f35fe1e8a3b9457edba2f22b23978cf993263a9ffcac1905",
+  "created_at": "2026-06-14T18:10:39Z",
+  "created_by": "Mark Atwood",
+  "description": "outbox_tick looks up the contact's transport_tag and uses the corresponding delivery client (TLS config) and host validator. Each transport provides its own PeerHttpClient (via with_tls_config) and is_valid_host. Falls back to backoff retry if the transport is temporarily unavailable.",
+  "ephemeral": 0,
+  "id": "KITH-ho2p",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Multi-transport: outbox routing by contact transport",
+  "updated_at": "2026-06-14T18:10:39Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T11:10:46Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-3dli",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-14T11:10:46Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-h3nv",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

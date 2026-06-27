@@ -1,0 +1,25 @@
+{
+  "id": "KITH-jrz",
+  "title": "kith-jmap: JMAP request body parsing",
+  "description": "Parse POST /jmap/api body and validate the JMAP request envelope.\n\nWhat: Implement the HTTP handler and parse function that accepts a JMAP request, validates the 'using' capability array, and returns a parsed JmapRequest ready for dispatch.\n\nAlgorithm:\n1. Define pub fn parse_request(body: serde_json::Value) -> Result<JmapRequest, JmapError>\n2. Deserialize Value to JmapRequest using serde_json::from_value; on error return JmapError { type: 'invalidArguments', description: error message }\n3. If using array is empty, return JmapError { type: 'unknownCapability', description: 'using array must not be empty' }\n4. For each URI in using: if not one of ['urn:ietf:params:jmap:core', 'urn:kith:chat:1'], return JmapError { type: 'unknownCapability', description: format!(\"Unsupported capability: {uri}\") }\n5. If 'urn:kith:chat:1' is not in using, return JmapError { type: 'unknownCapability', description: 'urn:kith:chat:1 is required' }\n6. Return Ok(parsed_request)\n7. Expose as pub fn parse_request in kith-jmap lib.rs\n\nDefensive programming rules:\n- Never unwrap() \u2014 every path returns typed Result\n- Validate using array BEFORE looking at methodCalls\n- Unknown capability rejects the whole request (request-level error, not per-method)\n- Cap method_calls at 16 entries; if exceeded return JmapError { type: 'requestTooLarge', description: 'maxCallsInRequest is 16' }\n- No key material involved\n- Input is untrusted (from network)\n\nTests:\n- Valid request with known capabilities \u2192 Ok(JmapRequest)\n- Empty using array \u2192 Err with type unknownCapability\n- Unknown capability URI \u2192 Err with type unknownCapability\n- Missing urn:kith:chat:1 \u2192 Err with type unknownCapability\n- More than 16 method calls \u2192 Err with type requestTooLarge\n- Malformed JSON object \u2192 Err with type invalidArguments\nOracle: Manually constructed request objects from RFC 8620 \u00a73, not derived from code under test.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:27:25Z",
+  "closed_at": "2026-04-19T07:27:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-3kv.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:17:23Z"
+    }
+  ]
+}

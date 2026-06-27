@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.1",
+  "title": "IPv6 tailnet: owner_login always empty at startup",
+  "description": "main.rs:96 uses format!(\"{ip_str}:443\").parse::<SocketAddr>() to build the WhoIs address for the owner. For an IPv6 tailnet IP like fd7a::1, this produces fd7a::1:443 which is not valid SocketAddr syntax (IPv6 requires brackets: [fd7a::1]:443). The parse fails, the warn fires, and owner_login is permanently empty. The Session object omits ownerLogin for every IPv6-only deployment.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:01Z",
+  "updated_at": "2026-04-25T03:23:41Z",
+  "closed_at": "2026-04-25T03:23:41Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:00Z"
+    }
+  ]
+}

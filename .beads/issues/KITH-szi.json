@@ -1,0 +1,20 @@
+{
+  "id": "KITH-szi",
+  "title": "Integration test: auth rejection paths",
+  "description": "What: Integration tests for auth rejection paths: (1) unknown identity gets 401, (2) peer calling owner-only method gets forbiddenMethod error, (3) Peer/deliver with mismatched senderTailscaleUserId is rejected with zero DB writes. All use a single real TCP kithd instance via spawn_test_listener.\n\nAlgorithm:\n1. Spawn ONE alice kithd instance via spawn_test_listener(state, data_dir)\n   Alice's MockWhoIs maps:\n   - 127.0.0.1:PORT_OWNER -> alice owner identity (uid-alice)\n   - 127.0.0.1:PORT_PEER -> bob peer identity (uid-bob, in contacts)\n   - (any other IP) -> WhoIsFailed (unknown)\n   For tests to simulate different callers: use two different source port connections \u2014 but with loopback, the test client controls what IP is reported. Actually: MockWhoIs must be keyed by full SocketAddr, not just IP. Tests will use separate local sockets. Alternatively: use the existing e2e.rs oneshot pattern with MockConnectInfo to inject different peer addresses without real TCP.\n   Decision: use oneshot() pattern (not real TCP) for KITH-szi since auth logic is fully testable in-process and the rejection tests do not need the delivery path.\n\n2. Test (1) \u2014 Unknown identity \u2192 401:\n   Inject MockConnectInfo with an addr that MockWhoIs returns WhoIsFailed for.\n   Send JMAP request: POST /jmap/api with valid body.\n   Assert HTTP 401, body={\"type\":\"unauthorized\"}, no PII.\n\n3. Test (2) \u2014 Peer calls owner-only method:\n   Inject MockConnectInfo with bob's addr (bob is in contacts as a Peer).\n   Send JMAP request: POST /jmap/api with Message/set or Contact/get.\n   Assert HTTP 200 with methodResponse error type='forbiddenMethod'.\n\n4. Test (3) \u2014 Peer/deliver with mismatched senderTailscaleUserId:\n   Inject MockConnectInfo with bob's addr (WhoIs returns uid-bob).\n   Send Peer/deliver request body with senderTailscaleUserId='uid-eve' (mismatch).\n   Assert: error response with type='invalidArguments'.\n   INDEPENDENT ORACLE: read message state counter from store directly BEFORE and AFTER the request.\n   Assert: state counter unchanged (s-0 before and after = no row was inserted).\n\nDefensive programming:\n- Never use the same identity for both the caller AND the expectedSender in test (3)\n- Test (3) must verify DB state BEFORE the request as the baseline, not assume s-0\n- No PII check: assert error body does not contain email addresses or user IDs\n\nAgent team: R (read e2e.rs existing patterns) + I (implement using oneshot) + T (independent oracle: state counter) + V (cargo test -p kithd)\n\nTests: Three named test functions with clear conditions and independent oracles",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:04:12Z",
+  "closed_at": "2026-04-19T17:04:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

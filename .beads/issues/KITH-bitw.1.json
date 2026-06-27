@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.1",
+  "title": "DECISION: Extracted handle_key as pure testable function",
+  "description": "What: handle_key(state, code, modifiers) is a synchronous function that mutates state in place, extracted from the event loop.\n\nWhy it's good: Enables comprehensive unit testing of keyboard logic (Up/Down/Tab/Char/Backspace/Cursor/Scroll) without a real terminal or EventStream. Tests exercise all keybinding paths independently. The function is deterministic and side-effect-free (only mutates passed-in state), making test setup trivial.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:31Z",
+  "updated_at": "2026-04-20T05:45:45Z",
+  "closed_at": "2026-04-20T05:45:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:31Z"
+    }
+  ]
+}

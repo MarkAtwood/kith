@@ -1,0 +1,12 @@
+{
+  "id": "KITH-qkq2",
+  "title": "kithd: discovery round aborts on store-lock poison instead of continuing",
+  "description": "In discovery.rs run_discovery_round, when the store Mutex is poisoned the code uses return inside the join_set drain loop, which exits the entire function. Remaining JoinSet tasks continue running but their results are permanently dropped. Discovery is permanently degraded if the store stays poisoned. Fix: use continue instead of return inside the per-result processing loop so a poisoned store skips only that one upsert, allows the loop to drain completely, and logs errors without killing the whole round.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:35:28Z",
+  "updated_at": "2026-04-25T02:39:28Z",
+  "closed_at": "2026-04-25T02:39:28Z"
+}

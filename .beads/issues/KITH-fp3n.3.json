@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.3",
+  "title": "get_changes_since_for_chat: new_state is dead/misleading return value",
+  "description": "get_changes_since_for_chat (message.rs:588) returns a ChangesResult whose new_state is read from get_state() AFTER the chat-scoped SELECT, outside any transaction. Two problems: (1) The new_state may be higher than the state at which the IDs were collected, because an unrelated message write in another chat can advance the counter between the SELECT and the get_state() call. A caller using chat_changes.new_state as since_state for the next poll could miss changes that arrived in that window. (2) The only current caller (kith-chat/src/message.rs:889) discards chat_changes.new_state entirely and reads a fresh state under a second lock acquire. So the new_state field is dead code with wrong semantics documented. If any future caller uses chat_changes.new_state as the next since_state, they will silently skip messages. The fix is to either (a) remove new_state from the return value and force callers to read it themselves, or (b) wrap both the SELECT and get_state() in a single BEGIN DEFERRED transaction so new_state is consistent with the IDs returned.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:04:50Z",
+  "updated_at": "2026-04-24T18:11:18Z",
+  "closed_at": "2026-04-24T18:11:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:04:50Z"
+    }
+  ]
+}

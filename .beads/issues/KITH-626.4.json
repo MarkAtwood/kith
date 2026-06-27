@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.4",
+  "title": "Size limits enforced before JSON parse prevents OOM",
+  "description": "Both whois() (lines 205-207) and status() (lines 134-140) enforce maximum body size BEFORE passing bytes to serde_json::from_slice(). This is correct defensive input handling. Prevents attackers from sending megabyte responses that cause excessive memory allocation during parsing. The limits are sane: 102_400 for whois, 10MiB for status. This pattern should be maintained in all LocalAPI code.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:14Z",
+  "updated_at": "2026-04-19T19:51:54Z",
+  "closed_at": "2026-04-19T19:51:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:13Z"
+    }
+  ]
+}

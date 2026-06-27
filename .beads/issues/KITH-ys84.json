@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T14:05:08Z",
+  "compaction_level": 0,
+  "content_hash": "62b96c01a271ef167c6e518939bc9ab44e5948e4604c8fbead5118f5e475f54c",
+  "created_at": "2026-06-14T13:34:53Z",
+  "created_by": "Mark Atwood",
+  "description": "Remove TailnetCertVerifier from kith-peer. Add PeerHttpClient::with_tls_config() constructor. Parameterize host validation in outbox_tick/outbox_worker via closure.",
+  "ephemeral": 0,
+  "id": "KITH-ys84",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Decouple kith-peer from Tailscale",
+  "updated_at": "2026-06-14T14:05:08Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T06:35:00Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-xk6u",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

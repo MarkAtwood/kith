@@ -1,0 +1,31 @@
+{
+  "close_reason": "Merged into KITH-q7et.15 (same finding: TailnetCertVerifier)",
+  "closed_at": "2026-06-15T11:53:12Z",
+  "compaction_level": 0,
+  "content_hash": "988eaaf9feabb46e86c44c8bd71535f7691f90662c9c440950c57094459642d0",
+  "created_at": "2026-06-15T04:54:04Z",
+  "created_by": "Mark Atwood",
+  "description": "kithd/src/transport.rs and kithd/src/discovery.rs both implement TailnetCertVerifier, which returns Ok(ServerCertVerified::assertion()) for any certificate, bypassing all X.509 validation. The rationale (Tailscale's WireGuard provides authentication at the network layer; TLS is used only for confidentiality) is documented in code comments. This design is sound under the assumption that the Tailscale network layer is not compromised, but it means: (1) Any certificate is accepted from any tailnet IP, including a self-signed cert with a wrong CN/SAN. (2) If the WireGuard layer is ever bypassed (e.g. by a Tailscale bug or misconfiguration), TLS provides no fallback authentication. The finding is P3 (informational / accepted design risk) because the security model is intentional and documented. Recommend adding a SECURITY.md section that explicitly states this trust model and its preconditions.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.32",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "TailnetCertVerifier accepts any cert: intentional but undocumented risk",
+  "updated_at": "2026-06-15T11:53:12Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:03Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "27ead90d4a390574daf09a4edda849071ee12387e0d2229ab1398e16de41675b",
+  "created_at": "2026-06-15T04:52:41Z",
+  "created_by": "Mark Atwood",
+  "description": "ChatStore::update_metadata() (chat.rs:511-597) dynamically builds a SQL string with dynamic parameter placeholders and stores values in Vec<Box<dyn rusqlite::types::ToSql>>. This involves a heap allocation per field and a vtable dispatch per parameter bind.\n\nThe driver is the 'only update fields that are Some(...)' contract. An alternative that avoids the Vec<Box<dyn>> is to use SQLite's ability to update a column to itself as a no-op: a fixed SQL with COALESCE-style expressions, e.g.:\n\n  UPDATE chats SET\n    name = CASE WHEN ?1 THEN ?2 ELSE name END,\n    muted = CASE WHEN ?3 THEN ?4 ELSE muted END,\n    ...\n  WHERE id = ?N\n\nwhere odd parameters are 'should_update' booleans and even parameters are the new values (or NULL). This yields a single fixed-format prepared statement, cacheable by prepare_cached, with no heap-allocated vtable dispatch. For 8 fields this is 17 parameters vs. up to 9 heap allocations per call.\n\nThe tradeoff: the CASE WHEN approach requires all parameters to always be bound even when a field is not being updated. At 8 optional fields this is still simple and fits on one screen.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.8",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "update_metadata builds SQL string with Vec<Box<dyn ToSql>> boxing",
+  "updated_at": "2026-06-19T20:44:03Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:41Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.4",
+  "title": "SEC1: Undocumented prev_selected state invariant in run() event loop",
+  "description": "The run() function in event.rs maintains a subtle state invariant: prev_selected must stay synchronized with state.selected_chat to trigger message reloads (lines 546, 583, 589). This invariant is:\n- Initialized before the loop but not documented as an invariant\n- Updated conditionally inside a tokio::select! block\n- Critical for correctness: if sync breaks, messages won't reload when switching chats\n\nRisks:\n- Solo maintainer might refactor the event loop and forget to update prev_selected\n- Debugging 'messages don't reload' could take hours without understanding this pattern\n- New features that modify selected_chat might not account for this coupling\n\nSuggested fix: Extract chat selection change detection to a named function with clear documentation, or move the logic into a method on AppState that atomically changes both fields together.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:38Z",
+  "updated_at": "2026-04-20T05:49:21Z",
+  "closed_at": "2026-04-20T05:49:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:37Z"
+    }
+  ]
+}

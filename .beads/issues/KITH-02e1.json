@@ -1,0 +1,22 @@
+{
+  "id": "KITH-02e1",
+  "title": "kith-tui: compose, send, and read receipts",
+  "description": "Make the input box functional. Text input: character insertion, backspace, delete, left/right arrows, Home/End, unicode-safe cursor movement. Enter sends the message via Message/set create; clears input on success. Tab cycles focus between chat list and input. Read receipts: when the message thread panel is focused and the selected chat is open, call Message/set update with readAt=now for any unread inbound messages. Error handling: delivery failures shown as a status bar notification (3s duration).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:11:47Z",
+  "updated_at": "2026-04-20T12:27:27Z",
+  "closed_at": "2026-04-20T12:13:36Z",
+  "notes": "Review converged after 1 round(s). Final review: KITH-zopw.\nReview converged after 3 rounds. Final review: KITH-o34d. All P0/P1/P2 findings resolved. 58 tests passing, clippy clean.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:11:59Z"
+    }
+  ]
+}

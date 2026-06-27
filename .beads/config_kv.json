@@ -1,0 +1,17 @@
+{
+  "auto_compact_enabled": "false",
+  "compact_batch_size": "50",
+  "compact_parallel_workers": "5",
+  "compact_tier1_days": "30",
+  "compact_tier1_dep_levels": "2",
+  "compact_tier2_commits": "100",
+  "compact_tier2_days": "90",
+  "compact_tier2_dep_levels": "5",
+  "compaction_enabled": "false",
+  "issue_prefix": "KITH",
+  "kv.memory.confidence-chat-attach-review-15-chance-of-missed": "Confidence chat+attach review: 15% chance of missed bug. Uncertainty: I did not read kith-store source so I could not verify whether get_changes_since_ordered correctly handles the state format, whether state counters are per-type or global, or whether the Mutex<Store> could deadlock if a store method calls another store method internally. Would raise confidence: reading kith-store/src to verify state counter semantics and that no store method holds a lock while calling another store method.",
+  "kv.memory.kith-attach-phase-2-taildrop-tailscale-file-send": "kith-attach Phase 2: Taildrop (tailscale file send/get) is NOT a substitute for kith-attach. Taildrop has no API surface kithd can drive programmatically, no delivery receipt, and no message threading integration. kith-attach blob storage (stored locally, served over kithd HTTPS, referenced by blobId in JMAP) is the correct approach. Taildrop is useful for interactive user-to-user file transfer only.",
+  "kv.memory.kith-peer-complete-delivery-in-outboxstore-kith-store": "kith-peer: complete_delivery in OutboxStore (kith-store) is the atomic success path; mark_delivered is retained only for orphaned-outbox-row cleanup when the message no longer exists. Never use mark_delivered for normal delivery success.",
+  "kv.memory.maintainer-risk-for-chat-attach-review-medium-key": "Maintainer risk for chat+attach review: MEDIUM. Key issues: newState race between lock scopes in all three set handlers; silent destroy ID drop; content-type validation too weak; attachment size/sha256 not verified against actual blob bytes.",
+  "kv.memory.spec-design-principle-always-have-2-very-different": "spec design principle: always have 2+ very different implementations before finalizing a protocol spec. One implementation writes a spec shaped like itself; diverse implementations force you to find real abstractions vs deployment-specific choices. Kith+nie validated this for the JMAP Chat I-D \u2014 forced generalization of topology, identity format, and body encoding."
+}

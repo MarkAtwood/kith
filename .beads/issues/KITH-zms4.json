@@ -1,0 +1,12 @@
+{
+  "id": "KITH-zms4",
+  "title": "SEC0: Silent error discard in group chat fanout enqueue",
+  "description": "In kith-chat/src/message.rs process_create (lines 370-380):\n\nThe group chat fanout loop discards all enqueue() errors via 'let _ = guard.outbox().enqueue(...)'. If an outbox enqueue fails (e.g., due to database constraint violation), the error is silently ignored.\n\nWhile unlikely in Phase 1 (single-writer), silent errors mask bugs and make debugging harder. If a constraint violation or database error occurs, the message will not be enqueued to all participants, but the sender receives no error indication.\n\nFix: At minimum, log failures to stderr. Better: track and report failures in the response or log them appropriately.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:18:32Z",
+  "updated_at": "2026-04-20T03:20:41Z",
+  "closed_at": "2026-04-20T03:20:41Z"
+}

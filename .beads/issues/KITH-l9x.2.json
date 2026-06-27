@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.2",
+  "title": "SEC2: download handler buffers full blob in memory",
+  "description": "blob_download_handler calls BlobStore::read_blob which uses tokio::fs::read() \u2014 this reads the entire file into a Vec<u8> before building the response. For a 100 MiB attachment this allocates 100 MiB of heap on every download request. Fix: replace read_blob with a streaming path using tokio::fs::File opened with ReaderStream (tokio_util::io::ReaderStream) so axum streams bytes directly from disk without buffering. BlobStore::read_blob API would need a companion read_blob_stream method, or the handler can open the file directly via blob_path().",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:17Z",
+  "updated_at": "2026-04-20T01:08:07Z",
+  "closed_at": "2026-04-20T01:08:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:17Z"
+    }
+  ]
+}

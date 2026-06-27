@@ -1,0 +1,39 @@
+{
+  "id": "KITH-2058.5",
+  "title": "setupCompose: file picker + pendingAttachments",
+  "description": "Modify setupCompose() in app.js to wire the file input button, manage pendingAttachments module state, and show an attachment preview below the compose area.\n\n**What:** File picker integration and attachment preview UI in the compose area.\n\n**File:** web/app.js\n\n**Algorithm:**\n1. Add module-level state (near other module state at top of file):\n   `let pendingAttachments = [];` // array of {blobId, filename, contentType, size, sha256}\n\n2. Add inner function `renderAttachmentPreview()` (not exported):\n   - Get previewDiv = document.getElementById('attachment-preview')\n   - If not found: console.error and return\n   - previewDiv.textContent = '' (clears children safely)\n   - For each att in pendingAttachments:\n     - item = div.className = 'attachment-preview-item'\n     - nameSpan = span; nameSpan.textContent = att.filename (textContent \u2014 XSS safe)\n     - sizeSpan = span; sizeSpan.textContent = ' (' + formatBytes(att.size) + ')'\n     - removeBtn = button; removeBtn.className = 'remove-btn'; removeBtn.textContent = '\u2715'; removeBtn.type = 'button'\n     - removeBtn.addEventListener('click', () => { pendingAttachments.splice(pendingAttachments.indexOf(att), 1); renderAttachmentPreview(); })\n     - item.appendChild(nameSpan); item.appendChild(sizeSpan); item.appendChild(removeBtn)\n     - previewDiv.appendChild(item)\n\n3. In setupCompose(), after existing send button and textarea wiring:\n   - attachBtn = document.getElementById('attach-btn')\n   - fileInput = document.getElementById('file-input')\n   - If either missing: console.error and return (graceful degradation)\n   - attachBtn.addEventListener('click', () => fileInput.click())\n   - fileInput.addEventListener('change', async (e) => {\n       for (const file of Array.from(e.target.files)) {\n         try {\n           const result = await uploadBlob(file);\n           pendingAttachments.push(result);\n         } catch (err) {\n           showError('Attachment upload failed: ' + err.message);\n         }\n       }\n       fileInput.value = ''; // reset so same file can be re-selected\n       renderAttachmentPreview();\n     })\n\n**Defensive rules:**\n- fileInput.value = '' after each selection to allow re-selecting same file.\n- Array.from(e.target.files) \u2014 defensive copy; FileList is live.\n- Upload errors must NOT prevent subsequent files from being processed (try/catch per file, not per batch).\n- textContent for all displayed filenames.\n- Graceful degradation if HTML elements are not found (console.error only).\n\n**Tests:**\n- pendingAttachments starts empty.\n- After simulated file selection + upload success: pendingAttachments has one entry, preview has one item.\n- After clicking remove: pendingAttachments is empty, preview is empty.\n- Upload error: pendingAttachments unchanged, error shown.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:10:00Z",
+  "updated_at": "2026-04-20T15:15:00Z",
+  "closed_at": "2026-04-20T15:15:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2058",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:09:59Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:27Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:28Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:29Z"
+    }
+  ]
+}

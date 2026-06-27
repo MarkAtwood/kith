@@ -1,0 +1,20 @@
+{
+  "id": "KITH-45h.4",
+  "title": "Decision: No PII in error responses",
+  "description": "Why this is good: Error responses explicitly omit user IDs, peer addresses, and internal error detail strings. This prevents information leakage in logs and network traces. The code hardcodes opaque machine-readable types ('unauthorized', 'serverFail') instead of including debug info. The tests verify this is enforced (extractor_unknown_returns_401 and extractor_whois_fail_returns_500 both assert that sensitive values do not appear in response bodies). This pattern prevents a common security bug where error detail accidentally leaks PII to untrusted parties or to logs that may be exposed.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:50:25Z",
+  "updated_at": "2026-04-19T06:52:59Z",
+  "closed_at": "2026-04-19T06:52:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-45h",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:50:24Z"
+    }
+  ]
+}

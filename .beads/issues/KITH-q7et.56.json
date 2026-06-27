@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:03:15Z",
+  "compaction_level": 0,
+  "content_hash": "ff31b4d72119aa0ad50ef4598e53f5cea963570eb8327c7df0d11e65ca372595",
+  "created_at": "2026-06-15T04:55:52Z",
+  "created_by": "Mark Atwood",
+  "description": "Several .unwrap() calls exist in production (non-test) code without explanatory comments:\n\nkithd/src/lib.rs:180 \u2014 Response::builder().body(...).unwrap() \u2014 builder errors are impossible here but unexplained\nkithd/src/lib.rs:355 \u2014 builder.body(body).unwrap() \u2014 same\nkithd/src/peer_fetch.rs:215,220 \u2014 char::from_digit(...).unwrap() \u2014 infallible for 0-15 + radix 16 but no comment\n\nThe pattern in lib.rs line 178 uses .expect() correctly (\"JmapResponse always serializes\") but the chained .unwrap() at line 180 has no comment. Similarly line 355.\n\nFix: add // SAFETY/INFALLIBLE comments or use .expect(\"reason\") for each of these, or restructure to propagate errors. The peer_fetch.rs case is purely infallible and should have an explanatory comment.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.56",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Production .unwrap() without justification in kithd/src/",
+  "updated_at": "2026-06-15T12:03:15Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:51Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

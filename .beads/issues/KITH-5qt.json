@@ -1,0 +1,26 @@
+{
+  "id": "KITH-5qt",
+  "title": "Auth: Peer/deliver senderTailscaleUserId cross-check",
+  "description": "Add AuthError::SenderMismatch to kith-core and implement senderTailscaleUserId cross-check for Peer/deliver.\n\n**What:** Ensure a peer cannot forge a message sender identity by comparing senderTailscaleUserId in the request body against the WhoIs-verified caller identity before any DB write.\n\n**Algorithm:**\n1. In kith-core/src/error.rs, add variant:\n   AuthError::SenderMismatch \u2014 #[error(\"senderTailscaleUserId does not match caller identity\")]\n2. In kithd (Peer/deliver handler stub or in crates/kithd/src/auth.rs), add function:\n   pub fn check_sender(identity: &Identity, claimed_sender_id: &str) -> Result<(), AuthError> {\n     if identity.user_id != claimed_sender_id {\n       return Err(AuthError::SenderMismatch);\n     }\n     Ok(())\n   }\n3. This function must be called in the Peer/deliver handler BEFORE any database write.\n   (Handler may be a stub in kithd for now \u2014 wire-in is a separate epic.)\n\n**Defensive rules:**\n- Comparison is exact string equality only \u2014 never normalize, trim, or lowercase\n- SenderMismatch must be logged at warn level with a generic message (no user IDs in log)\n- This check must execute before ContactStore::insert_message or any outbox write\n- Never accept the claimed_sender_id as an authenticated identity \u2014 it is attacker-controlled input\n\n**Crate changes:**\n- kith-core/src/error.rs: add SenderMismatch variant\n- kithd/src/auth.rs (or peer.rs): add check_sender() function\n\n**Agent team:** Researcher (read error.rs, auth.rs) + Implementer + Tester\n\n**Tests (oracle = logic derived from spec, not from code under test):**\n- match_ok: identity.user_id == claimed_sender_id \u2192 Ok(())\n- mismatch_err: identity.user_id != claimed_sender_id \u2192 Err(SenderMismatch)\n- empty_claimed: claimed_sender_id == \"\" \u2192 Err(SenderMismatch) (empty != any real user_id)\n- No test uses check_sender to verify check_sender (no self-certification)",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:48:09Z",
+  "closed_at": "2026-04-19T06:48:09Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-eda",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-vgq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

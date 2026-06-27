@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.5",
+  "title": "kithctl watch: HTTP 401 and 403 produce identical error message",
+  "description": "watch.rs:292-298 prints the same message for 401 and 403. 403 means kithd recognized the caller as a peer (wrong node), not that tailscaled is down. The merged message misdirects diagnosis. Fix: 401 \u2192 'not recognized \u2014 is tailscaled running on this node?'; 403 \u2192 'recognized as peer, not owner \u2014 run kithctl from the same Tailscale node as kithd'.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:58:59Z",
+  "updated_at": "2026-04-24T05:12:25Z",
+  "closed_at": "2026-04-24T05:12:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:58:59Z"
+    }
+  ]
+}

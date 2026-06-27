@@ -1,0 +1,13 @@
+{
+  "id": "KITH-f3sp",
+  "title": "Change capability URI to urn:ietf:params:jmap:chat",
+  "description": "Replace urn:kith:chat:1 with urn:ietf:params:jmap:chat throughout the codebase to match the registered IANA capability name in the I-D.\\n\\nFiles to touch:\\n- kith-jmap/src/lib.rs: Capabilities struct serde rename attribute\\n- kith-peer/src/lib.rs: build_peer_deliver_request and build_peer_receipt_request both hardcode the old URI in the 'using' array\\n- Any tests asserting the old URI string",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:14Z",
+  "updated_at": "2026-04-23T22:12:39Z",
+  "closed_at": "2026-04-23T22:12:39Z"
+}

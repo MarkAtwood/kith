@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.7",
+  "title": "Contact/set and Message/set destroy filter_map silently drops non-string IDs",
+  "description": "In contact.rs line 160-165 and message.rs line 171-177, destroy IDs are collected via filter_map which silently drops non-string values. RFC 8620 section 5.3 requires every submitted destroy ID to appear in either destroyed or notDestroyed. A non-string destroy ID (e.g. an integer) is silently discarded: it appears in neither list. Callers cannot detect the error. Fix: reject non-string entries with a method-level invalidArguments error, or iterate with a proper error return matching how Chat/set and the ids arrays in /get handlers work.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:01Z",
+  "updated_at": "2026-04-25T03:55:56Z",
+  "closed_at": "2026-04-25T03:55:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:01Z"
+    }
+  ]
+}

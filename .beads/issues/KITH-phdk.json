@@ -1,0 +1,13 @@
+{
+  "id": "KITH-phdk",
+  "title": "Rename Contact to ChatContact and update method names",
+  "description": "The I-D names the type ChatContact throughout, with methods ChatContact/{get,set,changes,query,queryChanges}. The codebase uses Contact/{get,set,changes,query}.\\n\\nFiles to touch:\\n- kith-core/src/contact.rs: rename struct Contact to ChatContact\\n- kith-core/src/lib.rs: re-exports\\n- kith-store/src/contact.rs: type references\\n- kith-chat/src/: rename handler structs, add missing ChatContact/queryChanges method\\n- kith-jmap/src/lib.rs: METHOD_ROLES table entries, state-change event type name Contact -> ChatContact",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:18Z",
+  "updated_at": "2026-04-23T22:18:59Z",
+  "closed_at": "2026-04-23T22:18:59Z"
+}

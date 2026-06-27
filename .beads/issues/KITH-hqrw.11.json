@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.11",
+  "title": "run_sse SSE buffer has no size limit",
+  "description": "client.rs run_sse accumulates incoming bytes in a single String buf (line 247). The buffer is only drained when a double-newline boundary is found. A misbehaving or malicious kithd that never sends a blank line will grow buf without bound until OOM. No byte limit is enforced. Trigger: continuous SSE stream without blank-line boundary causes unbounded memory growth in the TUI process.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:21Z",
+  "updated_at": "2026-04-25T04:08:38Z",
+  "closed_at": "2026-04-25T04:08:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:20Z"
+    }
+  ]
+}

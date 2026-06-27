@@ -1,0 +1,20 @@
+{
+  "id": "KITH-d6l6.4",
+  "title": "Fail-early host lookup before transaction is the correct atomicity design",
+  "description": "Building outbox_peers before calling insert_outbound_message means host-lookup failures fire before any INSERT. A future contributor might suggest 'moving the lookup back inside the transaction for cleanliness' \u2014 that would re-introduce the bug where a message is committed to the DB with no outbox entries (Pending forever). The two-phase approach (resolve all peers first, then commit atomically) is the correct design: the transaction boundary should enclose only operations that must succeed or roll back together, not I/O that can be checked upfront.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:09:14Z",
+  "updated_at": "2026-04-24T03:35:03Z",
+  "closed_at": "2026-04-24T03:35:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d6l6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:09:13Z"
+    }
+  ]
+}

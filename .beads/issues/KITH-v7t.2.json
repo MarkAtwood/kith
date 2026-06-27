@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.2",
+  "title": "TLS path: no graceful drain on shutdown",
+  "description": "main.rs:108-149 \u2014 The TLS accept loops are spawned with tokio::spawn and main() simply awaits shutdown_signal() then returns. When main() exits, the tokio runtime drops all spawned tasks, including in-flight HTTP connections being served in the nested tokio::spawn at line 138. These connections are cancelled mid-request with no drain. The plain HTTP fallback path uses axum::serve with_graceful_shutdown which properly drains in-flight connections; the TLS path has no equivalent. This can cause data loss for requests in flight at shutdown time (e.g., a Message/set being written when SIGTERM arrives).",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:29:58Z",
+  "updated_at": "2026-04-19T16:37:19Z",
+  "closed_at": "2026-04-19T16:37:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:29:58Z"
+    }
+  ]
+}

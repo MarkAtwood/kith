@@ -1,0 +1,13 @@
+{
+  "id": "KITH-nlb8",
+  "title": "Review: Kith entire project deep review",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:21:05Z",
+  "updated_at": "2026-04-25T00:46:26Z",
+  "closed_at": "2026-04-25T00:46:26Z",
+  "notes": "Confidence: 15% chance of missed bug. Review covered all 11 crates with 6 parallel subagents. Uncertainty driven by: (1) kith-tui event.rs is 2000+ lines of async UI state \u2014 hard to fully trace all state transitions without running it; (2) no review of web/ client assets; (3) agent hallucinations filtered manually but 3-4 could have slipped through. Would raise confidence with: integration test run against a live tailnet, kith-tui fuzzing of SSE message stream, and review of migrations/ for schema invariants.\nMaintainer risk: MEDIUM \u2014 codebase is well-structured and carefully tested. The two real correctness gaps (backup TOCTOU, accountNotFound non-conformance) are fixable in <2h. The kith-tui module is the largest source of future maintenance burden: 2000+ lines of async state machine with limited test coverage."
+}

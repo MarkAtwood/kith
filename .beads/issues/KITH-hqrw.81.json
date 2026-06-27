@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.81",
+  "title": "run_sse CRLF normalization is per-chunk so split CRLF across chunks is not normalized",
+  "description": "client.rs run_sse normalizes CRLF to LF with replace(\"\\r\\n\", \"\\n\") per chunk before appending to buf (line 252). If a TCP chunk ends with \\r and the next chunk begins with \\n (the \\r\\n sequence is split across two chunks), the \\r remains in buf and the \\n is at the start of the next chunk. After appending both, buf contains \\r\\n but the replace was already done per-chunk so the \\r\\n is never normalized. The resulting buf would have a bare \\r followed by \\n, which could cause parse_sse_event lines() to produce garbled line content (trailing \\r on the previous line, empty line from the \\n). SSE spec sends CRLF-terminated lines; HTTP/1.1 chunked encoding can split at arbitrary byte boundaries. This is a correctness issue in the buffer handling.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:41:22Z",
+  "updated_at": "2026-04-25T05:53:43Z",
+  "closed_at": "2026-04-25T05:53:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:41:22Z"
+    }
+  ]
+}

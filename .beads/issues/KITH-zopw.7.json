@@ -1,0 +1,20 @@
+{
+  "id": "KITH-zopw.7",
+  "title": "SEC2: batch read receipts in handle_state_change instead of per-message HTTP calls",
+  "description": "In handle_state_change(), when multiple inbound messages arrive in one SSE event, the code calls send_read_receipts() once per message in the for-loop body. This causes N separate JMAP HTTP calls instead of one batched call. Fix: collect all inbound IDs after the loop, then call send_read_receipts once with all IDs.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:16:39Z",
+  "updated_at": "2026-04-20T12:18:37Z",
+  "closed_at": "2026-04-20T12:18:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-zopw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T05:16:39Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-45h.9",
+  "title": "Decision: Two-phase async/sync split in Caller extractor",
+  "description": "Why this is good: The extractor in FromRequestParts::from_request_parts() splits authorization into two phases: (1) async WhoIs call before acquiring any locks, then (2) synchronous store lookup inside a lock scope. This is necessary because ContactStore holds &Connection which is \\!Send (contains RefCell internally). Holding a \\!Send reference across .await would make the future \\!Send, violating axum's contract. By completing the async work first, then entering a brief lock-protected scope, the future remains Send and the concurrent request handling scales properly. The code comments explain this trade-off explicitly, preventing future maintainers from 'simplifying' it back into a deadlock or Send violation.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:50:47Z",
+  "updated_at": "2026-04-19T06:53:06Z",
+  "closed_at": "2026-04-19T06:53:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-45h",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:50:47Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.8",
+  "title": "kithctl watch: header read loop has no byte/count limit",
+  "description": "watch.rs:309-321 and jmap_post:516-531: the HTTP header-reading loop calls read_line in a loop with no limit on header count or total bytes. A server sending an infinite header stream will cause the loop to spin forever. Even for a trusted kithd, defensive coding requires a hard limit (e.g. 100 headers, 64 KiB total). Without it a misbehaving daemon hangs kithctl watch indefinitely.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:25Z",
+  "updated_at": "2026-04-25T03:24:38Z",
+  "closed_at": "2026-04-25T03:24:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:24Z"
+    }
+  ]
+}

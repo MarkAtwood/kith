@@ -1,0 +1,21 @@
+{
+  "id": "KITH-l9x.22",
+  "title": "SEC4: outbox_tick is 172 lines",
+  "description": "kith-peer/src/lib.rs: outbox_tick (lines 837-1009) is 172 lines. It performs contact re-validation, mailbox_host validation, message load, attachment load, chat load, request building, and delivery result handling all in a single for-entry loop body. A future maintainer adding a new outbox entry type or delivery precondition would need to navigate the full function. Candidate extraction: a process_outbox_entry helper for a single entry, called from the loop.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:38:49Z",
+  "updated_at": "2026-04-20T01:18:15Z",
+  "closed_at": "2026-04-20T01:18:15Z",
+  "notes": "opinion: No project rule specifies a function length limit; the outbox_tick function is long but linear and sequential with clear step comments. No correctness, safety, or project-rule consequence. Pure style preference.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:38:48Z"
+    }
+  ]
+}

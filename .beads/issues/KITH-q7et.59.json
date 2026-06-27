@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:02:38Z",
+  "compaction_level": 0,
+  "content_hash": "1d08a5609b1cb1025a2984dfa3e1ba224d156bb229589cce6d944285442685ce",
+  "created_at": "2026-06-15T04:56:30Z",
+  "created_by": "Mark Atwood",
+  "description": "All public handler structs in kith-chat/src/ lack doc comments. Affected structs include:\n\nkith-chat/src/contact.rs: ChatContactGetHandler, ChatContactSetHandler, ChatContactChangesHandler, ChatContactQueryHandler, ChatContactQueryChangesHandler \u2014 and their ::new() constructors\nkith-chat/src/chat.rs: similar handler structs\nkith-chat/src/message.rs: similar handler structs\nkith-chat/src/permission.rs: resolve_permission function\n\nkith-chat has 32 public items and only 130 doc comment lines \u2014 the handler structs and constructors are almost entirely undocumented.\n\nAt minimum, each handler struct should have a one-line doc explaining which JMAP method it implements.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.59",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-chat handler structs missing doc comments",
+  "updated_at": "2026-06-15T16:02:38Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:56:29Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

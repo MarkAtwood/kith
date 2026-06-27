@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.12",
+  "title": "SEC1: duplicate validate_blob_id logic",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:39Z",
+  "updated_at": "2026-04-20T01:17:25Z",
+  "closed_at": "2026-04-20T01:17:25Z",
+  "notes": "kith-chat/message.rs has its own validate_blob_id function duplicating BlobStore::validate_blob_id. kith-peer calls kith_attach::BlobStore::validate_blob_id directly. Two separate copies of identical logic; a future rule change must be applied in two places. The message.rs comment even calls this out: 'no dep on kith-attach \u2014 inline.' Risk: rules diverge silently. Fix: expose validate_blob_id as a pub fn in kith-core or have message.rs dep on kith-attach like kith-peer does.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:39Z"
+    }
+  ]
+}

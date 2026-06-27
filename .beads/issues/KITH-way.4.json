@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.4",
+  "title": "Decision: Enforce delivery_state terminal state at SQL level",
+  "description": "In message.rs update_delivery_state (line 287), a WHERE guard blocks update if delivery_state is already 'delivered':\n  UPDATE messages SET delivery_state = ?1 WHERE id = ?3 AND delivery_state != 'delivered'\n\nThis is defensive in a meaningful way:\n1. Application bugs or races cannot regress a message from Delivered to Pending\n2. The SQL barrier is authoritative \u2014 application logic alone is insufficient\n3. Idempotent on terminal state: regression attempt returns Ok() without counter advance\n4. If UPDATE touches 0 rows, code distinguishes terminal (delivered) from missing (error)\n5. Test at line 782 explicitly verifies the terminal state machine\n\nThis is a correct application of defense-in-depth: the constraint is both enforced at the database level AND honored in application logic.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:48Z",
+  "updated_at": "2026-04-19T20:16:08Z",
+  "closed_at": "2026-04-19T20:16:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:47Z"
+    }
+  ]
+}

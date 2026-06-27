@@ -1,0 +1,20 @@
+{
+  "id": "KITH-60f2.2",
+  "title": "kithctl watch: Message/changes with maxChanges=50 silently drops messages when hasMoreChanges=true",
+  "description": "fetch_and_notify (watch.rs line 414) calls Message/changes with maxChanges=50. If more than 50 messages arrive in a single state window (burst or backlog), hasMoreChanges=true and the remaining messages are silently ignored \u2014 no pagination loop. The SSE event loop does not re-enter fetch_and_notify for the remainder, so those messages produce no desktop notification. On reconnect the state baseline is updated and the missed messages are lost forever.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:13:32Z",
+  "updated_at": "2026-04-25T06:21:12Z",
+  "closed_at": "2026-04-25T06:21:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:13:32Z"
+    }
+  ]
+}

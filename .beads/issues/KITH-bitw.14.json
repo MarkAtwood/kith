@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.14",
+  "title": "DECISION: UTF-8 char boundary awareness in cursor movement",
+  "description": "What: Left/Right/Backspace cursor movement explicitly walks bytes backward/forward until hitting a valid char boundary using is_char_boundary().\n\nWhy it's good: Prevents cursor from landing in the middle of multi-byte characters (\u20ac, \u65e5, etc.). On Backspace, the loop retreats until finding a boundary, then removes the full character. This is the correct approach; ignoring char boundaries would corrupt UTF-8. Tested with hardcoded '\u20ac' (3 bytes) to verify cursor moves by full char width.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:43:50Z",
+  "updated_at": "2026-04-20T05:45:51Z",
+  "closed_at": "2026-04-20T05:45:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:43:49Z"
+    }
+  ]
+}

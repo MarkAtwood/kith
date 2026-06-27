@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.6",
+  "title": "LEI comparison uses Option<i64> PartialOrd with undocumented None semantics",
+  "description": "In events.rs lines 242-246, parse_state_counter returns Option<i64> and the comparison 'server_n <= lei_n' relies on Option<T>'s PartialOrd where None < Some(x) for all x.\n\nIf server_n is None (malformed state token from store) and lei_n is Some(n), then None <= Some(n) is true and replay is silently suppressed -- the server appears 'behind' when its state is unreadable. This is the wrong behavior: a malformed server state should trigger replay or a server error, not a silent no-op.\n\nIn practice, get_all_states() always returns well-formed 's-N' tokens (via format!(\"s-{counter}\") from i64 database columns, or defaulting to 's-0'), so parse_state_counter never returns None for current_state. Similarly, the LEI header is validated at lines 161-171 to only accept 's-\\d+' format, so parse_state_counter(lei) also never returns None. Both None arms are currently unreachable.\n\nThe risk is: the code is technically correct only because of two upstream invariants (store always produces s-N, header validation filters LEI). If either invariant is ever relaxed, the comparison silently misbehaves instead of failing loudly. A comment documenting the assumed invariants, or an explicit None match arm returning None (triggering replay on malformed state), would make the failure mode explicit.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:06:05Z",
+  "updated_at": "2026-04-24T18:10:40Z",
+  "closed_at": "2026-04-24T18:10:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:06:05Z"
+    }
+  ]
+}

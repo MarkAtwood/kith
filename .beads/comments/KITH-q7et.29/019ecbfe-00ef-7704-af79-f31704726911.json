@@ -1,0 +1,7 @@
+{
+  "author": "Mark Atwood",
+  "created_at": "2026-06-15T15:54:42Z",
+  "id": "019ecbfe-00ef-7704-af79-f31704726911",
+  "issue_id": "KITH-q7et.29",
+  "text": "Design decision: compile-time handler registration check requires either a trait-per-method-group or an enum-based dispatch pattern. Architecture choice, not a mechanical fix."
+}

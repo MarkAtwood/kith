@@ -1,0 +1,13 @@
+{
+  "id": "KITH-lr1g",
+  "title": "Review: loop 12 fixes \u2014 cert rotation, Headscale doc, loop 11 fixes",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:28:03Z",
+  "updated_at": "2026-04-25T06:33:55Z",
+  "closed_at": "2026-04-25T06:33:55Z",
+  "notes": "Maintainer risk: LOW \u2014 No correctness bugs in the recent fixes themselves. One P1 cleanup issue (orphaned tmp) and two P3 cosmetic inconsistencies. The cert rotation fix works correctly. The Headscale documentation is accurate. The false positive (tracing::warn\\! spacing) was due to grep showing raw source bytes; Rust's backslash-newline escape correctly strips indentation whitespace.\nConfidence: 88% chance of no missed bug. Uncertainty: did not re-read kith-store/src/contact.rs or the full discovery.rs to verify mailbox_host is always IP-based. Would raise confidence if: add a test that a Headscale-style fc::/7 ULA IP passes is_tailnet_ip, and a test that write_blob leaves no orphaned tmp if rename fails on the same filesystem."
+}

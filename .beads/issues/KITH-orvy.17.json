@@ -1,0 +1,20 @@
+{
+  "id": "KITH-orvy.17",
+  "title": "senderUserId validated against WhoIs before any DB write",
+  "description": "kith-peer/src/lib.rs:139: the WhoIs-verified identity is compared against senderUserId at step 3 before the store Mutex is acquired. There is no code path that writes to the database before this check. A contributor might suggest moving this check later for 'efficiency' (avoid the WhoIs call if parsing fails first), but moving it after any DB access creates a TOCTOU window where attacker-controlled content is stored before identity is verified.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:57Z",
+  "updated_at": "2026-04-24T01:31:23Z",
+  "closed_at": "2026-04-24T01:31:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:57Z"
+    }
+  ]
+}

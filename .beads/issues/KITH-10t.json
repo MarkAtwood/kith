@@ -1,0 +1,20 @@
+{
+  "id": "KITH-10t",
+  "title": "kith-core: Message, DeliveryState, Attachment types",
+  "description": "What: Define Message, DeliveryState enum, and Attachment structs in src/message.rs.\n\nModule file: crates/kith-core/src/message.rs \u2014 create this file, then add 'pub mod message;' to src/lib.rs.\n\nAlgorithm:\n1. Define DeliveryState enum with variants Pending, Delivered, Failed, Received.\n   Serde: rename_all = \"snake_case\" so they serialize as \"pending\", \"delivered\", etc.\n   Derives: Debug, Clone, PartialEq, Serialize, Deserialize.\n2. Define Attachment struct with fields:\n   blob_id: String  \u2192 #[serde(rename=\"blobId\")]\n   filename: String\n   content_type: String  \u2192 #[serde(rename=\"contentType\")]\n   size: u64\n   sha256: String\n   Derives: Debug, Clone, Serialize, Deserialize.\n3. Define Message struct with fields:\n   id: String  (ULID, time-sortable)\n   chat_id: String  \u2192 #[serde(rename=\"chatId\")]\n   sender_id: String  \u2192 #[serde(rename=\"senderId\")]\n   body: String\n   body_type: String  \u2192 #[serde(rename=\"bodyType\")]\n   attachments: Vec<Attachment>\n   reply_to: Option<String>  \u2192 #[serde(rename=\"replyTo\", skip_serializing_if=\"Option::is_none\")]\n   sent_at: String  \u2192 #[serde(rename=\"sentAt\")]  (RFC 3339, untrusted)\n   received_at: String  \u2192 #[serde(rename=\"receivedAt\")]  (RFC 3339, trusted)\n   delivery_state: DeliveryState  \u2192 #[serde(rename=\"deliveryState\")]\n   delivered_at: Option<String>  \u2192 #[serde(rename=\"deliveredAt\", skip_serializing_if=\"Option::is_none\")]\n   read_at: Option<String>  \u2192 #[serde(rename=\"readAt\", skip_serializing_if=\"Option::is_none\")]\n   Derives: Debug, Clone, Serialize, Deserialize.\n4. Add 'pub mod message;' to src/lib.rs (only this one line \u2014 do not touch other mods).\n5. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- sentAt is display-only; receivedAt is authoritative for ordering \u2014 document this in a comment\n- No validation of body size in kith-core types (validation happens at boundary in kith-peer/kith-chat)\n- All Option<String> fields use skip_serializing_if to avoid null in output\n\nTests (independent oracle: manual construction from RFC 8620 field names):\n- Round-trip test: construct a Message with all fields set, serialize to JSON string, deserialize back, assert equality\n- DeliveryState test: serialize each variant, assert matches expected string\n- Optional field test: serialize Message with reply_to=None, assert JSON has no replyTo key",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:35Z",
+  "closed_at": "2026-04-19T05:04:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

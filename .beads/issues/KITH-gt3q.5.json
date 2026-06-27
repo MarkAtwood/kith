@@ -1,0 +1,21 @@
+{
+  "id": "KITH-gt3q.5",
+  "title": "resolve_base_url non-https silently returns default",
+  "description": "resolve_base_url() (lib.rs:71-79) silently falls back to 'https://kith.local' when KITHD_BASE_URL is set but non-https. JMAP session downloadUrl template becomes wrong. Fix: fatal startup error with actionable message on non-empty invalid URL.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:40:40Z",
+  "updated_at": "2026-04-25T07:04:24Z",
+  "closed_at": "2026-04-25T07:04:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:40:40Z"
+    }
+  ]
+}

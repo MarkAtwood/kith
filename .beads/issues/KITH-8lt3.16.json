@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8lt3.16",
+  "title": "tls.rs: private key written world-readable on non-Unix platforms",
+  "description": "In tls.rs::load_or_generate_cert (line 107-108), the #[cfg(not(unix))] branch uses std::fs::write(key_path, &key_der) which creates the file with default umask-derived permissions. On Windows or other non-Unix platforms this may produce a world-readable private key file. The Unix branch explicitly sets mode 0o600 via OpenOptions::mode. The non-Unix branch has no equivalent. The musl deploy target is Linux (unix), so this does not affect production deployments today, but it is a latent hazard for any developer running tests or building on Windows/macOS.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:45:59Z",
+  "updated_at": "2026-04-24T17:56:00Z",
+  "closed_at": "2026-04-24T17:56:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8lt3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:45:58Z"
+    }
+  ]
+}

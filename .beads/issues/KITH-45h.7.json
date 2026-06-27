@@ -1,0 +1,20 @@
+{
+  "id": "KITH-45h.7",
+  "title": "Decision: Forced store error test verifies fail-closed behavior",
+  "description": "Why this is good: The test_store_error_is_not_unauthorized() test deliberately opens a raw rusqlite connection with no schema, forcing a 'no such table' error when is_permitted() queries contacts. This isn't a flaky test \u2014 it's intentionally exercising a critical security property: that a store failure causes a 500, not a silent 401 denial. This pattern (forcing failure paths in tests) is essential for authorization code. A test that only checks the happy path (store is OK, contact is permitted) proves nothing about what happens under failure. By explicitly breaking the store and asserting the right error type surfaces, this test prevents accidental regressions where someone 'simplifies' the code by removing the error mapping logic.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:50:38Z",
+  "updated_at": "2026-04-19T06:53:03Z",
+  "closed_at": "2026-04-19T06:53:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-45h",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:50:38Z"
+    }
+  ]
+}

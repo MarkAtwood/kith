@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.12",
+  "title": "unread_ids_from_loaded_messages: VecDeque index instead of zip is a panic footgun",
+  "description": "kith-tui/src/event.rs:575: the function indexes into ids via ids[i] while iterating senders with enumerate. If the two VecDeques ever have different lengths (invariant violation), this panics at runtime with an opaque index-out-of-bounds. Suggested rewrite: senders.iter().zip(ids.iter()).filter(|(s,_)| s.as_str() != 'self').map(|(_,id)| id.clone()).filter(|id| !id.is_empty()).collect(). zip silently stops at the shorter deque rather than panicking.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:25Z",
+  "updated_at": "2026-04-24T01:35:26Z",
+  "closed_at": "2026-04-24T01:35:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:25Z"
+    }
+  ]
+}

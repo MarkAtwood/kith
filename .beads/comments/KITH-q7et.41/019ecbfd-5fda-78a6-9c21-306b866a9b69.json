@@ -1,0 +1,7 @@
+{
+  "author": "Mark Atwood",
+  "created_at": "2026-06-15T15:54:01Z",
+  "id": "019ecbfd-5fda-78a6-9c21-306b866a9b69",
+  "issue_id": "KITH-q7et.41",
+  "text": "Multiple design decisions here (String vs PathBuf for socket path, cache tunability, postcondition docs). Not a bug \u2014 these are API design choices that need human judgment on which to address. Recommend deferring to a focused API review of kith-tslocal."
+}

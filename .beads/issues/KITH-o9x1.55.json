@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.55",
+  "title": "config: KITHD_BIND_ADDR accepts any address without enforcing loopback-only restriction",
+  "description": "In config.rs, the KITHD_BIND_ADDR env var (fallback_bind_addr) is parsed and accepted without any restriction on which address families or interfaces are allowed. The intent is that this address is for development only (when Tailscale is unavailable), but an operator who sets KITHD_BIND_ADDR=0.0.0.0:8080 or to any public-facing interface will expose the full unauthenticated plain-HTTP API over a non-tailnet network. The startup warning ('falling back to plain HTTP on {fallback_addr}') is present but does not indicate the risk. Fix: reject addresses that are not loopback (127.x.x.x / ::1) at parse time with a fatal error explaining why, or at minimum emit a tracing::error\\!-level warning that explicitly names the security implication.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:19:35Z",
+  "updated_at": "2026-04-25T01:55:05Z",
+  "closed_at": "2026-04-25T01:55:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:19:34Z"
+    }
+  ]
+}

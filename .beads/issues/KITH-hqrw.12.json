@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.12",
+  "title": "outbox receipt missing read_at_unix retries forever instead of failing permanently",
+  "description": "In outbox_tick, when a receipt outbox entry has read_at_unix=None (missing required field), the code calls record_failure (backoff retry) not mark_failed. This is a permanent data corruption: the missing timestamp will never appear. The entry will be retried forever wasting CPU and log noise. Should call mark_failed to terminate the retry loop.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:25Z",
+  "updated_at": "2026-04-25T04:03:44Z",
+  "closed_at": "2026-04-25T04:03:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:25Z"
+    }
+  ]
+}

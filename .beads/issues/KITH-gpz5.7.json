@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.7",
+  "title": "replyTo validated against stale chatId not resolved chat",
+  "description": "In peer_deliver step 6, replyTo is validated by comparing referenced.chat_id == msg.chat_id (peer-supplied). In the stale-chatId path (case b), resolved_chat_id \\!= msg.chat_id. No message has chat_id == stale_id, so any replyTo attempt in this path returns 'nonexistent message' even when the reply references a valid message in the actual adopted chat. The new message is stored in resolved_chat_id but the replyTo check used the wrong chat ID, making threaded replies impossible whenever a peer sends with a stale chatId.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:15Z",
+  "updated_at": "2026-04-24T16:57:57Z",
+  "closed_at": "2026-04-24T16:57:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:15Z"
+    }
+  ]
+}

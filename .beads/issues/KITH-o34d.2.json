@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o34d.2",
+  "title": "R3: Redundant empty-ID filter in unread_message_ids initialization \u2014 design smell",
+  "description": "Lines 766-772 in event.rs filter out empty message_ids after indexing, suggesting empty IDs can leak into message_ids. While the current code gates them at read-receipt time (line 700), the second filter is a band-aid. Consider asserting or preventing empty IDs in message_ids entirely.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:23:55Z",
+  "updated_at": "2026-04-20T15:44:54Z",
+  "closed_at": "2026-04-20T15:44:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o34d",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T05:23:54Z"
+    }
+  ]
+}

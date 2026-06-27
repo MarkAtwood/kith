@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.43",
+  "title": "GOOD: auth is correct \u2014 WhoIs before lock, classify fail-closed, no auth bypass found",
+  "description": "The auth flow is well-designed: (1) WhoIs is called async BEFORE the store lock is acquired (preventing \\!Send across await). (2) classify() fails closed \u2014 store errors map to WhoIsFailed (500) not Unauthorized (401), so a DB failure cannot silently grant access. (3) The Caller extractor tests cover owner, peer, blocked, unknown, and WhoIs-failure paths. (4) senderUserId check in DeliverHandler runs BEFORE any DB write, including before the store lock is acquired. (5) ReceiptHandler verifies the message was sent by 'self' and the caller is the chat's contact_id, preventing cross-user receipt injection. No auth bypass was found.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:38Z",
+  "updated_at": "2026-04-25T08:22:55Z",
+  "closed_at": "2026-04-25T08:22:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:37Z"
+    }
+  ]
+}

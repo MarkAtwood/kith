@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vmch.1",
+  "title": "Negative regression test for old bug (sse_state_json_top_level_message_is_none) is correct design",
+  "description": "The inverted regression test asserts that top-level get(Message) returns None \u2014 if the bug reappears (server starts putting Message at root level, or parse code is rolled back), the test fails rather than silently passing. A contributor might suggest removing it as 'redundant' \u2014 it is not redundant; it is a canary for the exact failure mode that was fixed. The comment explaining the inversion is present and correct.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:27:35Z",
+  "updated_at": "2026-04-25T09:28:07Z",
+  "closed_at": "2026-04-25T09:28:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vmch",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:27:35Z"
+    }
+  ]
+}

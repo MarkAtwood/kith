@@ -1,0 +1,26 @@
+{
+  "id": "KITH-35c",
+  "title": "Integration test: offline delivery and outbox retry",
+  "description": "What: Integration test: alice sends while bob's listener is stopped; outbox row has deliveryState=pending; bob restarts; alice outbox_worker retries; delivery succeeds.\n\nAlgorithm:\n1. Start ONLY alice's instance (not bob yet)\n2. Create a placeholder for bob's address (use a random port; bind and immediately drop it to get the port number)\n3. Insert bob as alice's contact with mailboxHost pointing to the not-yet-started port\n4. Alice calls Message/set create {chatId, body='offline-test'}\n5. Trigger outbox_tick once manually (not outbox_worker, to avoid timing issues): outbox_tick(alice.store.clone(), client, 'uid-alice').await\n6. Assert: alice's outbox row still exists (delivery failed); deliveryState=pending; failure count > 0\n7. Now spawn bob's actual instance on the same port (or a known port)\n8. Wait for bob's listener to be ready (TcpStream::connect poll)\n9. Trigger outbox_tick again with a client trusting bob's cert\n10. Assert: alice's outbox row is gone (delivery succeeded); bob's store contains the message with deliveryState=Received\n\nDefensive programming:\n- Use outbox_tick (single tick) not outbox_worker (infinite loop) for test control\n- outbox_tick must be pub in kith-peer; check if it is (from existing tests)\n- Do not use sleep to 'wait for retry' \u2014 manually trigger the tick for determinism\n- Use timeout on bob-ready poll (2s max)\n- Independent oracle: message body 'offline-test' is hardcoded, not read back from alice\n\nAgent team: R + I + T + V\n\nTests: After step 6: outbox row exists with failure_count >= 1. After step 10: no outbox rows; bob has message with body='offline-test'",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:17:45Z",
+  "closed_at": "2026-04-19T17:17:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-hvl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

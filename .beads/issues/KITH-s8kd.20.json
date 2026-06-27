@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.20",
+  "title": "migrate snapshot-reads user_version but comment omits single-writer precondition",
+  "description": "migrate() reads user_version once before the loop. Comment explains ordering correctness but omits the single-writer precondition. Without single-writer, a concurrent migration between the snapshot read and loop start would cause skips. Add: 'Safe only because Store is single-writer per file \u2014 no concurrent writer can modify user_version between iterations.'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:45:44Z",
+  "updated_at": "2026-04-25T08:36:30Z",
+  "closed_at": "2026-04-25T08:36:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:45:43Z"
+    }
+  ]
+}

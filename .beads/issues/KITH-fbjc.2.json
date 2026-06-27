@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.2",
+  "title": "JMAP endpoint has no HTTP body size limit; max_size_request advertised but unenforced",
+  "description": "kithd/src/lib.rs build_app registers the axum Json extractor with no RequestBodyLimitLayer. The session advertises max_size_request=10MiB but the server never enforces it. Any tailnet peer can POST an arbitrarily large body to /jmap/api, causing full deserialization into serde_json::Value before any application code runs \u2014 trivial OOM. Fix: add tower_http::limit::RequestBodyLimitLayer::new(10*1024*1024) to the router in build_app.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:58:54Z",
+  "updated_at": "2026-04-24T05:12:13Z",
+  "closed_at": "2026-04-24T05:12:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:58:54Z"
+    }
+  ]
+}

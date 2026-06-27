@@ -1,0 +1,27 @@
+{
+  "id": "KITH-qvdl.6",
+  "title": "run(): SSE arm + Message/changes + message refresh",
+  "description": "What: Add SSE StateChange arm to tokio::select! in run(); handle Message and Chat state changes.\n\nAlgorithm:\n1. In event::run(), add sse_rx to the tokio::select! loop as: maybe_sc = sse_rx.recv() => { ... }.\n2. On Some(sc):\n   a. Set state.connection_status = ConnectionStatus::Connected (first event confirms connection is live).\n   b. If sc.type_name == \"Message\":\n      - Build JmapRequest: [\"Message/changes\", {\"accountId\":\"a-self\",\"sinceState\":state.message_state}, \"mc0\"].\n      - Call call_jmap. Parse created:Vec<String> and updated:Vec<String> from response args. Also capture newState:String.\n      - Merge created+updated into a unique set of IDs.\n      - If non-empty: call Message/get for those IDs, parse messages.\n      - For each new message whose chatId matches state.chat_ids[state.selected_chat]: append formatted line to state.messages (use same format as load_messages_for_chat).\n      - Update state.message_state = newState.\n   c. If sc.type_name == \"Chat\":\n      - Re-fetch Chat/get (same as W2A startup logic). Repopulate state.chat_list and state.chat_ids. Do not change state.selected_chat unless new list is shorter.\n3. On None (sse_rx closed): set state.connection_status = ConnectionStatus::Reconnecting. Do not quit \u2014 let the user see the status change.\n4. Handle Message/changes error type \"stateMismatch\" specially: fall back to full reload via load_messages_for_chat.\n\nDefensive programming rules:\n- Message/changes sinceState \"\" (empty): use \"s-0\" as the initial state token if message_state is empty.\n- Never panic on malformed state change type_name \u2014 unknown types are silently ignored.\n- Sanitize all incoming message bodies with sanitize_display() before adding to state.messages.\n- Deduplicate: if a message ID already appears in state.messages (by prefix match on the formatted line), replace it; do not duplicate.\n\nAgent team: R reads event.rs, app.rs, client.rs; I implements; T writes wiremock tests; V runs cargo test + clippy.\n\nTests (oracle: wiremock mock data):\n- wiremock: POST /jmap/api with Message/changes returns {created:[\"m-new\"],updated:[],newState:\"s-43\"}; Message/get returns the new message -> state.messages gains the new entry; state.message_state==\"s-43\".\n- Unit: sc.type_name==\"Unknown\" -> no panic, no state change.\n- Unit: sse_rx closed (None received) -> state.connection_status == ConnectionStatus::Reconnecting.\n- wiremock: Message/changes returns {type:\"stateMismatch\"} error -> falls back to full reload.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:24:34Z",
+  "updated_at": "2026-04-20T05:38:38Z",
+  "closed_at": "2026-04-20T05:38:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qvdl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:24:33Z"
+    },
+    {
+      "depends_on_id": "KITH-qvdl.5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:25:02Z"
+    }
+  ]
+}

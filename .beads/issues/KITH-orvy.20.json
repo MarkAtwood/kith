@@ -1,0 +1,20 @@
+{
+  "id": "KITH-orvy.20",
+  "title": "MessageEntry named struct replaces opaque 4-tuple in TUI sort path",
+  "description": "kith-tui/src/event.rs: replacing (String, String, String, String) with MessageEntry { received_at, display_line, msg_id, sender_id } is the correct abstraction level \u2014 the sort key (received_at) is now explicit, and the sort/filter/collect pipeline is readable without positional comments. A contributor might suggest reverting to a tuple for brevity, but the named fields prevent the class of bug where .0 and .1 are swapped silently.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:06:00Z",
+  "updated_at": "2026-04-24T01:31:36Z",
+  "closed_at": "2026-04-24T01:31:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:06:00Z"
+    }
+  ]
+}

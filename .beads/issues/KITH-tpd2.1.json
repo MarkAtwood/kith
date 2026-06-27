@@ -1,0 +1,21 @@
+{
+  "id": "KITH-tpd2.1",
+  "title": "probe_url: no test for malformed unclosed-bracket IPv6 input",
+  "description": "`probe_url` has a `\\!ip.starts_with('[')` guard that correctly prevents double-bracketing for pre-bracketed inputs. The guard also handles malformed unclosed-bracket inputs like `\"[fd7a::1\"` (starts with `[` but has no closing `]`): `ip.contains(':')` is true but `ip.starts_with('[')` is also true, so the else branch fires and the result is `\"https://[fd7a::1:4430/.well-known/jmap\"` \u2014 a bad URL that the HTTP client rejects gracefully returning `None` from `probe_peer`. This behavior is correct but untested. A test for `probe_url(\"[fd7a::1\", 4430)` would lock in the expected output and prevent a future refactor from accidentally producing double-bracketing or panicking on this input.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:09:31Z",
+  "updated_at": "2026-04-24T20:11:29Z",
+  "closed_at": "2026-04-24T20:11:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tpd2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:09:31Z"
+    }
+  ]
+}

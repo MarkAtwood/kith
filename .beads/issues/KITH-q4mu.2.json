@@ -1,0 +1,21 @@
+{
+  "id": "KITH-q4mu.2",
+  "title": "group chat all-or-nothing host policy breaks entire group if one member missing",
+  "description": "crates/kith-chat/src/message.rs: group chat loop uses .ok_or_else()?  on each member's host lookup. If ANY member has no mailbox_host (e.g. was added to chat_members but contact record has no host), the entire Message/set send fails with serverFail. Old behavior: silently skip members with no host (best-effort fan-out). New behavior: all-or-nothing \u2014 one bad contact blocks all senders in the group. This will generate user reports: 'group chat stopped working' with no obvious fix. Phase 1 is 1:1 only so this does not bite today, but group chat rows exist and users can create them. Policy decision should be explicit before group chat is advertised.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:59:26Z",
+  "updated_at": "2026-04-24T04:04:45Z",
+  "closed_at": "2026-04-24T04:04:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-q4mu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:59:25Z"
+    }
+  ]
+}

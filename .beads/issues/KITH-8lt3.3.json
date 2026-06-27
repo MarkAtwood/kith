@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8lt3.3",
+  "title": "queryChanges positions reflect state newer than newQueryState",
+  "description": "MessageQueryChangesHandler uses two separate lock scopes (message.rs lines 815-867 and 872-887). new_state (newQueryState) is captured inside lock 1. Positions are computed inside lock 2. Between the two locks a concurrent write (e.g. Peer/deliver) can insert a new message, advancing the DB state counter. Lock 2 then computes positions against the newer DB snapshot, while new_state still reflects the pre-insert state. The client receives position indices that are inconsistent with the newQueryState token they were given: replaying those positions against newQueryState will be off-by-one or worse. The comment at lines 869-871 claims positions come from 'the same snapshot' but that invariant is not enforced \u2014 the two lock scopes are separate and the DB state can change between them.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:44:17Z",
+  "updated_at": "2026-04-24T17:53:27Z",
+  "closed_at": "2026-04-24T17:53:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8lt3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:44:16Z"
+    }
+  ]
+}

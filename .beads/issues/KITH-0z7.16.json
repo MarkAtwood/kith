@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.16",
+  "title": "SEC6: PinnedCertVerifier avoids disabling TLS",
+  "description": "new_with_root_cert installs a custom ServerCertVerifier that accepts exactly one pinned DER byte string. The verifier still delegates verify_tls12_signature and verify_tls13_signature to the platform CryptoProvider, so the full TLS handshake and signature path runs in tests. The alternative \u2014 passing danger().accept_invalid_certs() or equivalent \u2014 would skip signature verification entirely, meaning tests would not exercise any of the TLS correctness code. The pin-by-DER approach also fails fast and clearly if the wrong certificate is presented (returns UnknownIssuer), rather than silently accepting anything.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:20:10Z",
+  "updated_at": "2026-04-19T17:27:02Z",
+  "closed_at": "2026-04-19T17:27:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:20:10Z"
+    }
+  ]
+}

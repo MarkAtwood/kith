@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.6",
+  "title": "_owner_id dead parameter in process_create",
+  "description": "kith-chat/src/chat.rs ChatSetHandler::call clones self.owner_id into _owner_id (line 143) but the variable is never used in the handler. The intent was probably to compute the deterministic chatId (now replaced with ULID). The prefixed _ suppresses the unused-variable warning. \u2014 Remove the _owner_id clone and the parameter from process_create, or if it will be used in future group-chat work, add a TODO comment explaining what it will be used for.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:20:02Z",
+  "updated_at": "2026-04-24T04:31:31Z",
+  "closed_at": "2026-04-24T04:31:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:20:02Z"
+    }
+  ]
+}

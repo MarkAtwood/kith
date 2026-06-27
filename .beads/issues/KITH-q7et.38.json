@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:59:32Z",
+  "compaction_level": 0,
+  "content_hash": "95634600845b2d41b0af5357cbe65279edc7d7537893f76734ccb3c8f232ec38",
+  "created_at": "2026-06-15T04:54:18Z",
+  "created_by": "Mark Atwood",
+  "description": "Two constants are defined independently in two separate crates with identical values:\n\nSUPPORTED_BODY_TYPES = [\"text/plain\", \"text/markdown\", \"application/jmap-chat-rich\"]\n  - crates/kith-chat/src/message.rs line 19 (const SUPPORTED_BODY_TYPES)\n  - crates/kith-peer/src/lib.rs line 26 (const SUPPORTED_BODY_TYPES)\n\nMAX_ATTACHMENTS = 20\n  - crates/kith-chat/src/message.rs line 18 (const MAX_ATTACHMENTS)\n  - crates/kith-peer/src/lib.rs line 1136 (const MAX_ATTACHMENTS inside function)\n\nA change to the supported body types or attachment limit in one crate will silently diverge from the other. The owner-send path (kith-chat) and the peer-deliver path (kith-peer) would then enforce different limits.\n\nFix: move SUPPORTED_BODY_TYPES and MAX_ATTACHMENTS to kith-core (alongside the existing MAX_BODY_BYTES, MAX_ATTACHMENT_BYTES constants) and import them in both kith-chat and kith-peer.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.38",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "SUPPORTED_BODY_TYPES and MAX_ATTACHMENTS duplicated in kith-chat and kith-peer without shared source of truth",
+  "updated_at": "2026-06-15T15:59:32Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:17Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

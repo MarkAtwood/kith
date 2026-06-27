@@ -1,0 +1,22 @@
+{
+  "close_reason": "31 tests for threading, expiry, deletion, edit history",
+  "closed_at": "2026-06-13T19:54:47Z",
+  "compaction_level": 0,
+  "content_hash": "07f250414a4ccc0043420f60defc8a61e5864ae1389b462970c1e5648e103025",
+  "created_at": "2026-06-13T19:28:29Z",
+  "created_by": "Mark Atwood",
+  "description": "Threading: thread_root_id FK constraint behavior, orphaned replies when root deleted (ON DELETE SET NULL), populate_reply_counts accuracy, unread_reply_count after mark_read. Expiry: sender_expires_at future validation, delete_expired removes correct messages, delete_expired leaves non-expired, burn_on_read flag round-trip. Peer/deliver with threading+expiry fields in wire format. ~12 tests.",
+  "ephemeral": 0,
+  "id": "KITH-6a2n",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add missing tests for threading and expiry store layer",
+  "updated_at": "2026-06-13T19:54:47Z"
+}

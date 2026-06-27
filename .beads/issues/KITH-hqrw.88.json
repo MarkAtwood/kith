@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.88",
+  "title": "kith-jmap: error_status maps notFound to 404 but method-level notFound must stay HTTP 200",
+  "description": "error_status() maps 'notFound' to StatusCode::NOT_FOUND (404) and 'accountNotFound' to StatusCode::NOT_FOUND. However error_status() is only called from request_error(), which is used for request-level (pre-dispatch) failures, not method-level errors. Method-level errors go through error_invocation() which places them inside methodResponses at HTTP 200 per RFC 8620 \u00a73.4. So the notFound mapping in error_status() would only be triggered if a caller explicitly uses request_error(JmapError::not_found()) for a pre-dispatch error. RFC 8620 \u00a77.1 says notFound is a method-level error, not a request-level error. Using it as a request-level error (which would return HTTP 404) is incorrect per the RFC. The error_status() match arm for notFound should either be removed (it has no valid caller) or the function should be documented to only accept request-level error types.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:42:13Z",
+  "updated_at": "2026-04-25T05:30:38Z",
+  "closed_at": "2026-04-25T05:30:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:42:13Z"
+    }
+  ]
+}

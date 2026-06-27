@@ -1,0 +1,20 @@
+{
+  "id": "KITH-8my.2",
+  "title": "kith-core: add node_name to Identity for Contact bootstrap",
+  "description": "What: Add pub node_name: String to the Identity struct in kith-core so that Peer/deliver handlers can obtain the sender's MagicDNS hostname (needed for ContactStore::upsert peer_mailbox_host).\n\nAlgorithm:\n1. Edit crates/kith-core/src/auth.rs: add pub node_name: String field to Identity struct (after display_name)\n2. Update all Identity { ... } construction sites in kith-core tests to include node_name\n3. Edit crates/kithd/src/auth.rs: populate node_name from WhoIsResponse.node.name when building Identity in authorize()\n4. Edit crates/kithd/src/extractors.rs: populate node_name in Identity constructed in FromRequestParts impl\n5. Update all Identity construction sites in kithd tests (auth.rs, extractors.rs, events.rs) to include node_name\n6. Run: cargo test --workspace\n7. Run: cargo clippy --all-features -- -D warnings\n\nDefensive rules:\n- node_name comes from WhoIs node.name (Tailscale MagicDNS, trusted); it is NOT from request body\n- If node.name is empty, use empty string; callers must handle empty node_name gracefully (fallback to peer_user_id lookup)\n- No PII (user_id) in log statements; node_name in logs is acceptable for debugging\n- Do NOT normalize or parse node_name; store verbatim\n\nAgent team: Researcher R reads Identity usage sites. Implementer I makes the additive change. Validator V runs full workspace test suite.\n\nTests:\n- Condition: authorize() populates node_name from WhoIsNode.name; oracle: known WhoIsNode.name value in test fixture; assertion: identity.node_name == expected\n- Condition: empty node.name stored verbatim; oracle: empty string literal; assertion: identity.node_name.is_empty()",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:54:08Z",
+  "updated_at": "2026-04-19T08:59:20Z",
+  "closed_at": "2026-04-19T08:59:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:54:08Z"
+    }
+  ]
+}

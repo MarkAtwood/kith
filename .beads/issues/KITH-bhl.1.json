@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bhl.1",
+  "title": "Add sha2 and thiserror to workspace Cargo.toml",
+  "description": "What: Add sha2 and thiserror workspace deps, and pre-populate kith-core lib.rs module structure.\n\nAlgorithm:\n1. Edit /home/mark/WORK/KITH/Cargo.toml [workspace.dependencies]: add\n   sha2 = \"0.10\"\n   thiserror = \"1\"\n2. Edit /home/mark/WORK/KITH/crates/kith-core/Cargo.toml [dependencies]: add\n   sha2.workspace = true\n   thiserror.workspace = true\n3. Write /home/mark/WORK/KITH/crates/kith-core/src/lib.rs with exactly:\n   pub mod auth;\n   pub mod chat;\n   pub mod contact;\n   pub mod error;\n   pub mod jmap;\n   pub mod message;\n   pub mod resultref;\n   (Each module file will be created by its respective implementation bead.)\n4. Create stub files for each module so cargo check passes:\n   For each of: auth, chat, contact, error, jmap, message, resultref\n   Write src/<name>.rs containing a single comment: // TODO: implement\n5. Run: cargo check -p kith-core\n6. Verify sha2 and thiserror appear in Cargo.lock\n\nDefensive programming rules:\n- Use exact major version pins (sha2 = \"0.10\", thiserror = \"1\")\n- Do not add any features beyond what is needed\n\nAgent team: single Implementer agent.\n\nTests: cargo check -p kith-core exits 0.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:57:48Z",
+  "updated_at": "2026-04-19T05:00:32Z",
+  "closed_at": "2026-04-19T05:00:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:57:47Z"
+    }
+  ]
+}

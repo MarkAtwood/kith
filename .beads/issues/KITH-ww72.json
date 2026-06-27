@@ -1,0 +1,31 @@
+{
+  "close_reason": "kith-store fixed, 108 tests pass",
+  "closed_at": "2026-06-13T14:01:57Z",
+  "compaction_level": 0,
+  "content_hash": "965ff4d771490c49e61c94ab146093e256d1ce02287eee8d73a97e449bcdc1cb",
+  "created_at": "2026-06-13T13:48:19Z",
+  "created_by": "Mark Atwood",
+  "description": "Update row_to_message, row_to_chat, row_to_contact. Update delivery_state_str/parse_delivery_state. Update all insert functions. Handle Id/UTCDate/SenderId/ChatKind newtypes.",
+  "ephemeral": 0,
+  "id": "KITH-ww72",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Phase 2: Fix kith-store for jmap-types migration",
+  "updated_at": "2026-06-13T14:01:57Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:48:26Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-dhgl",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

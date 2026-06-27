@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.8",
+  "title": "Message/set: sentAt from owner client stored as-is with no validation or clamping",
+  "description": "process_create (message.rs:391-394) extracts sentAt as an optional string and passes it directly to insert_outbound_message as sent_at_peer. No RFC 3339 validation, no future-date clamping, no past-date sanity check. The readAt field has a clamp (line 627: min(now_unix + 60)), but sentAt has none. An owner client can supply sentAt: '1970-01-01T00:00:00Z' or sentAt: '2099-01-01T00:00:00Z'. The peer/architecture doc says sentAt from peers is untrusted, but sentAt from the owner client is also unvalidated. This will corrupt sort order in chat UIs. Fix: validate sentAt as RFC 3339 and apply a similar clamp (e.g. reject if > now + 5 minutes or < some reasonable past bound).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:29Z",
+  "updated_at": "2026-04-25T05:42:13Z",
+  "closed_at": "2026-04-25T05:42:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:29Z"
+    }
+  ]
+}

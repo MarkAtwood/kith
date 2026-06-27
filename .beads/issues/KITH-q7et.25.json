@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "0cb453f7bf10d357104ba1494fbc24389886b3026311a0ac996e7efc461f8102",
+  "created_at": "2026-06-15T04:53:45Z",
+  "created_by": "Mark Atwood",
+  "description": "kithd/src/identity_dev.rs is gated behind #[cfg(any(test, feature = 'test-utils'))] (confirmed in kithd/src/lib.rs:25-26). The DevIdentityProvider authenticates every inbound connection as a fixed, hardcoded identity with no actual verification. This is correct for test isolation, but the test-utils feature flag means it can be compiled into any binary that enables that feature \u2014 including an accidentally mis-configured production build. The test-utils feature should be documented as 'must never be enabled in production' and ideally enforced via a compile-time cfg check that emits a warning or error when compiled without the test profile. Consider adding a #[cfg(not(feature = 'production'))] guard or a doc comment on the feature in Cargo.toml that explicitly states this is a security boundary.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.25",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "DevIdentityProvider accessible via test-utils feature flag",
+  "updated_at": "2026-06-19T20:45:44Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:45Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

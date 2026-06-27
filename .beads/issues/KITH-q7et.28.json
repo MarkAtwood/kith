@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "7eba4be20dd517a165172c7876d4a2ab9a28ed8cbe662e8e634ec6d44bd27e0c",
+  "created_at": "2026-06-15T04:53:54Z",
+  "created_by": "Mark Atwood",
+  "description": "kithd/src/main.rs lines 377-410: when tailnet binding fails and KITHD_BIND_ADDR is set, the daemon falls back to plain HTTP (no TLS) on the configured fallback address. In this mode, all identity verification still goes through TailscaleTransport (which calls WhoIs on the peer IP), but connections arrive over cleartext HTTP rather than TLS. A man-in-the-middle on the same LAN segment or network path could read message content and inject/replay requests. The code comments acknowledge this is a dev-only path, but there is no compile-time or runtime assertion that enforces this. Recommendation: emit a prominent runtime warning that includes 'INSECURE: plain HTTP mode active; not suitable for production' when this fallback path is taken, and consider refusing to start when both KITHD_BIND_ADDR is set and KITHD_ALLOW_PLAINTEXT is not explicitly set to '1'.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.28",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "Plain HTTP fallback exposes full API without transport-layer auth",
+  "updated_at": "2026-06-19T20:45:45Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:54Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

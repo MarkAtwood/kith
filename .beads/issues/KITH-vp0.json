@@ -1,0 +1,32 @@
+{
+  "id": "KITH-vp0",
+  "title": "kith-peer: outbox worker loop",
+  "description": "What: Implement the outbox worker loop as an async tokio task that polls OutboxStore.get_due() and attempts Peer/deliver to each due recipient.\n\nAlgorithm:\n1. Define async fn outbox_worker(store: Arc<Mutex<Store>>, client: PeerHttpClient) -> ! (never returns)\n2. Loop:\n   a. Sleep 30 seconds via tokio::time::sleep(Duration::from_secs(30))\n   b. Get now_unix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64\n   c. Acquire store lock; call store.outbox().get_due(now_unix) -> on Err: log \"outbox get_due failed: {err}\", continue loop\n   d. Release store lock before HTTP calls\n   e. For each OutboxEntry in due list (process serially in Phase 1):\n      i. Acquire store lock; look up contact by entry.peer_user_id via store.contacts().get_by_peer_user_id; release lock\n      ii. If contact not found or contact.blocked: call outbox.record_failure(&entry.message_id, \"contact not found or blocked\", now_unix); continue\n      iii. Build peer JMAP URL: format!(\"https://{}/jmap/api\", contact.mailbox_host)\n      iv. Acquire store lock; call store.messages().get(&entry.message_id) to load message payload; release lock\n      v. Call client.deliver(&url, &message_payload).await\n      vi. On Ok: acquire lock; call store.outbox().mark_delivered(&entry.message_id) and store.messages().update_delivery_state(&id, &DeliveryState::Delivered, Some(now_unix)); release lock; log \"delivered {id}\"\n      vii. On Err: acquire lock; call store.outbox().record_failure(&entry.message_id, &err.to_string(), now_unix); release lock; log \"delivery failed {id}: {category}\"\n3. Never unwrap() on lock acquisition; the Mutex is fair and should not poison in normal operation\n\nDefensive rules:\n- NEVER hold store lock across an .await (deadlock risk)\n- Log error category, NOT message content or full URL\n- Must not panic on network error; log and continue to next entry\n- Contact must be re-validated before each delivery attempt (contact may have been blocked since enqueue)\n- Phase 1: process due entries serially (one at a time); concurrent delivery is Phase 2\n\nAgent team: Researcher R reads OutboxStore, MessageStore, ContactStore signatures. Implementer I writes outbox_worker function. Tester T writes tests verifying retry scheduling and success path using an in-memory SQLite store + mock PeerHttpClient. Validator V runs cargo test + clippy.\n\nTests (oracle = kith-architecture.md outbox retry spec):\n- Due entry with valid contact -> deliver called, mark_delivered called, outbox row deleted\n- Due entry with blocked contact -> record_failure called, deliver NOT called, outbox row stays with incremented attempt_count\n- Network error -> record_failure called with error string; subsequent get_due respects next_attempt_at backoff\n- 10th failure -> record_failure internally calls mark_failed; message.delivery_state = Failed",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T09:18:43Z",
+  "closed_at": "2026-04-19T09:18:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8my",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-efh",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-kmn",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

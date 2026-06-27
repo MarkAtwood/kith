@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.15",
+  "title": "SSE parser: multi-line data field drops earlier lines",
+  "description": "parse_sse_event loops over event lines but overwrites the 'data' variable on each \"data:\" prefix match (line 133). Per RFC 6297 (EventSource spec \u00a72.2), if a message contains multiple \"data:\" lines, they should be concatenated with \\n between them. Currently only the last \"data:\" line is used; earlier lines are lost.\n\nWire format example:\n  event: state\n  data: {\"changed\":\n  data: {\"a-self\":{\"Message\":\"s-42\"}}}\n\nCurrent behavior: Only the second line is parsed.\nExpected behavior: Both lines are concatenated and parsed as complete JSON.\n\nImpact: Low (kithd never sends multi-line data), but violates SSE spec compliance.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:05:28Z",
+  "updated_at": "2026-04-20T05:08:49Z",
+  "closed_at": "2026-04-20T05:08:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:05:27Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.14",
+  "title": "Chat/set create loop acquires store lock per entry, not per request",
+  "description": "ChatSetHandler acquires and drops the Mutex<Store> inside the for-loop over create entries. All other handlers acquire once per method call. The per-entry acquire-release creates an implicit invariant: each entry sees a potentially-different state of the store (state could advance between entries in a multi-create call). The loop should hold one lock for all entries, or the per-entry semantic should be documented explicitly.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:48Z",
+  "updated_at": "2026-04-24T17:00:34Z",
+  "closed_at": "2026-04-24T17:00:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:47Z"
+    }
+  ]
+}

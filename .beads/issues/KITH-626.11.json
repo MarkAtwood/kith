@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.11",
+  "title": "Test oracle is external spec, not derived from code under test",
+  "description": "Integration tests (integration.rs comments on lines 254-255, 283-284) explicitly state JSON fixtures are 'hand-constructed from the Tailscale LocalAPI spec \u2014 not derived from running the code under test.' This is correct test discipline per project rules. Test vectors are independent oracles. Unit tests (lib.rs lines 229-250) also use spec-based fixtures. Keep this discipline when expanding tests.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:27Z",
+  "updated_at": "2026-04-19T19:51:55Z",
+  "closed_at": "2026-04-19T19:51:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:27Z"
+    }
+  ]
+}

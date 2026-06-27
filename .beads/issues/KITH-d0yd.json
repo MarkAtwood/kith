@@ -1,0 +1,12 @@
+{
+  "id": "KITH-d0yd",
+  "title": "kith-store: negative i64 timestamps silently wrap to large u64 values",
+  "description": "Timestamp columns (created_at, delivered_at, read_at, first_seen_at, last_seen_at, last_message_at) are stored as i64 but cast directly to u64 via \"x as u64\" in row_to_message, row_to_chat, row_to_contact. No CHECK constraint enforces non-negativity. A negative value (clock skew, test data, corruption) wraps to a huge u64 (~500M years CE) and produces a nonsensical RFC 3339 timestamp with no error. Same pattern as size_bytes which already has an explicit IntegralValueOutOfRange check. Fix: add .max(0) guards or explicit error returns for negative timestamps, consistent with the size_bytes pattern.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:33:01Z",
+  "updated_at": "2026-04-25T02:39:56Z",
+  "closed_at": "2026-04-25T02:39:56Z"
+}

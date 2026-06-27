@@ -1,0 +1,27 @@
+{
+  "id": "KITH-sv31",
+  "title": "Add senderMsgId to Message, implement idempotent Peer/deliver",
+  "description": "The I-D distinguishes two ULIDs on every message: id (assigned by the receiving mailbox) and senderMsgId (assigned by the sender, carried in Peer/deliver). For owner-composed messages, both are the same ULID.\\n\\nThis enables idempotent delivery: if Peer/deliver arrives twice with the same senderMsgId for the same chat, the second delivery is silently dropped and the original receivedAt is returned.\\n\\nkith-core/src/message.rs:\\n- Add sender_msg_id: String field (serde: senderMsgId)\\n\\nkith-store/src/message.rs:\\n- insert gains sender_msg_id: &str parameter\\n- Add find_by_sender_msg_id(chat_id, sender_msg_id) -> Option<Message> for idempotency check\\n\\nkith-store/src/lib.rs:\\n- insert_message_with_attachments gains sender_msg_id param\\n\\nkith-peer/src/lib.rs:\\n- Receiver generates fresh ULID as id; sender's msg.id becomes sender_msg_id\\n- Before inserting: check find_by_sender_msg_id; if found return accepted=true with stored receivedAt\\n\\nkith-chat/src/ (Message/set create):\\n- Owner-composed messages: sender_msg_id = id (same ULID)\\n\\nDepends on: KITH-j4v2, KITH-5nj3",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:51:01Z",
+  "updated_at": "2026-04-23T23:36:29Z",
+  "closed_at": "2026-04-23T23:36:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5nj3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:20Z"
+    },
+    {
+      "depends_on_id": "KITH-j4v2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:20Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "KITH-gt3q",
+  "title": "Review loop 7: kithd crate deep review",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:35:20Z",
+  "updated_at": "2026-04-25T08:30:56Z",
+  "closed_at": "2026-04-25T08:30:56Z",
+  "notes": "Confidence: 15% chance of missed bug. Uncertainty driven by: (1) kith-peer Peer/deliver validation path not read in this pass (already reviewed in loop 6), (2) the graceful-shutdown drain under concurrent accept + fast-exit was analyzed informally not proven. Would raise confidence if: integration test of concurrent shutdown with in-flight connections, and a review of how kith-store state advance interacts with the sessionState pre-capture in jmap_handler.\nMaintainer risk: MEDIUM \u2014 The core auth path (WhoIs \u2192 classify \u2192 role check) is solid and well-tested. The main risks are: (1) silent base_url fallback that breaks downloadUrl without any indication (gt3q.5), (2) jmap_handler session_state captured before dispatch means clients always get a one-step-stale state token (gt3q.4), (3) discovery overwriting owner-set mailbox_host on every round (KITH-hqrw.22, existing). The SSRF guard and TLS pinning are correct and well-tested."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bnk1.4",
+  "title": "get_querychanges_since_for_chat CTE ROW_NUMBER() scans all messages in chat",
+  "description": "The all_in_chat CTE computes ROW_NUMBER() OVER (ORDER BY created_at DESC, id DESC) across ALL messages in the chat, not just the new ones. For a chat with 100k messages and maxChanges=10, this still scans 100k rows to compute positions. Acceptable in Phase 1 (single-user, small chats), but will hurt at scale. Mitigation: at Phase 1 chat sizes (<10k messages), this is a sub-millisecond query. Flag for Phase 2 optimization if chats grow large.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:11:25Z",
+  "updated_at": "2026-04-24T22:14:36Z",
+  "closed_at": "2026-04-24T22:14:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bnk1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:11:24Z"
+    }
+  ]
+}

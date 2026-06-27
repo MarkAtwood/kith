@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.49",
+  "title": "Contact/set old_state TOCTOU with multi-threaded tokio runtime",
+  "description": "In contact.rs ChatContactSetHandler, old_state is captured in a dedicated lock scope that is dropped before the first process_create or process_update call (line 176-181). Each process_create/process_update then acquires its own lock scope. With tokio::main's default multi-threaded scheduler, a concurrent Peer/deliver (which calls contacts().upsert) can acquire the Mutex between the old_state drop and the first mutation, advancing the contacts state counter. This makes the oldState in the response describe a state that is no longer the state just before this call's mutations, violating RFC 8620 \u00a75.3. Compare: ChatSetHandler in chat.rs holds the lock across old_state + all creates in one scope. MessageSetHandler uses a lazy old_state_cell captured inside the first lock scope. Contact/set should adopt one of these patterns.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:17:35Z",
+  "updated_at": "2026-04-25T01:54:25Z",
+  "closed_at": "2026-04-25T01:54:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:17:35Z"
+    }
+  ]
+}

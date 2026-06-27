@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.9",
+  "title": "SEC3: Error match arms in blob_download_handler ordered by implementation detail, not semantics",
+  "description": "blob_download_handler error matches (lib.rs lines 237-261) interleave categories:\n\n- Network errors (Timeout, Network)\n- HTTP status mapping (HttpError)\n- Integrity errors (HashMismatch, SizeExceeded)\n- Validation errors (HostRejected, BlobIdInvalid)\n- Store errors (BlobStore)\n\nThis grouping is confusing. Semantically clearer order: validation first (reject early), network, then integrity.\n\nLow priority but improves readability. Group arms by responsibility: what should fail early (validation), what indicates peer unavailability (network), what indicates data corruption (integrity).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:42Z",
+  "updated_at": "2026-04-20T17:21:08Z",
+  "closed_at": "2026-04-20T17:21:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:42Z"
+    }
+  ]
+}

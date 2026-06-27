@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.21",
+  "title": "outbox_worker panic kills delivery silently with no restart",
+  "description": "outbox_worker() (kith-peer/src/lib.rs:1372) runs forever as a tokio task. If any code it calls panics (e.g., a store operation, the serializer, or a future poll), the task aborts and the JoinHandle yields JoinError. If the caller discards the handle (likely with tokio::spawn), the outbox dies silently: no more messages are ever delivered, no log at ERROR level, no restart. Fix: catch panics via tokio::task::spawn + JoinHandle, or use a supervision loop.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:42Z",
+  "updated_at": "2026-04-25T01:29:40Z",
+  "closed_at": "2026-04-25T01:29:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:42Z"
+    }
+  ]
+}

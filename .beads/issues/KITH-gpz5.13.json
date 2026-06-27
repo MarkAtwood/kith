@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.13",
+  "title": "mark_delivered does not update messages.delivery_state",
+  "description": "OutboxStore::mark_delivered only deletes the outbox row and does NOT update messages.delivery_state to delivered. If a caller uses mark_delivered instead of complete_delivery for a successful message delivery, the message is stuck in pending forever with no outbox row and no retry. Both methods are pub with similar names; the critical distinction is documented only in a comment on complete_delivery, not in mark_delivered's own docstring.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:44Z",
+  "updated_at": "2026-04-24T16:54:47Z",
+  "closed_at": "2026-04-24T16:54:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:43Z"
+    }
+  ]
+}

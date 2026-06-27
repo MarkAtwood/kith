@@ -1,0 +1,13 @@
+{
+  "id": "KITH-z9ly",
+  "title": "Phase 2 tail: group chat delivery + read receipts",
+  "description": "Complete the two remaining Phase 2 items: (1) N-participant group chat delivery (KITH-kii) and (2) outbound read receipt sending via OutboxStore (KITH-506). These were left open after the Phase 2 peer delivery commit.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T02:43:34Z",
+  "updated_at": "2026-04-20T03:16:12Z",
+  "closed_at": "2026-04-20T03:16:12Z"
+}

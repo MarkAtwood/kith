@@ -1,0 +1,19 @@
+{
+  "id": "KITH-hqrw.41",
+  "title": "DeliverHandler step comments out of order vs actual code",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:27Z",
+  "updated_at": "2026-04-25T08:36:24Z",
+  "closed_at": "2026-04-25T08:36:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:27Z"
+    }
+  ]
+}

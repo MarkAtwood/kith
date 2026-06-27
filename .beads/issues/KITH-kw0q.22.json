@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.22",
+  "title": "session_handler: KITH_BASE_URL deprecation uses eprintln! instead of tracing::warn",
+  "description": "session_handler reads KITH_BASE_URL and prints deprecation notice via eprintln!, bypassing the structured tracing infrastructure. Log aggregators capturing tracing output will never see this warning. No removal timeline documented. Fix: replace eprintln! with tracing::warn! so the notice appears in structured logs; add a comment with a planned removal version.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:11:59Z",
+  "updated_at": "2026-04-24T15:34:47Z",
+  "closed_at": "2026-04-24T15:34:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:11:58Z"
+    }
+  ]
+}

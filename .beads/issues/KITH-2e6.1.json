@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.1",
+  "title": "SEC0: parse_sse_frame drops all but last data: line",
+  "description": "The SSE spec (html.spec.whatwg.org/multipage/server-sent-events.html) allows multiple 'data:' lines in a single frame, which should be concatenated with newlines. Current implementation at watch.rs:69-70 only stores the LAST data line, discarding all previous ones.\n\nEffect: SSE frames with multi-line data payloads will be corrupted. Example:\n  data: {\"msg\":\n  data: \"hello\"}\nWill only extract '\"hello\"}' instead of the full JSON.\n\nFix: Accumulate data lines into a Vec<String> and join them with newlines before returning, similar to how event_type and id are handled.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:17:58Z",
+  "updated_at": "2026-04-19T19:26:08Z",
+  "closed_at": "2026-04-19T19:26:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:17:58Z"
+    }
+  ]
+}

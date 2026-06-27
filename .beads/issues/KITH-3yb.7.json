@@ -1,0 +1,21 @@
+{
+  "id": "KITH-3yb.7",
+  "title": "kith-peer: build_peer_deliver_request includes attachments",
+  "description": "What: Extend build_peer_deliver_request to include the attachments array in the outbound JMAP Peer/deliver request.\n\nAlgorithm:\n1. Add parameter attachments: &[Attachment] to build_peer_deliver_request signature.\n2. In the JSON message object, add \"attachments\": serde_json::to_value(attachments) (attachments serializes to array of {blobId, filename, contentType, size, sha256}).\n3. In outbox_tick, when building the request for each outbox entry, fetch message.attachments (via store.messages().get + store.attachments().list_by_message) and pass to build_peer_deliver_request.\n4. Existing callers (tests) must pass &[] for empty attachments.\n\nDefensive rules: no unwrap on serialization; attachments are metadata only (blob bytes not sent in-band, fetched lazily by recipient); empty array is valid.\n\nAgent team: R reads build_peer_deliver_request signature and outbox_tick call sites; I updates signature and all callers; T updates existing build_peer_deliver_request tests to pass empty slice; adds test: build request with 1 attachment, verify JSON output contains correct fields; V runs cargo test -p kith-peer + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:56:34Z",
+  "updated_at": "2026-04-20T00:03:55Z",
+  "closed_at": "2026-04-20T00:03:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:56:34Z"
+    }
+  ]
+}

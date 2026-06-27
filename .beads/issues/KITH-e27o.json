@@ -1,0 +1,11 @@
+{
+  "id": "KITH-e27o",
+  "title": "Windows desktop client: native kith app for Windows",
+  "description": "A native desktop client for kith on Windows.\n\nScope:\n- Connect to user's kithd over tailnet (tailscaled already running on Windows)\n- Contact list, chat list, message thread (1:1 and group)\n- Send/receive messages; read receipts; attachment upload/download\n- Windows toast notifications (WinRT notification APIs)\n- System tray icon with unread count\n- EventSource for live push\n- Windows file explorer integration for attachment save/open\n- Target: Tauri (Rust + WebView2, natural fit on Windows) OR WinUI 3 for fully native feel; decide in research phase\n- Distribution: .msi / MSIX installer; Microsoft Store submission optional",
+  "status": "deferred",
+  "priority": 2,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:41:49Z",
+  "updated_at": "2026-04-24T02:25:38Z"
+}

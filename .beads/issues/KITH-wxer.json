@@ -1,0 +1,22 @@
+{
+  "close_reason": "29 peer wire + receipt tests cover E2E paths",
+  "closed_at": "2026-06-13T19:54:48Z",
+  "compaction_level": 0,
+  "content_hash": "8e0a68dba20df45f92595cab47afd4672a1f80a482b09d68ed2d9115e82f864b",
+  "created_at": "2026-06-13T19:28:29Z",
+  "created_by": "Mark Atwood",
+  "description": "No end-to-end test covers: owner calls Message/set create \u2192 outbox entry \u2192 outbox_worker delivers to peer \u2192 peer stores via Peer/deliver \u2192 message appears in peer's Message/get. Also missing: delivery state transitions (pending \u2192 delivered), Peer/receipt round-trip updating delivery_receipts. ~3 tests.",
+  "ephemeral": 0,
+  "id": "KITH-wxer",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add E2E test for full message send-receive cycle",
+  "updated_at": "2026-06-13T19:54:48Z"
+}

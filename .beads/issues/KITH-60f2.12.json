@@ -1,0 +1,21 @@
+{
+  "id": "KITH-60f2.12",
+  "title": "kithctl watch: notify-send exit code ignored \u2014 silent failure hides missing notify-send binary",
+  "description": "fire_notification (watch.rs line 198) calls Command::new('notify-send').status() and only checks Err from spawning the process \u2014 not the exit code. If notify-send exits with a non-zero code (e.g., no notification daemon running), the error is silently discarded. The log message 'notify-send failed' only fires when the process cannot be spawned at all (binary not found). Failed desktop notification sends produce no diagnostic output to help the operator understand why notifications are not appearing.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:16:35Z",
+  "updated_at": "2026-04-25T08:17:48Z",
+  "closed_at": "2026-04-25T08:17:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:16:35Z"
+    }
+  ]
+}

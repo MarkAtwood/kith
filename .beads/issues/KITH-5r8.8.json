@@ -1,0 +1,20 @@
+{
+  "id": "KITH-5r8.8",
+  "title": "HTTP error status mapping ensures RFC 8620 compliance",
+  "description": "error_status function (lib.rs:62-70) maps JMAP error types to correct HTTP status codes per RFC 8620 \u00a77.1. RequestError wrapper (lib.rs:76-90) ensures request-level errors are HTTP status + body; method-level errors always HTTP 200 per RFC 8620 \u00a73.4. This prevents confusion between request failures and method failures.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:41:03Z",
+  "updated_at": "2026-04-19T07:46:04Z",
+  "closed_at": "2026-04-19T07:46:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5r8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:41:02Z"
+    }
+  ]
+}

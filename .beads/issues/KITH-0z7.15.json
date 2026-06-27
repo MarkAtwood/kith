@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.15",
+  "title": "SEC6: hybrid in-process+TCP two-instance harness",
+  "description": "spawn_test_pair gives alice an in-process router (axum oneshot, no TCP) and bob a real TLS TCP listener. This split is non-obvious but well-chosen: alice's owner-API calls avoid all network overhead and TLS setup, while bob's listener exercises the real TLS accept path that outbox_worker uses in production. A fully in-process pair would not test TLS delivery at all; two real TCP listeners would double setup cost. The asymmetry is intentional and documented in the harness module comment.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:20:03Z",
+  "updated_at": "2026-04-19T17:27:05Z",
+  "closed_at": "2026-04-19T17:27:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:20:02Z"
+    }
+  ]
+}

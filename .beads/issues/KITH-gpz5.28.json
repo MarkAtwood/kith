@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.28",
+  "title": "discovery.rs: new Hyper client and TLS config per probe wastes allocations",
+  "description": "probe_peer builds a brand-new rustls::ClientConfig and hyper_util::Client on every call. run_discovery_round spawns up to PROBE_CONCURRENCY=10 concurrent probe tasks, each calling probe_peer, so each round allocates up to 10 independent TLS configs and HTTP clients. The client and TLS config could be constructed once per discovery round (or once per process) and shared across probe tasks via Arc. This would reduce allocations and connection pool fragmentation proportionally to the number of peers.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:52:16Z",
+  "updated_at": "2026-04-24T17:02:02Z",
+  "closed_at": "2026-04-24T17:02:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:52:15Z"
+    }
+  ]
+}

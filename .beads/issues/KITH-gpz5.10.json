@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.10",
+  "title": "senderUserId not validated as non-empty",
+  "description": "peer_deliver step 2 checks identity.user_id == msg.sender_user_id but does not guard against both being empty strings. If Tailscale WhoIs returns an empty UserProfile.ID (e.g. Headscale OIDC misconfiguration), an empty senderUserId passes the mismatch check and is stored as contact_id. Subsequent queries on contact_id='' corrupt the contacts table and make the affected chat inaccessible. A non-empty assertion should be applied to identity.user_id before any DB write.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:31Z",
+  "updated_at": "2026-04-24T16:58:03Z",
+  "closed_at": "2026-04-24T16:58:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:31Z"
+    }
+  ]
+}

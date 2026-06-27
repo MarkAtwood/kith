@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ajt.8",
+  "title": "Decision: .cargo/config.toml musl linker configuration",
+  "description": ".cargo/config.toml explicitly names the musl linkers (x86_64-linux-musl-gcc, aarch64-linux-musl-gcc) for their respective targets. Prevents mysterious link failures when cross-compiling to musl, and documents the exact toolchain required. This is deployment-critical since the target is a static musl binary.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:46:48Z",
+  "updated_at": "2026-04-19T04:51:03Z",
+  "closed_at": "2026-04-19T04:51:03Z",
+  "notes": "opinion: no engineering basis \u2014 rationale note affirming .cargo/config.toml musl linker config is correct. Not a finding. No action needed.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ajt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:46:47Z"
+    }
+  ]
+}

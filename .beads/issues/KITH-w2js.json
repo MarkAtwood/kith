@@ -1,0 +1,12 @@
+{
+  "id": "KITH-w2js",
+  "title": "kith-peer: replyTo validated after chat row created, leaving orphans on failure",
+  "description": "In Peer/deliver, chat resolution (which may CREATE a new chat row) executes at lines ~184-237, then replyTo validation at ~244-261. If replyTo fails validation, the newly-created chat row is left orphaned. The UNIQUE INDEX on (contact_id, kind=direct) limits this to one orphaned row per sender, but it still violates the stated step ordering (step 6=validate replyTo, step 7=get/create chat) and leaves DB in inconsistent state. Fix: wrap chat creation + replyTo validation in a single transaction so replyTo failure rolls back the chat creation.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:16Z",
+  "updated_at": "2026-04-25T02:55:04Z",
+  "closed_at": "2026-04-25T02:55:04Z"
+}

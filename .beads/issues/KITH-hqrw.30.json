@@ -1,0 +1,19 @@
+{
+  "id": "KITH-hqrw.30",
+  "title": "EXPECTED_CHAT_ID constant in harness appears orphaned",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:32:39Z",
+  "updated_at": "2026-04-25T08:32:35Z",
+  "closed_at": "2026-04-25T08:32:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:32:39Z"
+    }
+  ]
+}

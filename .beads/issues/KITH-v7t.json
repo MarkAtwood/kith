@@ -1,0 +1,14 @@
+{
+  "id": "KITH-v7t",
+  "title": "Review round 1: kithd HTTP daemon",
+  "description": "Review round 1 for KITH-it6 epic. Reviewers file findings directly into this epic.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:28:52Z",
+  "updated_at": "2026-04-19T16:37:46Z",
+  "closed_at": "2026-04-19T16:37:46Z",
+  "notes": "Maintainer risk: MEDIUM-HIGH. Seven concrete issues filed. Two are operationally severe: (1) the accept loop dying silently while the process continues (KITH-v7t.14) \u2014 the daemon becomes deaf with no log signal; (2) TLS handshake errors at debug level (KITH-v7t.16) \u2014 cert expiry is invisible in production logs. The remaining five are observability/discoverability gaps: no startup config summary, no cert load/generate log, unexplained _events_rx drop, KITH_BIND_ADDR outside Config with wrong prefix, and legacy env vars silently accepted. None require architectural changes \u2014 all are one-liners or small refactors. No fabricated concerns; the accept loop and TLS log-level issues each have a direct failure path for a solo operator to hit.\nConfidence: 15% chance of missed bug. The two P0s (TOCTOU key file permissions, no graceful TLS drain) are real and substantive. The P4 decision records are accurate. v7t.8 (KITH_ vs KITHD_ naming convention undocumented) and v7t.6 (KITH_BIND_ADDR security downgrade inadequately flagged) are real P3-level maintainability and security-clarity concerns filed at P4. v7t.9 (Box::leak in test helpers) is opinion and has been labeled as such. No contradictions in the findings except that v7t.3 (decision record) and v7t.1 (bug) both address tls.rs key file handling \u2014 they are not in conflict: v7t.1 correctly identifies the TOCTOU window during File::create->set_permissions, while v7t.3 correctly notes chmod happens before write; both can be true simultaneously. Running out of real complaints: yes \u2014 all substantive issues are captured."
+}

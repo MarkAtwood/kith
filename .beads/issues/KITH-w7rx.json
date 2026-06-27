@@ -1,0 +1,39 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Space/get and Space/changes handlers implemented with 10 tests",
+  "closed_at": "2026-06-13T20:49:11Z",
+  "compaction_level": 0,
+  "content_hash": "7ae11e7cc9db25bd3bd574dcae84899be0b9675c7ab713f2da4089e77c38b247",
+  "created_at": "2026-06-13T19:01:35Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement Space/get: load Space with all sub-arrays (roles, members, categories, uncategorizedChannelIds). Non-member visibility: if isPubliclyPreviewable return restricted view (id, name, description, iconBlobId, memberCount, createdAt, isPublic, isPubliclyPreviewable only), else notFound. Space/changes: return changed space IDs since sinceState. Register both methods in kith-jmap METHOD_ROLES as Role::Owner. Spec: \u00a75.7-5.8.",
+  "ephemeral": 0,
+  "id": "KITH-w7rx",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Spaces Phase 2a: Space/get and Space/changes handlers",
+  "updated_at": "2026-06-13T20:49:11Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:01:56Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-3lya",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T12:01:55Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-5gpt",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "close_reason": "Not a bug: kithctl and kith-tui are application crates, not libraries. Box<dyn Error> is explicitly acceptable in application code per the Rust standards (callers just report, not match).",
+  "closed_at": "2026-06-15T15:53:08Z",
+  "compaction_level": 0,
+  "content_hash": "b30d781f28d8717c2d2470dfe91d7d3fc500d41f91ce1c29d5fc9436827b4cf0",
+  "created_at": "2026-06-15T04:55:42Z",
+  "created_by": "Mark Atwood",
+  "description": "Multiple public and internal functions in kithctl and kith-tui return Box<dyn std::error::Error> instead of a typed error enum, losing error information at boundaries:\n\nkithctl/src/backup.rs:46: pub fn run(...) -> Result<(), Box<dyn std::error::Error>>\nkithctl/src/watch.rs:174, 189, 256, 418, 531, 640: multiple functions\nkithctl/src/main.rs:77, 119, 158, 162: cmd_* functions\nkith-tui/src/main.rs:23, 60: main() and run()\nkith-tui/src/event.rs:538, 601, 927: event handler functions\n\nWhile Box<dyn Error> is acceptable in binary main(), it is not appropriate for internal helper functions that could carry a typed error enum (e.g. KithctlError, TuiError). Callers cannot pattern-match these errors.\n\nFix: introduce error enums (using thiserror) for kithctl and kith-tui, replacing Box<dyn Error> in non-main functions.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.55",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Box<dyn Error> in kithctl and kith-tui function signatures",
+  "updated_at": "2026-06-15T15:53:08Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:42Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

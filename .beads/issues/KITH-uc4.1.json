@@ -1,0 +1,20 @@
+{
+  "id": "KITH-uc4.1",
+  "title": "kith-tslocal: add hyper + hyper-util to Cargo.toml",
+  "description": "Add hyper, hyper-util, and http-body-util as direct dependencies to crates/kith-tslocal/Cargo.toml. These are in Cargo.lock (pulled by axum) but must be declared explicitly for kith-tslocal to import them.\n\nWhat: Add three dep entries to kith-tslocal/Cargo.toml.\n\nAlgorithm:\n1. Read current crates/kith-tslocal/Cargo.toml\n2. Add to [dependencies]: hyper = { workspace = true, features = [\"client\", \"http1\"] }\n3. Add: hyper-util = { workspace = true, features = [\"tokio\"] }\n4. Add: http-body-util = { workspace = true }\n5. Ensure workspace Cargo.toml has hyper, hyper-util, http-body-util as workspace deps (they may already be there via axum - verify in Cargo.toml and Cargo.lock)\n6. Run: cargo build -p kith-tslocal to verify it compiles\n\nDefensive rules:\n- Do not add unnecessary features (only client + http1 for hyper; no server features)\n- Verify versions match what is already in Cargo.lock (hyper 1.9.0, hyper-util 0.1.20)\n- If workspace does not already declare these, add them with exact versions matching Cargo.lock\n\nAcceptance: cargo build -p kith-tslocal succeeds with hyper imported in lib.rs",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:04:08Z",
+  "updated_at": "2026-04-19T06:06:34Z",
+  "closed_at": "2026-04-19T06:06:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:04:07Z"
+    }
+  ]
+}

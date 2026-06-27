@@ -1,0 +1,13 @@
+{
+  "id": "KITH-8it",
+  "title": "P3 backlog cleanup: closure hoisting, test hygiene, doc improvements",
+  "description": "What: Resolve remaining open P3/P4 items before Phase 2 work begins.\n\nWhy: 9 issues remain after Phase 1 polish (KITH-acp). Two require actual code changes (KITH-kg2, KITH-v7t.9); seven are security-context or clarity doc comments that reduce maintenance burden and communicate design intent. These are small-but-real improvements that are worth doing cleanly before Phase 2 adds significant new surface area.\n\nItems:\n1. KITH-kg2 \u2014 Hoist insert_if_allowed closure out of loop in events.rs (P3 efficiency: redefines closure every loop iteration)\n2. KITH-v7t.9 \u2014 config tests: Box::leak for env var keys unnecessary (P3 elegance: use a Vec to retain ownership instead)\n3. KITH-626.8 \u2014 Inconsistent error message detail in whois() vs status() (P4 quality)\n4. KITH-v7t.6 \u2014 KITH_BIND_ADDR not in Config, no security note (P4 security doc)\n5. KITH-v7t.8 \u2014 KITH_BASE_URL prefix inconsistency unexplained (P4 clarity)\n6. KITH-626.12 \u2014 status() validation logic needs clearer doc comment (P4 clarity)\n7. KITH-626.15 \u2014 Null-byte check needs security context comment (P4 security doc)\n8. KITH-626.19 \u2014 socket_path() test helper needs isolation comment (P4 clarity)\n9. KITH-c5d \u2014 auth.rs: clarify fail-closed and async-safety comments (P4 security doc)\n\nOutcome: Zero redefine-in-loop patterns, no Box::leak in tests, all security-boundary code has a comment explaining the invariant it enforces.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:33:16Z",
+  "updated_at": "2026-04-19T23:44:06Z",
+  "closed_at": "2026-04-19T23:44:06Z"
+}

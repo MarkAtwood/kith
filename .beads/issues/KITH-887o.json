@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-13T14:09:02Z",
+  "compaction_level": 0,
+  "content_hash": "28fdf24bcb20a66c2d78978f1b534f9f265550a92c4666853e76e6ec3702011b",
+  "created_at": "2026-06-13T13:48:21Z",
+  "created_by": "Mark Atwood",
+  "description": "Update all remaining crates: kithd main/lib/tests, kithctl watch/main, kith-tui, kith-events. Handle ChatContactExt import.",
+  "ephemeral": 0,
+  "id": "KITH-887o",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Phase 6: Fix kithd, kithctl, kith-tui, kith-events for jmap-types migration",
+  "updated_at": "2026-06-13T14:09:02Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:48:28Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-dhgl",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

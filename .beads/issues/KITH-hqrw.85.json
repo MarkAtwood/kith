@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.85",
+  "title": "kith-tslocal: socket_path stored as String not PathBuf; no path validation at construction",
+  "description": "LocalApiClient::new() accepts impl Into<String> and stores socket_path as String. Every call site then does Path::new(&self.socket_path) before using it. Storing PathBuf directly would (a) validate the path at construction time rather than at each use, (b) remove the repeated Path::new() conversions at each call site, and (c) be more idiomatic for a struct whose primary purpose is to address a filesystem socket. Minor readability issue only \u2014 no correctness impact.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:41:46Z",
+  "updated_at": "2026-04-25T08:36:28Z",
+  "closed_at": "2026-04-25T08:36:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:41:46Z"
+    }
+  ]
+}

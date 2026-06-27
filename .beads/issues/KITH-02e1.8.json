@@ -1,0 +1,32 @@
+{
+  "id": "KITH-02e1.8",
+  "title": "Wire send into run(): Enter \u2192 send \u2192 clear/error + 3s timeout",
+  "description": "**What:** Wire send_message() into the run() event loop: check flag, call send, handle success/error, clear stale errors on tick.\n\n**Algorithm:**\n1. In run(), after the tokio::select! block and before the chat-selection-change check, add:\n   if state.should_send_message {\n     state.should_send_message = false;\n     let body = state.input.trim().to_string();\n     if !body.is_empty() {\n       if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {\n         match send_message(&http_client, &api_url, &chat_id, &body).await {\n           Ok(_msg_id) => {\n             state.input.clear();\n             state.input_cursor = 0;\n             // Message will appear via SSE state change\n           }\n           Err(e) => {\n             let msg = sanitize_display(&format!('Send failed: {e}'));\n             state.set_error(&msg);\n           }\n         }\n       }\n     }\n   }\n2. In the tick arm of tokio::select!, call state.clear_stale_error() on every tick.\n3. When there are no chat_ids (empty list), Enter/send does nothing \u2014 already gated by the if let Some(chat_id) check above.\n\n**Defensive rules:**\n- Reset should_send_message BEFORE calling send_message (prevents double-send if user hammers Enter).\n- sanitize_display() applied to ALL error strings before they reach set_error.\n- Do not append the sent message locally \u2014 it will arrive via SSE Message state change.\n- trim() the body before sending (guards against whitespace-only slip-through).\n- input.clear() must ONLY be called on Ok, NEVER on Err.\n- Do not block the event loop on send; awaiting is fine because run() is async.\n\n**Agent team:** R reads current run() loop structure; I wires in the changes; T writes integration tests with wiremock for run()-level behavior; V runs full cargo test -p kith-tui.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T11:56:07Z",
+  "updated_at": "2026-04-20T12:11:43Z",
+  "closed_at": "2026-04-20T12:11:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-02e1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:07Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:38Z"
+    },
+    {
+      "depends_on_id": "KITH-02e1.7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T04:56:38Z"
+    }
+  ]
+}

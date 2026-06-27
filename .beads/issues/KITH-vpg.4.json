@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.4",
+  "title": "SEC1: BASE_URL env var lookup duplicated in session_handler, not consolidated in Config",
+  "description": "In commit 08810bf, session_handler (lib.rs:59\u201366) reads KITHD_BASE_URL and deprecated KITH_BASE_URL directly on every request, bypassing the Config struct.\n\nISSUE: Config.from_env() loads most config at startup and stores in AppState (port, data_dir, owner_id, etc.), but base_url is NOT stored. Instead, every /.well-known/jmap request re-reads env vars.\n\nBURDEN: Hidden coupling \u2014 future maintainers may not realize Config doesn't include base_url, and may incorrectly assume it's initialized once at startup like other settings. Two separate code paths warn about KITH_* deprecation (config.rs:137 and lib.rs:62), increasing cognitive load.\n\nRECOMMENDATION: Move base_url into Config struct (already parsed at startup) and store in AppState. Session handler should read from AppState.config or AppState.base_url, not from environment.\n\nFILES: crates/kithd/src/config.rs (add base_url parsing), crates/kithd/src/lib.rs (remove env var lookup from session_handler), crates/kithd/src/extractors.rs (if AppState modified)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:41:07Z",
+  "updated_at": "2026-04-19T23:43:50Z",
+  "closed_at": "2026-04-19T23:43:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:41:06Z"
+    }
+  ]
+}

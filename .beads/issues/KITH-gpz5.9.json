@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.9",
+  "title": "Message/query implements pagination offset in Rust rather than SQL",
+  "description": "MessageQueryHandler calls list_by_chat(&chat_id, limit + position) and then .skip(position as usize) in Rust. This fetches (limit + position) rows from SQLite and discards the first 'position' rows in the application layer. Deep page requests waste proportionally more DB I/O. The offset should be pushed into the SQL query (LIMIT ? OFFSET ?).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:28Z",
+  "updated_at": "2026-04-24T17:06:50Z",
+  "closed_at": "2026-04-24T17:06:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:28Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.57",
+  "title": "startup log: resolved owner_id and owner_login not included in startup message",
+  "description": "In main.rs, the startup tracing::info\\! at line 146 logs data_dir, db_path, ts_socket, and port but not owner_id or owner_login. The auto-detection path at line 71 logs 'auto-detected owner identity from Tailscale' without including the actual detected value. This means an operator reading startup logs cannot confirm which identity the daemon is running as without inspecting tailscale status separately. Fix: add owner_id and owner_login to both the auto-detection log line and the 'kithd starting' structured log.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:19:56Z",
+  "updated_at": "2026-04-25T02:23:28Z",
+  "closed_at": "2026-04-25T02:23:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:19:55Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.13",
+  "title": "Mock server pattern with unique socket paths prevents test collisions",
+  "description": "Integration test infrastructure (integration.rs lines 14-40) spawns a fresh Unix socket mock server per test with unique paths based on test name + PID. This allows parallel test execution without collisions. The spawn_mock_server() helper is clean and reusable. The pattern of cleaning up socket files on drop (line 26) is good defensive testing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:31Z",
+  "updated_at": "2026-04-19T19:51:55Z",
+  "closed_at": "2026-04-19T19:51:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:30Z"
+    }
+  ]
+}

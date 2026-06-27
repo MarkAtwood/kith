@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.19",
+  "title": "SSE buf.find loop uses to_string() clone for each block; buf.drain is fine but block clone avoids borrow",
+  "description": "In run_sse: let block = buf[..pos].to_string(); buf.drain(..pos+2); \u2014 the to_string() clone before drain is forced by the borrow checker (drain needs &mut buf). This is the idiomatic way to handle this split in Rust. Not elegance-negative, just worth noting: the comment explaining why clone-before-drain is needed is absent, which will confuse future readers who try to 'optimize away the clone' and hit a borrow error.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:42:01Z",
+  "updated_at": "2026-04-25T08:23:36Z",
+  "closed_at": "2026-04-25T08:23:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:42:00Z"
+    }
+  ]
+}

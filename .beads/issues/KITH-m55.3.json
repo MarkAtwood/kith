@@ -1,0 +1,20 @@
+{
+  "id": "KITH-m55.3",
+  "title": "[SEC1] Add validation for systemd unit file environment variables",
+  "description": "Risk: Environment variables are defined in crates/kithd/src/config.rs but documented (not validated) in contrib/systemd/{kithd.service,kithd@.service} as Environment= directives. If a future refactor renames KITHD_PORT to KITHD_LISTEN_PORT, or adds a new KITHD_CERT_EXPIRY, the unit files become incorrect. No tooling detects the drift.\n\nMaintainer burden: Must manually audit both systemd files on every config change; risk of misconfiguration on deployment.\n\nMitigation: Add a test that validates the unit files contain references to all documented env vars in config.rs, or generate the Environment= directives from config.rs documentation.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:38:42Z",
+  "updated_at": "2026-04-19T18:43:17Z",
+  "closed_at": "2026-04-19T18:43:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-m55",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:38:42Z"
+    }
+  ]
+}

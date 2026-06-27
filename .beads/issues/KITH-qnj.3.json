@@ -1,0 +1,19 @@
+{
+  "id": "KITH-qnj.3",
+  "title": "[R2-SEC6] Good: bind_to_ips refactoring enables testing and reuse without StatusProvider",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:44:41Z",
+  "updated_at": "2026-04-19T18:46:26Z",
+  "closed_at": "2026-04-19T18:46:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qnj",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:44:41Z"
+    }
+  ]
+}

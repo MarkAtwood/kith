@@ -1,0 +1,26 @@
+{
+  "id": "KITH-yvu",
+  "title": "kithctl: local operator CLI",
+  "description": "Local operator CLI: status, contact listing, backup. Secondary to the daemon.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:47Z",
+  "updated_at": "2026-04-19T19:31:53Z",
+  "closed_at": "2026-04-19T19:31:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

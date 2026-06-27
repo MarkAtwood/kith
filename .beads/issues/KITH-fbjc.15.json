@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.15",
+  "title": "web: a.download=att.filename assigns peer-supplied filename without stripping path separators",
+  "description": "app.js:138 assigns att.filename directly to a.download, which suggests a save-as filename to the browser. A peer-supplied filename containing '../../etc/passwd' or similar path separators would be passed as-is. While browsers typically strip paths in save-as dialogs, this is browser-dependent and not spec-guaranteed. Fix: sanitize before assignment: a.download = att.filename.replace(/[\\/\\\\]/g, '_').replace(/\\0/g, '');",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:58Z",
+  "updated_at": "2026-04-24T05:26:58Z",
+  "closed_at": "2026-04-24T05:26:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:57Z"
+    }
+  ]
+}

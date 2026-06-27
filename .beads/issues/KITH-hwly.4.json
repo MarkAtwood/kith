@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.4",
+  "title": "No CHECK constraint: sender_msg_id NOT NULL for peer messages",
+  "description": "The UNIQUE INDEX on messages(chat_id, sender_msg_id) is the idempotency guard for Peer/deliver. SQLite allows multiple NULL values in UNIQUE indexes (SQL standard). If any code path stores a peer-delivered message with sender_msg_id=NULL (application bug, future refactor), the idempotency check find_by_sender_msg_id() will never match it and the UNIQUE INDEX will not prevent duplicates. Application code currently always sets it, but there is no DB-level enforcement. \u2014 Add CHECK (sender_msg_id IS NOT NULL) on the messages table column, or add a NOT NULL constraint in the column definition, in the next schema migration.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:19:57Z",
+  "updated_at": "2026-04-24T04:27:19Z",
+  "closed_at": "2026-04-24T04:27:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:19:57Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "KITH-waw",
+  "title": "get_or_create is not transactional",
+  "description": "chat.rs::get_or_create executes: INSERT chats, then N\u00d7INSERT chat_members, then advance_state, then SELECT \u2014 all as separate statements with no wrapping transaction. A crash between the chats INSERT and chat_members INSERTs leaves a chat with no members in the DB. Fix: wrap the entire body in unchecked_transaction().",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:49:52Z",
+  "updated_at": "2026-04-19T05:53:41Z",
+  "closed_at": "2026-04-19T05:53:41Z"
+}

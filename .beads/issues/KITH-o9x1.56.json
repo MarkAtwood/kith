@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.56",
+  "title": "perf: WhoIs called on every request with no short-TTL cache",
+  "description": "In extractors.rs, the Caller extractor calls ts.whois(peer_addr) on every single inbound request, issuing a Unix socket round-trip to tailscaled before any JMAP method executes. For workloads with high request frequency from the same IP (e.g. SSE reconnects, polling loops from the web client) this is wasteful and adds latency proportional to tailscaled response time. The call is unavoidable for security but a short-TTL in-process cache (e.g. 10-30 seconds keyed on SocketAddr) would reduce round-trips substantially for repeated requests from the same peer. Design note: the cache must be invalidated or TTL-expired quickly enough that a kicked Tailscale user cannot continue accessing the API after their node is removed. A 30s TTL is conservative and matches what most session-based systems would consider acceptable.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:19:46Z",
+  "updated_at": "2026-04-25T02:23:13Z",
+  "closed_at": "2026-04-25T02:23:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:19:46Z"
+    }
+  ]
+}

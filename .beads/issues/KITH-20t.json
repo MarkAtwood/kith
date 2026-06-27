@@ -1,0 +1,12 @@
+{
+  "id": "KITH-20t",
+  "title": "Reuse HashMap in coalescing loop to reduce allocations",
+  "description": "events.rs line 247: HashMap::new() is called on every batch iteration. For rapid-fire state changes, this creates unnecessary allocations. Refactor to clear and reuse a single HashMap across loop iterations, or use a more efficient container (e.g., a small fixed-size array for three types + a computed max). This is a hot loop that fires on every SSE state coalescing event.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:34Z",
+  "updated_at": "2026-04-19T20:17:21Z",
+  "closed_at": "2026-04-19T20:17:21Z"
+}

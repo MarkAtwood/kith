@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "52f781f828d593700f61352c607f03f57328da96f27f012ba49666450eb55e4c",
+  "created_at": "2026-06-15T04:54:35Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-store/src/lib.rs has a migration runner (Store::migrate) that applies migrations sequentially by comparing PRAGMA user_version to each migration's target version. Two design choices here are worth defending:\n\n1. RAW_MIGRATIONS set (line 774): SQLite silently ignores PRAGMA foreign_keys changes inside a multi-statement transaction. V16 needed to disable FK enforcement to recreate the messages table with a cascade FK. The runner detects whether a migration is in the RAW_MIGRATIONS set and runs it outside a transaction. This is documented and correct; the alternative (silently ignoring the FK toggle and leaving cascade enforcement broken) would be a silent data integrity bug.\n\n2. Single snapshot of user_version before the loop: the runner reads user_version once at the start and compares it against migration version numbers in the loop. The comment (line 762-768) explains why this is safe: migrations are strictly additive and ordered, and kithd is single-writer. This avoids re-reading user_version on each iteration (which would be unnecessary and could mask bugs in a theoretical concurrent-writer scenario).\n\nBoth are non-obvious choices that would seem like bugs to a new reader without the explanatory comments.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.42",
+  "is_template": 0,
+  "issue_type": "decision",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DECISION: incremental migration runner with RAW_MIGRATIONS for FK-toggling DDL",
+  "updated_at": "2026-06-15T04:54:35Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:35Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

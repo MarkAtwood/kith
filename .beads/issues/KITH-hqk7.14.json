@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqk7.14",
+  "title": "SEC7: discovery.rs \u2014 poisoned store lock returns silently",
+  "description": "Lines 315\u2013327 in run_discovery_round(): when the store lock is poisoned, the code logs at ERROR and returns early. However, no recovery message is sent. This means: (1) operators see ERROR but no 'shutdown' signal, (2) discovery task continues looping but does not re-attempt the poisoned store, (3) no indication that discovery has stopped working. Should emit a WARN/ERROR message or use a different control flow (e.g., skip iteration count update) to signal that discovery died. Impacts operator observability.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:16:57Z",
+  "updated_at": "2026-04-20T16:23:27Z",
+  "closed_at": "2026-04-20T16:23:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqk7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:16:56Z"
+    }
+  ]
+}

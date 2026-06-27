@@ -1,0 +1,20 @@
+{
+  "id": "KITH-orvy.19",
+  "title": "sender ULID stored as sender_msg_id, receiver assigns fresh ULID \u2014 correct idempotency design",
+  "description": "The idempotency design (sender stores their own ULID as sender_msg_id; receiver assigns a fresh ULID as the local message id) is the right split of concerns. The sender's id is suitable as a dedup key because the sender controls its uniqueness. The receiver's id is suitable as a local record key because it avoids trusting externally-supplied ids as primary keys. A contributor might suggest 'just use the sender's id as the local id' to simplify, but that lets the sender control which DB row is created \u2014 a security boundary violation.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:59Z",
+  "updated_at": "2026-04-24T01:31:32Z",
+  "closed_at": "2026-04-24T01:31:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:59Z"
+    }
+  ]
+}

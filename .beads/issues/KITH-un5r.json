@@ -1,0 +1,22 @@
+{
+  "close_reason": "31 tests added for reactions CRUD",
+  "closed_at": "2026-06-13T19:54:46Z",
+  "compaction_level": 0,
+  "content_hash": "11e9a2f6b90ff832bb90a8085042df8c670d9d4d6834bf450dca7d0ef5c0774f",
+  "created_at": "2026-06-13T19:28:27Z",
+  "created_by": "Mark Atwood",
+  "description": "Zero test coverage for reactions. Need: insert_reaction round-trip, delete_reaction, load_reactions batch, emoji non-empty validation, state counter advancement, INSERT OR REPLACE idempotency. Also need Message/set update with reaction add/remove, and Peer/deliver with reactions in wire format. ~10 tests.",
+  "ephemeral": 0,
+  "id": "KITH-un5r",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add missing tests for reactions CRUD",
+  "updated_at": "2026-06-13T19:54:46Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.47",
+  "title": "MessageStore::get_changes_since missing early-exit optimization present in Chat/ContactStore",
+  "description": "ContactStore::get_changes_since and ChatStore::get_changes_since both short-circuit with an empty result when since_counter >= current_counter, avoiding a database query. MessageStore::get_changes_since (line 581 of message.rs) does not have this guard: it always executes the full SQL query even when the caller is already at the current state. In the common case where a client polls after already being up-to-date, this executes an unnecessary index scan over messages WHERE state_version > current_version (which returns 0 rows). The SELECT is fast because of the state_version index, but the round-trip and query overhead are avoidable. Fix: add the same if since_version >= current_version { return early } guard at the top of get_changes_since in message.rs, matching the pattern in contact.rs and chat.rs.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:58Z",
+  "updated_at": "2026-04-25T06:12:22Z",
+  "closed_at": "2026-04-25T06:12:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:57Z"
+    }
+  ]
+}

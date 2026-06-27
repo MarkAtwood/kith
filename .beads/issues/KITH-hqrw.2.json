@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.2",
+  "title": "DeliverHandler: contact upsert runs even when message insert fails",
+  "description": "In DeliverHandler::call, the store operations are NOT wrapped in a single SQLite transaction. If insert_message_with_attachments succeeds but update_last_message_at fails (returning server_fail), the response is an error. However if update_last_message_at fails AND the error is propagated with '?', the contact upsert on the next line is never reached \u2014 so the contact is not created. That is actually fine for the failure path. BUT: if the message insert succeeds and chat update succeeds, and then the contact upsert fails, the caller gets a server_fail despite the message being stored. On retry the sender sends the same message_id again, hits the idempotency check (find_by_sender_msg_id), and gets accepted=true with the stored receivedAt. This is correct behavior for idempotency. However the contact row may never get created if the upsert persistently fails, meaning the peer can never be blocked/managed from the owner UI even though their messages are stored. This is a state inconsistency under persistent SQLite errors.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:29:37Z",
+  "updated_at": "2026-04-25T05:42:18Z",
+  "closed_at": "2026-04-25T05:42:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:29:36Z"
+    }
+  ]
+}

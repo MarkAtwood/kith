@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.2",
+  "title": "Verify hyper::client::conn::http1::handshake is stable across minor versions",
+  "description": "The code uses hyper::client::conn::http1::handshake() (lines 99, 170) to establish HTTP/1.1 over Unix socket. This is a semi-internal API not in the hyper root namespace.\n\nRISK: Internal APIs can change without semver guarantees. hyper 1.9.1 or 1.10.0 could alter the handshake signature, return type, or error behavior.\n\nISSUE: A solo maintainer discovering a build failure 6 months from now won't know if it's a known hyper regression or a new issue.\n\nSUGGESTION: Add a doc comment citing the hyper docs and explaining why this API was chosen (no public Unix socket client), or consider vendoring a stable HTTP/1.1 handshake abstraction if this becomes problematic.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:09Z",
+  "updated_at": "2026-04-19T06:19:43Z",
+  "closed_at": "2026-04-19T06:19:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:08Z"
+    }
+  ]
+}

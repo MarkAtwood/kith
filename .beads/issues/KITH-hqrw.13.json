@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.13",
+  "title": "fit_col does not truncate when max==1",
+  "description": "main.rs fit_col(): when max==1, the condition 'chars.len() > max && max >= 2' is false because max >= 2 is false. The else branch returns s.to_string() unchanged, even if s is longer than 1 character. The function's documented contract says the result fits within max columns, but with max==1 a multi-char string is returned untruncated. Trigger: cmd_contacts_list calls fit_col with max=30 and max=25 so in practice max is never 1 today, but the function contract is violated and any future caller with max<2 gets wrong output.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:29Z",
+  "updated_at": "2026-04-25T04:02:55Z",
+  "closed_at": "2026-04-25T04:02:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:28Z"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "KITH-3yb.9",
+  "title": "kith-peer: DeliverHandler N-participant chatId + group participants field",
+  "description": "What: Generalize DeliverHandler chatId recomputation from 2 participants to N, and add participants field to PeerDeliverArgs for group messages.\n\nAlgorithm:\n1. Add optional participants: Option<Vec<String>> to InboundMessage struct.\n2. In DeliverHandler::call(), after extracting identity:\n   a. Build participant list: if msg.participants is Some and non-empty, use it; else use [sender_id, owner_id] (direct chat default).\n   b. Always include owner_id in participant list (add if missing).\n   c. Sort participants lexicographically.\n   d. Recompute expected_chat_id = compute_chat_id(&sorted_participants).\n   e. Compare to msg.chat_id: if mismatch, return invalidArguments (same as before).\n3. For group messages: when creating/updating chat, pass kind=\"group\" and full sorted participant list to store.chats().get_or_create().\n4. For direct messages: existing behavior (kind=\"direct\", 2 participants).\n5. In outbox_tick / build_peer_deliver_request: when message is in a group chat, include participants field in outbound JMAP request (pass chat.participants to build_peer_deliver_request).\n\nDefensive rules: always recompute chatId, never trust peer-supplied value; always include owner_id in participants; sort before hashing; validate each participant id non-empty; max 50 participants.\n\nAgent team: R reads DeliverHandler chatId check (line 133) and compute_chat_id; I implements; T writes tests: direct deliver still works; group deliver with 3 participants computes correct chatId; wrong participants rejected; participants list missing treated as direct (2-person); V runs cargo test -p kith-peer + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:56:59Z",
+  "updated_at": "2026-04-20T00:13:51Z",
+  "closed_at": "2026-04-20T00:13:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:56:58Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:20Z"
+    }
+  ]
+}

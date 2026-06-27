@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.2",
+  "title": "Peer/deliver: unknown chatId UNIQUE conflict returns serverFail, peer retries forever",
+  "description": "Trigger: peer sends Peer/deliver with chatId X (unknown). Handler creates new direct chat. Peer then sends a second message with chatId Y (also unknown, different). UNIQUE INDEX chats_direct_contact(contact_id) WHERE kind='direct' fires on the second create, which maps to server_fail('internal error'). Peer's outbox retries forever since it receives a 500-equivalent with no actionable signal. Fix: before attempting chats().create, check if a direct chat already exists for this contact_id and adopt it (return idempotent success or return the existing chatId) rather than relying on the constraint violation as a signaling mechanism.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:09:17Z",
+  "updated_at": "2026-04-24T15:34:25Z",
+  "closed_at": "2026-04-24T15:34:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:09:17Z"
+    }
+  ]
+}

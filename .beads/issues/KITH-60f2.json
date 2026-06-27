@@ -1,0 +1,12 @@
+{
+  "id": "KITH-60f2",
+  "title": "Review: kithctl, kith-peer, kith-attach",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:35:55Z",
+  "updated_at": "2026-04-25T08:20:46Z",
+  "closed_at": "2026-04-25T08:20:46Z",
+  "notes": "Maintainer risk: HIGH \u2014 two P0 bugs in kithctl watch make the feature non-functional on any deployed kithd (wrong accountId, missing hasMoreChanges pagination). One P1 security issue in kith-attach (world-readable temp files). One P1 deployment issue in kith-peer (Headscale hostnames blocked). Confidence: 85% chance no additional P0 bugs missed. Uncertainty: did not review kith-peer integration test harness wiring in detail; did not trace what kithd returns when accountId='me' (could be notFound or accountNotFound, but either way notifications fail). Would raise confidence: run kithctl watch against a live kithd and observe the error response to confirm severity of KITH-60f2.1."
+}

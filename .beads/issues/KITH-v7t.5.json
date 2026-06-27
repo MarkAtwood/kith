@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.5",
+  "title": "Decision: init_logging before Config::from_env",
+  "description": "main.rs calls init_logging() as the first statement in main(), before Config::from_env(). This is correct because any tracing calls (warn!, error!, etc.) emitted during config parsing are captured by the subscriber. If logging were initialized after config parsing, early diagnostics (e.g., missing or malformed env vars) would be silently dropped before the subscriber was installed.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:15Z",
+  "updated_at": "2026-04-19T23:32:48Z",
+  "closed_at": "2026-04-19T23:32:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:15Z"
+    }
+  ]
+}

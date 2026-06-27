@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.40",
+  "title": "V18 backfill sets created_at_counter = changed_at_counter for pre-V18 active chats, causing spurious is_create=true in Chat/changes",
+  "description": "Trigger: any kithd instance that had chats receive messages between V9 (which added changed_at_counter) and V18 (which added created_at_counter). After V18 migration, these pre-existing chats have created_at_counter = changed_at_counter (the last update counter), so get_changes_since_ordered computes is_create = (created_at_counter > sinceCounter) = true for any client whose sinceState predates that last update. This falsely classifies pre-existing chats as newly created in Chat/changes (RFC 8620 \u00a75.2 protocol violation). Root cause: V18 backfill (UPDATE chats SET created_at_counter = changed_at_counter WHERE changed_at_counter > 0) is the equivalent of the V13 bug that V17 fixed for contacts by stamping -1 as a sentinel. Chats have no V17-equivalent migration. Fix: add V19 migration that sets created_at_counter = 0 for chats where created_at_counter = changed_at_counter AND the row pre-dates V18 (i.e., all rows modified by the V18 backfill). Alternatively, stamp -1 as the sentinel and handle it in get_changes_since_ordered analogously to contacts.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:24Z",
+  "updated_at": "2026-04-25T03:56:49Z",
+  "closed_at": "2026-04-25T03:56:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:23Z"
+    }
+  ]
+}

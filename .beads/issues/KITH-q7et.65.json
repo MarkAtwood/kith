@@ -1,0 +1,31 @@
+{
+  "close_reason": "Merged into KITH-q7et.58 (same finding: Identity needs impl Display)",
+  "closed_at": "2026-06-15T11:53:09Z",
+  "compaction_level": 0,
+  "content_hash": "c2b2ac9b0a68427038de37bb8a371bca4fb793e8d12f260625c7447483641218",
+  "created_at": "2026-06-15T04:57:56Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-core/src/auth.rs:32: Identity has pub fn display(&self) -> &str which implements the \"best available name\" fallback logic. This is a user-visible representation but it is not impl std::fmt::Display.\n\nAs a result, callers cannot use format!(\"{identity}\") or write!(f, \"{identity}\") \u2014 they must call identity.display() explicitly, which is easy to forget and non-idiomatic.\n\nFix: implement std::fmt::Display for Identity, delegating to the display() fallback logic. The existing display() method can be deprecated and removed, or kept as an internal helper if the &str return type is needed in some hot path.\n\nNote: the kith-core crate is a foundational library used by all other crates; fixing Display here will simplify logging and error formatting throughout the workspace.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.65",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Identity::display() should be impl Display, not a method",
+  "updated_at": "2026-06-15T11:53:09Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:57:56Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

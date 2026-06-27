@@ -1,0 +1,21 @@
+{
+  "id": "KITH-s8kd.9",
+  "title": "V19 migration resets created_at_counter for new post-V18 empty chats to -1",
+  "description": "SCHEMA_V19 runs UPDATE chats SET created_at_counter=-1 WHERE changed_at_counter>0. Chats created after V18 (with correct created_at_counter set) but that have no messages yet will also be reset to -1. Such chats appear in Chat/changes updated[] instead of created[] on next sync. RFC 8620 updated[] implies the client already has the object; a client is not required to fetch-by-id for updated items it has never seen, so they become invisible until explicitly queried. The upgrade window is narrow (V18->V19 with new empty chats) but is a real violation.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:28Z",
+  "updated_at": "2026-04-25T05:14:16Z",
+  "closed_at": "2026-04-25T05:14:16Z",
+  "notes": "Analysis: The V19 SQL (UPDATE chats SET created_at_counter = -1 WHERE changed_at_counter > 0) already documents this edge case in the SCHEMA_V19 comment (lines 402-406 of crates/kith-store/src/lib.rs). The comment states: 'Edge case: chats created after V18 that have never received a message will also be reset to -1 ... Such chats appear in Chat/changes updated[] instead of created[] on the next sync, which is safe for any client that fetches unknown updated IDs.' The issue asserts this is a RFC 8620 violation because clients are not REQUIRED to fetch updated[] items they've never seen. However, the comment claims it is safe because conformant clients do fetch unknown updated IDs. The upgrade window is narrow (V18->V19 with new empty chats in between). A V20 fix cannot safely distinguish V19-wrongly-reset rows from V18-correctly-reset rows -- both have created_at_counter=-1. The only safe V20 fix would be: add a new boolean column 'backfilled_by_v19 INTEGER DEFAULT 0' and stamp it during V19, then V20 could reset rows where backfilled_by_v19=1 AND changed_at_counter>0. But we cannot go back and change V19. Without that provenance, V20 cannot know which -1 rows were intentionally set (pre-existing chats) vs accidentally set (new chats). Conclusion: the bug exists in theory but is unrecoverable via migration alone; it only affects users who ran a V18-schema build AND created new chats AND then upgraded to V19 before sending any messages. The practical severity is low (narrow window, empty chats only), but the RFC strictness point is valid. Recommend: document as known limitation in SCHEMA_V19 comment and close as wont-fix, or accept the updated[]-for-unknown-id behavior as tolerable given client requirements.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:28Z"
+    }
+  ]
+}

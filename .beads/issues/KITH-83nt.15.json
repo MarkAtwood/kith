@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.15",
+  "title": "sanitize_display called on already-sanitized strings causing double-sanitization",
+  "description": "In load_startup_data, sanitize_display is called on display_name when inserting into contacts_map (line 206). Later, when building the chat display name, names.join() produces a string from the already-sanitized contact names, and then sanitize_display is called again on the full display string (line 264). Double-sanitization is idempotent for well-formed input but wastes CPU and could theoretically mangle content if a sanitized string contains a pattern that looks like a partial escape (e.g., if a contact name ends with ESC). This is not a security issue but is a code smell that will generate confusion for maintainers about which strings are sanitized at which boundary.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:44Z",
+  "updated_at": "2026-04-25T05:45:13Z",
+  "closed_at": "2026-04-25T05:45:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:43Z"
+    }
+  ]
+}

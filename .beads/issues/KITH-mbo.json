@@ -1,0 +1,27 @@
+{
+  "id": "KITH-mbo",
+  "title": "Implement ?ping= query parameter on /jmap/events (RFC 8620 \u00a77.3)",
+  "description": "What: /jmap/events must honour a ?ping=N query parameter (N = integer seconds) per RFC 8620 \u00a77.3. When present, send a ping SSE event every N seconds. Currently EventsQuery has only 'types' and 'closeafter'.\n\nAlgorithm:\n1. Read kithd/src/events.rs in full; locate EventsQuery struct and the axum handler\n2. Add field to EventsQuery:\n   ping: Option<u64>\n3. Validate ping on receipt:\n   - If present but not parseable as integer: return 400 Bad Request\n   - If 0: treat as None (no ping)\n   - If > 300: cap at 300 (reasonable max; document in comment)\n4. Pass ping_secs to KeepAlive:\n   - If ping_secs.is_some(): Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(ping_secs)))\n   - If None: Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(30))) [current default]\n5. KeepAlive sends a comment ping ('': '') \u2014 RFC 8620 \u00a77.3 says a ping event with {\"interval\":N} must also be sent on first connect. Add that: send a synthetic Event::default().event(\"ping\").data(json!({\"interval\":ping_secs}).to_string()) as the first item in the stream before the coalescing channel output.\n6. For closeafter: if present, start a timeout task that closes the stream after N seconds (axum SSE stream ends when sender drops)\n\nDefensive programming rules:\n- Reject non-integer ping values with 400 before entering the SSE handler\n- Cap ping at 300s; never allow 0 as a live interval (SSE flood risk)\n- The ping event must be the FIRST event on the stream so the client knows the server's interval\n- closeafter timeout: use tokio::time::sleep in a spawned task that drops the tx; do not block the handler\n- Do not change the coalescing logic or the 'state' event format\n\nAgent team: R+I+T agent (kithd/src/events.rs only)\n\nTests:\n- Unit test: parse_ping_param_rejects_non_integer \u2014 assert 400 for '?ping=abc'\n- Unit test: parse_ping_param_caps_at_300 \u2014 assert ping=999 results in effective 300\n- Unit test: ping_event_is_first_on_stream \u2014 synthetic ping event precedes any state events\n- cargo test -p kithd passes (all 48+ existing tests unchanged)",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:20:15Z",
+  "updated_at": "2026-04-19T21:31:58Z",
+  "closed_at": "2026-04-19T21:31:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-104",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T14:20:29Z"
+    },
+    {
+      "depends_on_id": "KITH-avs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T14:20:28Z"
+    }
+  ]
+}

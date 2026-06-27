@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.16",
+  "title": "DECISION: State machine resilience with stateMismatch fallback",
+  "description": "What: When Message/changes returns error type 'stateMismatch', the code does not panic or retry. Instead, it performs a full reload via load_messages_for_chat() and updates message_state.\n\nWhy it's good: If the client's cached state token becomes stale (network loss, server restart, long time between syncs), the incremental sync is invalid. Rather than trying to fix the state token or retrying, the code treats mismatch as a signal to go back to the authoritative source. This is graceful degradation: we lose the efficiency of incremental sync but maintain consistency and forward progress. The reload is non-blocking.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:43:59Z",
+  "updated_at": "2026-04-20T05:45:56Z",
+  "closed_at": "2026-04-20T05:45:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:43:58Z"
+    }
+  ]
+}

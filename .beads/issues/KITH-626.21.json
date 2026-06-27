@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.21",
+  "title": "Serde ignore_unknown allows forward compatibility with LocalAPI spec evolution",
+  "description": "Response types (StatusResponse, WhoIsNode, UserProfile, WhoIsResponse) use #[serde(default)] and serde's default behavior to ignore unknown fields. Tests (integration.rs lines 300-310, lib.rs lines 245-250) verify this explicitly with fixtures containing future fields. This is correct: Tailscale evolves the LocalAPI spec and clients must tolerate new fields. Keep this forward-compat design.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:42Z",
+  "updated_at": "2026-04-19T19:51:56Z",
+  "closed_at": "2026-04-19T19:51:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:42Z"
+    }
+  ]
+}

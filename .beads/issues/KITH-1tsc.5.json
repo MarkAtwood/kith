@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1tsc.5",
+  "title": "at-least-once delivery with idempotency is correct design for outbox post-delivery lock failure",
+  "description": "The outbox success-path if-let-Ok arms (complete_delivery, record_failure after delivery) silently skip on lock poison. A contributor might flag this as 'P0 re-delivery bug'. It is not: (1) lock poison on a post-delivery write means the daemon is already broken and the next outbox_tick will fail at Phase 1 and return with a log; (2) after daemon restart the outbox row is retried; (3) the peer handles the duplicate via the sender_msg_id UNIQUE INDEX idempotency guard. This is correct at-least-once delivery behavior. The post-delivery arms are intentionally best-effort \u2014 they should NOT be converted to early-return-on-failure, which would cause the loop to abandon all remaining entries for a transient lock error.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:40:56Z",
+  "updated_at": "2026-04-24T04:46:46Z",
+  "closed_at": "2026-04-24T04:46:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1tsc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:40:56Z"
+    }
+  ]
+}

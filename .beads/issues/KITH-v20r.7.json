@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.7",
+  "title": "kith-store: upsert_discovered_contact (preserve user-set displayName)",
+  "description": "Add a new contact store method for the auto-discovery flow that is idempotent and preserves user-set display names.\n\nWhat: New method on ContactStore alongside the existing upsert().\n\nAlgorithm:\n1. Add to ContactStore:\n   pub fn upsert_discovered_contact(\n     &self,\n     peer_user_id: &str,\n     peer_login: &str,\n     peer_mailbox_host: &str,\n     discovered_display_name: Option<&str>,\n     now_unix: i64,\n   ) -> Result<(), KithError>\n\n2. Implement with SQL:\n   INSERT INTO contacts\n     (peer_user_id, peer_login, peer_mailbox_host, display_name, first_seen_at, last_seen_at, blocked)\n   VALUES (?1, ?2, ?3, ?4, ?5, ?5, 0)\n   ON CONFLICT(peer_user_id) DO UPDATE SET\n     peer_login        = excluded.peer_login,\n     peer_mailbox_host = excluded.peer_mailbox_host,\n     display_name      = CASE WHEN display_name IS NULL THEN excluded.display_name ELSE display_name END,\n     last_seen_at      = excluded.last_seen_at\n   -- first_seen_at and blocked are NOT updated on conflict\n\n3. Tests (independent oracle: SQLite CASE WHEN semantics, verified manually):\n   - Test 1 'new contact': call with all fields; assert row inserted with all values.\n   - Test 2 'existing contact, NULL display_name': call again with new discovered_display_name; assert display_name updated.\n   - Test 3 'existing contact, non-NULL display_name': call again with different discovered_display_name; assert existing display_name preserved.\n   - Test 4 'idempotent': call twice with same args; assert single row, no error.\n   - Test 5 'first_seen_at preserved': insert then call again; assert first_seen_at unchanged.\n   - Test 6 'blocked preserved': insert, set blocked=1, call upsert_discovered_contact; assert blocked still 1.\n\nDefensive programming rules:\n- Never update 'blocked' on conflict (user block choice is preserved)\n- Never update 'first_seen_at' on conflict\n- Only update display_name if it was NULL (CASE WHEN in SQL)\n- peer_user_id, peer_login, peer_mailbox_host must be non-empty (validate before calling)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:01:01Z",
+  "updated_at": "2026-04-20T16:04:29Z",
+  "closed_at": "2026-04-20T16:04:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:01:01Z"
+    }
+  ]
+}

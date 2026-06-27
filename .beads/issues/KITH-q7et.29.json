@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "e17a949ce2f8e353c3e1ab4d4b11440b3a0667a5ff837b694eb5b2d38a0d91cf",
+  "created_at": "2026-06-15T04:53:56Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-jmap/src/lib.rs: the Dispatcher has two separate registration methods \u2014 register() for owner-role handlers and register_peer() for peer-role handlers. The API forces every caller to know which map to use, and mis-registration (using register() for Peer/deliver, or register_peer() for Chat/get) silently returns unknownMethod at runtime for that method.\n\nThe only protection is a debug_assert! in dispatch_one() (line 490) that fires if a method appears in BOTH maps simultaneously \u2014 but it does not fire if a method is registered in the WRONG map.\n\nThe register() doc comment warns 'Do NOT use this for peer-role methods' but this is a social contract enforced only by prose documentation. The METHOD_ROLES table (line 264-292) already encodes which role each method requires, but register() ignores it entirely.\n\nThis is a defensive-code-forcing problem: every call site of register() and register_peer() must manually verify role assignment against METHOD_ROLES, duplicating the role table in every registration call.\n\nFix: eliminate the distinction between register() and register_peer(). Instead, accept a Box<dyn Any> and look up the required role from METHOD_ROLES at registration time, routing to the correct internal map automatically. Or: use a single trait with a role() method that the dispatcher can check. Either approach removes the per-call-site burden of knowing which map is correct.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.29",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-jmap: Dispatcher allows registering handler in wrong map with no compile-time check",
+  "updated_at": "2026-06-15T04:53:56Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:55Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

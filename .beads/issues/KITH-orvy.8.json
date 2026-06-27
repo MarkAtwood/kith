@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.8",
+  "title": "Concurrent Chat/set create for same contactId returns server error",
+  "description": "kith-store/src/chat.rs:56: create() generates a ULID, calls INSERT OR IGNORE (silently ignored if contact_id already has a row), then calls get(that_ulid) which returns None because the ULID was never written. This bubbles up as KithError::Store('chat not found after insert') \u2192 JmapError::server_fail. The second concurrent Chat/set create for the same contact gets a spurious 500 for a valid request.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:04:55Z",
+  "updated_at": "2026-04-24T01:36:21Z",
+  "closed_at": "2026-04-24T01:36:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:04:55Z"
+    }
+  ]
+}

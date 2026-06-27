@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.10",
+  "title": "peer_fetch.rs percent_encode_unreserved reinvents percent_encoding crate",
+  "description": "peer_fetch.rs:242-265 implements percent_encode_unreserved() manually \u2014 25 lines of byte-walking to encode unreserved characters. The percent-encoding crate (already a transitive dep via form_urlencoded, which is pulled in by axum) provides this as NON_ALPHANUMERICS.encode(s). The manual implementation is correct but is maintenance debt: any edge case (e.g. multi-byte UTF-8 input where bytes coincidentally match ASCII chars) must be thought through afresh. Suggested rewrite: use the percent-encoding crate directly.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:15Z",
+  "updated_at": "2026-04-25T08:24:18Z",
+  "closed_at": "2026-04-25T08:24:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:14Z"
+    }
+  ]
+}

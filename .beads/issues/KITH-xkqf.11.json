@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.11",
+  "title": "kithd test harness: bob's assertion router uses a separate empty blob store",
+  "description": "harness.rs:273: bob_assert_state receives a fresh make_blob_store() while bob's TCP listener uses bob_blob_store (line 238). The two AppState instances share the SQLite store but diverge on blobs. Any test that delivers an attachment to bob then downloads it via bob_router will silently get 404 or trigger an unexpected peer-fetch. Fix: pass Arc::clone(&bob_blob_store) to bob_assert_state.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:07:40Z",
+  "updated_at": "2026-04-25T03:24:58Z",
+  "closed_at": "2026-04-25T03:24:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:07:40Z"
+    }
+  ]
+}

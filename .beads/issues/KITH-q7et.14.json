@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "a69b7d033ab2613fb0fcb99f4686bdd017a14af966d46862b022b1a153408236",
+  "created_at": "2026-06-15T04:53:07Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-core/src/error.rs line 27: pub enum KithError has a variant Jmap(jmap_types::JmapError). This exposes the jmap_types crate's public type directly in kith-core's error API.\n\nConsequences:\n1. Any change to jmap_types::JmapError (field rename, variant add/remove) is a breaking change for KithError consumers even if kith-core's own API is unchanged.\n2. Callers that match on KithError::Jmap(e) must import or depend on jmap_types directly, even though jmap_types is meant to be an implementation detail of kith-core.\n3. From<jmap_types::JmapError> for KithError (line 34) and the Jmap variant together mean the boundary between kith-core's error model and jmap-types' error model is load-bearing in callers.\n\nThe same applies to AuthError: it is a kith-core public error variant (KithError::Auth(AuthError)), and AuthError::WhoIsFailed(String) wraps a String \u2014 which is fine \u2014 but AuthError is re-exported from kith-core and consumed by kith-jmap, kith-peer, and kithd.\n\nFix for Jmap leakage: replace KithError::Jmap(jmap_types::JmapError) with KithError::Protocol { error_type: String, description: Option<String> } or a kith-owned opaque JmapMethodError newtype. This isolates callers from jmap_types version bumps.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.14",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-core: KithError wraps jmap_types::JmapError \u2014 third-party type leakage",
+  "updated_at": "2026-06-15T04:53:07Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:07Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

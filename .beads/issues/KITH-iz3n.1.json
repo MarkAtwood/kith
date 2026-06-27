@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.1",
+  "title": "unwrap_or(0) comment inverts actual replay behavior",
+  "description": "Line 244-246 of events.rs says unwrap_or(0) for server_n 'causes replay to proceed rather than silently suppressing it.' This is backwards. The guard is `if server_n <= lei_n { return None }`. With server_n=0 and any valid lei_n >= 0 (e.g. 's-0' gives lei_n=0, so 0 <= 0 is true), replay is suppressed, not triggered. The comment states the opposite of what the code does. A developer reading this comment to understand the fallback behavior will be misled about the invariant.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:26:51Z",
+  "updated_at": "2026-04-24T18:33:03Z",
+  "closed_at": "2026-04-24T18:33:03Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:26:50Z"
+    }
+  ]
+}

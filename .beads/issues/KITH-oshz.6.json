@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.6",
+  "title": "Decision: Minimal ClientSession deserializes only fields the TUI needs",
+  "description": "ClientSession (lines 34-53) declares only four fields: primaryAccounts, apiUrl, eventSourceUrl, state. The JMAP spec defines many more. By deserializing only what kith-tui uses, we ignore unknown future server fields without error. This is forward-compatible: a server upgrade that adds new capabilities doesn't break the client. The account_id() method (lines 48-52) encapsulates the capability lookup.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:38Z",
+  "updated_at": "2026-04-20T11:46:37Z",
+  "closed_at": "2026-04-20T11:46:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:37Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.13",
+  "title": "outbox_tick: complete_delivery and record_failure return values silently dropped",
+  "description": "Both guard.outbox().complete_delivery() and guard.outbox().record_failure() results are discarded with let _ = .... A DB error here causes the outbox row to stay in an incorrect state (delivered but not marked, or failed but not backed off) with no log entry. Fix: log errors at warn level rather than discarding.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:11Z",
+  "updated_at": "2026-04-24T15:45:45Z",
+  "closed_at": "2026-04-24T15:45:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:11Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.19",
+  "title": "list_by_chat sort not stable when two messages share created_at",
+  "description": "list_by_chat uses ORDER BY created_at DESC with no tiebreaker. If two messages are inserted with the same unix-second timestamp the relative order between them is undefined and may differ between calls. Because message IDs are ULIDs (time-sortable), adding id DESC as a secondary sort key would make the ordering stable at zero cost.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:47:20Z",
+  "updated_at": "2026-04-24T16:59:25Z",
+  "closed_at": "2026-04-24T16:59:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:47:20Z"
+    }
+  ]
+}

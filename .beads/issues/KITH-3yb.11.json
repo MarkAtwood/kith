@@ -1,0 +1,51 @@
+{
+  "id": "KITH-3yb.11",
+  "title": "Tests: attachment upload/download integration round-trip",
+  "description": "What: Integration test covering the full attachment lifecycle: upload blob, create message with attachment, deliver to peer, peer retrieves attachment metadata.\n\nAlgorithm:\n1. Use existing two-instance harness (from kith-3f2 integration testing epic).\n2. Test scenario:\n   a. Owner A uploads known blob (32 bytes of known content) via POST /jmap/upload.\n   b. Verify response: blobId non-empty, size=32, sha256 matches sha256(known_content).\n   c. Owner A creates message with attachment (Message/set create, chatId for A\u2194B, attachments=[{blobId, filename, contentType, size, sha256}]).\n   d. Wait for outbox delivery to B (poll or trigger tick).\n   e. Owner B calls Message/get \u2014 verify message has attachments array with blobId, filename, contentType matching what A sent.\n   f. Owner A downloads via GET /jmap/download \u2014 verify bytes match original content bit-exactly.\n3. Oracle: sha256(known_content) computed independently, hardcoded in test as hex literal.\n\nDefensive rules: use known test content (not random) for deterministic oracle comparison; verify sha256 bit-exactly.\n\nAgent team: R reads existing two-instance harness setup; T writes test; V runs cargo test -p kithd --features test-utils + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:57:20Z",
+  "updated_at": "2026-04-20T00:27:31Z",
+  "closed_at": "2026-04-20T00:27:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:57:20Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:22Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:23Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:23Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:24Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:24Z"
+    }
+  ]
+}

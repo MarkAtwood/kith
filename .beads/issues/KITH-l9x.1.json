@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.1",
+  "title": "SEC1: owner Message/set attachment inserts not transactional",
+  "description": "In kith-chat/message.rs process_create, messages().insert() and the subsequent loop of attachments().insert() are separate SQLite statements with no wrapping transaction. If the message insert succeeds but a later attachment insert fails (e.g. duplicate blob_id, disk-full mid-loop), the message row persists with missing attachment metadata \u2014 an inconsistent database state with no recovery path. kith-store already has insert_message_with_attachments() that wraps both in a single transaction and is used by the Peer/deliver path. The owner Message/set create path should use the same transactional method. Risk: silent partial write; attachment metadata can be lost without the caller knowing the message was created.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:12Z",
+  "updated_at": "2026-04-20T01:07:47Z",
+  "closed_at": "2026-04-20T01:07:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:12Z"
+    }
+  ]
+}

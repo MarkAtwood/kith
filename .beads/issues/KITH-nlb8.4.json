@@ -1,0 +1,21 @@
+{
+  "id": "KITH-nlb8.4",
+  "title": "kithctl: TLS ClientConfig rebuilt on every JMAP request",
+  "description": "kithctl/watch.rs:249,474 \u2014 build_tls_connector() is called inside watch_once() and jmap_post() on every invocation. ClientConfig::builder() with PinnedCertVerifier is non-trivial: allocates RustCrypto state. Should be constructed once and passed as Arc<TlsConnector> to avoid per-request overhead and certificate re-parsing.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:27:02Z",
+  "updated_at": "2026-04-25T00:36:53Z",
+  "closed_at": "2026-04-25T00:36:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:27:02Z"
+    }
+  ]
+}

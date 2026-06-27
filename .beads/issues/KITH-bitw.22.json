@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.22",
+  "title": "DECISION: Fallback display name chain for contacts (displayName \u2192 login \u2192 id)",
+  "description": "What: When formatting chat names, the code prefers displayName, falls back to login, then falls back to raw id. Same chain is used in multiple places: load_startup_data (lines 162-175) and load_messages_for_chat (lines 320-326).\n\nWhy it's good: Prevents empty or missing display names from breaking the UI. Not all Tailscale deployments populate displayName (Headscale without OIDC is an example). The login is more readable than the raw ID. This chain respects the design constraint stated in CLAUDE.md: 'DisplayName may be empty on Headscale without OIDC \u2014 always fall back to LoginName, then to raw ID.' Applied consistently across the codebase.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:25Z",
+  "updated_at": "2026-04-20T05:46:13Z",
+  "closed_at": "2026-04-20T05:46:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:24Z"
+    }
+  ]
+}

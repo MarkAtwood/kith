@@ -1,0 +1,27 @@
+{
+  "id": "KITH-jphy.4",
+  "title": "kith-tui: event loop + terminal init (event.rs + main.rs)",
+  "description": "What: Implement event.rs with the async run() function and main.rs with terminal init/cleanup and the panic hook.\n\nAlgorithm for main.rs:\n1. Install panic hook BEFORE terminal init: std::panic::set_hook(Box::new(|info| { let _ = crossterm::terminal::disable_raw_mode(); let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen); eprintln!(\"panic: {info}\"); }))\n2. crossterm::terminal::enable_raw_mode()?\n3. crossterm::execute!(stdout, crossterm::terminal::EnterAlternateScreen)?\n4. Terminal::new(CrosstermBackend::new(stdout()))?\n5. AppState::new() with terminal_size = (terminal.size()?.width, terminal.size()?.height)\n6. Call event::run(&mut terminal, &mut state).await?\n7. In a finally block (or after run returns): disable_raw_mode() + execute!(LeaveAlternateScreen) + terminal.show_cursor()\n8. If quit normally: std::process::exit(0)\n\nAlgorithm for event.rs pub async fn run():\n1. let mut events = crossterm::event::EventStream::new()\n2. let mut tick = tokio::time::interval(Duration::from_millis(50))\n3. Initial draw: terminal.draw(|f| { state.terminal_size=(f.area().width,f.area().height); ui::draw(f, state) })?\n4. loop { tokio::select! { maybe_event = events.next() => match ..., _ = tick.tick() => {} } ; terminal.draw(...)?; if state.quit { break; } }\n5. Key handlers:\n   - KeyCode::Char('q') with no modifiers OR KeyCode::Char('c') with CONTROL: state.quit = true\n   - KeyCode::Tab: toggle focus between ChatList and Input\n   - Focus::ChatList + Up: selected_chat = selected_chat.saturating_sub(1)\n   - Focus::ChatList + Down: selected_chat = (selected_chat + 1).min(chat_list.len().saturating_sub(1))\n   - Focus::Input + KeyCode::Char(c): if input.len() + c.len_utf8() <= 65536 { input.insert(input_cursor, c); input_cursor += c.len_utf8() }\n   - Focus::Input + Backspace: if input_cursor > 0 { find prev char boundary; remove; update cursor }\n   - Focus::Input + Left/Right/Home/End: move cursor by one char (UTF-8 safe)\n   - PageUp: scroll_offset += visible_height; clamp_scroll\n   - PageDown: scroll_offset = scroll_offset.saturating_sub(visible_height); clamp_scroll\n   - Esc: scroll_offset = 0\n   - Resize(w, h): state.terminal_size = (w, h)\n6. Return Ok(())\n\nDefensive programming rules:\n- All input_cursor mutations must land on a char boundary; use is_char_boundary() guard\n- Keyboard events with unexpected modifiers fall through to _ => {} (no unwrap)\n- Event stream None/error arm: log warning and continue (do not crash)\n- max input = 65536 bytes enforced at insertion\n\nTests (unit in event.rs #[cfg(test)]):\n- test: char insertion respects 65536 byte limit (oracle: insert 65536 'a' chars, assert next insert is rejected)\n- test: backspace on empty input is a no-op (oracle: cursor stays 0, input stays empty)\n- test: UTF-8 backspace on '\u20ac' (3 bytes) moves cursor by 3 (oracle: hardcoded; '\u20ac'.len_utf8() == 3)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:32:46Z",
+  "updated_at": "2026-04-20T04:41:32Z",
+  "closed_at": "2026-04-20T04:41:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jphy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:45Z"
+    },
+    {
+      "depends_on_id": "KITH-jphy.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:32:51Z"
+    }
+  ]
+}

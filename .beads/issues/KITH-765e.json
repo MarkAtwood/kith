@@ -1,0 +1,12 @@
+{
+  "id": "KITH-765e",
+  "title": "[EPIC] Review: fix review findings KITH-tpd2 (P3)",
+  "description": "Round 16 deep review of changes from KITH-tpd2: malformed unclosed-bracket probe_url test (discovery.rs), maxChanges=0 liveness follow-up assertion (contact.rs). Check for correctness, edge cases, and whether reviewer is genuinely bikeshedding.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:11:41Z",
+  "updated_at": "2026-04-24T20:13:47Z",
+  "closed_at": "2026-04-24T20:13:47Z"
+}

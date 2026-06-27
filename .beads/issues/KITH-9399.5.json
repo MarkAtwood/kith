@@ -1,0 +1,21 @@
+{
+  "id": "KITH-9399.5",
+  "title": "advance_state + changed_at_counter update has crash window (not atomic)",
+  "description": "In ChatStore::create() and update_last_message_at(), advance_state() is called first (auto-commits), then changed_at_counter is updated in a separate statement. A crash between the two leaves changed_at_counter=0, making the chat invisible to Chat/changes consumers until another update occurs. Same pattern exists in contact store. Fix: wrap both operations in an explicit transaction.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T21:10:36Z",
+  "updated_at": "2026-04-24T21:27:28Z",
+  "closed_at": "2026-04-24T21:27:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9399",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T14:10:38Z"
+    }
+  ]
+}

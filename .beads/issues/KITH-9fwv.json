@@ -1,0 +1,12 @@
+{
+  "id": "KITH-9fwv",
+  "title": "kith-peer: read_at_unix cast to u64 unguarded against negative DB values",
+  "description": "At kith-peer/src/lib.rs around the receipt handler, read_at_unix (i64 from DB) is cast to u64 via as u64 without a non-negative guard. A negative value (from buggy migration or direct DB write) would wrap to a huge u64 and produce a far-future RFC 3339 timestamp silently. Fix: use read_at_unix.max(0) as u64 or add debug_assert\\!(read_at_unix >= 0).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:19Z",
+  "updated_at": "2026-04-25T02:55:05Z",
+  "closed_at": "2026-04-25T02:55:05Z"
+}

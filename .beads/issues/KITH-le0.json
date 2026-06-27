@@ -1,0 +1,13 @@
+{
+  "id": "KITH-le0",
+  "title": "Phase 1 deferred fixes: store correctness, kith-tslocal hardening",
+  "description": "What: Resolve all deferred P1/P2 findings from Phase 1 review cycles.\n\nWhy: Phase 1 MVP (all 13 implementation epics) is complete. Before moving to Phase 2 features, correctness and security bugs from review cycles must be closed. Three categories:\n\n1. kith-store correctness bugs (KITH-wa5, KITH-i2s, KITH-uhj, KITH-q7g, KITH-uos): atomicity violations, state regressions, security sign-flip \u2014 these affect real behavior.\n2. kith-tslocal hardening (KITH-626.x P1/P2): size limits, null-byte validation, error message consistency, serde forward-compat, test coverage gaps \u2014 these affect robustness and maintainability.\n3. Web client / kith-events (KITH-dwr, KITH-kv2): silent render failures, SSE coalescing.\n\nOutcome: All P1/P2 open issues closed, workspace clean, cargo test passes.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:48:24Z",
+  "updated_at": "2026-04-19T20:18:12Z",
+  "closed_at": "2026-04-19T20:18:12Z"
+}

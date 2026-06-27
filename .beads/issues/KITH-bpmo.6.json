@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bpmo.6",
+  "title": "Auth fail-closed on store error is a load-bearing security property",
+  "description": "auth.rs classify() returns AuthError::WhoIsFailed (maps to 500) when the contact store returns an error, rather than Unauthorized (401). This is correct: a store failure should not silently deny access (confusing for debugging) nor accidentally grant access. A future contributor might change the error to Unauthorized to 'simplify' error handling \u2014 defend it: the 500 distinction signals infrastructure failure vs. auth denial, which matters for alerting and debugging.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:46:34Z",
+  "updated_at": "2026-04-24T22:52:38Z",
+  "closed_at": "2026-04-24T22:52:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bpmo",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:46:33Z"
+    }
+  ]
+}

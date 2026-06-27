@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.6",
+  "title": "KITH_BIND_ADDR not in Config, no security note",
+  "description": "KITH_BIND_ADDR is read inline in main.rs outside the Config layer, so it never appears in config.rs documentation. A reader of config.rs has no way to discover this variable exists. Additionally, the fallback path is a security downgrade (plain HTTP, no tailnet-only guarantee), not just a dev convenience \u2014 but the only signal is a tracing::warn. A comment should note that the fallback must never be used in production because it violates the tailnet-only binding guarantee.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:16Z",
+  "updated_at": "2026-04-19T23:38:55Z",
+  "closed_at": "2026-04-19T23:38:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:15Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.1",
+  "title": "Decision: error_for_status() before deserialization guards against malformed error responses",
+  "description": "In fetch_session (line 89) and call_jmap (line 108), we call .error_for_status() BEFORE resp.json(). This prevents deserializing a 4xx/5xx response body as if it were valid JSON. If the status is not 2xx, the response fails immediately with HttpError, never reaching the deserialization step. This is the correct pattern for HTTP clients.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:23Z",
+  "updated_at": "2026-04-24T00:56:05Z",
+  "closed_at": "2026-04-24T00:56:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:23Z"
+    }
+  ]
+}

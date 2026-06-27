@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.2",
+  "title": "Message/set create: post-commit read failure causes notCreated despite committed message",
+  "description": "process_create (message.rs:555-561) calls guard.messages().get(&msg_id) after insert_outbound_message commits atomically. If that read fails (SQLite error), the function returns Err(notCreated/serverFail) \u2014 the client is told the message was not created. But the transaction already committed: the message IS in the DB with outbox entries and will be delivered. The client may retry, creating a duplicate. Fix: remove the post-commit read; build the response value from the known input parameters (they are already in scope) or accept that the created response can be minimal.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:42:03Z",
+  "updated_at": "2026-04-25T05:54:26Z",
+  "closed_at": "2026-04-25T05:54:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:42:03Z"
+    }
+  ]
+}

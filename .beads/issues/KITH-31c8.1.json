@@ -1,0 +1,20 @@
+{
+  "id": "KITH-31c8.1",
+  "title": "SSE stall warn log lacks client identity fields",
+  "description": "When 'SSE client channel full' is logged, there are no structured tracing fields (peer IP, owner_id, account). In production with multiple concurrent connections, the operator cannot identify which client is stalling or match the log line to a specific user session \u2014 the scenario that triggers the cost is: a stalled mobile or background client produces repeated warn lines with no actionable context.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:04:25Z",
+  "updated_at": "2026-04-25T09:08:10Z",
+  "closed_at": "2026-04-25T09:08:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-31c8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:04:24Z"
+    }
+  ]
+}

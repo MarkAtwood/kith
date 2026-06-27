@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.10",
+  "title": "KITHD_BASE_URL read from env on every request, unsanitized, emitted in JMAP session",
+  "description": "kithd/src/lib.rs:78-83 session_handler re-reads KITHD_BASE_URL from the process environment on every request rather than from Config. The value is emitted verbatim in the JMAP session object. A misconfigured value (javascript: URI, data: URI) could inject unexpected URLs into session responses. Config is not the single source of truth \u2014 base_url can change at runtime without restart. Fix: parse and validate base_url in Config::from_env (must start with https://, must parse as URL), store in Config, and read from there in session_handler.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:51Z",
+  "updated_at": "2026-04-24T05:26:25Z",
+  "closed_at": "2026-04-24T05:26:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:50Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.11",
+  "title": "PeerHttpClient::new and PinnedCertVerifier::new duplicate provider-fallback pattern",
+  "description": "Both sites contain the same 4-line CryptoProvider::get_default().cloned().unwrap_or_else(...) block. Suggested rewrite: extract fn default_crypto_provider() -> Arc<CryptoProvider> as a private module-level helper, called from both sites.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:08Z",
+  "updated_at": "2026-04-24T15:43:57Z",
+  "closed_at": "2026-04-24T15:43:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:07Z"
+    }
+  ]
+}

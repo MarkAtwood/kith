@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T18:04:03Z",
+  "compaction_level": 0,
+  "content_hash": "baa232031b7dcf12a8040f38417bba77f91519ae414bc05d0624aac357e9790e",
+  "created_at": "2026-06-14T17:55:02Z",
+  "created_by": "Mark Atwood",
+  "description": "Update extractors to build ConnectionContext and call identify_caller with it. Update all MockTransport test doubles to implement IdentityProvider. Update all handler signatures if needed.",
+  "ephemeral": 0,
+  "id": "KITH-jf27",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Update kithd and tests for IdentityProvider",
+  "updated_at": "2026-06-14T18:04:03Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T10:55:07Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-kqns",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

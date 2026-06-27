@@ -1,0 +1,20 @@
+{
+  "id": "KITH-83nt.8",
+  "title": "SSE AuthError causes quit but sse_rx sender still alive: next recv returns stale state changes",
+  "description": "In event::run(), when SseStatus::AuthError is received, state.quit = true is set. However the loop checks quit AFTER the draw call, meaning one more draw happens with quit=true. More importantly, if sse_rx still has buffered StateChange messages (sent before the auth failure), the loop may process those on subsequent iterations before hitting the quit check. The select\\! doesn't immediately drain or break. In practice this is a 1-tick race but it could cause a JMAP call to an unreachable server (since SSE task has stopped). Severity: low \u2014 the JMAP call would just fail with a network error.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:29Z",
+  "updated_at": "2026-04-25T05:33:35Z",
+  "closed_at": "2026-04-25T05:33:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-83nt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:28Z"
+    }
+  ]
+}

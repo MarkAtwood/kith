@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.16",
+  "title": "MAINTAINER BURDEN VERDICT: kith-tui client module risk level = MEDIUM",
+  "description": "SEC1 REVIEW COMPLETE.\n\nOVERALL RISK LEVEL: MEDIUM (acceptable for Phase 1, upgrade path exists for Phase 2).\n\nKEY FINDINGS:\n1. reqwest 0.12: 40+ transitive deps justified by TLS cert pinning use case. No better alternative exists. Accept for Phase 1.\n2. wiremock 0.6.5: Low-complexity, stable, widely used. Tests pass. No action needed.\n3. spawn_sse task management: Can fail silently if dropped. No reconnect (known Phase 1 trade-off). Acceptable; document and plan Phase 2 fix.\n4. ClientError: 4 variants sufficient for Phase 1. Granular auth/TLS/timeout variants needed in Phase 2.\n5. No reconnect logic: Deliberately absent per Phase 1 scope. SSE not yet wired into TUI frontend. If kithd restarts, client goes silent (UX issue, not safety issue).\n\nPHASE 1 VERDICT: PASS. Code is correct, secure, and tests pass. Dependency burden is LOW.\n\nPHASE 2 BLOCKERS:\n- Implement reconnect + exponential backoff for SSE.\n- Expand error types for auth/TLS/timeout.\n- Add error messages to UI.\n- Provide task lifecycle observability.\n\nPHASE 1 NICE-TO-HAVE:\n- Add doc comment to spawn_sse explaining silent failure.\n- Add Cargo.toml comment on TLS cert pinning.\n- File Phase 2 issues.\n\nSolo maintainer burden for Phase 1: SUSTAINABLE. Code is stable, dependencies are mature, tests are comprehensive.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:05:36Z",
+  "updated_at": "2026-04-20T05:07:33Z",
+  "closed_at": "2026-04-20T05:07:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:05:35Z"
+    }
+  ]
+}

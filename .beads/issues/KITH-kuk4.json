@@ -1,0 +1,22 @@
+{
+  "close_reason": "Not needed. The serde construction pattern for #[non_exhaustive] types is intentional by design. kith-core's make_* helpers are correct.",
+  "closed_at": "2026-06-13T19:09:12Z",
+  "compaction_level": 0,
+  "content_hash": "09e60f001a75e0e1826667e40a7cc072fc1179dc624b98feef0a07360af272fb",
+  "created_at": "2026-06-13T19:03:52Z",
+  "created_by": "Mark Atwood",
+  "description": "jmap-chat-types marks Attachment, Reaction, MessageRevision, MessageAction, DeliveryReceipt, Endpoint, ChatMember, ChannelPermission as #[non_exhaustive] but provides no new() constructors. kith currently works around this with serde_json::from_value hacks (make_attachment, make_mention, etc. in kith-core). Add proper new() constructors to each type in jmap-chat-types, matching the pattern already used by Message::new(), Chat::new(), ChatContact::new(). Then bump jmap-chat-types version.",
+  "ephemeral": 0,
+  "id": "KITH-kuk4",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Add constructors to jmap-chat-types for #[non_exhaustive] types",
+  "updated_at": "2026-06-13T19:09:12Z"
+}

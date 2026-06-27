@@ -1,0 +1,33 @@
+{
+  "id": "KITH-7w7.6",
+  "title": "E2E: peer deliver with attachments and group chat via two-daemon harness",
+  "description": "**What:** Add integration tests to the two-daemon harness (`crates/kithd/tests/harness.rs`) that verify end-to-end attachment delivery and group chat delivery.\n\n**Algorithm:**\n1. Open `crates/kithd/tests/harness.rs` and `crates/kithd/tests/e2e.rs`. Study the existing two-daemon setup.\n2. Add test: 'e2e_deliver_with_attachment':\n   a. Alice uploads a blob (POST to uploadUrl, receive blobId).\n   b. Alice calls Message/set create with 1 attachment referencing the blobId. Known values: filename='test.txt', content_type='text/plain', size=5, sha256=sha256('hello').\n   c. Run outbox_tick() on alice's daemon.\n   d. Assert Bob's daemon received the message: call Bob's Message/get, verify the message has 1 attachment with the correct blob_id, filename, content_type, size.\n   e. Oracle: the hardcoded values used in step (b).\n3. Add test: 'e2e_group_chat_deliver' (if group chat is fully supported end-to-end):\n   a. Create a 3-participant chat involving Alice, Bob, and Carol daemons.\n   b. Alice sends a message.\n   c. Outbox_tick delivers to both Bob and Carol.\n   d. Assert both received the message in the same chat (same chatId).\n   e. ChatId oracle: independently compute sha256 of sorted participant IDs using sha2 crate.\n\n**Limitations:** If a 3-daemon harness doesn't already exist, implement only the 2-daemon attachment test and file a separate bead for the 3-daemon group chat harness.\n\n**Defensive programming rules:**\n- Use test fixture sha256 values computed offline (e.g., sha256('hello') = '2cf24dba...' \u2014 this is a known value). Do NOT compute by calling the code under test.\n- The e2e test is the oracle for the full stack \u2014 it must not use the same code path on both ends (alice sends, bob reads back independently).\n- Clean up test databases/files after test (use existing harness cleanup patterns).\n\n**Agent team:** R (read harness.rs + e2e.rs to understand setup pattern) \u2192 I (implement tests) \u2192 V (cargo test -p kithd --features test-utils + clippy + fmt).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:51:22Z",
+  "updated_at": "2026-04-20T02:13:52Z",
+  "closed_at": "2026-04-20T02:13:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:21Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:29Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:29Z"
+    }
+  ]
+}

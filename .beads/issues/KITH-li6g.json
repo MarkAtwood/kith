@@ -1,0 +1,13 @@
+{
+  "id": "KITH-li6g",
+  "title": "Review: test: use kith_core::Message as oracle for senderId field name",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:42:36Z",
+  "updated_at": "2026-04-25T09:43:56Z",
+  "closed_at": "2026-04-25T09:43:56Z",
+  "notes": "Confidence: 3% chance of missed bug. Uncertainty driven by: this is a test-only change with no production logic; the only failure mode would be if kith_core::Message is not the right oracle for the wire format actually served by kithd (i.e., if kithd serialises Message through a different code path with different renames). Could not verify end-to-end at the wire level in this review. Would raise confidence if: an integration test serialised a real Message/get response from a running kithd and cross-checked the key names against kith_core::Message."
+}

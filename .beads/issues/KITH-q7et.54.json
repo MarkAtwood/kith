@@ -1,0 +1,31 @@
+{
+  "close_reason": "Merged into KITH-q7et.5 (same finding: #[non_exhaustive] on public error enums)",
+  "closed_at": "2026-06-15T11:53:05Z",
+  "compaction_level": 0,
+  "content_hash": "d3bd0932ac6c1a3af5c110b47cc19be6ee9bb457b9657cc98a1a8c9d72bea604",
+  "created_at": "2026-06-15T04:55:32Z",
+  "created_by": "Mark Atwood",
+  "description": "None of the public error enums in library crates are marked #[non_exhaustive], which forces downstream crates to update match arms on every new variant addition \u2014 a breaking-change hazard.\n\nEnums that should be #[non_exhaustive]:\n- kith-core/src/error.rs: AuthError (line 5), KithError (line 23)\n- kith-peer/src/lib.rs: PeerDeliveryError (line 679)\n- kithd/src/tls.rs: TlsError (line 9)\n- kithd/src/extractors.rs: CallerRejection (line 134)\n- kithd/src/listener.rs: ListenerError (line 26)\n- kith-tui/src/client.rs: ClientError (line 21), SseStatus (line 272)\n\nPer Rust API guidelines (C-SEALED / C-NON-EXHAUSTIVE): public enums in library crates that represent extensible sets of errors should carry #[non_exhaustive] unless the full set is intentionally sealed.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.54",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Public error enums missing #[non_exhaustive]",
+  "updated_at": "2026-06-15T11:53:05Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:31Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

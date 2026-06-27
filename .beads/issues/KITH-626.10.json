@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.10",
+  "title": "Standardize error message prefixes across whois() and status()",
+  "description": "Error messages use inconsistent prefixes, making production diagnostics fragile:\n\nCURRENT STATE:\n  status() line 95:  'connect to tailscaled socket: {e}'\n  whois() line 166:  'connect: {e}'\n  status() line 101: 'HTTP/1.1 handshake: {e}'\n  whois() line 172:  'handshake: {e}'\n  status() line 114: 'build request: {e}'\n  whois() line 186:  'build request: {e}'\n\nRISK: Operations logs won't have uniform diagnostic format. If someone fixes error messaging in one method without the other, drift increases.\n\nISSUE: A solo maintainer adding new error cases might not notice the inconsistency.\n\nSUGGESTION: Define constants for error prefixes or a helper fn to ensure all socket operations, handshakes, and request builds report errors consistently across both methods.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:24Z",
+  "updated_at": "2026-04-19T19:56:55Z",
+  "closed_at": "2026-04-19T19:56:55Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:23Z"
+    }
+  ]
+}

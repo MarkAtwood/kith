@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.5",
+  "title": "readAt accepts epoch-0 and other past timestamps without lower bound",
+  "description": "process_update clamps readAt to min(now_unix + 60) but applies no lower bound. A client submitting readAt=1970-01-01T00:00:00Z stores epoch 0, which breaks any unread-message display logic that compares readAt to receivedAt. A far-past readAt should be rejected (e.g. earlier than the message's own receivedAt or a reasonable floor).",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:06Z",
+  "updated_at": "2026-04-24T17:00:17Z",
+  "closed_at": "2026-04-24T17:00:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:05Z"
+    }
+  ]
+}

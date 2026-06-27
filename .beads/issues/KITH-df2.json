@@ -1,0 +1,26 @@
+{
+  "id": "KITH-df2",
+  "title": "kith-chat: read receipt \u2014 update readAt and emit",
+  "description": "What: When Message/set update sets readAt, additionally enqueue a Peer/receipt to the original sender's mailbox (only for incoming messages where sender != 'self').\n\nThis is an additional step layered on top of KITH-e9c (Message/set update). Implement as logic within the Message/set update handler.\n\nAlgorithm (after readAt is stored, within same handler as KITH-e9c):\n1. After store.messages().update_read_at(id, unix_ts)? succeeds:\n2. Load message: store.messages().get(id)?\n3. If message.sender_id == 'self': skip (no receipt to send for owner's own outgoing messages).\n4. If message.sender_id is a contact ID:\n   a. Look up contact: store.contacts().get_by_peer_user_id(sender_tailscale_user_id)? OR store.contacts().get(contact_id)?\n   b. If contact found and not blocked: store.outbox().enqueue_receipt(msg_id, peer_user_id, peer_mailbox_host, 'read', read_at_unix, now_unix)?\n   c. If contact not found or blocked: skip silently (cannot send receipt to unknown/blocked peer).\n5. State change is already emitted by update_read_at (store layer handles EventSource broadcast).\n\nDefensive programming rules:\n- Do NOT send receipt if sender_id == 'self' (would send to ourselves).\n- Do NOT panic if contact lookup fails (just skip receipt \u2014 delivery best-effort).\n- Receipt enqueue is outbox-based, so it will be retried by the peer delivery worker.\n- All of this is within the same store lock guard as update_read_at.\n- KithError from receipt enqueue \u2192 log warning, do not fail the Message/set response (read was successful even if receipt can't be queued).\n\nImplementation note: OutboxStore.enqueue_receipt may need to be added to kith-store if only Peer/deliver-style enqueue exists. Check whether outbox supports 'receipt' entries or just 'deliver' entries. If not, add enqueue_receipt that stores the Peer/receipt method call.\n\nAgent team:\n- Agent R: Read kith-store/src/outbox.rs (enqueue signature), kith-store/src/contact.rs (get_by_peer_user_id), kith-core/src/message.rs (Message struct sender_id field). Determine if OutboxStore needs extension for receipt enqueuing.\n- Agent I: Add receipt enqueue logic to Message/set update handler (KITH-e9c handler). If OutboxStore.enqueue_receipt doesn't exist, add it to kith-store first.\n- Agent T: Test that after Message/set update sets readAt on an incoming message, an outbox entry exists for the receipt. Oracle: outbox entry has correct peer_user_id and message_id.\n- Agent V: cargo test -p kith-chat && cargo test -p kith-store && clippy && fmt.\n\nTests:\n- Set readAt on incoming message \u2192 outbox has receipt entry for original sender\n- Set readAt on outgoing message (sender_id='self') \u2192 no outbox receipt entry\n- Set readAt when sender contact is blocked \u2192 no outbox receipt entry (silent skip)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:33:35Z",
+  "closed_at": "2026-04-19T15:33:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-e9c",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:44Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

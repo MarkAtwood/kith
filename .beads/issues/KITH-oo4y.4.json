@@ -1,0 +1,21 @@
+{
+  "id": "KITH-oo4y.4",
+  "title": "Chat/changes: add per-row changed_at_counter for correct maxChanges pagination",
+  "description": "ChatStore::get_changes_since returns ALL chats whenever any counter change occurs \u2014 it has no per-row state tracking. Correct maxChanges pagination requires per-row changed_at_counter (same as contacts V8 migration). Needs: V9 migration adding changed_at_counter INTEGER NOT NULL DEFAULT 0 to chats table + trigger to increment it on UPDATE + get_changes_since_ordered in ChatStore + maxChanges parse+truncation in ChatChangesHandler. This was not addressed in KITH-oo4y.1 which only fixed Message/changes. Message/changes is now correct; Chat/changes remains non-compliant.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:45:45Z",
+  "updated_at": "2026-04-24T20:49:31Z",
+  "closed_at": "2026-04-24T20:49:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oo4y",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:45:45Z"
+    }
+  ]
+}

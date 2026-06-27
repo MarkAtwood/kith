@@ -1,0 +1,12 @@
+{
+  "id": "KITH-dwr",
+  "title": "[SEC1] render* functions silently fail if DOM elements missing",
+  "description": "Functions like renderContactList (line 158), renderChatList (line 256), renderThread (line 382) all check 'if (!element) return' and silently exit if DOM elements are missing. This means bugs in index.html (missing #contact-list, #chat-list, #message-thread) won't surface as errors\u2014they'll fail silently with no warning. Future developers removing or renaming elements won't know why content doesn't appear. Consider logging a warning or throwing an error in development mode.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:52Z",
+  "updated_at": "2026-04-19T19:51:54Z",
+  "closed_at": "2026-04-19T19:51:54Z"
+}

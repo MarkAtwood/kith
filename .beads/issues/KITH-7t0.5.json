@@ -1,0 +1,20 @@
+{
+  "id": "KITH-7t0.5",
+  "title": "[R3] Unhandled errors in Message/changes and Chat/changes could corrupt state tokens",
+  "description": "Error handling in handleStateEvent (lines 550-589) only checks for 'cannotCalculateChanges' error type. But JMAP allows other error types like 'serverFailure', 'invalidArguments', etc.\n\nIf Message/changes returns an error (e.g., {type: 'serverFailure'}), the code proceeds to line 558:\n  messageState = result.newState;\n\nIf result.newState is undefined (error response has no newState), messageState becomes undefined. Next state event will fail checks that expect messageState to be null or a string token.\n\nSymptoms: After a /changes error, state events may crash or silently fail.\n\nFix: Check if result has the expected fields before using them. Pattern should be:\n  if (result.type) { // any error\n    handle error\n    continue;\n  }\n  // now safe to use result.newState, etc.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:03:38Z",
+  "updated_at": "2026-04-19T18:06:43Z",
+  "closed_at": "2026-04-19T18:06:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7t0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:03:38Z"
+    }
+  ]
+}

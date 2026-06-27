@@ -1,0 +1,21 @@
+{
+  "id": "KITH-pnlm.5",
+  "title": "get_changes_since exported but wrong for maxChanges pagination \u2014 footgun",
+  "description": "ContactStore::get_changes_since is still pub and appears in the public API alongside get_changes_since_ordered. The doc comment warns that callers using maxChanges must use get_changes_since_ordered instead. A future contributor browsing the API will naturally reach for get_changes_since (shorter name) and get subtly wrong newState under pagination without a compile error. Options: make get_changes_since pub(crate) or remove it if no internal callers remain (ChatContactChangesHandler now uses _ordered).",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:26:44Z",
+  "updated_at": "2026-04-24T20:34:00Z",
+  "closed_at": "2026-04-24T20:34:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:26:43Z"
+    }
+  ]
+}

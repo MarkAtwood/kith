@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T12:05:44Z",
+  "compaction_level": 0,
+  "content_hash": "5068952a202c7417d256da27a5de9517f6b70eac6a2eb37d737f8013b981e2bf",
+  "created_at": "2026-06-15T04:55:10Z",
+  "created_by": "Mark Atwood",
+  "description": "## Why this issue exists\n\n`TypeFilter::allows()` in kithd/src/events.rs handles three known JMAP type name strings. For any other name it returns `false` and fires a `debug_assert!(false)` that only fires in debug builds. In release builds an unrecognized type name is silently dropped \u2014 the SSE push is never delivered for that type.\n\nIf a developer adds a new JMAP broadcast type (e.g. `Email/changes`) but forgets to extend the `TypeFilter` match arm, the feature will appear to work in `cargo test` (debug build with assertions) but SSE subscribers that filter on that type will silently receive nothing in production.\n\n## What needs to be done\n\nReplace the `debug_assert!(false)` / silent-false fallthrough with one of:\n- A hard match that is `unreachable!()` (or a named error) so the compiler forces callers to handle it\n- A simple `Default::default()` + log at WARN level so production telemetry catches the gap\n- Document the closed set of type names as a compile-time enum so the match is exhaustive\n\nAt minimum, add a `tracing::warn!` call in the unknown-name branch so the problem is observable in production logs.\n\n## Acceptance criteria\n\n- Adding a new broadcast type without updating `TypeFilter` causes a compile error (preferred) or a visible log warning in release builds\n- No silent event loss for unrecognized type names",
+  "ephemeral": 0,
+  "id": "KITH-q7et.51",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "TypeFilter::allows silently drops unknown type names in release builds",
+  "updated_at": "2026-06-15T12:05:44Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:55:09Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

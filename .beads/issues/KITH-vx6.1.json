@@ -1,0 +1,21 @@
+{
+  "id": "KITH-vx6.1",
+  "title": "kith-store: ContactStore.get_changes_since",
+  "description": "What: Add get_changes_since(since_state: &str) -> Result<ChangesResult, KithError> to ContactStore in kith-store/src/contact.rs, mirroring the MessageStore pattern.\n\nAlgorithm:\n1. Parse since_state: strip 's-' prefix, parse remainder as i64; return KithError::Validation(\"invalid state token\") if malformed or prefix missing.\n2. Call self.get_state() to get current state string \"s-M\"; parse M.\n3. If since_counter >= M: return ChangesResult { added: vec![], updated: vec![], destroyed: vec![], new_state: state }.\n4. If since_counter < M: SELECT peer_user_id FROM contacts ORDER BY peer_login; collect all IDs.\n5. Return ChangesResult { added: all_ids, updated: vec![], destroyed: vec![], new_state: current_state }.\n\nDefensive programming rules:\n- State token parse must return KithError::Validation \u2014 never unwrap().\n- since_counter comparison is signed i64: handle i64::MIN input without overflow.\n- Empty contacts table is valid: return empty added list, not error.\n- No user input reaches SQL WHERE clauses (state token parsed to i64 integer before use).\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs get_changes_since and contact.rs for context. Produce exact function signature and SQL query.\n- Agent I: Implement the function. Add ChangesResult import if needed.\n- Agent T: Independently write tests using known state sequences constructed by hand (not from code output).\n- Agent V: cargo test -p kith-store && cargo clippy -p kith-store && cargo fmt --check.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:17:10Z",
+  "updated_at": "2026-04-19T15:29:58Z",
+  "closed_at": "2026-04-19T15:29:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:17:10Z"
+    }
+  ]
+}

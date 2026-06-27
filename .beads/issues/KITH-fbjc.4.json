@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.4",
+  "title": "SSRF guard allows any routable public IP; should restrict to tailnet range",
+  "description": "peer_fetch.rs is_valid_fetch_host blocks loopback/RFC-1918/link-local but allows any routable IP. Design intent is fetching blobs only from tailnet peers (100.64.0.0/10 CGNAT or .ts.net hostnames). If mailbox_host in the DB ever points to a public IP (misconfiguration, future feature drift), fetch_peer_blob makes an outbound request to arbitrary public internet IPs. Fix: whitelist only 100.64.0.0/10 for numeric IPs and require .ts.net suffix for hostname-based hosts.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:58:58Z",
+  "updated_at": "2026-04-24T05:12:21Z",
+  "closed_at": "2026-04-24T05:12:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:58:58Z"
+    }
+  ]
+}

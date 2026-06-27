@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.21",
+  "title": "Peer/deliver: sentAt stored verbatim with no format validation",
+  "description": "DeliverMessageArgs.sent_at is a String from an untrusted peer, stored verbatim in messages.sent_at_peer (TEXT, no CHECK constraint). A peer can store an arbitrary string (64KB blob, emoji sequence, injection attempt). The value is exposed in Message/get responses to owner clients. Each new client (native, mobile, TUI) that parses sentAt must handle malformed values defensively. Fix: validate sent_at parses as RFC 3339 in validate_attachments equivalent, or add a DB CHECK constraint, or both.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:11:57Z",
+  "updated_at": "2026-04-24T15:42:54Z",
+  "closed_at": "2026-04-24T15:42:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:11:57Z"
+    }
+  ]
+}

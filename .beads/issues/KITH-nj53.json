@@ -1,0 +1,12 @@
+{
+  "id": "KITH-nj53",
+  "title": "error.rs: forbiddenMethod should be forbidden per RFC 8620 \u00a77.1",
+  "description": "JmapError::forbidden_method() emits \"forbiddenMethod\" as the type string. RFC 8620 \u00a77.1 specifies the type string is \"forbidden\". Any JMAP client checking the type field against the spec string will not recognize this error. Fix: change error_type to \"forbidden\".into() in error.rs:44 and update the test at error.rs:148.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:13Z",
+  "updated_at": "2026-04-25T02:51:40Z",
+  "closed_at": "2026-04-25T02:51:40Z"
+}

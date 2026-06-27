@@ -1,0 +1,20 @@
+{
+  "id": "KITH-iz3n.10",
+  "title": "count() SQL query avoids materializing all IDs \u2014 correct approach",
+  "description": "Replacing list_ids().len() with a COUNT(*) SQL query is correct. The old code fetched all chat IDs into a Vec just to call .len(), which allocates O(n) strings even though only the count is needed. A future contributor might revert to list_ids().len() thinking it simplifies code \u2014 it does not: it makes calculateTotal=true O(n) in allocations for no reason. The COUNT(*) query is the right tool.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:36Z",
+  "updated_at": "2026-04-24T18:34:51Z",
+  "closed_at": "2026-04-24T18:34:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:35Z"
+    }
+  ]
+}

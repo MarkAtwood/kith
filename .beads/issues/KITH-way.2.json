@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.2",
+  "title": "Clarify why delivered state is idempotent in update_delivery_state",
+  "description": "Lines 292-319 in kith-store/src/message.rs branch on three cases when UPDATE touches 0 rows: already Delivered (idempotent return Ok), doesn't exist (error), or unexpected state (internal error). New contributors need to understand WHY we distinguish delivered from nonexistent \u2014 the answer is that Delivered is terminal and idempotent by contract, not just by chance. Add a comment before the match explaining this invariant.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:41Z",
+  "updated_at": "2026-04-19T20:17:45Z",
+  "closed_at": "2026-04-19T20:17:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:41Z"
+    }
+  ]
+}

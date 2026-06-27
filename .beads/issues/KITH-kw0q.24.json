@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.24",
+  "title": "unix_secs_to_rfc3339 duplicated in kith-peer and kith-store private util",
+  "description": "kith-peer/src/lib.rs comment explicitly notes it duplicates the algorithm from kith-store's private util module. When a timezone edge-case bug is found, both copies must be fixed. Neither has a cross-validation test. Fix: move to kith-core (which both crates already depend on) as a pub(crate) fn.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:12:01Z",
+  "updated_at": "2026-04-24T15:51:59Z",
+  "closed_at": "2026-04-24T15:51:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:12:01Z"
+    }
+  ]
+}

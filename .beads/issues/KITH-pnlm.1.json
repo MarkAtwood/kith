@@ -1,0 +1,21 @@
+{
+  "id": "KITH-pnlm.1",
+  "title": "maxChanges=0 should return invalidArguments (RFC 8620 \u00a75.6 SHOULD)",
+  "description": "Trigger: client sends maxChanges=0 in ChatContact/changes. RFC 8620 \u00a75.6 says 'If maxChanges is 0, the server SHOULD return an invalidArguments error.' Current code silently returns created=[], hasMoreChanges=true, newState=sinceState. This is wrong behavior for a spec-SHOULD: clients that probe maxChanges=0 to detect this error path get no error. No test exercises maxChanges=0 input.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:26:25Z",
+  "updated_at": "2026-04-24T20:30:42Z",
+  "closed_at": "2026-04-24T20:30:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:26:24Z"
+    }
+  ]
+}

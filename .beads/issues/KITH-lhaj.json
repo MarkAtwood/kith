@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "FederationTransport trait extracted. TailscaleTransport implemented. WhoIsProvider removed. All 1,197 tests pass.",
+  "closed_at": "2026-06-14T14:05:23Z",
+  "compaction_level": 0,
+  "content_hash": "dfb60ad7fddef15a5ab8628b557b2c09598dd7140dc33b73124d09074a376ab8",
+  "created_at": "2026-06-13T19:18:06Z",
+  "created_by": "Mark Atwood",
+  "description": "kith's federation (Peer/deliver, Peer/receipt, Peer/typing, Peer/retract) is hardwired to Tailscale: discovery via MagicDNS peer probing, identity via WhoIs, transport auth via WireGuard. The JMAP Chat federation spec (draft-atwood-jmap-chat-federation-00) is transport-agnostic but kith only implements the Tailscale binding. Extract a transport trait so alternative bindings (DNS+mTLS, onion services, etc.) can be added without rewriting the protocol layer. This is prerequisite for any non-Tailscale federation.",
+  "ephemeral": 0,
+  "id": "KITH-lhaj",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Abstract federation transport layer",
+  "updated_at": "2026-06-14T14:05:23Z"
+}

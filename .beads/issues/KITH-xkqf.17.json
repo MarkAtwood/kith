@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.17",
+  "title": "events.rs: max_n parsed as u64 but state counters are i64 \u2014 negative counter causes s-0 event IDs",
+  "description": "events.rs:397-402: the SSE event-ID coalescing loop parses state counters as u64 via n.parse::<u64>(). State counters are i64 everywhere else (parse_state_counter uses i64). If a counter ever goes negative (store bug, migration), parse::<u64>() fails silently, that token is excluded from max_n, max_n stays at 0, and every SSE event gets ID s-0. Every reconnecting client gets Last-Event-ID:s-0, causing perpetual full replays.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:06Z",
+  "updated_at": "2026-04-25T03:25:39Z",
+  "closed_at": "2026-04-25T03:25:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:05Z"
+    }
+  ]
+}

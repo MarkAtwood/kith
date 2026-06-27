@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.14",
+  "title": "Store::get_all_states: missing type not defaulted \u2014 returns s-0 without detecting corrupt DB",
+  "description": "get_all_states initializes contact='s-0', chat='s-0', message='s-0' and then overwrites each from the query result. If the state_counters table is missing a row for one of the three type_names (DB corruption, failed migration, or a future migration that forgets to insert), the corresponding state silently stays 's-0'. The session state returned to clients will be wrong \u2014 clients will think there are no changes when there are. The correct behavior is to return an error if any expected type_name is absent. The current behavior treats a missing row as 'counter=0', which happens to be the correct initial value, but masks corruption.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:29Z",
+  "updated_at": "2026-04-25T05:17:50Z",
+  "closed_at": "2026-04-25T05:17:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:28Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jp2",
+  "title": "kith-chat: Message/set create",
+  "description": "What: Implement Message/set create JmapHandler in kith-chat crate \u2014 owner sends a message, optimistic return with deliveryState=pending, outbox enqueue.\n\nAlgorithm:\n1. Deserialize args: { accountId, create: Map<String, Value> }.\n2. Verify accountId == 'a-self'.\n3. For each create entry (client_id \u2192 fields):\n   a. Extract required: chatId (String), body (String), bodyType (String, default 'text/plain'). Optional: replyTo (String), sentAt (String).\n   b. Validate body.len() <= 65536 bytes at parse time \u2014 BEFORE any lock acquisition.\n   c. Validate bodyType in ['text/plain', 'text/markdown']; else notCreated/invalidArguments.\n   d. Acquire store lock.\n   e. Validate chatId exists: store.chats().get(chat_id)?; if None \u2192 notCreated/notFound.\n   f. Validate replyTo if present: store.messages().get(reply_to_id)?; verify msg.chat_id == chat_id; else notCreated/invalidArguments.\n   g. Generate ULID for message ID: ulid::Ulid::new().to_string().\n   h. received_at_unix = now (SystemTime::now()).\n   i. store.messages().insert(id, chat_id, 'self', body, body_type, sent_at_peer, received_at_unix, DeliveryState::Pending, reply_to)?\n   j. store.chats().update_last_message_at(chat_id, received_at_unix)?\n   k. Get recipients: SELECT peer_user_id, peer_mailbox_host FROM chat_members JOIN contacts WHERE chat_id=? AND peer_user_id != owner_id.\n   l. For each recipient: store.outbox().enqueue(msg_id, peer_user_id, peer_mailbox_host, now_unix)?\n   m. Release store lock.\n   n. Add message to created map.\n4. Return { accountId, oldState, created, notCreated, newState }.\n\nDefensive programming rules:\n- body.len() check is byte count (not char count) \u2014 enforce BEFORE acquiring store lock.\n- bodyType whitelist check before any DB write.\n- chatId validated against DB (must exist) before message insert.\n- replyTo validated: must exist AND must be in same chatId; cross-chat replyTo \u2192 invalidArguments.\n- sentAt: store as-is from client; NEVER used for ordering (receivedAt is authoritative).\n- ULID generated server-side; never trust client-supplied message ID.\n- All DB writes in one lock acquisition per create entry (atomic within one message).\n- Outbox enqueue happens inside same lock guard as message insert.\n- KithError from any store call \u2192 notCreated[client_id] = server_fail (do not abort other creates).\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs (insert signature), kith-store/src/outbox.rs (enqueue), kith-store/src/chat.rs (get, update_last_message_at), kith-core/src/message.rs (DeliveryState), ulid crate usage in workspace.\n- Agent I: Implement MessageSetCreateHandler in kith-chat/src/message.rs.\n- Agent T: Tests using in-memory store, hand-crafted expected JMAP response. Oracle: JMAP field names from RFC 8620 \u00a75.3 + kith-core serde attrs.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Message/set create valid \u2192 created.m0 has id (ULID), deliveryState='pending', body echoed\n- Message/set create body > 65536 bytes \u2192 notCreated/invalidArguments (before any DB write)\n- Message/set create unknown chatId \u2192 notCreated/notFound\n- Message/set create valid replyTo \u2192 created successfully\n- Message/set create replyTo from different chat \u2192 notCreated/invalidArguments\n- After create: outbox has entry for recipient",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:04Z",
+  "closed_at": "2026-04-19T15:30:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

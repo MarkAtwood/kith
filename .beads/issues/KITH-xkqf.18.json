@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.18",
+  "title": "blob_exists does not validate blob_id; relies entirely on caller discipline",
+  "description": "kith-attach/src/lib.rs:65-66: blob_exists calls self.blob_path(id).exists() which has only a debug_assert\\! (stripped in release builds) for path-traversal safety. Every other public entry point (write_blob, read_blob, delete_blob) explicitly calls validate_blob_id before blob_path. blob_exists is the only exception, relying on its doc comment ('callers must validate first') as the only guard. A future caller that skips validation silently introduces a filesystem oracle. Add explicit validate_blob_id call at the top of blob_exists.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:10Z",
+  "updated_at": "2026-04-25T03:25:46Z",
+  "closed_at": "2026-04-25T03:25:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:10Z"
+    }
+  ]
+}

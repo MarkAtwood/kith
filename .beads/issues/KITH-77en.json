@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T23:56:31Z",
+  "compaction_level": 0,
+  "content_hash": "07f997a76155a5caea48b63c9fc660c3e44c18658094ad42000a900e14f0ae75",
+  "created_at": "2026-06-14T23:53:02Z",
+  "created_by": "Mark Atwood",
+  "description": "Map IP ranges or hostnames to identities via a TOML config file. Implements IdentityProvider. identify_caller matches ctx.peer_addr against configured CIDR ranges or exact IPs and returns the associated Identity. Useful for LAN deployments, dev/test, and Headscale setups with non-Tailscale IP ranges. Minimal implementation \u2014 exercises the trait with no external dependencies.",
+  "ephemeral": 0,
+  "id": "KITH-77en",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Identity provider: static config file",
+  "updated_at": "2026-06-14T23:56:31Z"
+}

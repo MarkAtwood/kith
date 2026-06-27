@@ -1,0 +1,13 @@
+{
+  "id": "KITH-j4v2",
+  "title": "Schema V4 migration: contact_id on chats, sender_msg_id on messages",
+  "description": "DB migration needed before implementing the chat ID model change and senderMsgId.\\n\\nSQL:\\n  ALTER TABLE chats ADD COLUMN contact_id TEXT;\\n  UPDATE chats SET contact_id = (SELECT peer_user_id FROM chat_members WHERE chat_id = chats.id LIMIT 1) WHERE kind = 'direct';\\n  CREATE UNIQUE INDEX chats_direct_contact ON chats(contact_id) WHERE kind = 'direct';\\n  ALTER TABLE messages ADD COLUMN sender_msg_id TEXT;\\n  UPDATE messages SET sender_msg_id = id;\\n  CREATE INDEX messages_sender_msg_id ON messages(chat_id, sender_msg_id);\\n\\nThe unique partial index on chats prevents duplicate direct chats with the same contact. The sender_msg_id index supports idempotent delivery lookup.\\n\\nApplied via the existing migrate() function in kith-store/src/lib.rs by bumping PRAGMA user_version to 4.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:39Z",
+  "updated_at": "2026-04-23T22:20:35Z",
+  "closed_at": "2026-04-23T22:20:35Z"
+}

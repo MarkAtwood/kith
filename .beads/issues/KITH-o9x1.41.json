@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.41",
+  "title": "kith-store: messages.chat_id FK has no ON DELETE action",
+  "description": "schema V1 \u2014 messages.chat_id REFERENCES chats(id) has no ON DELETE clause. With PRAGMA foreign_keys=ON, deleting a chats row while messages exist is rejected (default NO ACTION = RESTRICT). All other FKs in the schema explicitly declare ON DELETE CASCADE. The inconsistency means any future cleanup path or test teardown that tries to delete a chat row will silently fail at a distance. Fix: add ON DELETE CASCADE in the next schema migration.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:16:34Z",
+  "updated_at": "2026-04-25T02:03:07Z",
+  "closed_at": "2026-04-25T02:03:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:16:34Z"
+    }
+  ]
+}

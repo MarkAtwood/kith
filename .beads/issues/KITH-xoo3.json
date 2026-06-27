@@ -1,0 +1,12 @@
+{
+  "id": "KITH-xoo3",
+  "title": "kith-chat: Chat/set response emits updated:null and destroyed:null",
+  "description": "Chat/set handler hardcodes \"updated\": null and \"destroyed\": null in the response. RFC 8620 \u00a75.3 requires these fields to be structured types: updated is a map (empty {}), destroyed is an array (empty []). JSON null is not valid for these fields. Conformant clients that treat these as object/array will crash or misparse. Contact/set correctly emits {} and [] \u2014 the Chat handler should match.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:45Z",
+  "updated_at": "2026-04-25T02:51:42Z",
+  "closed_at": "2026-04-25T02:51:42Z"
+}

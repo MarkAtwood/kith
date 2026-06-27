@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.12",
+  "title": "SEC4: Rename sanitize_display to strip_ansi_escape_sequences for clarity",
+  "description": "app.rs lines 109-132. Function name 'sanitize_display' is vague about intent. Better name: 'strip_ansi_escape_sequences' or 'strip_ansi_sgr' matches the behavior (removing ANSI SGR color/style codes). Doc comment is excellent; just the name is unclear.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:43:04Z",
+  "updated_at": "2026-04-20T05:50:20Z",
+  "closed_at": "2026-04-20T05:50:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:43:03Z"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "KITH-3sb",
+  "title": "Rename 'as_' variable to attachment_store in tests",
+  "description": "attachment.rs tests use 'as_' (lines 141, 174, 196, 216, 251) as a variable name to avoid Rust's 'as' keyword. This is technically correct but obscures intent. Rename to 'attachment_store' for clarity since it's not in hot-path code where brevity is prized.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:55Z",
+  "updated_at": "2026-04-19T23:32:40Z",
+  "closed_at": "2026-04-19T23:32:40Z"
+}

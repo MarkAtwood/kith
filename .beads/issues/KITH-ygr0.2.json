@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.2",
+  "title": "test suite does not cover newState after truncation",
+  "description": "test_contact_changes_max_changes_truncation checks hasMoreChanges=true and total item count <= maxChanges but does not assert the value of newState after truncation. As a result, the newState paging bug (see sibling issue) is not caught by any test. A new test is needed with oracle: when 3 changes exist and maxChanges=1, calling again with the returned newState as sinceState must still yield the remaining 2 changes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:46:24Z",
+  "updated_at": "2026-04-24T20:00:08Z",
+  "closed_at": "2026-04-24T20:00:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:46:24Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.17",
+  "title": "TLS cert expiry never checked on load; expired cert breaks clients silently",
+  "description": "tls.rs:33 load_or_generate_cert checks cert_path.exists() and key_path.exists() but never reads the cert's notAfter field. rcgen generates certs with 365-day validity. After one year, TLS connections fail silently (from the daemon's perspective \u2014 it never notices). Fix: on the load path, parse the DER cert, extract notAfter, and regenerate if within 30 days of expiry or already expired. At minimum, log the expiry date at startup.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:17Z",
+  "updated_at": "2026-04-24T05:31:29Z",
+  "closed_at": "2026-04-24T05:31:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:17Z"
+    }
+  ]
+}

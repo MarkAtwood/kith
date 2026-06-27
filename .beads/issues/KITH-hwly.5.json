@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hwly.5",
+  "title": "Outbox retry: lock-poison arms silently swallow failure with no log",
+  "description": "outbox_tick() uses if let Ok(guard) = store.lock() in multiple places (contact lookup, message load). If the Mutex is poisoned (a prior handler panicked while holding it), these arms silently skip the entry and continue the loop. The top-level guard acquisition (line ~897) correctly returns on error, but inner acquisitions inside the per-entry loop do not. Result: on lock poison, delivery attempts silently stop with no log entry, operator sees no indication that the outbox is stuck, all Pending messages stay Pending forever. \u2014 Change inner if let Ok(guard) arms to either unwrap with a log statement or propagate to an early return from outbox_tick.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:20:00Z",
+  "updated_at": "2026-04-24T04:23:51Z",
+  "closed_at": "2026-04-24T04:23:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hwly",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:19:59Z"
+    }
+  ]
+}

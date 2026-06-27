@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.2",
+  "title": "SEC2: no efficiency issues",
+  "description": "Efficiency review (SEC2) of Phase 1 polish (08810bf):\n\nREVIEWED CHANGES:\n1. take_vars/restore_vars String keys (test-only)\n   - Changed from Box::leak(&'static str) to String\n   - VERDICT: More efficient \u2014 eliminates permanent memory leaks in tests\n   \n2. Base URL three-branch if-let fallback (lib.rs:59-66)\n   - env::var called at most twice per request\n   - VERDICT: No efficiency concern \u2014 env lookups are not a bottleneck\n   \n3. insert_if_allowed closure hoisting (events.rs:263-271)\n   - Closure defined once outside loop, reused 100+ times\n   - Captures: type_filter (Copy), takes owned string args\n   - VERDICT: Correct optimization \u2014 zero unnecessary capture overhead\n\nCONCLUSION: No efficiency regressions. Code shows thoughtful optimization with documented reasoning.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:40:57Z",
+  "updated_at": "2026-04-19T23:43:56Z",
+  "closed_at": "2026-04-19T23:43:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:40:56Z"
+    }
+  ]
+}

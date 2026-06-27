@@ -1,0 +1,19 @@
+{
+  "id": "KITH-qnj.4",
+  "title": "[R2-SEC6] Good: early_status call reused to avoid redundant tailscaled round-trip",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:44:43Z",
+  "updated_at": "2026-04-19T18:46:27Z",
+  "closed_at": "2026-04-19T18:46:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qnj",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:44:42Z"
+    }
+  ]
+}

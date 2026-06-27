@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.24",
+  "title": "Argument untagged serde: T=Value always wins over Ref variant",
+  "description": "kith-core/src/resultref.rs Argument uses serde untagged, which tries T first then ResultReference. If T is serde_json::Value the Ref variant can never be reached. The kith-jmap resolver strips the hash key prefix before deserializing the ResultReference directly, so the current dispatch path is not affected. However, this is an implicit invariant not expressed in the type system: the type is safe only if callers never parameterize Argument with a type that deserializes from arbitrary JSON. A future handler could violate this silently.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:14:51Z",
+  "updated_at": "2026-04-25T02:20:31Z",
+  "closed_at": "2026-04-25T02:20:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:14:51Z"
+    }
+  ]
+}

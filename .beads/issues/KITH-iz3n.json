@@ -1,0 +1,13 @@
+{
+  "id": "KITH-iz3n",
+  "title": "Review: fix review findings KITH-fp3n (P0/P1/P2)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:25:24Z",
+  "updated_at": "2026-04-24T18:35:06Z",
+  "closed_at": "2026-04-24T18:35:06Z",
+  "notes": "store/chat/message review: 4 findings (1 P0 correctness bug, 1 P1 maintainer burden, 1 P3 elegance, 1 P4 readability) + 1 good decision. The P0 is a real data-loss bug in MessageQueryChangesHandler where two separate lock acquisitions allow messages written between them to be permanently missing from queryChanges responses. ChangesResult is still alive via get_changes_since (non-scoped). The always-empty removed field in queryChanges is correct because messages cannot be deleted and the filter is stable (chatId). Confidence: 85% no missed bug. Uncertainty: did not read the full queryChanges test suite to confirm no test catches the TOCTOU gap, and did not inspect whether Mutex<Store> serializes all writes such that the Phase 1 single-threaded constraint eliminates the window in practice \u2014 if kithd is strictly single-threaded (no concurrent HTTP handlers), the two-lock window cannot open and the bug is latent rather than active.\nevents.rs review: 4 findings (1 P0 wrong comment, 1 P1 stale doc, 2 P3 elegance/readability). The P0 is a comment that states the opposite of what the code does for the server_n=0 fallback case. No runtime correctness bug was found -- the code itself (unwrap_or(0) causing suppression when lei_n>=0) is safe-by-default (suppresses spurious replay) even though the comment claims the opposite. Confidence: 85% chance no additional bug was missed. Uncertainty: did not trace whether any caller can produce a server state token that is not 's-N' format (which would make the unwrap_or(0) path reachable at runtime); did not check if close_after_first + None send path has a test that exercises receiver-drop before the None is sent.\npeer_fetch.rs review: 2 findings (1x P1 risk, 1x P3 maintainer-burden), 1 decision recorded. The P1 (@ userinfo bypass in is_valid_fetch_host) is not exploitable via the current data flow because mailbox_host originates from Tailscale WhoIs node_name which cannot contain @; the risk is that the guard does not enforce its own contract, leaving a latent hole for any future call path. The encoding implementation itself is clean. Confidence: 90% chance of no missed bug in peer_fetch.rs scope. Uncertainty: did not audit all write paths for peer_mailbox_host in the full DB schema to rule out every possible source of an @ character reaching the contacts table."
+}

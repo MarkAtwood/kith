@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ggjh.4",
+  "title": "10-yield ceiling in select-closed test is underdocumented",
+  "description": "events_coalescing_task_exits_via_select_closed_arm uses 10 yield_now() calls after drop(resp) and asserts receiver_count()==0. In the single-threaded current_thread runtime, 1 yield suffices: drop(resp) wakes the task synchronously, the first yield gives it control, select\\! closed() fires, task exits, rx dropped, receiver_count()==0. The comment says 'yield several times to let the select\\! closed() arm fire' but does not explain why 10 was chosen or what the theoretical minimum is. A future reader cannot tell whether 10 is a measured margin, cargo-culted from the subscribe loop, or a guess. A one-line comment stating '1 is the theoretical minimum; 10 provides scheduler headroom' would prevent future confusion.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:32:01Z",
+  "updated_at": "2026-04-24T19:34:18Z",
+  "closed_at": "2026-04-24T19:34:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ggjh",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:32:00Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-800t.13",
+  "title": "SSE try_send with warn log: correct for broadcast receiver design",
+  "description": "The switch from send().await to try_send() in the SSE coalescing task, with a warn log on Full and silent break on Closed, is the right design. The coalescing task holds the broadcast::Receiver. If it blocks on a slow mpsc consumer, it cannot drain the broadcast ring buffer, causing all other SSE clients to see Lagged errors. try_send + drop is the only correct choice. A future contributor may suggest switching back to .await for 'reliability' \u2014 reject this. The bounded channel (256) gives plenty of headroom for any realistic JMAP burst; a client that fills it is stalled or disconnected and should be dropped.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:33:25Z",
+  "updated_at": "2026-04-25T09:38:19Z",
+  "closed_at": "2026-04-25T09:38:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-800t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:33:24Z"
+    }
+  ]
+}

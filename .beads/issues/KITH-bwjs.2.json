@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bwjs.2",
+  "title": "kith-events tests use stale 'Contact' type_name fixture",
+  "description": "crates/kith-events/src/lib.rs lines 64 and 106 use type_name: \"Contact\" in test fixtures. The production store emits \"ChatContact\" (contact.rs:23). The channel-mechanics tests pass because they never assert on type_name, but the fixture string is now wrong and will mislead future readers. Should be updated to \"ChatContact\" to match the actual emitted value.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:40:25Z",
+  "updated_at": "2026-04-24T18:43:37Z",
+  "closed_at": "2026-04-24T18:43:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bwjs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:40:24Z"
+    }
+  ]
+}

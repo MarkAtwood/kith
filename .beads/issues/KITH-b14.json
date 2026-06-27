@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b14",
+  "title": "kithd: graceful shutdown on SIGTERM",
+  "description": "Create kithd::signal module. pub async fn shutdown_signal(): use tokio::signal::ctrl_c() for Ctrl-C; cfg(unix) use signal(SignalKind::terminate()) for SIGTERM; tokio::select! on whichever fires first; log 'received shutdown signal' at INFO. pub mod signal added to lib.rs. No sensitive data logged in shutdown path.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T16:18:15Z",
+  "closed_at": "2026-04-19T16:18:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-it6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

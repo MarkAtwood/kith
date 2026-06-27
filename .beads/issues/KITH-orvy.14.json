@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.14",
+  "title": "Triple VecDeque return type from load_messages_for_chat is still positional",
+  "description": "kith-tui/src/event.rs:308: load_messages_for_chat returns (VecDeque<String>, VecDeque<String>, VecDeque<String>) with meaning documented only in a comment. All six call sites unpack by positional convention; the compiler cannot enforce ordering. The same reasoning that justified MessageEntry (replacing an opaque tuple) applies here. A named return struct (LoadedMessages { display_lines, message_ids, sender_ids }) removes the positional footgun at the function boundary.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:28Z",
+  "updated_at": "2026-04-24T01:35:33Z",
+  "closed_at": "2026-04-24T01:35:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:28Z"
+    }
+  ]
+}

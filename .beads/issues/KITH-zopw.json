@@ -1,0 +1,13 @@
+{
+  "id": "KITH-zopw",
+  "title": "Review round 1: kith-tui compose/send/receipts",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T12:13:49Z",
+  "updated_at": "2026-04-20T12:18:43Z",
+  "closed_at": "2026-04-20T12:18:43Z",
+  "notes": "Maintainer risk: Medium. Three critical issues found:\n\n1. [CRITICAL] Parallel VecDeques (messages/message_ids/message_senders) have undocumented length invariant. Function doc comment mentions it passingly but doesn't emphasize the risk. Any code path that pushes to one deque and forgets the others will silently corrupt state (event.rs:299-415, 676-704, 751-755, 845). This is the highest-impact risk.\n\n2. [MEDIUM] Indexed access to chat_ids at event.rs:742 without bounds check. Relies on selected_chat being clamped in load_startup_data, but invariant is not enforced and no guard in other code paths (event.rs:832-860, 585-592).\n\n3. [MEDIUM] prev_selected sentinel pattern enforced by discipline, not type system. Early returns or new code paths could skip the invariant update at line 859. Excellent comment at 769-771 documents it, but it's still a footgun.\n\nNon-issues: message_state opaque string format is acceptable (server validates); sanitize_display is well-isolated; UTF-8 cursor handling is correct.\nSEC7 Calibration: Confidence 88% no missed bug. Three elegance findings (KITH-zopw.2, .4, .6) all have genuine engineering basis (DRY, named types for clarity, reduction of maintenance burden). They're not bikeshedding\u2014they're real code quality improvements that would pass any competent code review. The three P1 findings are the only material risks; elegance improvements are optional but well-founded. Review team is reaching the point of diminishing returns on additional passes."
+}

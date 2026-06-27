@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bwjs.6",
+  "title": "get_state before get_changes_since_for_chat is safe under single lock",
+  "description": "get_state() is called before get_changes_since_for_chat() inside the single lock acquisition. A reviewer might suspect that messages with state_version > n could appear in the changes result \u2014 impossible because the mutex is held for the entire block. No write can advance the counter or insert rows between the two calls. The ordering is correct and the single-lock design eliminates the TOCTOU window that existed in the two-lock version.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:40:45Z",
+  "updated_at": "2026-04-24T18:44:02Z",
+  "closed_at": "2026-04-24T18:44:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bwjs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:40:44Z"
+    }
+  ]
+}

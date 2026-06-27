@@ -1,0 +1,20 @@
+{
+  "id": "KITH-60f2.3",
+  "title": "kith-peer: MAX_BODY_BYTES enforced by byte length not char count \u2014 spec says maxBodyBytes",
+  "description": "DeliverHandler checks msg.body.len() > MAX_BODY_BYTES (line 140) where len() is byte length. The architecture doc defines maxBodyBytes=65536 in the session capability object. A UTF-8 message where each codepoint is 3-4 bytes will be rejected at ~16K-21K characters even though it is within any reasonable character-count interpretation. More critically, a peer could craft a body that is exactly 65536 single-byte ASCII chars but whose JSON encoding is larger. Bytes is the right unit only if the spec says bytes \u2014 the name 'maxBodyBytes' is consistent with bytes \u2014 but the intent should be documented, and the check is applied after serde has already decoded the JSON string, so the byte count is of the decoded UTF-8, not the wire bytes, which is arguably correct. Flag: intent and unit need explicit documentation.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:13:42Z",
+  "updated_at": "2026-04-25T06:13:48Z",
+  "closed_at": "2026-04-25T06:13:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:13:42Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bpmo.4",
+  "title": "mailbox_host_loopback_rejected test broken when built with test-utils feature",
+  "description": "kith-peer/src/lib.rs:1075-1078 has a #[cfg(feature = \"test-utils\")] block making is_valid_mailbox_host(\"127.0.0.1\") return true. The unit test mailbox_host_loopback_rejected asserts !is_valid_mailbox_host(\"127.0.0.1\") without a #[cfg(not(feature = \"test-utils\"))] guard. Running cargo test --features test-utils at workspace level fails this test. Fix: add #[cfg(not(feature = \"test-utils\"))] attribute to mailbox_host_loopback_rejected, or add a companion test for the test-utils path that asserts loopback IS accepted.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:46:15Z",
+  "updated_at": "2026-04-24T22:52:19Z",
+  "closed_at": "2026-04-24T22:52:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bpmo",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:46:14Z"
+    }
+  ]
+}

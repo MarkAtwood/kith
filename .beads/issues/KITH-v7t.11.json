@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.11",
+  "title": "config: KITH_DB_PATH bare-filename edge case untested",
+  "description": "resolve_data_dir() has a guard 'if parent \\!= Path::new(\"\")' to handle the case where KITH_DB_PATH is a bare filename with no directory component (e.g. 'kith.db'), which would produce an empty parent and incorrectly become data_dir. This guard is subtly correct but there is no test covering it. The backward-compat code path (KITH_DB_PATH) has tests for the happy path but not for the bare-filename degenerate case, leaving the guard unvalidated.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:31Z",
+  "updated_at": "2026-04-19T23:32:40Z",
+  "closed_at": "2026-04-19T23:32:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:30Z"
+    }
+  ]
+}

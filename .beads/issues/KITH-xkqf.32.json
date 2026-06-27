@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.32",
+  "title": "kith-tui: add_root_certificate keeps system CA bundle; cert is not exclusively pinned",
+  "description": "client.rs:74: reqwest::ClientBuilder::add_root_certificate adds the self-signed kithd cert as an ADDITIONAL trusted root. The system CA bundle remains active. Any cert for the kithd hostname signed by any browser-trusted CA would be accepted. The code comment says 'cert is pinned' but add_root_certificate does not disable system CAs. In practice kith.local is not a CA-issuable hostname, so risk is low, but the intent (exclusive self-signed trust) should be implemented correctly: use .tls_built_in_root_certs(false) to disable the system bundle.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:09:07Z",
+  "updated_at": "2026-04-25T03:27:25Z",
+  "closed_at": "2026-04-25T03:27:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:09:06Z"
+    }
+  ]
+}

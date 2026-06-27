@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.29",
+  "title": "peer_fetch.rs: SizeExceeded detection uses fragile string matching on internal error",
+  "description": "fetch_with_https_client (and its test-only twin fetch_peer_blob_from_url) detect size-limit exceeded via msg.contains(\"length limit\") \u2014 a string match on the Display output of http_body_util::Limited's internal error type. This is fragile: any change to the upstream error message silently breaks the detection, causing SizeExceeded to be reported as a Network error instead. Additionally, the full size-limit/hash-verify/store-write logic is duplicated between fetch_with_https_client and fetch_peer_blob_from_url (~40 lines each). Fix: match on the error type rather than its Display string, and collapse the duplication.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:52:24Z",
+  "updated_at": "2026-04-24T17:02:07Z",
+  "closed_at": "2026-04-24T17:02:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:52:24Z"
+    }
+  ]
+}

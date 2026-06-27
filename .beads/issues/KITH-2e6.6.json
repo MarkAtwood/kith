@@ -1,0 +1,20 @@
+{
+  "id": "KITH-2e6.6",
+  "title": "SEC0: Contacts list column alignment overflows with long values",
+  "description": "main.rs:106-123 (cmd_contacts_list) uses fixed-width format specs ({:<30}, {:<25}, {:<40}) but does NOT truncate values that exceed the column width.\n\nExample failures:\n1. login > 30 chars: expands LOGIN column, pushes DISPLAY NAME column rightward\n2. display_name > 25 chars: breaks MAILBOX HOST alignment\n3. mailbox_host > 40 chars: overflows into BLOCKED column\n\nResult: Table becomes misaligned and hard to read, especially with many long contact names.\n\nFix: Use itertools::Itertools::pad_str or manually truncate each field before formatting. Apply consistent max-width constraints and append ellipsis (...) to truncated values, similar to how watch.rs:25 truncates message bodies.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:18:14Z",
+  "updated_at": "2026-04-19T19:26:19Z",
+  "closed_at": "2026-04-19T19:26:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2e6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:18:14Z"
+    }
+  ]
+}

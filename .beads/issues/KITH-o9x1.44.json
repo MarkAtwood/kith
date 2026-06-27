@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.44",
+  "title": "kith-store: size_bytes negative check uses misleading rusqlite error variant",
+  "description": "kith-store/src/lib.rs, message.rs, attachment.rs \u2014 when size_bytes < 0 the code returns rusqlite::Error::InvalidColumnType(..., Type::Integer). That variant means 'wrong SQLite storage type', not 'value out of range'. Log messages will read 'Invalid column type size_bytes of type Integer' which implies a type mismatch, not DB corruption. Fix: use FromSqlConversionFailure with a descriptive message (e.g. 'size_bytes is negative, database may be corrupted') to make the corruption sentinel legible.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:16:57Z",
+  "updated_at": "2026-04-25T02:22:44Z",
+  "closed_at": "2026-04-25T02:22:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:16:56Z"
+    }
+  ]
+}

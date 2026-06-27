@@ -1,0 +1,13 @@
+{
+  "id": "KITH-jg2i",
+  "title": "Review: fix loop 5 \u2014 8 commits across 7 files",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:43:36Z",
+  "updated_at": "2026-04-25T08:52:10Z",
+  "closed_at": "2026-04-25T08:52:10Z",
+  "notes": "Maintainer risk: LOW \u2014 The changes in this batch are cleanup fixes with no new user-facing surface area. The P1 risks are all narrow (error message metadata, reconnect behavior on slow SSE clients, pre-V6 database edge case). None require coordinated deployment or create API lock-in.\nConfidence: 8% chance of missed bug. Uncertainty driven by: (1) the draw_messages scroll arithmetic \u2014 I traced it manually but there is no test that exercises non-zero scroll_offset with exact pixel output; (2) the try_send behavior when close_after_first=true and the channel is exactly-full at the None send \u2014 the task breaks without sending the close-signal, but the stream terminates anyway via live_tx drop, which I verified by reading the take_while chain, but this depends on tokio::sync::mpsc behavior I did not test empirically; (3) the pre-V6 DB migration path \u2014 I read the schema code but did not trace V4's UPDATE execution path. Would raise confidence if: (a) a ui::tests case for draw_messages with scroll_offset>0 was added; (b) the pre-V6 data scenario was covered by a migration regression test."
+}

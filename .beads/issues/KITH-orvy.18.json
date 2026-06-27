@@ -1,0 +1,20 @@
+{
+  "id": "KITH-orvy.18",
+  "title": "Tailscale WhoIs as sole auth primitive \u2014 correct, no tokens to steal",
+  "description": "The architecture uses the Tailscale-verified TCP peer address as the only authentication signal, with no sessions, JWTs, or API keys. A contributor might suggest adding an API key or HMAC for 'defense in depth,' but this would introduce a second credential that must be stored, rotated, and protected \u2014 a larger attack surface, not a smaller one. WhoIs is sufficient because Tailscale guarantees the address and the address proves identity.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:05:58Z",
+  "updated_at": "2026-04-24T01:31:28Z",
+  "closed_at": "2026-04-24T01:31:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:05:58Z"
+    }
+  ]
+}

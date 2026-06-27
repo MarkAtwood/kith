@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kw0q.10",
+  "title": "validate_attachments: blob_id check split into two separate conditions",
+  "description": "blob_id is validated in two separate if blocks (empty/length/leading-dot, then char set), both returning the same error string. All other field validations (filename, content_type) are single compound conditions. Suggested rewrite: combine into one if with all predicates joined by ||, matching the style of the checks directly below.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:10:05Z",
+  "updated_at": "2026-04-24T15:43:53Z",
+  "closed_at": "2026-04-24T15:43:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:10:05Z"
+    }
+  ]
+}

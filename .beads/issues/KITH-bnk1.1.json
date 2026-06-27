@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bnk1.1",
+  "title": "HTTP 429 treated as permanent: peer rate-limit causes message loss",
+  "description": "is_permanent_delivery_error returns true for HttpError(400..=499), which includes HTTP 429 (Too Many Requests). If a peer briefly rate-limits delivery, outbox_tick calls mark_failed, permanently deleting the outbox row and setting delivery_state=failed. The message is never retried. Fix: exclude 429 from the permanent range \u2014 use 400..=428 and 430..=499, or check code != 429.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:10:08Z",
+  "updated_at": "2026-04-24T22:14:26Z",
+  "closed_at": "2026-04-24T22:14:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bnk1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:10:08Z"
+    }
+  ]
+}

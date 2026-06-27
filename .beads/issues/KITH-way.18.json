@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.18",
+  "title": "Decision: Use .max(0) coercion for size_bytes cast safety",
+  "description": "In attachment.rs row_to_attachment (line 108), size_bytes is read as i64 then cast to u64:\n  let size_bytes: i64 = row.get(3)?;\n  ...\n  size: size_bytes.max(0) as u64,\n\nThe .max(0) coercion prevents negative size values from wrapping into huge unsigned values:\n  - If size_bytes is negative (corrupt or injected data), max(0) clamps it to 0\n  - Without it, -1i64 as u64 = 18446744073709551615 (wraparound)\n  - Storage schema enforces size_bytes NOT NULL, but defensive coding prevents downstream issues\n\nThis is correct defensive design:\n1. SQLite can store negative i64 if constraint is missing or bypassed\n2. Downstream code expects size to be reasonable; wraparound would cause issues\n3. Clamping to 0 is safe: attachment with size 0 is valid, and actual size is on disk\n4. Comment documents the strategy explicitly\n5. INSERT validates size_bytes via u64::try_from (line 39-40)\n\nMirrors the input validation principle: trust but verify at deserialization boundaries.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:48Z",
+  "updated_at": "2026-04-19T20:16:35Z",
+  "closed_at": "2026-04-19T20:16:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:48Z"
+    }
+  ]
+}

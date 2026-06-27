@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.15",
+  "title": "kith-jmap: role-check-before-handler-lookup order is correct security design",
+  "description": "dispatch_one checks METHOD_ROLES first (role-required check) before looking up the handler map (line 412-424). This means a peer calling an owner method gets 'forbidden' not 'unknownMethod', even if no handler is registered. A contributor might suggest merging the maps to simplify dispatch, but that would allow role-checking to be bypassed if a method is registered in the wrong map. The two-map structure (handlers vs peer_handlers) enforces the typed identity contract at compile time: peer handlers receive Identity as a typed parameter, owner handlers do not need it. This prevents accidentally calling a peer method handler without verifying identity.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:53:40Z",
+  "updated_at": "2026-04-25T08:13:07Z",
+  "closed_at": "2026-04-25T08:13:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:53:40Z"
+    }
+  ]
+}

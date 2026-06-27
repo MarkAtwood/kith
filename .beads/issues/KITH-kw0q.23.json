@@ -1,0 +1,21 @@
+{
+  "id": "KITH-kw0q.23",
+  "title": "Message/set update: readAt accepts unclamped timestamps (far future / past)",
+  "description": "process_update stores owner-supplied readAt verbatim (including 2099-01-01) in read_at_unix. This timestamp is used for receipt 'at' sent to the peer, and potentially for UI ordering. Far-future timestamps produce a receipt 'at' value the peer must ignore per spec, but could break UI sort order locally. Fix: clamp readAt to [message.created_at, now+tolerance] before storing.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T15:12:00Z",
+  "updated_at": "2026-04-24T15:56:17Z",
+  "closed_at": "2026-04-24T15:56:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-kw0q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T08:11:59Z"
+    }
+  ]
+}

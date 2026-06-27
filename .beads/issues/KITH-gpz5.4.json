@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.4",
+  "title": "queryChanges added list includes cross-chat message IDs",
+  "description": "get_changes_since returns changes across ALL chats; added_with_index uses full_list filtered to the requested chat_id \u2014 cross-chat IDs are not found in full_list, fall back to index 0, and appear in the queryChanges response for the wrong chat. Client receives stale/wrong IDs mixed into the result.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:45:54Z",
+  "updated_at": "2026-04-24T17:00:23Z",
+  "closed_at": "2026-04-24T17:00:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:45:58Z"
+    }
+  ]
+}

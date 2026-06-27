@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.32",
+  "title": "resolve_args silently overwrites existing plain key when #-key resolves to same name",
+  "description": "In resolve_args() (kith-jmap/src/lib.rs), if args contains both 'foo' and '#foo', the code removes '#foo', resolves it, then calls obj.insert('foo', resolved). This silently overwrites the existing 'foo' key with the resolved value. RFC 8620 \u00a79 does not define the conflict behavior. The handler receives an unexpected value for 'foo' with no error. Fix: check for an existing plain key before inserting and return invalidArguments on conflict.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:22Z",
+  "updated_at": "2026-04-25T01:53:35Z",
+  "closed_at": "2026-04-25T01:53:35Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:21Z"
+    }
+  ]
+}

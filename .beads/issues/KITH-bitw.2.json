@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.2",
+  "title": "SEC3: Deduplication in handle_state_change uses O(n\u00b2) Vec::contains loop",
+  "description": "In event.rs lines 430-436, created/updated ID deduplication uses a Vec and O(n\u00b2) contains check. Should use HashSet or collect-into-set-and-back for clarity and efficiency.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:42:32Z",
+  "updated_at": "2026-04-20T05:50:14Z",
+  "closed_at": "2026-04-20T05:50:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:42:32Z"
+    }
+  ]
+}

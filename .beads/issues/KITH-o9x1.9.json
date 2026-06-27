@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.9",
+  "title": "kith-attach: BlobStore has no enforcement that base_dir exists at I/O time",
+  "description": "BlobStore::new() accepts any PathBuf without checking existence. init() creates the directory but is never called automatically. If the caller omits init(), or if base_dir is deleted after init(), every read_blob/write_blob call fails with an OS error (NotFound or similar) that surfaces as an uncontextualised io::Error to callers. A lazy-init check in blob_path() or a clear contract in the API doc (and an assertion) would prevent silent misdirection.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:48Z",
+  "updated_at": "2026-04-25T01:54:37Z",
+  "closed_at": "2026-04-25T01:54:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:48Z"
+    }
+  ]
+}

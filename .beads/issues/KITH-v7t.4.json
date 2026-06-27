@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.4",
+  "title": "Decision: TowerToHyperService bridge in TLS accept loop",
+  "description": "main.rs uses TowerToHyperService::new(svc) to adapt the axum/Tower service for hyper 1.x. hyper 1.x defines its own Service trait (hyper::service::Service) that is incompatible with tower::Service; TowerToHyperService is the correct bridge. Without it, the types do not unify and the connection cannot be served. This is non-obvious because hyper 0.x and Tower shared a Service trait, so the bridge requirement is new in hyper 1.x.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:11Z",
+  "updated_at": "2026-04-19T23:32:47Z",
+  "closed_at": "2026-04-19T23:32:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:10Z"
+    }
+  ]
+}

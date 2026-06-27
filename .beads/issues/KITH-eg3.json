@@ -1,0 +1,14 @@
+{
+  "id": "KITH-eg3",
+  "title": "Review round 3: kith-tslocal Tailscale LocalAPI client",
+  "description": "Round 3 review after timeout and login_name fixes. Confirm convergence.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:25:32Z",
+  "updated_at": "2026-04-19T06:28:40Z",
+  "closed_at": "2026-04-19T06:28:40Z",
+  "notes": "Round 3 complete. Assessed all correctness, security, efficiency criteria. Findings: 1x P2 (pre-collection size limit gap). No P0/P1 bugs. Confidence: 92%. Code is mature and defensive. Timeout logic is correct, null-byte checks are good, test oracles are independent. Not running out of real issues\u2014the 1x P2 is legitimate (defense-in-depth). Issues KITH-eg3.1 (P2 pre-collect limits) and KITH-eg3.2 (summary) filed."
+}

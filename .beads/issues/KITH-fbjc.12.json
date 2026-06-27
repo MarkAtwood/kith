@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fbjc.12",
+  "title": "macOS kithctl watch: AppleScript injection via embedded double-quotes in sender/body",
+  "description": "watch.rs:213-228 uses format!(\"{:?}\", sender_clean) to produce an AppleScript string literal, on the basis that Rust Debug escaping produces safe AppleScript. This is not formally correct: Rust Debug escapes '\"' as '\\\"' but AppleScript string parsing under pathological input is not specified to handle arbitrary backslash sequences. sanitize_sender strips only '\\0\\r\\n\\t'; characters like '\"' and '&' remain. A sender string like '\" & do shell script \"id\" & \"' after Debug escaping produces a string where the quoting may not be fully safe across all osascript versions. Fix: strip all characters outside printable ASCII (0x20-0x7e) excluding double-quote from sender_clean and preview_clean before splicing into AppleScript literals, and add test vector with embedded quotes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:59:53Z",
+  "updated_at": "2026-04-24T05:26:39Z",
+  "closed_at": "2026-04-24T05:26:39Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T21:59:53Z"
+    }
+  ]
+}

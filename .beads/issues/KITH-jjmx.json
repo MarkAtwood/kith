@@ -1,0 +1,12 @@
+{
+  "id": "KITH-jjmx",
+  "title": "kith-store: pre-V8 contacts misclassified as created after V13 migration",
+  "description": "upsert() uses created_at_counter=0 as a sentinel meaning \"just inserted\". The V13 migration sets created_at_counter=changed_at_counter WHERE changed_at_counter>0. A contact that existed before V8 with state counter=0 has both changed_at_counter=0 and created_at_counter=0 after V13. The first update to such a contact stamps created_at_counter=N (>0), causing get_changes_since_ordered to return is_create=true for an existing contact. RFC 8620 clients will treat an existing contact as newly created. Fix: use -1 as the unset sentinel, or add an is_inserted boolean column set exactly once at INSERT time.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:56Z",
+  "updated_at": "2026-04-25T02:51:43Z",
+  "closed_at": "2026-04-25T02:51:43Z"
+}

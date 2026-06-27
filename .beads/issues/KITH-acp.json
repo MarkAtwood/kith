@@ -1,0 +1,13 @@
+{
+  "id": "KITH-acp",
+  "title": "Phase 1 polish: RFC compliance, dead code, safety checks",
+  "description": "What: Resolve highest-value P3 open items before Phase 2 work begins.\n\nWhy: Phase 1 MVP is complete and stable. These items reduce technical debt and close small correctness gaps before adding Phase 2 features. Doing them now keeps the codebase clean and avoids carrying dead code/missing RFC features into Phase 2.\n\nItems grouped by category:\n\n1. RFC compliance: KITH-c2i \u2014 kith-events must support ?ping= query parameter per RFC 8620 \u00a77.3\n2. Dead code removal: KITH-626.17 (WhoIsNode.addresses unused), KITH-626.18 (profile_pic_url dead), KITH-626.20 (StatusResponse.backend_state unused)\n3. Compile-time safety: KITH-a01 \u2014 add compile/test check so METHOD_ROLES and register() cannot drift\n4. Test coverage: KITH-v7t.11 \u2014 KITH_DB_PATH bare-filename edge case untested\n5. Refactoring: KITH-46h (extract counter tx pattern), KITH-69c (row-to-message helper), KITH-626.14 (LocalAPI request boilerplate)\n\nOutcome: No dead fields in public API types, RFC 8620 \u00a77.3 ping compliance, compile-time guard against method registry drift.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:14:39Z",
+  "updated_at": "2026-04-19T21:37:48Z",
+  "closed_at": "2026-04-19T21:37:48Z"
+}

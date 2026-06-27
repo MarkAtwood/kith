@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.9",
+  "title": "try_send in SSE coalescing task is the right call \u2014 defend against revert to send().await",
+  "description": "The coalescing task uses try_send instead of send().await. A contributor might suggest reverting to await for 'reliability'. The await form is wrong: it holds the broadcast::Receiver across an async park, which blocks all other subscribers from receiving events while one slow client drains. In a single-user system there is only one SSE subscriber at a time, but the kith-events architecture allows multiple tabs. The try_send + drop-on-full approach is correct. The 256-deep channel means only genuinely stalled (not just slow) clients are dropped.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:46:44Z",
+  "updated_at": "2026-04-25T08:52:06Z",
+  "closed_at": "2026-04-25T08:52:06Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:46:44Z"
+    }
+  ]
+}

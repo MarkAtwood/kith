@@ -1,0 +1,20 @@
+{
+  "id": "KITH-m4t.1",
+  "title": "Drain race: notify may be missed if last conn finishes before notified() registers",
+  "description": "In main.rs, the drain loop reads:\n\n  while in_flight_drain.load(Ordering::Acquire) > 0 {\n      notify_drain.notified().await;\n  }\n\nIf the last in-flight connection decrements the counter and calls notify_one() after the load() returns > 0 but before notified().await has registered the waiter, the notification is lost. The drain then blocks until the 10-second timeout fires instead of returning immediately.\n\nThe standard fix is to obtain the Notified future BEFORE checking the counter (register first, then check), which avoids the window. The 10-second timeout bounds the worst case so this is not a correctness failure \u2014 no data loss, no dropped requests \u2014 but it causes unnecessarily slow shutdown on the unlucky race.\n\nFix: use tokio::sync::Notify::notified() with the register-before-check pattern.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:44:12Z",
+  "updated_at": "2026-04-19T16:45:04Z",
+  "closed_at": "2026-04-19T16:45:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-m4t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:44:12Z"
+    }
+  ]
+}

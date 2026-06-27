@@ -1,0 +1,13 @@
+{
+  "id": "KITH-5r8",
+  "title": "Review round 1: kith-jmap JMAP protocol layer",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:39:52Z",
+  "updated_at": "2026-04-19T07:46:11Z",
+  "closed_at": "2026-04-19T07:46:11Z",
+  "notes": "\nMaintainer risk review of kith-jmap/src/lib.rs complete.\n\nFINDINGS:\n\nP1 RISKS (2 findings):\n\n1. METHOD_ROLES / register() mismatch (KITH-5r8.1)\n   - register() and METHOD_ROLES are decoupled\n   - Missing METHOD_ROLES entry causes silent handler death (unknownMethod error)\n   - No compile-time or test-time detection\n   - Scales poorly as method count grows\n\n2. resolve_args() partial mutation on error (KITH-5r8.2)\n   - In-place mutation can leave args in corrupted state if resolution fails\n   - Fragile pattern that invites future bugs\n   - Not a correctness issue, but hard to debug\n\nLOWER PRIORITY (noted but not filed as issues):\n- HandlerFuture boilerplate (ergonomics, not a risk)\n- Single file growth (architectural smell, not yet urgent at 1224 lines)\n\nAREAS WITH NO ISSUES FOUND:\n- Request parsing (parse_request): solid validation logic with good error messages\n- Session object building (build_session): clean implementation with proper fallbacks\n- Dispatcher dispatch logic: correct role checking (defense-in-depth at lines 335+)\n- Error handling and HTTP status mapping: comprehensive and RFC-aligned\n- Test suite: extensive, oracle-based, no self-certifying patterns\n- RFC compliance: Request parsing, session objects, error types all correct per RFC 8620\n\nVERDICT: kith-jmap is maintainable at current size. The two P1 risks are addressable without major refactoring. No blocker issues found.\n"
+}

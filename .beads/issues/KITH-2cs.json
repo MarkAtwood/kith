@@ -1,0 +1,26 @@
+{
+  "id": "KITH-2cs",
+  "title": "kith-jmap: ResultReference resolver (RFC 8620 \u00a73.7)",
+  "description": "ResultReference resolver: evaluate RFC 6901 JSON Pointer back-references in JMAP batches before method dispatch.\n\nWhat: Implement pub fn resolve_references(method_calls: &mut Vec<Invocation>, prior_responses: &[(String, serde_json::Value)]) -> Result<(), JmapError> that substitutes ResultReference values before dispatch.\n\nAlgorithm:\n1. For each invocation at index i in method_calls:\n   a. Take the args serde_json::Value (index 1 of the tuple)\n   b. Scan the args object for keys starting with '#' (e.g., '#ids')\n   c. For each such key:\n      - Parse the value as ResultReference (result_of, name, path fields)\n      - Look up result_of call_id in prior_responses (only indices < i); if not found \u2192 return Err(JmapError::invalid_arguments(\"resultOf references unknown call_id\"))\n      - Verify the method name in prior_responses matches the ResultReference.name field; if mismatch \u2192 return Err(JmapError::invalid_arguments(\"resultOf name mismatch\"))\n      - Call serde_json::Value::pointer(&path) on the prior response value; if None \u2192 return Err(JmapError::invalid_arguments(\"path does not resolve\"))\n      - Insert resolved value into args using the key without the '#' prefix\n      - Remove the '#'-prefixed key from args\n2. Return Ok(())\n\nRFC 6901 rules handled by serde_json::Value::pointer():\n- Path segments separated by '/'\n- '~1' \u2192 '/' in key name\n- '~0' \u2192 '~' in key name\n- Integer segments for array indexing\n\nDefensive programming rules:\n- Never unwrap() pointer result \u2014 return typed error\n- Only look backward (indices < i) \u2014 forward references are an error\n- A referenced call that returned an error is invalid (its value may be an error object, not a data value); detect by checking if value has 'type' key at root\n- Mutate args in place; do not silently skip invalid references\n- No key material involved\n\nTests (oracles from RFC 8620 \u00a79):\n- Simple path /list/0/id resolves to first item's id field\n- Nested path /foo/bar/0/baz resolves correctly\n- Path to nonexistent field \u2192 Err invalidArguments\n- Array index out of bounds \u2192 Err invalidArguments\n- Forward reference (result_of references later call) \u2192 Err invalidArguments\n- Reference to error response \u2192 Err invalidArguments\n- Escaped path with ~1 resolves slash in key name\nOracle: All test vectors hand-constructed from RFC 8620 \u00a79 examples and RFC 6901 \u00a75, not derived from resolver code.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T07:37:52Z",
+  "closed_at": "2026-04-19T07:37:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0bb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

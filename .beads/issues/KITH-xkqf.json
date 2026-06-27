@@ -1,0 +1,13 @@
+{
+  "id": "KITH-xkqf",
+  "title": "Review: full project review loop 5",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:58:46Z",
+  "updated_at": "2026-04-25T03:27:32Z",
+  "closed_at": "2026-04-25T03:27:32Z",
+  "notes": "Maintainer risk: HIGH \u2014 18 P1 issues, 14 P2 issues across all crates. Most critical: IPv6 owner_login (breaks login on IPv6 deployments), advance_state transactionless (data integrity under crash), kithctl hang bugs (DoS from misbehaving daemon), TUI empty-chat crash, test harness split blob stores (hides attachment delivery bugs in tests).\nConfidence: 15% chance of missed P0. Uncertainty driven by: advance_state transactional semantics under concurrent load (SQLite serialized mode may make this a non-issue), kith-tui event loop correctness (many async interactions not fully traced), Headscale user_id format compatibility for discovery. Would raise confidence with: a Headscale integration test, IPv6 deployment test, and fuzz testing of the JMAP message parser."
+}

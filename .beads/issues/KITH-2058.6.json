@@ -1,0 +1,33 @@
+{
+  "id": "KITH-2058.6",
+  "title": "sendMessage: upload attachment + include in Message/set",
+  "description": "Modify sendMessage() in app.js to include pendingAttachments in the Message/set create call and clear them on success.\n\n**What:** Wire pendingAttachments into the outbound message; handle send failure without losing attachments.\n\n**File:** web/app.js\n\n**Algorithm:**\n1. In sendMessage(), before constructing the Message/set create body:\n   - Snapshot: `const attachmentsSnapshot = pendingAttachments.slice();`\n   - (Snapshot prevents race if user adds another file mid-send.)\n\n2. Modify Message/set create body (c0 object) to include:\n   ```js\n   attachments: attachmentsSnapshot.map(a => ({\n     blobId: a.blobId,\n     filename: a.filename,\n     contentType: a.contentType,\n     size: a.size,\n     sha256: a.sha256,\n   })),\n   ```\n\n3. Optimistic message object: include `attachments: attachmentsSnapshot` so the bubble renders immediately with attachment links.\n\n4. On success (after created = result.created.c0):\n   - `pendingAttachments = pendingAttachments.filter(a => !attachmentsSnapshot.includes(a));`\n   - Call renderAttachmentPreview() to clear the preview.\n   - (renderAttachmentPreview must be accessible; since it is a module-level inner function defined in setupCompose scope, it should be promoted to module scope.)\n   - **Note:** promote renderAttachmentPreview to module scope (not inside setupCompose) so sendMessage can call it. Define it above setupCompose in the file.\n\n5. On error (inner catch block):\n   - Do NOT clear pendingAttachments \u2014 user can retry.\n   - Leave preview as-is.\n\n**Defensive rules:**\n- attachmentsSnapshot.includes(a) uses reference equality \u2014 valid since same objects are in pendingAttachments.\n- If attachmentsSnapshot is empty, attachments: [] is sent (valid \u2014 server accepts empty array).\n- renderAttachmentPreview must be module-scoped (not closure-scoped) so sendMessage can reach it.\n- Never log blobId or sha256 to console.\n\n**Tests:**\n- Oracle: RFC 8620 Message/set create request structure.\n- Test 1: pendingAttachments = [{blobId:'b1',...}] \u2192 Message/set body includes attachments array with blobId 'b1'.\n- Test 2: Send succeeds \u2192 pendingAttachments is empty, preview cleared.\n- Test 3: Send fails \u2192 pendingAttachments unchanged, preview unchanged.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:10:00Z",
+  "updated_at": "2026-04-20T15:16:47Z",
+  "closed_at": "2026-04-20T15:16:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2058",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:00Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:29Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:30Z"
+    }
+  ]
+}

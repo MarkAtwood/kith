@@ -1,0 +1,20 @@
+{
+  "id": "KITH-vpg.10",
+  "title": "SEC6/decision: KITHD_BASE_URL cascading fallback pattern in session_handler",
+  "description": "crates/kithd/src/lib.rs session_handler (lines 59-66) reads base_url using a three-step cascade: (1) KITHD_BASE_URL, (2) deprecated KITH_BASE_URL with eprintln warning, (3) DEFAULT_BASE_URL constant. This is read at request time rather than in Config::from_env() because the base_url is used only in session responses and the deprecation warning should fire on actual use, not just on startup. The pattern matches the precedent established in config.rs for KITH_OWNER_ID, KITH_BIND_ADDR, and KITH_DB_PATH \u2014 all follow the same new-var \u2192 deprecated-var-with-warning \u2192 hardcoded-default cascade. Trade-off accepted: reading env vars per-request is slightly wasteful but the session endpoint is not on a hot path.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:43:04Z",
+  "updated_at": "2026-04-19T23:44:02Z",
+  "closed_at": "2026-04-19T23:44:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vpg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:43:04Z"
+    }
+  ]
+}

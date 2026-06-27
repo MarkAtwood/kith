@@ -1,0 +1,21 @@
+{
+  "id": "KITH-7w7.1",
+  "title": "Fix MessageStore to load attachments from DB",
+  "description": "**What:** Fix `MessageStore::get()` and `list_by_chat()` in kith-store to populate `attachments` from the attachments table rather than hardcoding `vec![]`.\n\n**Algorithm:**\n1. Open `crates/kith-store/src/message.rs`.\n2. Find `row_to_message()` \u2014 it hardcodes `attachments: vec![]`. Leave this function unchanged (it cannot access the connection).\n3. In `MessageStore::get()`: after `row_to_message()` builds the base Message, add:\n   `msg.attachments = AttachmentStore::new(self.conn).list_by_message(&msg.id)?;`\n4. In `MessageStore::list_by_chat()`: after collecting the Vec<Message>, loop over each message and do the same lookup. Instantiate `AttachmentStore::new(self.conn)` once outside the loop.\n5. Check that `AttachmentStore` is imported/in scope. It lives in `kith-store/src/attachment.rs`.\n6. `list_by_message()` signature: `fn list_by_message(&self, message_id: &str) -> Result<Vec<kith_core::Attachment>, KithError>` \u2014 it already returns the right type.\n7. Run `cargo test -p kith-store` to confirm no regressions.\n\n**Defensive programming rules:**\n- Propagate KithError \u2014 no `unwrap()` or `expect()` in production code.\n- `list_by_message()` returns `Ok(vec![])` for messages with no attachments (not an error) \u2014 do NOT treat empty as error.\n- Each lookup runs within the same SQLite connection \u2014 no deadlock risk.\n\n**Agent team:** R (read kith-store/src/message.rs + attachment.rs, produce exact function signatures) \u2192 I (implement fix) \u2192 T (write tests with known-value oracle) \u2192 V (run cargo test -p kith-store + clippy + fmt).\n\n**Tests (independent oracle \u2014 NOT derived from code under test):**\n- 'get returns populated attachments': insert a message + 2 attachments via `insert_message_with_attachments()` with hardcoded known values (blob_id='aaaa...', filename='test.txt', content_type='text/plain', size=42, sha256='bbbb...'). Call `get()`. Assert returned message has exactly 2 attachments matching the inserted values.\n- 'list_by_chat returns messages with attachments': insert 2 messages in same chat \u2014 one with 1 attachment, one with 0. Call `list_by_chat()`. Assert first message has 1 attachment, second has 0.\n- 'get with no attachments returns empty vec': insert message without attachments. Call `get()`. Assert `attachments.is_empty()`.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:49:43Z",
+  "updated_at": "2026-04-20T01:57:17Z",
+  "closed_at": "2026-04-20T01:57:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:49:43Z"
+    }
+  ]
+}

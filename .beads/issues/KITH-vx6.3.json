@@ -1,0 +1,27 @@
+{
+  "id": "KITH-vx6.3",
+  "title": "kithd: wire kith-chat into dispatcher and HTTP routes",
+  "description": "What: Implement kithd/src/main.rs \u2014 initialize AppState, register all owner and peer method handlers in Dispatcher, mount /jmap, /.well-known/jmap, and /jmap/events routes, bind listener to tailnet IPs only.\n\nAlgorithm:\n1. Parse CLI args (SQLite path, optional port, owner_id or derive from WhoIs on first request).\n2. Store::open(path)? \u2014 fail fast if DB cannot open.\n3. make_channel(64) \u2192 (events_tx, _rx).\n4. store.set_events_tx(events_tx.clone()).\n5. Create Arc<Mutex<Store>> and Arc<LocalApiClient>.\n6. Fetch owner_id: call LocalApiClient::status() \u2192 use self node's tailscale_user_id.\n7. Build AppState { ts, store, owner_id, events_tx }.\n8. Create Dispatcher::new(); register all 10 owner handlers (Contact/get, set, changes, query; Chat/get, set, changes, query; Message/get, set, changes, query, queryChanges); register Peer/deliver, Peer/receipt.\n9. Build axum Router:\n   - GET /.well-known/jmap \u2192 |State(app)| async { build_session(role, &identity, &base_url, state) as JSON 200 }\n   - POST /jmap/api \u2192 |Caller, State(app), body: Json<Value>| dispatch handler\n   - GET /jmap/events \u2192 events_handler\n10. LocalApiClient::status() \u2192 extract tailnet IPs.\n11. For each tailnet IP: TcpListener::bind(ip:8080).\n12. axum::serve(listener, router.layer(ConnectInfo)).await.\n\nDefensive programming rules:\n- NEVER bind to 0.0.0.0, 127.0.0.1, or any non-tailnet IP.\n- Fail with error (not panic) if tailnet IP list is empty.\n- Store lock poisoning \u2192 500 response, not panic.\n- No credentials or secrets logged at any log level.\n- AppState must be Clone; router must be Send+Sync (no Rc, no RefCell at router level).\n\nAgent team:\n- Agent R: Read kithd/src/extractors.rs, kithd/src/events.rs, kith-jmap/src/lib.rs (Dispatcher::register), kith-chat/src/lib.rs (handler constructors) to gather exact types and signatures.\n- Agent I: Implement main.rs. Minimal: compile and route correctly.\n- Agent T: Integration test \u2014 in-memory store, mock WhoIs, POST /jmap with Contact/get, assert 200 with correct JMAP response shape.\n- Agent V: cargo build --workspace && cargo test --workspace && clippy && fmt.\n\nTests:\n- POST /jmap/api with Contact/get \u2192 200 with { methodResponses: [[\"Contact/get\", {...}, \"c0\"]] }\n- POST /jmap/api with unknown method \u2192 200 with error invocation (unknownMethod)\n- GET /.well-known/jmap \u2192 200 with capabilities JSON\n- Caller with wrong role \u2192 401",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T15:17:33Z",
+  "updated_at": "2026-04-19T15:45:56Z",
+  "closed_at": "2026-04-19T15:45:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-4yi",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:50Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:17:33Z"
+    }
+  ]
+}

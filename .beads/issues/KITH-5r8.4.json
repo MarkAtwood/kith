@@ -1,0 +1,20 @@
+{
+  "id": "KITH-5r8.4",
+  "title": "Make error_invocation() private in kith-jmap",
+  "description": "Location: crates/kith-jmap/src/lib.rs lines 48-57\n\nerror_invocation() is marked pub but used only internally by dispatch_one() (line 332, 342, 346, 351, 359). The function wraps JmapError values into Invocation tuples for methodResponses.\n\nThis is an internal detail of the Dispatcher's error handling path. API callers should construct errors by having handlers return Err(JmapError), not by calling error_invocation() directly.\n\nChange visibility from pub to pub(crate) to tighten the public API surface and remove a false choice from external users.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:40:51Z",
+  "updated_at": "2026-04-19T07:45:57Z",
+  "closed_at": "2026-04-19T07:45:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5r8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:40:50Z"
+    }
+  ]
+}

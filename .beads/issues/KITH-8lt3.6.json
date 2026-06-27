@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8lt3.6",
+  "title": "chat get/find_direct_by_contact_id: extra round-trip for unread_count",
+  "description": "In chat.rs, ChatStore::get() (line 169) and find_direct_by_contact_id() (line 134) each call self.unread_count(&id) as a separate SQL round-trip after fetching the chat row. ChatStore::list() (line 186-193) inlines the identical logic as a correlated subquery in a single statement. This inconsistency means get() and find_direct_by_contact_id() pay two sequential statement round-trips where one would suffice, and in a hypothetical future multi-statement transaction context the two reads are not atomic (the unread count could change between the chat row fetch and the unread_count query). Aligning get() and find_direct_by_contact_id() to use the same inline subquery as list() eliminates the extra round-trip and makes the read atomic.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:44:30Z",
+  "updated_at": "2026-04-24T17:53:34Z",
+  "closed_at": "2026-04-24T17:53:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8lt3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:44:29Z"
+    }
+  ]
+}

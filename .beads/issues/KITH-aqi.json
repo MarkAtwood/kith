@@ -1,0 +1,20 @@
+{
+  "id": "KITH-aqi",
+  "title": "kith-chat: Chat/get and Chat/set",
+  "description": "What: Implement Chat/get and Chat/set JmapHandler structs in kith-chat crate.\n\nChat/get algorithm:\n1. Deserialize args: { accountId, ids: Option<Vec<String>>, properties: Option<Vec<String>> }.\n2. Verify accountId == 'a-self'.\n3. Acquire store lock.\n4. If ids is None: store.chats().list()? \u2192 all chats.\n   If ids is Some(list): store.chats().get(id)? for each; partition found/notFound.\n5. state = store.chats().get_state()?\n6. Return { accountId, list: [Chat...], notFound: [...], state }.\n\nChat/set algorithm:\n1. Deserialize args: { accountId, create: Option<Map>, update: Option<Map>, destroy: Option<Vec> }.\n2. For each create entry (client_id \u2192 fields):\n   a. Extract: contactId (required) or participants (Vec<String>) for group.\n   b. For direct chat: look up contact by contactId \u2192 get tailscale_user_id. Validate contact exists and not blocked.\n   c. Get owner's tailscale_user_id from owner_id field.\n   d. Compute chatId = compute_chat_id(&[owner_user_id, contact_user_id]).\n   e. Call store.chats().get_or_create(chat_id, 'direct', &[owner_user_id, contact_user_id], now_unix)?\n   f. Return created chat with server-assigned id = computed chatId.\n3. For update: v1 only allows title update (no-op for direct chats); return notUpdated[id] = cannotSetField.\n4. For destroy: return notDestroyed[id] = forbidden (chats persist).\n5. Return full set response.\n\nDefensive programming rules:\n- contactId must exist in contacts table: else notCreated[client_id] = notFound.\n- Contact must not be blocked: else notCreated[client_id] = forbidden.\n- chatId is computed server-side from verified user IDs; never use client-supplied chatId as-is.\n- If client supplies id in create: verify it matches computed chatId; else invalidArguments.\n- compute_chat_id is deterministic; calling it twice with same inputs returns same result (idempotent).\n- Store lock not held across compute_chat_id (pure function, no DB).\n\nAgent team:\n- Agent R: Read kith-core/src/chat.rs (compute_chat_id, Chat struct), kith-store/src/chat.rs (get_or_create, get, list, get_state), kith-store/src/contact.rs (get_by_peer_user_id).\n- Agent I: Implement ChatGetHandler and ChatSetHandler in kith-chat/src/chat.rs.\n- Agent T: Write tests. Derive expected chatId using sha256 independently (Python: hashlib.sha256('uid-a\\x00uid-b'.encode()).hexdigest()). Oracle is independent hash computation.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Chat/get ids=None returns all chats\n- Chat/set create with valid contactId \u2192 created.c0.id == sha256(sorted_ids) (oracle: Python or hardcoded hash)\n- Chat/set create with nonexistent contactId \u2192 notCreated/notFound\n- Chat/set create with blocked contact \u2192 notCreated/forbidden\n- Chat/get ids=[unknown] \u2192 notFound list",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:02Z",
+  "closed_at": "2026-04-19T15:30:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

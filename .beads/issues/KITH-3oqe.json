@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "d05f0d5cab2b9e00971a506237accbbc5f3454cc8ac5ace461811445c31541c1",
+  "created_at": "2026-06-14T00:07:06Z",
+  "created_by": "Mark Atwood",
+  "description": "Verify bearer tokens from an OIDC or SAML identity provider. Covers education (InCommon/Shibboleth/eduroam), enterprise (Keycloak/Auth0/Okta), and government (Login.gov). The IdP's subject claim becomes user_id. Requires the identity provider trait (KITH-14he).",
+  "ephemeral": 0,
+  "id": "KITH-3oqe",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Identity provider: OIDC/SAML federation",
+  "updated_at": "2026-06-14T00:07:06Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:07:11Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-14he",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

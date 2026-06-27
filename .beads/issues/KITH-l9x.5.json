@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.5",
+  "title": "SEC3: filename validation weaker in kith-chat than kith-peer",
+  "description": "kith-chat/src/message.rs validate_filename bans only the sequence '../' and absolute paths, but allows embedded '/' (e.g. 'subdir/file.txt' passes). kith-peer validate_attachments bans all '/' and '\\' characters. The kith-peer rule is simpler and strictly stronger. The divergence means a filename accepted by Message/set create would be rejected by Peer/deliver for the same payload, and the kith-chat rule is objectively weaker against path component injection. Fix: adopt the same rule as kith-peer \u2014 ban all '/' and '\\' characters in filenames \u2014 which also simplifies the code.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:37:26Z",
+  "updated_at": "2026-04-20T01:17:36Z",
+  "closed_at": "2026-04-20T01:17:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:37:25Z"
+    }
+  ]
+}

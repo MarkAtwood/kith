@@ -1,0 +1,26 @@
+{
+  "id": "KITH-v20r.10",
+  "title": "Web client: block/unblock button in contact list",
+  "description": "Since auto-discovery adds all tailnet kithd peers as contacts, users need a way to block contacts they do not want to chat with. Add a block/unblock toggle button to each contact row in renderContactList.\n\nWhat: Modify renderContactList() in app.js to include a block/unblock button per contact item. Also add CSS.\n\nAlgorithm:\n1. In renderContactList(contactList), for each contact <li>:\n   a. Add a <button class='block-btn'> to each item, positioned to the right of the contact name.\n   b. If contact.blocked is true: button text = 'Unblock', title = 'Unblock this contact'.\n   c. If contact.blocked is false: button text = 'Block', title = 'Block this contact'.\n   d. Button click handler (stopPropagation to prevent triggering openOrCreateChat):\n      - const newBlocked = !contact.blocked;\n      - Disable the button immediately (prevent double-click).\n      - await setContactBlocked(contact.id, newBlocked);\n      - (renderContactList re-renders in setContactBlocked on success; button re-enabled by re-render)\n      - On error: re-enable button.\n   e. The contact list should show blocked contacts (greyed out) with their block button, so users can see and unblock them. Adjust renderContactList to NOT skip blocked contacts \u2014 show them with a .blocked class instead.\n      EXCEPTION: do not open a chat when clicking a blocked contact (check contact.blocked in openOrCreateChat and skip if blocked).\n\n2. In style.css:\n   - .contact-item.blocked: greyed out opacity, italic name, subtle visual difference\n   - .block-btn: small, right-aligned, low-contrast button; red tint when showing 'Block', neutral when showing 'Unblock'\n   - .block-btn:hover: slightly more prominent\n\n3. Update openOrCreateChat() to check if contact.blocked and show an error ('Contact is blocked \u2014 unblock to send messages') instead of creating the chat.\n\nTests (independent oracle: DOM structure inspection):\n- Test: renderContactList with one unblocked contact; assert DOM has a button with text 'Block'.\n- Test: renderContactList with one blocked contact; assert li has class 'blocked' and button text 'Unblock'.\n- Test: clicking Block button calls setContactBlocked(id, true).\n- Test: clicking contact name when contact.blocked=true does NOT call openOrCreateChat.\n\nDefensive programming rules:\n- Use textContent for all button labels and contact names (never innerHTML)\n- stopPropagation on button click to prevent chat open\n- Disable button during async setContactBlocked call (prevent double-click)\n- contact.id comes from the contacts Map (module state), not reconstructed from DOM",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:01:47Z",
+  "updated_at": "2026-04-20T16:12:25Z",
+  "closed_at": "2026-04-20T16:12:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:01:47Z"
+    },
+    {
+      "depends_on_id": "KITH-v20r.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:01:57Z"
+    }
+  ]
+}

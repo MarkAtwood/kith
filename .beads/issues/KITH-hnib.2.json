@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hnib.2",
+  "title": "queryChanges issues 2N SQL queries per changed message under store lock",
+  "description": "MessageQueryChangesHandler calls get_position_in_chat() inside a loop for every message in chat_added. Each get_position_in_chat call executes two SQL statements (an existence COUNT and a correlated subquery COUNT). For N changed messages this is 2N round-trips to SQLite while holding the store Mutex. The prior approach loaded all IDs from one query and computed position in memory. The SQL approach is correct but regresses throughput at N>10; at N=50 it issues 100 queries under the global lock while the handler holds it, blocking every other concurrent request.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:26:24Z",
+  "updated_at": "2026-04-24T17:33:53Z",
+  "closed_at": "2026-04-24T17:33:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hnib",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:26:24Z"
+    }
+  ]
+}

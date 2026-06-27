@@ -1,0 +1,21 @@
+{
+  "id": "KITH-xkqf.27",
+  "title": "queryChanges makes O(n) SQL calls to compute positions for added contacts",
+  "description": "contact.rs:743-754: for each newly-added contact in changes.added, a separate SQL COUNT(*) call is made to compute query_index. N newly-added contacts \u2192 N sequential SQL round-trips inside a held mutex. A single SQL query with ROW_NUMBER() or a sorted join would compute all positions at once. At small contact counts this is invisible but scales poorly if contacts are added in bulk (e.g. on first login with many pre-existing contacts).",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:08:48Z",
+  "updated_at": "2026-04-25T03:26:51Z",
+  "closed_at": "2026-04-25T03:26:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-xkqf",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:08:47Z"
+    }
+  ]
+}

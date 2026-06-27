@@ -1,0 +1,33 @@
+{
+  "id": "KITH-7w7.3",
+  "title": "Update outbox_tick send path: pass attachments and participants",
+  "description": "**What:** Update `outbox_tick()` in kith-peer to load attachments (now populated by MessageStore fix) and chat participants from the store, and pass them to the updated `build_peer_deliver_request()`.\n\n**Algorithm:**\n1. Open `crates/kith-peer/src/lib.rs`. Find `outbox_tick()` (around line 707).\n2. After loading the message (`guard.messages().get(&entry.message_id)`), the Message struct now has `attachments` populated (fixed in KITH-7w7.1).\n3. Load chat participants: call `guard.chats().get(&message.chat_id)` \u2014 this returns `Result<Option<Chat>, KithError>`. Extract the `Chat.participants` field (a `Vec<String>`). If chat not found, treat as empty participants (1:1 fallback, include owner + peer).\n4. In the call to `build_peer_deliver_request()` (around line 804), pass:\n   - `message.attachments.as_slice()` for the attachments param\n   - `&participants` for the participants param (the full list from the chat row)\n5. Drop the store guard before any await point (the existing code already does this \u2014 do not hold the lock across .await).\n6. Ensure `ChatStore::get()` is called within the same lock guard scope as the message load.\n\n**Defensive programming rules:**\n- Never hold the store `MutexGuard` across `.await` \u2014 this is enforced by the borrow checker but verify.\n- If chat lookup returns `Ok(None)`, fall back gracefully: pass just `[entry.peer_user_id.as_str()]` as participants (1:1 assumption). Log at debug level. Do NOT error on missing chat row.\n- If `attachments` is empty, `&[]` is a valid argument \u2014 no special case needed.\n- Check `is_valid_mailbox_host()` is still called before constructing the URL (do not remove existing validation).\n\n**Agent team:** R (read outbox_tick carefully, note the lock guard scope, confirm ChatStore::get signature) \u2192 I (implement changes) \u2192 T (write unit test) \u2192 V (cargo test -p kith-peer + clippy + fmt).\n\n**Tests (independent oracle):**\n- 'outbox_tick sends message with attachments in wire format': set up an in-memory store with a message that has 1 known attachment (specific blob_id/filename/etc), enqueue it, run `outbox_tick()` with a mock DeliverClient that captures the delivered JSON. Assert the captured JSON's `message.attachments[0].blobId` matches the stored blob_id. Oracle: the literal stored attachment values.\n- 'outbox_tick sends participants in wire format for group chat': set up a 3-participant chat, enqueue a message, run outbox_tick, assert the captured JSON's `message.participants` contains all 3 participant IDs.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:50:19Z",
+  "updated_at": "2026-04-20T02:01:16Z",
+  "closed_at": "2026-04-20T02:01:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:50:19Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:27Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:27Z"
+    }
+  ]
+}

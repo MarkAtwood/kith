@@ -1,0 +1,13 @@
+{
+  "id": "KITH-u0sz",
+  "title": "Review: fix review findings KITH-q4mu (P0/P1/P3)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:11:21Z",
+  "updated_at": "2026-04-24T04:11:25Z",
+  "closed_at": "2026-04-24T04:11:25Z",
+  "notes": "Maintainer risk: LOW \u2014 no logic changes, no new API surface, no security surface.\nConfidence: 97% chance of no missed bug. Three-line diff: one let _ = substitution, one comment, one debug_assert. Uncertainty driven by: no test for the update_last_message_at silent-swallow path (can't inject SQLite errors in unit tests). Would raise confidence if: integration test that verifies last_message_at staleness does not affect delivery or JMAP response."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.10",
+  "title": "[SEC6] Good: Error recovery in sendMessage (optimistic UI with revert)",
+  "description": "In app.js sendMessage() (lines 437-496), the code implements a three-phase pattern:\n\n1. Clear textarea immediately (line 444) and show optimistic bubble (line 458) with temporary ID\n2. Send Message/set request to server\n3. On success: replace optimistic bubble with real server response (lines 483-487)\n4. On failure: remove optimistic bubble and restore textarea text (lines 490-494)\n\nThis is excellent defensive design. The optimistic UI gives instant feedback, but if the send fails (network error, validation error, permission denied), the error is reversible\u2014the user's text is not lost, and the bubble is cleaned up.\n\nAlternative approaches (pessimistic waiting, or silently discarding) would be worse. This pattern balances UX and data safety.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:55:04Z",
+  "updated_at": "2026-04-19T18:21:16Z",
+  "closed_at": "2026-04-19T18:21:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:55:03Z"
+    }
+  ]
+}

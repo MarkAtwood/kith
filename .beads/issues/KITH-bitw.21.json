@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.21",
+  "title": "DECISION: Graceful JMAP error handling with silent stderr logging",
+  "description": "What: All async JMAP call sites (load_startup_data, load_messages_for_chat, handle_state_change) check for Err and log to stderr, but return empty results rather than propagating the error.\n\nWhy it's good: The TUI must remain responsive even if the daemon is unreachable or returns an error. Logging to stderr preserves diagnostics (user can check logs), but the UI does not freeze or crash. load_messages_for_chat returns empty VecDeque; handle_state_change returns without modifying state. This is resilience by design: if the network is flaky, the UI degrades gracefully (stale chats, missing messages) rather than becoming unresponsive.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:21Z",
+  "updated_at": "2026-04-20T05:46:10Z",
+  "closed_at": "2026-04-20T05:46:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:20Z"
+    }
+  ]
+}

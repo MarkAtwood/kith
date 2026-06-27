@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.11",
+  "title": "state_counters i64 has no overflow guard",
+  "description": "The state_counters.counter column is a SQLite INTEGER (i64). advance_state_counter_in_tx increments it with no bounds check. At i64::MAX the next UPDATE wraps to a negative value, producing state tokens like 's--9223372036854775808'. get_changes_since would then parse a negative since_counter, which is valid i64, but all subsequent comparisons break (state appears to have regressed). This is not reachable in normal use for a personal mailbox, but a check and clear error message on overflow would prevent a confusing silent failure.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:13:54Z",
+  "updated_at": "2026-04-25T01:54:02Z",
+  "closed_at": "2026-04-25T01:54:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:13:53Z"
+    }
+  ]
+}

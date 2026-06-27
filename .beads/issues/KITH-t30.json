@@ -1,0 +1,13 @@
+{
+  "id": "KITH-t30",
+  "title": "record_failure shift overflow: 1i64 << attempt panics when attempt >= 63",
+  "description": "outbox.rs::record_failure computes 1i64 << attempt where attempt is i64 read from DB with no upper bound. If attempt_count >= 63, this panics in debug or produces wrong value in release before the min(_, 3600) clamp applies. Fix: clamp attempt before the shift: let shift = attempt.min(30);",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:50:10Z",
+  "updated_at": "2026-04-19T05:53:42Z",
+  "closed_at": "2026-04-19T05:53:42Z"
+}

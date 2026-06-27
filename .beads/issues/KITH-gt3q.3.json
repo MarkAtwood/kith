@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.3",
+  "title": "blob_download: peer-fetch timeout up to 300s with no negative cache",
+  "description": "When a blob is not cached locally and the peer is offline, blob_download_handler waits up to 300 seconds on every download attempt. No negative cache, no circuit breaker. For large files (>18 MiB) the timeout formula yields 300s. Expected user complaint: attachments hang on offline peer. Fix: add a short-TTL (e.g. 30s) negative cache per (mailbox_host, blob_id), or separate the offline-detection phase (5s) from the data-fetch phase.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:12Z",
+  "updated_at": "2026-04-25T08:00:18Z",
+  "closed_at": "2026-04-25T08:00:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:11Z"
+    }
+  ]
+}

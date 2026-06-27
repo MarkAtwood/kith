@@ -1,0 +1,13 @@
+{
+  "id": "KITH-fp3n",
+  "title": "Review: post-8lt3 fixes codebase",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:01:39Z",
+  "updated_at": "2026-04-24T18:11:21Z",
+  "closed_at": "2026-04-24T18:11:21Z",
+  "notes": "chat/store-chat review: 2 findings. Both are P2 efficiency issues: calculateTotal uses list_ids() instead of COUNT(*), and get_changes_since_for_chat computes a new_state that the queryChanges handler immediately discards. No P0/P1 findings: ORDER BY consistency, unread_count predicate/index alignment, old_state_out capture timing, two-lock invariant ordering, argument order to list_ids_paged, and destroyed-always-empty semantics are all correct.\npeer/store/kithd review: 2 findings (both P2). No P0/P1 bugs found. Key items: get_changes_since_for_chat returns a new_state with TOCTOU semantics that its only caller discards; percent_encode_path_segment is misnamed relative to its actual use for query parameter encoding.\nevents.rs review: 4 findings (1 P0, 3 P1). P0 is a TypeFilter type-name mismatch ('Contact' vs 'ChatContact') that silently drops all contact events when a type filter is active."
+}

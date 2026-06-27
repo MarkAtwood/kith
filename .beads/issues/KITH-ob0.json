@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ob0",
+  "title": "Workspace scaffolding",
+  "description": "Initialize Cargo workspace, all crate stubs with correct inter-crate dependency declarations, and dev tooling so everything compiles from day one.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:47Z",
+  "updated_at": "2026-04-19T04:50:56Z",
+  "closed_at": "2026-04-19T04:45:05Z",
+  "notes": "Review converged after 1 round. Final review: KITH-ajt. P0=0 P1=0 P2=0 after fix wave. SEC7: running out of real complaints."
+}

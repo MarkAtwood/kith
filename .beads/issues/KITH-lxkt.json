@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-13T17:57:35Z",
+  "compaction_level": 0,
+  "content_hash": "f0d56483b52639d24b8e93a3d858d0b8b8bad637e26147e2a6dcd85cb1ee4a6e",
+  "created_at": "2026-06-13T17:45:20Z",
+  "created_by": "Mark Atwood",
+  "description": "Wire through actions field on Message",
+  "ephemeral": 0,
+  "id": "KITH-lxkt",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "MessageAction",
+  "updated_at": "2026-06-13T17:57:35Z"
+}

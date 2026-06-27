@@ -1,0 +1,13 @@
+{
+  "id": "KITH-om8p",
+  "title": "Review: doc fix typo ChangeRow",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:21:53Z",
+  "updated_at": "2026-04-24T22:23:57Z",
+  "closed_at": "2026-04-24T22:23:57Z",
+  "notes": "Single-line doc comment typo fix only. No code logic changed. No findings."
+}

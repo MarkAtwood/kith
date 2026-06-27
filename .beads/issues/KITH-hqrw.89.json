@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.89",
+  "title": "kith-events: coalescing task mpsc channel size 256 blocks on slow SSE consumer",
+  "description": "The mpsc channel between the coalescing task and the SSE response stream has capacity 256. The comments say 'a stalled SSE consumer must not cause unbounded memory growth' and 'the task blocks until the consumer drains it'. But a genuinely stalled SSE consumer (e.g. client with a full TCP receive buffer) will cause the coalescing task to block at live_tx.send().await, which holds the broadcast::Receiver. While blocked, the broadcast ring buffer fills and subsequent state changes are dropped (Lagged). The result: a single slow/stalled SSE client causes state changes to be lost from all clients' perspectives because the broadcast receiver is not drained. This is a systemic DoS vector if any single SSE connection stalls. Consider: (a) use try_send + drop on full, or (b) use a dedicated tokio::select\\! with a disconnect detection timeout.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:42:25Z",
+  "updated_at": "2026-04-25T07:45:12Z",
+  "closed_at": "2026-04-25T07:45:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:42:24Z"
+    }
+  ]
+}

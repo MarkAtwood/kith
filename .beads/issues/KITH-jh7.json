@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jh7",
+  "title": "Deployment packaging",
+  "description": "Systemd service files, validated musl cross-compile targets, documented first-run experience.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T18:36:30Z",
+  "closed_at": "2026-04-19T18:36:30Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-it6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.1",
+  "title": "hardcoded column index 11 in sender_msg_id rejection",
+  "description": "row_to_message() uses FromSqlConversionFailure(11, ...) to report NULL sender_msg_id. Column index 11 is correct today but is not verified at compile time \u2014 if the SELECT list changes, the index drifts silently. Scenario: future maintainer adds/reorders columns \u2192 reported column index in the error is wrong, debugging becomes harder. Consequence: silent wrong metadata in the error, not a crash \u2014 but it erodes the value of the structured error type.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:44:51Z",
+  "updated_at": "2026-04-25T08:49:45Z",
+  "closed_at": "2026-04-25T08:49:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:44:50Z"
+    }
+  ]
+}

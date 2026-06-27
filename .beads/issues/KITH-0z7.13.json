@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.13",
+  "title": "SEC1: temp dir collision in spawn_test_listener_binds_loopback_port",
+  "description": "crates/kithd/tests/e2e.rs:71-72. The temp directory is named /tmp/kithd-test-listener-{pid}. If the test binary runs the same test function twice in parallel (e.g. via test repetition tools or if a future test calls spawn_test_listener directly with the same path), both invocations attempt to create/write the same path. spawn_test_pair() avoids this with a {pid}-{subsec_nanos} suffix (harness.rs:145) \u2014 the same pattern should be applied here. Low severity in normal cargo test runs (each test runs once), but inconsistent with the harness pattern.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:19:42Z",
+  "updated_at": "2026-04-19T17:26:25Z",
+  "closed_at": "2026-04-19T17:26:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:19:41Z"
+    }
+  ]
+}

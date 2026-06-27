@@ -1,0 +1,38 @@
+{
+  "id": "KITH-hvl",
+  "title": "Integration test harness: two kithd instances",
+  "description": "What: Integration test harness that spawns two live kithd instances (alice and bob) on real TCP sockets with TLS, each with a separate in-memory SQLite store and a MockWhoIs that maps caller address to identity. Returns connection details for use by delivery tests.\n\nAlgorithm:\n1. Add harness.rs to kithd/tests/ (or as a module in e2e.rs)\n2. Define MultiInstanceMockWhoIs: a struct holding HashMap<IpAddr, WhoIsResponse>. Implement WhoIsProvider::whois() to look up caller addr's IP and return the matching identity (or WhoIsFailed if not found).\n3. Define TestKithInstance { owner_id: String, addr: SocketAddr, cert_der: Vec<u8>, store: Arc<Mutex<Store>>, handle: JoinHandle<()> }\n4. Helper make_whois_for(id, login) -> WhoIsResponse: copies from existing e2e.rs pattern.\n5. spawn_alice_and_bob() -> (TestKithInstance, TestKithInstance):\n   a. Create two temp dirs (tempfile::tempdir() or std::env::temp_dir() + unique suffix)\n   b. For alice: build MultiInstanceMockWhoIs that maps: alice's IP -> alice owner identity, bob's IP -> bob peer identity\n   c. Build alice's AppState<MultiInstanceMockWhoIs>: store = Store::open_in_memory(), owner_id = 'uid-alice', events_tx = make_channel(64).0, dispatcher = build_dispatcher(...)\n   d. Call spawn_test_listener(alice_state, alice_data_dir) -> (alice_addr, alice_cert_der, alice_handle)\n   e. Repeat for bob (bob's MockWhoIs maps: alice's IP -> alice peer identity, bob's IP -> bob owner identity)\n   f. Pre-populate alice's contacts table with bob (via Message/set or direct store API) and bob's contacts with alice\n   g. Return both TestKithInstance structs\n6. Test cleanup pattern: after each test, call handle.abort() for both instances; drop temp dirs\n\nDefensive programming:\n- Always call handle.abort() in test cleanup; use scopeguard or RAII struct\n- Each instance gets a separate broadcast channel (events_tx) \u2014 never shared\n- Alice's WhoIs does NOT know about carol (for auth rejection tests that need three instances)\n- Port is OS-assigned (bind 127.0.0.1:0); never hardcode port numbers\n- Use serial_test::serial on tests that spawn TCP listeners to prevent port conflicts\n\nAgent team: R (read kithd tests/e2e.rs + lib.rs + tls.rs) + I (implement) + T (verify two instances start and can reach each other via TCP connect) + V (cargo test -p kithd)\n\nTests: Harness test: spawn_alice_and_bob() succeeds; TcpStream::connect to both addrs succeeds; both handles are running (not finished)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:13:29Z",
+  "closed_at": "2026-04-19T17:13:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-3f2.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:57:11Z"
+    },
+    {
+      "depends_on_id": "KITH-3f2.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:57:12Z"
+    },
+    {
+      "depends_on_id": "KITH-3f2.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:57:12Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "KITH-7w7",
+  "title": "Phase 2 peer delivery: missing implementation",
+  "description": "Several Phase 2 peer delivery features were scaffolded but never implemented. Discovered during Phase 2 review.\n\nMissing from kith-peer:\n1. Attachment delivery (sending): build_peer_deliver_request does not include attachments; outbox_tick does not pass attachments\n2. Attachment delivery (receiving): DeliverMessageArgs has no attachments field; DeliverHandler does not validate or store attachment metadata\n3. Group chat delivery (sending): build_peer_deliver_request has no participants param; outbox_tick does not pass participants\n4. Group chat delivery (receiving): DeliverHandler computes chatId from exactly 2 participants (hardcoded); no N-participant support\n5. Attachment validation on receive: no validate_attachments in kith-peer\n\nThese were tracked as KITH-3yb.6/7/9 and closed without the code being written. This is a Phase 2 completion blocker.\n\nRoot cause: Beads issues were closed before implementation was verified by cargo build/test.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:22:18Z",
+  "updated_at": "2026-04-20T02:13:53Z",
+  "closed_at": "2026-04-20T02:13:53Z"
+}

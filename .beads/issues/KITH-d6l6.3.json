@@ -1,0 +1,21 @@
+{
+  "id": "KITH-d6l6.3",
+  "title": "insert_outbound_message has 9 params with #[allow(clippy::too_many_arguments)]",
+  "description": "The function now has 9 positional parameters. The allow suppresses the clippy signal permanently. Every new message field (Phase 2: subject, thread_id, expiry, etc.) extends this signature further. A MessageInsertParams struct would name the fields at the call site and make the allow unnecessary. Suggested rewrite: struct MessageInsertParams { id, chat_id, body, body_type, sent_at_peer, created_at_unix, reply_to, attachments, outbox_peers } \u2014 caller uses struct literal, compiler catches missing fields.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T03:09:06Z",
+  "updated_at": "2026-04-24T03:37:19Z",
+  "closed_at": "2026-04-24T03:37:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d6l6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T20:09:05Z"
+    }
+  ]
+}

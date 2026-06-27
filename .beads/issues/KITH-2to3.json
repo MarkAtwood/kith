@@ -1,0 +1,12 @@
+{
+  "id": "KITH-2to3",
+  "title": "kith-store: max_changes=0 panics in get_querychanges_since_for_chat",
+  "description": "When max_changes=Some(0) and there are pending changes, get_querychanges_since_for_chat fetches 1 row (limit=0+1=1), sets has_more=true (rows.len()>0), truncates rows to 0, then enters the has_more branch and calls rows.last().expect(\"rows is non-empty when has_more is true\") on the now-empty vec. This panics unconditionally. Reachable from a JMAP caller sending \"maxChanges\": 0. Fix: capture last element before truncation, or derive new_state from the fetched-but-not-returned tail row.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T02:32:42Z",
+  "updated_at": "2026-04-25T02:35:29Z",
+  "closed_at": "2026-04-25T02:35:29Z"
+}

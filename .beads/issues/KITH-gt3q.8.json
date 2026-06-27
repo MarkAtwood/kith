@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.8",
+  "title": "fetch_with_https_client is dead code duplicate of fetch_peer_blob_from_url test helper",
+  "description": "peer_fetch.rs has two near-identical fetch implementations: fetch_with_https_client (production, lines 411-483) and fetch_peer_blob_from_url (test-only, lines 525-581). The test helper was written to avoid needing TLS in tests, but it replicates Content-Length check, Limited body collection, size check, and verify_and_store call. Any fix to the production path must also be applied to the test helper. Extract the shared logic into a generic helper parameterized on the client type, or find a way to share more code between the two paths.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:45:58Z",
+  "updated_at": "2026-04-25T08:24:04Z",
+  "closed_at": "2026-04-25T08:24:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:45:58Z"
+    }
+  ]
+}

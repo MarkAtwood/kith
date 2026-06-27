@@ -1,0 +1,36 @@
+{
+  "compaction_level": 0,
+  "content_hash": "7d09b7953a770981c5933d015ac2447764866ab553d729ccb26eee4bdb1b7cdf",
+  "created_at": "2026-06-14T17:34:25Z",
+  "created_by": "Mark Atwood",
+  "description": "Each kithd generates a self-signed TLS cert at first run (already does this for Tailscale). For non-Tailscale transports, the cert's public key becomes the peer's identity. identify_caller extracts identity from the client certificate presented during mTLS handshake. Requires out-of-band fingerprint exchange or TOFU for initial trust establishment. Simplest mTLS path \u2014 no CA, no ACME, no DNS records. Good for LAN/mesh deployments.",
+  "ephemeral": 0,
+  "id": "KITH-ozop",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Auth mechanism: self-signed TLS certs",
+  "updated_at": "2026-06-14T17:34:25Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T10:34:36Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-14he",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-14T10:37:49Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-uq27",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

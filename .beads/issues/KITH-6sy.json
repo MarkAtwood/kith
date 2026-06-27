@@ -1,0 +1,20 @@
+{
+  "id": "KITH-6sy",
+  "title": "kith-chat: Message/changes and Message/query",
+  "description": "What: Implement Message/changes and Message/query JmapHandler structs in kith-chat crate.\n\nMessage/changes algorithm:\n1. Deserialize args: { accountId, sinceState: String, maxChanges: Option<u32> }.\n2. Verify accountId == 'a-self'.\n3. Acquire store lock.\n4. Call store.messages().get_changes_since(sinceState)?; KithError::Validation \u2192 JmapError::state_mismatch().\n5. Return { accountId, oldState: sinceState, newState: result.new_state, hasMoreChanges: false, created: result.added, updated: result.updated, destroyed: result.destroyed }.\n\nMessage/query algorithm:\n1. Deserialize args: { accountId, filter: Option<Value>, sort, position, limit, calculateTotal }.\n2. Verify accountId.\n3. Extract filter.chatId (required for v1): if None or not a string \u2192 invalidArguments('chatId required in filter').\n4. Validate chatId exists: store.chats().get(chat_id)?; if None \u2192 invalidArguments('unknown chatId').\n5. store.messages().list_by_chat(chat_id, limit.unwrap_or(50))?\n   (list_by_chat returns newest-first; order by created_at DESC).\n6. Extract IDs only.\n7. Apply position (skip) within the returned list.\n8. queryState = store.messages().get_state()?\n9. Return { accountId, queryState, canCalculateChanges: true, position, ids, total }.\n\nDefensive programming rules:\n- sinceState: validated by get_changes_since; propagate as state_mismatch.\n- Message/query: chatId in filter is REQUIRED in v1 (otherwise unbounded scan).\n- chatId must exist in DB (avoid returning IDs for nonexistent chats).\n- list_by_chat limit: cap at 200 server-side (prevent DoS via huge limit param).\n- position+limit: treat None as 0/200; guard against u32 overflow.\n- Sort field: v1 default is createdAt DESC (matches list_by_chat order); ignore other sort requests.\n\nAgent team:\n- Agent R: Read kith-store/src/message.rs (get_changes_since, list_by_chat, get_state).\n- Agent I: Implement MessageChangesHandler and MessageQueryHandler in kith-chat/src/message.rs.\n- Agent T: Oracle: RFC 8620 \u00a75.4/5.5 field names; known state sequences constructed by inserting messages and tracking state tokens.\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Message/changes sinceState==current \u2192 empty\n- Message/changes after insert \u2192 message ID in added\n- Message/changes malformed sinceState \u2192 error\n- Message/query with chatId filter \u2192 IDs in that chat\n- Message/query without chatId \u2192 invalidArguments\n- Message/query with unknown chatId \u2192 invalidArguments\n- Message/query limit cap (>200 request \u2192 200 returned)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:30:07Z",
+  "closed_at": "2026-04-19T15:30:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

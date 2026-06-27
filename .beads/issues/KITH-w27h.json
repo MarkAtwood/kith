@@ -1,0 +1,13 @@
+{
+  "id": "KITH-w27h",
+  "title": "Review: fix review findings KITH-oo4y (P2/P3)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:50:13Z",
+  "updated_at": "2026-04-24T20:52:47Z",
+  "closed_at": "2026-04-24T20:52:47Z",
+  "notes": "Maintainer risk: LOW \u2014 Chat/changes and Message/changes now correctly implement RFC 8620 \u00a75.6 maxChanges pagination. V9 migration mirrors V8 exactly. get_changes_since behavior fix (from return-all to filter-by-counter) is safe because all existing tests pass and the new behavior is correct by spec.\nConfidence: 3% chance of missed bug. Uncertainty driven by: the SQL whitespace artifact in the two new SQL queries (spurious spaces from Python string continuation) was functionally harmless but cosmetically wrong \u2014 already fixed. Would raise confidence if: integration tests run kithd against a real tailscaled instance exercising the full Chat/changes pagination loop."
+}

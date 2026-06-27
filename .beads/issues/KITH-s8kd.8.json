@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.8",
+  "title": "kith-tslocal: whois() inserts into cache after every call even if entry is current",
+  "description": "whois() calls cache.retain() to evict stale entries, then inserts the freshly fetched result. retain() evicts ALL expired entries on every successful whois call. For a busy server with many active peers this is O(n) work on every call, holding the Mutex the whole time. Cache.retain is called synchronously inside the Mutex before any release. For a large tailnet (hundreds of peers) this could introduce latency jitter on every authenticated request. The fix is to evict lazily (only on cache miss, or cap with an LRU). Not critical at Phase 1 single-user scale but grows nonlinearly.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:39:02Z",
+  "updated_at": "2026-04-25T05:18:04Z",
+  "closed_at": "2026-04-25T05:18:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:39:02Z"
+    }
+  ]
+}

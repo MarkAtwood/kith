@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hnib.6",
+  "title": "finish_message_delivery advances state counter before verifying UPDATE affected rows",
+  "description": "finish_message_delivery calls advance_state_counter_in_tx before executing UPDATE messages SET delivery_state. The return value (affected rows) is discarded. If the message row does not exist (e.g. deleted in a TOCTOU window between outbox_tick loading the message and calling complete_delivery), the state counter still advances, creating a hole in the state_version sequence. Phase 1 has no message deletion API so this cannot trigger today, but it is a latent correctness bug for Phase 2 when deletion is added. update_delivery_state correctly checks affected rows and rolls back on 0; finish_message_delivery should do the same.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T17:29:03Z",
+  "updated_at": "2026-04-24T17:33:43Z",
+  "closed_at": "2026-04-24T17:33:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hnib",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T10:29:03Z"
+    }
+  ]
+}

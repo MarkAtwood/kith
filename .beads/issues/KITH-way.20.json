@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.20",
+  "title": "Broadcast channel buffer overflow with silent drops",
+  "description": "What: events.rs creates a broadcast channel with capacity 64 (line 387 in tests, and same in main code per kith_events crate). When StateChange events arrive faster than the coalescing task processes them, the broadcast ring buffer drops old events. Dropped events are logged at DEBUG level (lines 235-239, 273-277), not ERROR.\n\nWhy: Phase 2 may generate many concurrent state changes (e.g., Peer/deliver touching Contact, Chat, Message, multiple attachments). If the total exceeds 64 before the coalescing task wakes, events are silently dropped. A solo maintainer monitoring ERROR logs will not see this. Clients must resync via /changes, adding latency. No circuit breaker or backpressure mechanism to push back on senders.\n\nHow to apply: (1) Measure Phase 2 workload and increase buffer capacity accordingly, (2) add a counter/metric for dropped events with alerts on threshold, (3) add an integration test that deliberately overfills the buffer and verifies clients are told to resync, then succeed.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:12:02Z",
+  "updated_at": "2026-04-19T20:15:52Z",
+  "closed_at": "2026-04-19T20:15:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:12:02Z"
+    }
+  ]
+}

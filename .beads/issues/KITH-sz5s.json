@@ -1,0 +1,36 @@
+{
+  "compaction_level": 0,
+  "content_hash": "f96393a3cd31d89c77f9fe7ee89b8646131045d6061fa02e06677613d668e7b8",
+  "created_at": "2026-06-14T17:34:26Z",
+  "created_by": "Mark Atwood",
+  "description": "Traditional PKI: a trusted CA issues X.509 client certs to each kithd. identify_caller verifies the cert chain against the CA root and extracts identity from the subject/SAN. Suitable for enterprise/organizational deployments where the org already runs a CA (Active Directory CS, Vault PKI, step-ca, etc.). Higher operational burden than TOFU/ACME but provides centralized revocation and policy control. The CA root is configured at kithd startup.",
+  "ephemeral": 0,
+  "id": "KITH-sz5s",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Auth mechanism: CA-issued X.509 (PKIX)",
+  "updated_at": "2026-06-14T17:34:26Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T10:34:37Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-14he",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-14T10:37:50Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-uq27",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

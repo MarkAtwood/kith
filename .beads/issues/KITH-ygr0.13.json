@@ -1,0 +1,20 @@
+{
+  "id": "KITH-ygr0.13",
+  "title": "[EPIC] Review: fix review findings KITH-ygr0 (P1/P2/P3/P4)",
+  "description": "Round 14 deep review of all changes from KITH-ygr0 fixes: SCHEMA_V8 migration (changed_at_counter), get_changes_since_ordered, ChatContactChangesHandler newState fix, invalidProperties SetError, TlsError::Config variant, kith-peer deliver_args cleanup.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:01:32Z",
+  "updated_at": "2026-04-24T20:07:58Z",
+  "closed_at": "2026-04-24T20:07:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:01:32Z"
+    }
+  ]
+}

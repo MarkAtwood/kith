@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.69",
+  "title": "kith-events: TypeFilter silently drops unknown type names in allows()",
+  "description": "TypeFilter::allows() has a comment: 'Unknown type names are silently dropped. Note: TypeFilter::parse() rejects unknown names at the query parameter level, so this arm is [unreachable in practice].' But allows() is also called with type_name values from the live broadcast StateChange events (which come from the store layer, not the client). If the store ever emits a StateChange with a type_name that is not ChatContact/Chat/Message (e.g. 'Attachment'), that event is silently discarded with no error or log. The comment says this path is unreachable but there is no debug_assert or compile-time guarantee. If a future type is added to StateChange emission but not to TypeFilter::allows(), it will be silently dropped for all filtered connections.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:31Z",
+  "updated_at": "2026-04-25T05:17:20Z",
+  "closed_at": "2026-04-25T05:17:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:31Z"
+    }
+  ]
+}

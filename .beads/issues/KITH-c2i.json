@@ -1,0 +1,12 @@
+{
+  "id": "KITH-c2i",
+  "title": "kith-events: support ping query parameter per RFC 8620 \u00a77.3",
+  "description": "eventSourceUrl in JMAP Session will include {ping} template variable per RFC 8620 \u00a77.3. Server must accept ping=N (seconds) and send SSE comment heartbeats at that interval. Currently EventsQuery has no ping field; ping values are silently dropped and keepalive is hardcoded at 15s. Deferred from Phase 1 (Session object not yet implemented). Must be addressed when kithd/src/session.rs is written.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:42:54Z",
+  "updated_at": "2026-04-19T23:32:39Z",
+  "closed_at": "2026-04-19T23:32:39Z"
+}

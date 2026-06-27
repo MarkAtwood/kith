@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.8",
+  "title": "Inconsistent state-advance patterns across Store modules",
+  "description": "Each Store module (contact, chat, message) handles state advancement differently: contact.rs defines both a private advance_state(conn) function AND a public method, creating confusing dual interface. message.rs cleanly separates advance_state_counter() (internal, returns i64) from advance_state() (public, returns String). The pattern (call advance_state after writes) is discoverable from existing code, but the inconsistency means a contributor landing in contact.rs might not replicate the pattern correctly. Suggestion: document the pattern in the comment for each module's advance_state method, and refactor contact.rs to follow message.rs's design (clear internal vs. public split).",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:32:31Z",
+  "updated_at": "2026-04-19T05:58:19Z",
+  "closed_at": "2026-04-19T05:58:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:32:31Z"
+    }
+  ]
+}

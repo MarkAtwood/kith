@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "IdentityProvider trait extracted as supertrait of FederationTransport. ConnectionContext replaces bare SocketAddr. TailscaleIdentityProvider implemented as standalone + composed in TailscaleTransport. All 1,197 tests pass.",
+  "closed_at": "2026-06-14T18:04:03Z",
+  "compaction_level": 0,
+  "content_hash": "a071fc9984eb2fd74f5f3de5e8284ebc24b830bb8324466ee7cab65e29001c4c",
+  "created_at": "2026-06-14T00:06:55Z",
+  "created_by": "Mark Atwood",
+  "description": "kith hardcodes Tailscale WhoIs as the sole identity source. The transport trait (KITH-lhaj) abstracts the network layer but identity verification is a separate concern \u2014 'how did this connection get here' vs 'who is the person on the other end'. Extract an identity provider trait: trait IdentityProvider { fn verify(conn) -> Identity }. Implementations: (1) Tailscale WhoIs (current), (2) X.509 client certificate (mTLS \u2014 extract CN/SAN, validate against CA), (3) OIDC/SAML bearer token (for eduroam/InCommon/Keycloak deployments), (4) DID resolution (draft-atwood-jmap-chat-did-00), (5) PIV/CAC smart card certificate (DoD PKI \u2014 same as X.509 but with specific CA roots and OID validation). The identity provider is orthogonal to transport: you can run X.509 identity over Tailscale transport, or OIDC identity over DNS+mTLS transport. The trait should return the same Identity struct that kith already uses (user_id, login_name, display_name, node_name) regardless of provider.",
+  "ephemeral": 0,
+  "id": "KITH-14he",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Pluggable identity provider abstraction",
+  "updated_at": "2026-06-14T18:04:03Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:07:07Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

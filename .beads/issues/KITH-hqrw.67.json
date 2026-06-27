@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.67",
+  "title": "kith-jmap: JmapHandler panics crash task with no serverFail response",
+  "description": "JmapHandler::call and PeerJmapHandler::call docs explicitly note panics propagate through the async executor and crash the task with no catch at the dispatch layer. A single panicking handler tears down the HTTP connection without sending a serverFail response to the client. For the peer path, a malformed Peer/deliver could trigger a handler bug and silently drop the connection. Consider wrapping handler.call().await in AssertUnwindSafe+catch_unwind and returning a serverFail invocation on catch.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:01Z",
+  "updated_at": "2026-04-25T05:52:21Z",
+  "closed_at": "2026-04-25T05:52:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:00Z"
+    }
+  ]
+}

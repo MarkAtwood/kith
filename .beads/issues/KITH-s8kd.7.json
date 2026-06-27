@@ -1,0 +1,21 @@
+{
+  "id": "KITH-s8kd.7",
+  "title": "strip_trailing_dot uses byte slice instead of strip_suffix",
+  "description": "kith-tslocal strip_trailing_dot does s[..s.len() - 1] after checking ends_with('.'). A dot is a single ASCII byte so this is correct, but s.strip_suffix('.').unwrap_or(&s) is the idiomatic form that makes the intent unambiguous. The current pattern is a known footgun for multibyte chars even though it cannot go wrong with '.'. Replace to eliminate reviewer questions.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:38:53Z",
+  "updated_at": "2026-04-25T08:21:19Z",
+  "closed_at": "2026-04-25T08:21:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:38:53Z"
+    }
+  ]
+}

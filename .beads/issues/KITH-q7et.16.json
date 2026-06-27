@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "52cf7acce6313954502efcb6d9a9224baa62135ff75107073f9e6d5903e100ad",
+  "created_at": "2026-06-15T04:53:19Z",
+  "created_by": "Mark Atwood",
+  "description": "kith_core::auth::Identity derives #[derive(Debug)] (kith-core/src/auth.rs:12). The struct holds user_id, login_name, display_name, and node_name. Any {:?} formatting \u2014 in tracing events, panic messages, or test output \u2014 emits all fields including user_id and login_name. While these are not cryptographic secrets, they are stable identity correlators that should not appear in structured logs. Recommend replacing auto-derived Debug with a manual impl that redacts or omits sensitive fields. See audit scope: key-lifecycle.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.16",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "Identity derives Debug: user_id/login_name may leak in logs/panics",
+  "updated_at": "2026-06-19T20:44:05Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:18Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "author": "Mark Atwood",
+  "created_at": "2026-06-15T15:54:30Z",
+  "id": "019ecbfd-d141-747e-b36a-5e42730594f1",
+  "issue_id": "KITH-q7et.33",
+  "text": "~20 call sites across tests and 2 production paths. The right fix (merge positional args into PeerDeliverRequestParams) is mechanical but high-churn. Recommend doing this as a focused PR to avoid mixing it with other review fixes."
+}

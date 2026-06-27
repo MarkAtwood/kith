@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.21",
+  "title": "Chat/changes doc comment wrong about state tracking",
+  "description": "ChatChangesHandler doc comment says Phase 1 has no per-row state tracking and any advance returns all chat IDs as added. The actual implementation calls get_changes_since which returns a proper per-row delta. The comment is wrong and will mislead maintainers of the state-tracking logic.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:48:33Z",
+  "updated_at": "2026-04-24T17:00:28Z",
+  "closed_at": "2026-04-24T17:00:28Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:48:33Z"
+    }
+  ]
+}

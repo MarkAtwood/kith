@@ -1,0 +1,12 @@
+{
+  "id": "KITH-uos",
+  "title": "attachment size_bytes u64\u2192i64 sign-flip on attacker-controlled input",
+  "description": "attachment.rs::insert casts size_bytes: u64 to i64 via 'as'. Peer-supplied size >= 2^63 stores a negative value; on read it casts back to a huge u64 via 'as u64'. Architecture doc lists attachment size as 'attacker-controlled, trust nothing'. Fix: use i64::try_from(size_bytes).map_err(|_| KithError::Store(\"attachment too large\")) and enforce maxAttachmentBytes upstream before storage.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:56:50Z",
+  "updated_at": "2026-04-19T19:56:54Z",
+  "closed_at": "2026-04-19T19:56:54Z"
+}

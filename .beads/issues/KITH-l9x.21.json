@@ -1,0 +1,20 @@
+{
+  "id": "KITH-l9x.21",
+  "title": "DECISION: event emission after tx.commit, not inside transaction",
+  "description": "In insert_message_with_attachments (crates/kith-store/src/lib.rs), the events_tx.send call is placed after tx.commit(), not before or inside the transaction. Alternative: send the event inside the transaction before commit, or immediately after the message INSERT before committing. Rejected because a listener receiving the state-change event will immediately call Message/changes or Message/get; if the event fires before the commit the DB query returns no row (the write is not yet visible), causing a spurious empty result that the client must handle as a transient error. Post-commit emission guarantees that by the time any listener queries, the data is durable and visible. The send() uses a fire-and-forget pattern (result discarded with let _ =) because a full event channel is a backpressure condition, not a delivery error \u2014 the periodic poll path catches up any missed events. Location: crates/kith-store/src/lib.rs insert_message_with_attachments.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T00:38:33Z",
+  "updated_at": "2026-04-20T01:17:58Z",
+  "closed_at": "2026-04-20T01:17:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-l9x",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T17:38:32Z"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "KITH-2e6",
+  "title": "Review round 1: kithctl local operator CLI",
+  "description": "Review round 1 for KITH-yvu (kithctl)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T19:17:16Z",
+  "updated_at": "2026-04-19T19:27:00Z",
+  "closed_at": "2026-04-19T19:27:00Z",
+  "notes": "Confidence: 20% chance of missed correctness bug. Round 1 summary: P0=4 P1=1 P2=14 P3=1 P4=6, total=26. opinion=5 (P3: 1, P4: 4 pure-style/doc-only findings labeled). Real P2 issues: 6 engineering concerns + 8 positive security validations. Real P4 without opinion: .7 (dead code, violates project rule), .12 (misleading 401 vs 403 error message). Verdict: Not running out of real issues; P0/P1 findings are genuine correctness and security bugs. Stopping condition NOT met."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-5r8.9",
+  "title": "Test suite covers rejection paths with proper oracles",
+  "description": "Tests (lib.rs:427-1223) validate rejection paths, not just happy path. Examples: unknown methods (line 716), forbidden methods (line 736), bad ResultReferences (line 924), path resolution failures (line 1145). Oracles come from RFC specs (comments cite 8620 \u00a77.1, 6901 \u00a75) not from running the code. Batch tests (mixed_batch, line 809) verify multiple calls process independently.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T07:41:06Z",
+  "updated_at": "2026-04-19T07:46:05Z",
+  "closed_at": "2026-04-19T07:46:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-5r8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T00:41:06Z"
+    }
+  ]
+}

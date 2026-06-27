@@ -1,0 +1,13 @@
+{
+  "id": "KITH-d5g1",
+  "title": "Review round 1: web client attachment UI",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:18:45Z",
+  "updated_at": "2026-04-20T15:26:23Z",
+  "closed_at": "2026-04-20T15:26:23Z",
+  "notes": "SEC2: No efficiency issues for MVP single-file scenario. O(n\u00b2) filter (line 593), sequential upload (line 564), and renderAttachmentPreview calls all operate on minimal data sets appropriate for MVP (1 file per send). Recommend revisit if multi-file attachment is added later.\nCalibration (SEC7): Confidence: 15% chance of missed bug. The attachment feature is ~200 lines of new code. Security surface (XSS via textContent, download URL encoding) was explicitly checked and appears solid. Correctness risks were covered by SEC0 (found the real bug: silent attachment loss on send failure). Field names, URL template handling, filename preservation were validated. Integration points (Message/set, uploadBlob round-trip, optimistic UI + real replacement) were examined; no logic gaps found. Running out of real complaints: yes. Remaining two findings are purely stylistic (missing JSDoc, consistency of innerHTML vs textContent for clearing) with no engineering basis.\nSEC1 Maintainability Review Complete \u2014 3 P1 bugs found:\n\n1. KITH-d5g1.4: sendMessage fails to restore pendingAttachments on send failure \u2014 user loses selected files\n2. KITH-d5g1.5: Race condition \u2014 Send button clickable while file uploads pending \u2014 wrong attachments sent to next message\n3. KITH-d5g1.6: uploadBlob assumes session.uploadUrl exists, crashes if missing (no defensive guard)\n\nPlus 2 P2 issues:\n- uploadBlob returns generic error for all 4xx/5xx (no distinction for user guidance)\n- File input handler overwrites error messages when multiple uploads fail\n\nAll other aspects assessed: LOW RISK.\n- pendingAttachments state initialization and mutation are clear\n- renderAttachmentPreview() coupling is explicit and sequential\n- FileList handling correctly uses Array.from()\n- Bootstrap timing is correct (session ready before setupCompose)"
+}

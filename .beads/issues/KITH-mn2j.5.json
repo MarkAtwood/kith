@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mn2j.5",
+  "title": "kith-jmap: peer/owner spawn blocks in dispatch_one are duplicated",
+  "description": "dispatch_one has identical spawn-and-match-error blocks for peer (lines 480-488) and owner (lines 499-507). The only structural difference is that peer passes caller_identity. Suggest: extract to a generic async fn that accepts a HandlerFuture and returns Invocation \u2014 the role-dispatch just builds the future differently.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:53:50Z",
+  "updated_at": "2026-04-25T08:28:50Z",
+  "closed_at": "2026-04-25T08:28:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mn2j",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:53:50Z"
+    }
+  ]
+}

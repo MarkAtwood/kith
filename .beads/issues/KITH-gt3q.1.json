@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.1",
+  "title": "main.rs: owner_login WhoIs uses hardcoded port 443 instead of config.port",
+  "description": "main.rs:96-99 builds the self-WhoIs SocketAddr with a hardcoded port :443 regardless of KITHD_PORT. When KITHD_PORT \\!= 443, the SocketAddr passed to tailscaled is wrong. In practice tailscaled resolves identity by IP (port is ignored), so owner_login is still populated correctly \u2014 but the addr is misleading and would break if tailscaled ever validates ports. Fix: use config.port instead of the literal 443.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:37:51Z",
+  "updated_at": "2026-04-25T05:10:38Z",
+  "closed_at": "2026-04-25T05:10:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:37:51Z"
+    }
+  ]
+}

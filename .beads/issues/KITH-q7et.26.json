@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "6a30fddb7dc8e7f95c4fbb898cf6cc80c36145f89a80873c0f7e1d3ea3db012b",
+  "created_at": "2026-06-15T04:53:53Z",
+  "created_by": "Mark Atwood",
+  "description": "RFC 8620 \u00a75.6 maxChanges pagination requires that newState in a truncated /changes response point to the last returned item's state, not the current store state. Without per-row counters, truncation produces a newState that skips intermediate changes on the next poll.\n\nThe store uses per-row changed_at_counter on messages, contacts, and chats (added in migrations V8/V9/V10) with a separate get_changes_since_ordered() method that returns counters alongside IDs. This lets JMAP handlers compute the correct newState for a truncated page without a second query.\n\nThe dual method design (get_changes_since for simple cases, get_changes_since_ordered for paginated cases) with clear docs warning against mixing them is the right call \u2014 a single method that always returns counters would have been equally valid but adds caller complexity for the common case.\n\nThis is worth defending if someone suggests simplifying to a single state-counter approach (e.g., just return current state for all truncated responses). RFC 8620 \u00a75.6 compliance requires the per-item counter approach.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.26",
+  "is_template": 0,
+  "issue_type": "decision",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DECISION: per-row changed_at_counter for JMAP changes pagination",
+  "updated_at": "2026-06-15T04:53:53Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:52Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

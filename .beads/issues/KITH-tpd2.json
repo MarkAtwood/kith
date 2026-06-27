@@ -1,0 +1,12 @@
+{
+  "id": "KITH-tpd2",
+  "title": "[EPIC] Review: fix review findings KITH-v793 (P2/P3)",
+  "description": "Round 15 deep review of all changes from KITH-v793 fixes: maxChanges=0 newState regression (contact.rs), probe_url double-bracket IPv6 guard (discovery.rs), cert/key write ordering (tls.rs). Check for edge cases, missing tests, and correctness.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:08:08Z",
+  "updated_at": "2026-04-24T20:11:30Z",
+  "closed_at": "2026-04-24T20:11:30Z"
+}

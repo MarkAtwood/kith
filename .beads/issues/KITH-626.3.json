@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.3",
+  "title": "Fresh Unix socket per LocalAPI call avoids connection pool complexity",
+  "description": "Fresh connection per call design (lines 92-107, 164-178) is correct for LocalAPI. tailscaled is local so connection overhead is negligible. Avoids connection lifecycle complexity and keeps the code simple. This architectural choice should not be refactored to a connection pool.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:10Z",
+  "updated_at": "2026-04-19T19:51:54Z",
+  "closed_at": "2026-04-19T19:51:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:10Z"
+    }
+  ]
+}

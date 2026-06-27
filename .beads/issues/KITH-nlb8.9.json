@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nlb8.9",
+  "title": "INSERT OR IGNORE + fallback pattern in ChatStore::create is correct and battle-tested",
+  "description": "kith-store/src/chat.rs:42-86 \u2014 the create() function handles two distinct INSERT OR IGNORE cases: (1) same chat_id PK already exists (retry path: get(chat_id) returns it), (2) same contact_id UNIQUE constraint fires (concurrent create: fall back to find_direct_by_contact_id). State counter advance is correctly tied to affected > 0, so no spurious state advances on any IGNORE path. A future contributor might try to simplify this to a single lookup, which would break the retry-path idempotency. The two-case design should be preserved.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T00:27:49Z",
+  "updated_at": "2026-04-25T00:37:19Z",
+  "closed_at": "2026-04-25T00:37:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nlb8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T17:27:49Z"
+    }
+  ]
+}

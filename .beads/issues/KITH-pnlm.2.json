@@ -1,0 +1,20 @@
+{
+  "id": "KITH-pnlm.2",
+  "title": "TLS cert expiry warning uses file mtime not X.509 notAfter field",
+  "description": "Trigger: operator replaces kith-cert.der with a cert from an external CA that expires in 90 days. File mtime is 'now', so the heuristic thinks the cert has ~365 days remaining and emits a normal info log. The real expiry in 90 days is invisible. Consequence: operator gets no warning until the cert silently expires. tls.rs lines 62-91. A real fix parses the DER cert with rcgen/x509-parser to read the actual notAfter field.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:26:29Z",
+  "updated_at": "2026-04-24T20:36:42Z",
+  "closed_at": "2026-04-24T20:36:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:26:29Z"
+    }
+  ]
+}

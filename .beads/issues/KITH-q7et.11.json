@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:57:32Z",
+  "compaction_level": 0,
+  "content_hash": "c862c944c2be56dac4127eb777930f3da155a9367c0af86293292bd0b501b236",
+  "created_at": "2026-06-15T04:52:56Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-events/src/lib.rs lines 27-33: make_channel(capacity: usize) panics if capacity == 0. The doc comment documents this, but usize admits zero at the type level and there is no way for a caller to statically guarantee capacity > 0 without reading the doc.\n\nThe doc comment suggests: 'if you need a variable capacity, use std::num::NonZeroUsize at the call site to enforce the constraint before calling this function' \u2014 but the function signature itself does not accept NonZeroUsize, making this advice aspirational rather than enforced.\n\nSince all production call sites use hardcoded non-zero literals this is low risk in practice, but the API surface is inconsistent: it documents a type that should be used but does not accept it.\n\nFix: change the signature to make_channel(capacity: std::num::NonZeroUsize). This eliminates the panic entirely and makes the contract visible to the compiler. Or at minimum, accept NonZeroUsize to force callers with variable capacity to validate before calling.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.11",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-events: make_channel panic precondition not enforceable at call site",
+  "updated_at": "2026-06-15T15:57:32Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:55Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

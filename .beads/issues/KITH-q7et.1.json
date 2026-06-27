@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "8dcb6829d26e71f178115ce53f1c606df237f751b9f029afae44f490f8478c56",
+  "created_at": "2026-06-15T04:52:04Z",
+  "created_by": "Mark Atwood",
+  "description": "ChatStore::list() fetches all chat rows in one SQL query, then calls load_pinned_messages() in a Rust loop \u2014 one extra query per chat. For a user with N chats this is N+1 round-trips to SQLite.\n\nThe path is chat.rs:list() lines 413-419: for every ChatRow r, it calls self.load_pinned_messages(&chat_id) separately. A single LEFT JOIN against pinned_messages, or a second bulk query with an IN clause and client-side grouping, would reduce this to 2 queries regardless of chat count.\n\nSame pattern affects find_direct_by_contact_id() (1 chat \u2192 1 extra pinned query, low priority) and get() (acceptable).\n\nSuggested fix for list(): after the main query collects all rows, issue one bulk SELECT chat_id, message_id FROM pinned_messages WHERE chat_id IN (...) and distribute results to the Chat objects in a HashMap pass.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.1",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "in_progress",
+  "timeout_ns": 0,
+  "title": "list() makes N+1 queries for pinned messages",
+  "updated_at": "2026-06-19T20:44:01Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:04Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-d5g1.9",
+  "title": "SEC4: snapshot comment missing in sendMessage",
+  "description": "app.js sendMessage ~line 588: the .slice() snapshot and filter logic lack an explanatory comment. A maintainer reading cold won't know why the snapshot is necessary. Add: '// Snapshot before optimistic clear \u2014 restored in catch block on failure.'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:21:22Z",
+  "updated_at": "2026-04-20T15:26:22Z",
+  "closed_at": "2026-04-20T15:26:22Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d5g1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:21:21Z"
+    }
+  ]
+}

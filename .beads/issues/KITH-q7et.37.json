@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "540201420feef294b4e63037cd485b3f3d0c71bcfc7d1121dd9c3fd8fa64d7c4",
+  "created_at": "2026-06-15T04:54:18Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-core/src/lib.rs: the make_attachment(), make_mention(), make_broadcast_mention(), make_message_revision(), make_space_role(), make_space_member(), make_category(), make_channel_permission() functions all construct types via serde_json round-trip and panic with expect() if the round-trip fails.\n\nThe reason these helpers exist is that jmap-chat-types marks its structs #[non_exhaustive] without providing constructors \u2014 a legitimate design problem in that dependency. kith-core works around it with JSON round-trips.\n\nThe issue is that these functions:\n1. Are pub, meaning external callers can call them and hit the panic.\n2. Document the panic as 'logic error \u2014 this is a bug in kith-core' in their doc comments.\n3. Accept impl Into<String> for fields like body_type and scope where invalid values (empty string, unknown MIME type) are accepted without validation.\n\nSpecifically: make_broadcast_mention() accepts any scope string, but only 'everyone', 'here', 'admins' are valid per the spec. Passing an invalid scope will not panic (the serde round-trip succeeds for any string), but will create a BroadcastMention with an invalid scope that will be rejected later by the server.\n\nVALID_BROADCAST_SCOPES is exported but not used by make_broadcast_mention() itself \u2014 callers must independently remember to validate scope before calling.\n\nFix: validate scope in make_broadcast_mention() and return Result<BroadcastMention, String> instead of panicking. Apply the same to body_type in make_message_revision().",
+  "ephemeral": 0,
+  "id": "KITH-q7et.37",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-core: make_* constructor helpers panic on logic errors without type safety",
+  "updated_at": "2026-06-15T04:54:18Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:17Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

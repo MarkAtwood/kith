@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.39",
+  "title": "Message/set update: unknown key returns invalidArguments not invalidProperties",
+  "description": "message.rs:502 \u2014 process_update returns type: invalidArguments when a patch key other than readAt is used. RFC 8620 \u00a75.3 requires unknown/read-only properties in an update patch to yield type: invalidProperties (a per-object SetError in notUpdated). The placement is correct (goes into notUpdated), but the type string is wrong. A client pattern-matching on error type will misclassify this. Fix: change 'invalidArguments' to 'invalidProperties' at line 502.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:16:19Z",
+  "updated_at": "2026-04-25T01:18:19Z",
+  "closed_at": "2026-04-25T01:18:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:16:19Z"
+    }
+  ]
+}

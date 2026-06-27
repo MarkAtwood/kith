@@ -1,0 +1,13 @@
+{
+  "id": "KITH-vmch",
+  "title": "Review: SSE JSON depth fix + regression tests",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:26:54Z",
+  "updated_at": "2026-04-25T09:28:13Z",
+  "closed_at": "2026-04-25T09:28:13Z",
+  "notes": "Section 0 CORRECTNESS: NO FINDINGS. Fix path matches server emission in kithd/src/events.rs:438-441. Edge cases (invalid JSON, missing field, non-string value) all handled correctly by the option chain. Test oracles are independent of implementation.\nMaintainer risk: LOW \u2014 patch is confined to one function body and three unit tests; no new public surface, no new wire contract, no security surface.\nConfidence: 3% chance of missed bug. Uncertainty driven by: the fix being a client-side parse (kithctl), not a server protocol change \u2014 the server's emission shape was confirmed by reading kithd/src/events.rs:438-441 directly, so the path match is verified; however, there is no end-to-end integration test that drives an actual SSE frame through the TCP stack into kithctl's parse loop. Would raise confidence if: a watch_integration test existed that spun up kithd, sent a message, and confirmed a desktop notification fired. That test does not exist and is out of scope for this patch. The patch itself is correct."
+}

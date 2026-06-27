@@ -1,0 +1,26 @@
+{
+  "id": "KITH-bdo",
+  "title": "Web client: EventSource subscription",
+  "description": "Implement EventSource subscription in app.js: subscribe to /jmap/events, on state events call /changes to fetch deltas and update UI.\n\nWhat: Open EventSource, on 'state' events call Message/changes and Chat/changes, merge results into local state, re-render.\n\nAlgorithm:\n1. function buildEventsUrl():\n   - Start from session.eventsUrl template (from JMAP session object)\n   - Replace {types} with 'Message,Chat', {closeafter} with 'no', {ping} with ''\n   - Result: https://host/jmap/events?types=Message,Chat&closeafter=no&ping=\n2. function startEventSource():\n   - const url = buildEventsUrl();\n   - const es = new EventSource(url);\n   - es.addEventListener('state', handleStateEvent);\n   - es.onerror = () => { console.error('EventSource disconnected, will reconnect'); };\n   - Browser reconnects automatically with Last-Event-ID\n3. async function handleStateEvent(event):\n   - const data = JSON.parse(event.data);\n   - const changed = data.changed['a-self'];  // { 'Message': 's-N', 'Chat': 's-M' }\n   - if (changed.Message && currentChatId):\n     - const responses = await callJmap([['Message/changes', { accountId: 'a-self', sinceState: messageState }, 'mc0']]);\n     - const [, result] = responses[0];\n     - if (result.type === 'cannotCalculateChanges') { await fetchMessages(currentChatId); return; }\n     - if (result.created.length > 0):\n       - Fetch new messages: Message/get with result.created as ids\n       - Append new message bubbles to thread\n     - messageState = result.newState;\n   - if (changed.Chat):\n     - const responses = await callJmap([['Chat/changes', { accountId: 'a-self', sinceState: chatState }, 'cc0']]);\n     - const [, result] = responses[0];\n     - if (result.type === 'cannotCalculateChanges') { await fetchChats(); return; }\n     - chatState = result.newState;\n     - Re-fetch affected chats and re-render chat list\n4. Call startEventSource() in renderApp() after initial data load.\n5. Update unread count in chat list for non-active chats when new messages arrive.\n\nDefensive programming rules:\n- Always handle 'cannotCalculateChanges' (server dropped state) by re-fetching all.\n- Parse JSON in try/catch \u2014 malformed event must not crash the app.\n- Never innerHTML for any received data.\n- Store messageState and chatState after every successful /changes call.\n- EventSource URL is a template \u2014 replace all three placeholders before using.\n\nTests (oracle: EventSource event format from kithd/src/events.rs + RFC 8620 \u00a77.3):\n- Given event data '{\"changed\":{\"a-self\":{\"Message\":\"s-5\"}}}', handleStateEvent calls Message/changes with sinceState=prior state\n- Given Message/changes returns created=['msg-id-1'], new bubble is appended to thread\n- Given Message/changes returns type='cannotCalculateChanges', falls back to fetchMessages\n- EventSource .onerror does not crash app, logs to console",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:53:15Z",
+  "closed_at": "2026-04-19T17:53:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-be1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-f0g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

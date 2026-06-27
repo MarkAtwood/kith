@@ -1,0 +1,26 @@
+{
+  "id": "KITH-tuw1.5",
+  "title": "E2E: peer message with attachment \u2014 deliver, fetch, download",
+  "description": "End-to-end test that proves the full attachment round-trip works.\n\nWhat: two kithd instances (sender + receiver) in the test harness; sender delivers a message with an attachment; receiver's download endpoint fetches the blob from sender.\n\nAlgorithm:\n1. Spin up two kithd instances using existing test harness (spawn_test_listener)\n2. Upload a test blob to the sender instance via POST /jmap/upload/{accountId}\n3. Confirm blob_id and sha256 returned\n4. Have receiver's harness call Peer/deliver with message containing the attachment metadata (blob_id, sha256, size, etc.)\n5. As the owner of the receiver, call GET /jmap/download/a-self/{blob_id}/{filename}\n6. Assert HTTP 200 and response body matches the original uploaded bytes\n7. Assert the blob is now cached in the receiver's blob directory\n\nDefensive checks:\n- Use fixed test bytes (not random) so test is deterministic; oracle is the known bytes themselves\n- Verify Content-Type matches what was delivered\n- Verify Content-Disposition contains the original filename\n\nNote: this test requires the two-instance harness pattern; check if existing e2e.rs already supports this or needs extension.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:48:14Z",
+  "updated_at": "2026-04-20T17:13:40Z",
+  "closed_at": "2026-04-20T17:13:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-tuw1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:14Z"
+    },
+    {
+      "depends_on_id": "KITH-tuw1.4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:48:23Z"
+    }
+  ]
+}

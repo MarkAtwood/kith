@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.4",
+  "title": "JS: EventSource Contact subscription + handleStateEvent Contact branch",
+  "description": "Add Contact type to EventSource subscription and handle Contact state changes in handleStateEvent.\n\nWhat: Two small changes to existing JS functions: (1) subscribe to Contact events, (2) on Contact state change fetch updated contacts and re-render.\n\nAlgorithm:\n1. In startEventSource() (or buildEventsUrl call site), change the types string from 'Message,Chat' to 'Message,Chat,Contact'.\n2. In handleStateEvent(event), add a Contact branch alongside the existing Message and Chat branches:\n   a. Extract changed.Contact (new state token) from the event data.\n   b. Maintain a module-level contactState variable (initialized to null; set by fetchContacts).\n   c. If changed.Contact is present AND contactState is not null:\n      - Call callJmap with Contact/changes { accountId, sinceState: contactState }.\n      - Parse the /changes result: update contactState to newState.\n      - If created.length > 0 or updated.length > 0 or destroyed.length > 0:\n        - Call fetchContacts() to get updated list.\n        - Call renderContactList([...contacts.values()]).\n      - If cannotCalculateChanges: call fetchContacts() and renderContactList.\n   d. If changed.Contact present AND contactState is null: set contactState = changed.Contact (sync token without fetching delta).\n3. In fetchContacts(), after populating contacts map, set contactState = result.state (or result.queryState from Contact/query, whichever is returned).\n\nDefensive programming rules:\n- contactState must never be used as a DOM value or rendered\n- On Contact/changes error, log to console and skip re-render (non-fatal, will resync on next event)\n- Guard: if fetchContacts is already in-flight, skip redundant fetch\n\nTests (independent oracle: EventSource state event JSON spec):\n- Test 1: fire a synthetic state event with changed.Contact; assert Contact/changes is called with correct sinceState.\n- Test 2: Contact/changes returns created=['uid-bob']; assert fetchContacts() is called.\n- Test 3: cannotCalculateChanges=true; assert fetchContacts() is called.\n- Test 4: event has no changed.Contact; assert no Contact/changes call made.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:50:41Z",
+  "updated_at": "2026-04-20T16:05:15Z",
+  "closed_at": "2026-04-20T16:05:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:50:41Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.18",
+  "title": "BlobStore read_blob loads entire blob into heap",
+  "description": "BlobStore::read_blob uses tokio::fs::read which reads the entire file into a Vec<u8>. For a 200 MiB blob this allocates 200 MiB on the heap before returning to the caller. The caller (attachment download handler) must then copy this into an HTTP response body. This is an O(blob_size) heap allocation in a hot path. Fix: return an async reader or stream (tokio::fs::File opened for reading) so the caller can stream bytes to the client without buffering the full blob. This change is non-trivial but necessary before Phase 2 when large file transfers are expected.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:30:48Z",
+  "updated_at": "2026-04-25T07:59:50Z",
+  "closed_at": "2026-04-25T07:59:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:30:47Z"
+    }
+  ]
+}

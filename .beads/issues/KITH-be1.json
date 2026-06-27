@@ -1,0 +1,26 @@
+{
+  "id": "KITH-be1",
+  "title": "Web client: message thread view",
+  "description": "Implement message thread view in app.js: fetch messages for the selected chat and render them chronologically.\n\nWhat: When a chat is selected, call Message/query then Message/get, render thread with sender, body, timestamp.\n\nAlgorithm:\n1. async function fetchMessages(chatId):\n   - const responses = await callJmap([\n       ['Message/query', { accountId: 'a-self', filter: { chatId }, calculateTotal: false }, 'q0'],\n       ['Message/get', { accountId: 'a-self', '#ids': { resultOf: 'q0', name: 'Message/query', path: '/ids' } }, 'g0']\n     ]);\n   - const [, queryResult] = responses[0]; const [, getResult] = responses[1];\n   - if (queryResult.type || getResult.type) throw new Error('Message fetch failed');\n   - return getResult.list;  // array of Message objects; server returns in query order\n   - Store message state token: messageState = getResult.state;\n2. function getSenderLabel(msg, contacts):\n   - if (msg.senderId === 'self') return 'Me';\n   - const c = contacts.find(c => c.id === msg.senderId);\n   - return c ? getContactName(c) : msg.senderId;\n3. function renderThread(messages, contacts):\n   - const div = document.getElementById('message-thread');\n   - div.innerHTML = '';\n   - for each msg in messages (chronological order, oldest first):\n     - const bubble = document.createElement('div');\n     - bubble.className = 'message ' + (msg.senderId === 'self' ? 'self' : 'peer');\n     - const body = document.createElement('p');\n     - body.textContent = msg.body;  // CRITICAL: textContent NOT innerHTML \u2014 prevents XSS\n     - const meta = document.createElement('div');\n     - meta.className = 'message-meta';\n     - const ts = new Date(msg.receivedAt).toLocaleTimeString();  // use receivedAt NOT sentAt\n     - meta.textContent = getSenderLabel(msg, contacts) + ' \u00b7 ' + ts;\n     - bubble.appendChild(body); bubble.appendChild(meta);\n     - div.appendChild(bubble);\n   - div.scrollTop = div.scrollHeight;  // scroll to bottom\n\nDefensive programming rules:\n- MUST use textContent for msg.body \u2014 never innerHTML \u2014 XSS prevention.\n- Use msg.receivedAt for timestamps (trusted server clock), not msg.sentAt (peer clock).\n- msg.senderId is an opaque ID \u2014 never parse or format.\n- Handle empty message list (show empty thread area, not an error).\n- Message order from Message/query is query order \u2014 render as-is.\n\nTests (oracle: known Message object shape from JMAP spec + kith-core Message struct):\n- Given msg {senderId:'self', body:'Hello', receivedAt:'2026-01-01T12:00:00Z'}, renders with class 'self' and textContent 'Hello'\n- Given msg {senderId:'uid-bob', body:'Hi', receivedAt:'2026-01-01T12:01:00Z'}, renders with class 'peer'\n- Given msg {body:'<script>alert(1)</script>'}, body is rendered as literal text, not executed\n- Messages appear in chronological order (oldest first)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:51:46Z",
+  "closed_at": "2026-04-19T17:51:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-f0g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-g7q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

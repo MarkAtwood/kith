@@ -1,0 +1,13 @@
+{
+  "id": "KITH-avs",
+  "title": "Extract advance_state_counter_in_tx helper in kith-store",
+  "description": "What: The pattern of incrementing a state counter inside a transaction (SELECT + UPDATE on state_counters) is duplicated across message.rs, contact.rs, chat.rs, and outbox.rs. Extract it into a private fn advance_state_counter_in_tx(tx: &Transaction, type_name: &str) -> Result<i64, KithError>.\n\nAlgorithm:\n1. Read each of message.rs, contact.rs, chat.rs, outbox.rs; identify all advance_state_counter call sites inside transactions\n2. In kith-store/src/lib.rs (or a new state.rs submodule), add:\n   pub(crate) fn advance_state_counter_in_tx(tx: &Transaction<'_>, type_name: &str) -> Result<i64, KithError>\n   - SELECT current_value FROM state_counters WHERE type_name = ?\n   - new_value = old + 1\n   - UPDATE state_counters SET current_value = new_value WHERE type_name = ?\n   - Return new_value\n3. Replace every inline duplicate with the helper call\n4. Ensure the helper is NOT pub \u2014 it is an internal primitive\n\nDefensive programming rules:\n- The helper must run inside the caller's transaction, not open its own \u2014 signature takes &Transaction<'_>\n- Do not change the transaction open/commit pattern at any call site \u2014 only replace the counter increment lines\n- Run the full kith-store test suite after each file replacement; do not batch all four at once\n- Check cargo clippy -p kith-store after each file to catch import errors\n\nAgent team: R+I+T agent per file (4 files), or single agent working through files sequentially\n\nTests:\n- cargo test -p kith-store passes with all 70+ existing tests unchanged\n- cargo clippy -p kith-store -D warnings passes",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:19:49Z",
+  "updated_at": "2026-04-19T21:28:32Z",
+  "closed_at": "2026-04-19T21:28:32Z"
+}

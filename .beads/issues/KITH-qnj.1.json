@@ -1,0 +1,19 @@
+{
+  "id": "KITH-qnj.1",
+  "title": "[R2-SEC1] bind_to_ips should be pub(crate), not pub",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T18:44:39Z",
+  "updated_at": "2026-04-19T18:46:14Z",
+  "closed_at": "2026-04-19T18:46:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qnj",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T11:44:39Z"
+    }
+  ]
+}

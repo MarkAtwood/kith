@@ -1,0 +1,13 @@
+{
+  "id": "KITH-fbjc",
+  "title": "Review: post-KITH-1tsc audit (attach, events, tslocal, kithd periphery)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T04:53:55Z",
+  "updated_at": "2026-04-24T05:32:01Z",
+  "closed_at": "2026-04-24T05:32:01Z",
+  "notes": "Maintainer risk: HIGH \u2014 Two P1 security issues (XSS via ?accept= + unenforced body size limit) and two architectural gaps (unconditional HTTP fallback + SSRF guard scope) that would generate CVE-class reports from a public GitHub audience. The web client is clean (textContent throughout, no client-side secret storage), the auth model is solid, and WhoIs is correctly fail-closed. The attach/blob layer and kithctl peripheral modules were not previously reviewed and contained the bulk of this round's findings.\nConfidence: 15% chance of missed bug. Uncertainty driven by: (1) discovery.rs contact auto-upsert behavior not filed \u2014 may be intentional design, needs owner decision; (2) kithd/src/events.rs and kithd/src/tls.rs peer_fetch certificate verification path not fully read; (3) group chat paths in kithd not re-reviewed this cycle. Would raise confidence if: discovery auto-upsert behavior is explicitly documented as intentional or restricted to approved contacts; /jmap/events owner-check enforcement is confirmed; group_and_receipt.rs e2e tests read."
+}

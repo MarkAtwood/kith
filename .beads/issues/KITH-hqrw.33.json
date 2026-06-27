@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.33",
+  "title": "watch ignores updated IDs from Message/changes",
+  "description": "watch.rs fetch_and_notify only fetches created IDs from Message/changes (line 424). The updated array is ignored. Delivery confirmations appear as updated entries so the watch daemon never fires notifications for them. Inconsistent with event.rs handle_state_change which merges created+updated. Impact: notification gap only, no data loss.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:32:53Z",
+  "updated_at": "2026-04-25T04:09:56Z",
+  "closed_at": "2026-04-25T04:09:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:32:52Z"
+    }
+  ]
+}

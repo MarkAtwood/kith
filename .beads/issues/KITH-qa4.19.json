@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.19",
+  "title": "[SEC2] Full chat re-fetch on every incoming message",
+  "description": "In handleStateEvent() lines ~570,574,580: every incoming message triggers refreshChatList() which calls fetchChats() (Chat/query + Chat/get \u2014 two JMAP requests). For an active tailnet this fires constantly. Fix: track unreadCount locally in the chats Map and call refreshChatList only when Chat/changes.created has new chats, not on every Message/changes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:56:23Z",
+  "updated_at": "2026-04-19T17:59:12Z",
+  "closed_at": "2026-04-19T17:59:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:56:22Z"
+    }
+  ]
+}

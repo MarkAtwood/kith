@@ -1,0 +1,25 @@
+{
+  "id": "KITH-t4z",
+  "title": "kith-events: emit state changes from store operations",
+  "description": "What: Wire broadcast.send() into 8 store functions that advance state counters so listeners receive real-time notifications.\n\nAlgorithm:\nThe Store struct (after KITH-aai) has events_tx: Option<broadcast::Sender<StateChange>>. After each successful state advance, emit:\n  if let Some(tx) = &self.events_tx { let _ = tx.send(StateChange { type_name: TYPE.to_string(), new_state }); }\n\nEight functions to modify (file: function - type_name - condition):\n1. contact.rs: ContactStore::upsert() - \"Contact\" - always (called after advance_state())\n2. contact.rs: ContactStore::set_blocked() - \"Contact\" - only if rows_affected > 0 (state was advanced)\n3. chat.rs: ChatStore::get_or_create() - \"Chat\" - only if new rows inserted (state was advanced)\n4. chat.rs: ChatStore::update_last_message_at() - \"Chat\" - only if rows_affected > 0\n5. message.rs: MessageStore::insert() - \"Message\" - always (inside transaction, after counter advance)\n6. message.rs: MessageStore::update_delivery_state() - \"Message\" - always (after advance_state_counter())\n7. message.rs: MessageStore::update_read_at() - \"Message\" - always (after advance_state_counter())\n8. outbox.rs: OutboxStore::mark_failed() - \"Message\" - after message counter advance; OutboxStore needs access to Store.events_tx (verify struct layout first)\n\nCheck how sub-store structs (ContactStore, ChatStore, etc.) are defined - if they are newtype wrappers over &Store, they can access self.0.events_tx; if they take &Connection, the events_tx must be passed as parameter.\n\nDefensive rules:\n- let _ = tx.send(...) always (SendError when no receivers is not an error condition)\n- type_name strings: exactly \"Contact\", \"Chat\", \"Message\" (capital first; matches JMAP type names)\n- Only emit after state is successfully advanced; never on error paths or no-op paths (rows_affected == 0)\n- The send() is non-blocking (in-memory broadcast); safe to call while store mutex is held",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T08:21:05Z",
+  "closed_at": "2026-04-19T08:21:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-845",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-aai",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

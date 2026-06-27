@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.79",
+  "title": "kith-events: LEI replay uses single counter for all 3 types; misses replays",
+  "description": "On SSE reconnect, client sends Last-Event-ID (e.g. 's-5'). Handler compares this single counter against each type's individual current_state. State counters are per-type and often identical after a quiet period (e.g. both Chat and Message at s-5). When a type's counter equals the LEI, replay is suppressed even though the client may have missed events for that type. The code comment calls this 'safe over-silence in the accidental-equality edge case' but equal counters is the normal quiet state, not an edge case. Client gets no replay and no signal that resync is needed \u2014 silent missed-event window on reconnect.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:41:08Z",
+  "updated_at": "2026-04-25T05:42:45Z",
+  "closed_at": "2026-04-25T05:42:45Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:41:07Z"
+    }
+  ]
+}

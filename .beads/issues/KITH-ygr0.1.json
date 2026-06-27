@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.1",
+  "title": "newState wrong after maxChanges truncation",
+  "description": "After truncation in ChatContact/changes, newState is set to result.new_state (the current store state) rather than the state at the last returned change. A client that receives a truncated response with hasMoreChanges=true uses newState as sinceState on the next call, which will land past the truncated changes \u2014 they are silently dropped and never delivered. RFC 8620 \u00a75.6 requires newState to be the state of the last change returned so the client can page forward correctly.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:46:18Z",
+  "updated_at": "2026-04-24T20:00:05Z",
+  "closed_at": "2026-04-24T20:00:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:46:18Z"
+    }
+  ]
+}

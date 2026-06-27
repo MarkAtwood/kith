@@ -1,0 +1,21 @@
+{
+  "id": "KITH-iz3n.8",
+  "title": "get_changes_since_for_chat doc omits TOCTOU warning for callers",
+  "description": "The new doc comment says 'The caller is responsible for reading the current state separately if needed.' It does not warn that reading state in a separate lock acquisition creates a window where messages can be written between the two calls, making new_state inconsistent with the returned IDs. Any caller that reads new_state in a different lock scope from get_changes_since_for_chat is silently exposed to this hazard. The doc should state the constraint explicitly: 'new_state MUST be read atomically in the same lock scope as this call; reading it in a separate lock scope allows intervening writes to produce a new_state that does not match the returned IDs.'",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:27:28Z",
+  "updated_at": "2026-04-24T18:34:11Z",
+  "closed_at": "2026-04-24T18:34:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-iz3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:27:28Z"
+    }
+  ]
+}

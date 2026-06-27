@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.7",
+  "title": "Good decision: StateChange type defined in kith-core, not kith-events",
+  "description": "Decision: StateChange is defined in kith-core/src/events.rs. kith-events re-exports it. Store crates and handler both import from kith-core.\n\nCode location: kith-core/src/events.rs (lines 10-16), kith-events/src/lib.rs (line 3 re-export).\n\nWhy this is correct: Avoids circular dependencies. StateChange is emitted by the store layer (kith-store), so store crates must import it. If StateChange were defined in kith-events, then kith-store would depend on kith-events. But kith-events depends on kith-core and uses kith-store in its tests. Placing StateChange in the shared type layer (kith-core) breaks the cycle: store crates import from kith-core (already their dep), and kith-events imports from kith-core without creating a reverse dep on store.\n\nThe wrong alternative would be to define StateChange in kith-events. This creates a circular import: kith-store \u2192 kith-events \u2192 kith-core, but kith-events also imports kith-store for testing (test_store_set_events_tx), forming a cycle.\n\nThis is proper layering: common types at the bottom, specialized types only where they're needed.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:41Z",
+  "updated_at": "2026-04-19T08:41:47Z",
+  "closed_at": "2026-04-19T08:41:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:40Z"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T14:05:08Z",
+  "compaction_level": 0,
+  "content_hash": "af93708548b1a74d401a4e54d571b439c59f0c59d84555a27d0cfc8be373a97e",
+  "created_at": "2026-06-14T13:34:52Z",
+  "created_by": "Mark Atwood",
+  "description": "Add transport.rs to kith-core with the FederationTransport trait and DiscoveredPeer type. The trait abstracts identity verification, peer discovery, and host validation away from Tailscale specifics.",
+  "ephemeral": 0,
+  "id": "KITH-xk6u",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Define FederationTransport trait in kith-core",
+  "updated_at": "2026-06-14T14:05:08Z"
+}

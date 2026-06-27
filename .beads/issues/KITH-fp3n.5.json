@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.5",
+  "title": "TypeFilter uses 'Contact' but broadcasts emit 'ChatContact'",
+  "description": "In events.rs, TypeFilter::parse (line 81) and TypeFilter::allows (line 96) use the string literal 'Contact', but the broadcast channel and get_all_states() throughout the codebase use 'ChatContact' (kith-store/src/contact.rs line 23, kith-store/src/lib.rs line 603).\n\nConsequences:\n1. A client sending ?types=Contact gets HTTP 200 (the token is accepted by TypeFilter::parse) but receives zero contact events because the live batch filter calls filter.allows('ChatContact') which falls through to the '_ => false' arm and silently drops every contact event.\n2. A client sending ?types=ChatContact (the correct canonical name) receives HTTP 400 Bad Request because 'ChatContact' is not in the TypeFilter::parse match arm.\n3. In the LEI replay path (events.rs line 233), filter.allows('ChatContact') also returns false, so contact replays are always silently dropped when any type filter is active, regardless of what the client subscribed to.\n\nThe tests at lines 898 and 1394 use StateChange { type_name: 'Contact'.to_string() } directly, which is internally consistent within the test file but does not reflect the actual broadcast type name emitted by the store. The tests pass but do not detect the production mismatch.\n\nFix: change TypeFilter to recognize 'ChatContact' (not 'Contact') to match the canonical JMAP method prefix used everywhere else in the codebase.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:05:39Z",
+  "updated_at": "2026-04-24T18:10:38Z",
+  "closed_at": "2026-04-24T18:10:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:05:38Z"
+    }
+  ]
+}

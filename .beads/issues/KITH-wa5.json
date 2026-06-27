@@ -1,0 +1,12 @@
+{
+  "id": "KITH-wa5",
+  "title": "No PRAGMA busy_timeout \u2014 concurrent kithctl reads get immediate SQLITE_BUSY",
+  "description": "lib.rs::init_conn sets WAL and foreign_keys but not busy_timeout. A concurrent kithctl process opening the same DB file while kithd holds a write lock returns SQLITE_BUSY immediately with no retry. Fix: add 'PRAGMA busy_timeout=5000' to the execute_batch in init_conn so concurrent readers wait up to 5s.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:56:55Z",
+  "updated_at": "2026-04-19T19:56:54Z",
+  "closed_at": "2026-04-19T19:56:54Z"
+}

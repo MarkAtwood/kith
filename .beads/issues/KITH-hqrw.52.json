@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.52",
+  "title": "load_messages_for_chat hard limit 500 with no pagination",
+  "description": "event.rs load_messages_for_chat sends Message/query with limit: 500 and position: 0 (line 351). If a chat has more than 500 messages the 500 most recent are fetched (assuming the server returns newest-first, which is not guaranteed by the JMAP query). If the server returns oldest-first (position 0 = oldest), the user sees the oldest 500 messages not the newest 500. The truncation notice is shown but it says 'N older messages not shown' \u2014 if server returns oldest-first, the visible messages ARE the oldest so the notice is misleading. The query sort order should be specified explicitly.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:25Z",
+  "updated_at": "2026-04-25T07:57:48Z",
+  "closed_at": "2026-04-25T07:57:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:24Z"
+    }
+  ]
+}

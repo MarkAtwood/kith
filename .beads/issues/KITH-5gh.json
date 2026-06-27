@@ -1,0 +1,26 @@
+{
+  "id": "KITH-5gh",
+  "title": "Web client: contact list",
+  "description": "Implement contact list in app.js: fetch all contacts via Contact/get and render them in the sidebar.\n\nWhat: Call Contact/get, render contact display names in sidebar, clicking a contact opens or creates a chat.\n\nAlgorithm:\n1. async function fetchContacts():\n   - const responses = await callJmap([['Contact/get', { accountId: 'a-self', ids: null }, 'c0']]);\n   - const [, result] = responses[0];  // ['Contact/get', result, 'c0']\n   - if (result.type) throw new Error(result.type);  // method-level error\n   - return result.list;  // array of Contact objects\n2. function getContactName(contact):\n   - return (contact.displayName && contact.displayName.trim()) || contact.login || contact.tailscaleUserId;\n3. function renderContactList(contacts):\n   - const ul = document.getElementById('contact-list');\n   - ul.innerHTML = '';  // safe: we only set textContent on children\n   - for each contact:\n     - const li = document.createElement('li'); li.className = 'contact-item';\n     - const span = document.createElement('span'); span.textContent = getContactName(contact);  // textContent NOT innerHTML\n     - li.dataset.contactId = contact.id;\n     - li.appendChild(span);\n     - li.addEventListener('click', () => openOrCreateChat(contact));\n     - ul.appendChild(li);\n4. async function openOrCreateChat(contact):\n   - Find existing chat: look in current chats state for one whose participants includes contact.id\n   - If found: selectChat(chatId)\n   - If not found: POST Chat/set create with { contactId: contact.id } then selectChat(new id)\n\nDefensive programming rules:\n- Always use textContent, never innerHTML for contact names (attacker-controlled).\n- Fall back display name order: displayName \u2192 login \u2192 tailscaleUserId (never empty).\n- On Contact/get error: show error banner, do not crash.\n- contact.id equals contact.tailscaleUserId (opaque \u2014 never parse or format).\n\nTests (oracle: known Contact object shapes from the JMAP spec + kith-chat/src/contact.rs Contact struct):\n- Given a contact with displayName='Alice', renders 'Alice' in the list\n- Given a contact with displayName=null and login='alice@example.com', renders 'alice@example.com'\n- Given a contact with displayName=null and login='', renders tailscaleUserId\n- Clicking a contact when no chat exists triggers Chat/set create",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:49:16Z",
+  "closed_at": "2026-04-19T17:49:16Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-9e9",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-f0g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

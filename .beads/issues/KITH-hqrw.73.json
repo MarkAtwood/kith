@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.73",
+  "title": "Migration runner comment warns about out-of-order silently skipping but runner uses snapshot current version",
+  "description": "The comment at MIGRATIONS declaration (lib.rs line 394) warns: 'Adding migrations out of order will silently skip them if user_version already exceeds their target.' This is correct but the warning is easy to miss since it's separated from the actual check logic. The migrate() function comment (line 462-468) separately explains the snapshot behavior. These two comments should be unified into a single clear note at the migrate() function itself: 'Migrations must be listed in ascending version order. A migration whose target version <= current user_version is skipped permanently. Adding a migration at a lower version after deployment silently no-ops.' This is readability-only; the logic is correct.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:52Z",
+  "updated_at": "2026-04-25T08:36:26Z",
+  "closed_at": "2026-04-25T08:36:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:51Z"
+    }
+  ]
+}

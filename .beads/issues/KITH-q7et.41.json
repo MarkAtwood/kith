@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "88b1cbe632e7c5afa784045bf34ceef030090aadd70b8878f4dcf38a78c89995",
+  "created_at": "2026-06-15T04:54:34Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-tslocal/src/lib.rs: LocalApiClient (line 297) is pub with private fields. This is fine as far as field access goes, but the struct exposes several API surface issues:\n\n1. LocalApiClient::new() accepts impl Into<String> for socket_path. The path is stored as String (line 301), not PathBuf. This means callers can pass paths with unicode or other characters that are valid String but may not be valid Unix socket paths on the target platform. The path is converted to Path::new(&self.socket_path) at call time (line 392); on POSIX this works for any valid OsStr, but accepting String loses the possibility of using OsString or PathBuf for non-UTF-8 paths.\n\n2. The whois_cache Mutex<HashMap<SocketAddr, ...>> is private but visible in type signatures via the struct definition. If the caching strategy changes (e.g. switching to a DashMap, or adding a second-level cache), the struct internals change even though callers only see pub methods. This is contained since the struct has no pub fields, but is worth noting for when LocalApiClient gets a Clone impl.\n\n3. The WHOIS_CACHE_TTL and WHOIS_CACHE_MAX constants are private (correct), but there is no way for callers to query them or override them. If tuning is ever needed, there is no API for it.\n\n4. status() validates tailscale_ips.is_empty() and returns Err on empty \u2014 a defined postcondition. But whois() has no documented postcondition on the shape of the returned WhoIsResponse (only that user_id is non-empty and null-byte-free). The node.name field is used downstream as mailbox_host; its validity constraints (non-empty? valid hostname?) are checked nowhere in the public API.\n\nFix for point 4: add a postcondition note to whois() stating that node.name may be any non-null-byte string and callers are responsible for further validation.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.41",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-tslocal: LocalApiClient internals (whois_cache, socket_path) fully pub-inaccessible but struct is pub",
+  "updated_at": "2026-06-15T04:54:34Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:33Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

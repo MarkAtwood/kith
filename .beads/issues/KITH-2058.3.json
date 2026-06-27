@@ -1,0 +1,33 @@
+{
+  "id": "KITH-2058.3",
+  "title": "buildAttachmentElement(att) function",
+  "description": "Add exported buildAttachmentElement(att) function to app.js that creates a DOM element for a single attachment.\n\n**What:** Sync DOM builder for a received attachment object; used by createMessageBubble and setupCompose preview.\n\n**File:** web/app.js\n\n**Algorithm:**\n1. Create outer: `const container = document.createElement('div'); container.className = 'attachment-link';`\n2. Construct download URL from session.downloadUrl template:\n   - Replace `{accountId}` with `'a-self'`\n   - Replace `{blobId}` with `encodeURIComponent(att.blobId)`\n   - Replace `{name}` with `encodeURIComponent(att.filename)`\n   - Replace `{type}` with `encodeURIComponent(att.contentType)`\n3. Create anchor: `const a = document.createElement('a')`\n   - `a.href = downloadUrl` (constructed above)\n   - `a.download = att.filename` (forces save-as dialog)\n   - `a.textContent = att.filename` \u2014 CRITICAL: textContent not innerHTML\n4. Create size span: `const sz = document.createElement('span'); sz.className = 'attachment-size'; sz.textContent = formatBytes(att.size)`\n5. Append: container.appendChild(a); container.appendChild(sz);\n6. Return container.\n7. Export as named export.\n\n**Defensive rules:**\n- MUST use textContent for att.filename and att.contentType \u2014 they are peer-supplied and untrusted. Never innerHTML.\n- encodeURIComponent for URL path segments prevents URL injection.\n- `a.download` attribute forces download (browser does not navigate or execute inline).\n- session.downloadUrl may have no {type} placeholder if session is malformed; encodeURIComponent on undefined is 'undefined' \u2014 acceptable fallback.\n\n**Tests:**\n- Oracle: manually construct expected DOM structure.\n- Test 1: buildAttachmentElement({blobId:'abc',filename:'photo.png',contentType:'image/png',size:1024}) \u2192 container contains an <a> with textContent 'photo.png' and a span with textContent '1.0 KB'.\n- Test 2: filename containing '<script>alert(1)</script>' \u2192 textContent renders it as literal text, not executed.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:09:28Z",
+  "updated_at": "2026-04-20T15:13:02Z",
+  "closed_at": "2026-04-20T15:13:02Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2058",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:09:27Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:25Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:26Z"
+    }
+  ]
+}

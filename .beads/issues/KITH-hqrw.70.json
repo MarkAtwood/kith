@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.70",
+  "title": "terminal not restored when fetch_session fails after raw mode enabled",
+  "description": "main.rs: enable_raw_mode runs at line 42, fetch_session uses ? at line 51 which returns early from main on failure. Cleanup at lines 66-68 runs for run() errors but NOT for fetch_session failure. Terminal left in raw mode with alternate screen when kithd is unreachable at startup. Panic hook covers panics but not ? early returns. Fix: move fetch_session before enabling raw mode, or use RAII terminal guard.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:36:38Z",
+  "updated_at": "2026-04-25T04:01:43Z",
+  "closed_at": "2026-04-25T04:01:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:36:38Z"
+    }
+  ]
+}

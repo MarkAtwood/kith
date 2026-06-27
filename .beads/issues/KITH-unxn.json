@@ -1,0 +1,13 @@
+{
+  "id": "KITH-unxn",
+  "title": "Rename senderTailscaleUserId to senderUserId in Peer/deliver",
+  "description": "The I-D uses the transport-agnostic field name senderUserId. The current code uses senderTailscaleUserId, which is Tailscale-specific and breaks wire interop with other implementations.\\n\\nFiles to touch:\\n- kith-peer/src/lib.rs: DeliverMessageArgs.sender_tailscale_user_id field, serde rename from senderTailscaleUserId to senderUserId\\n- kith-peer/src/lib.rs: build_peer_deliver_request JSON key\\n- All test assertions using the old key name",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:09Z",
+  "updated_at": "2026-04-23T22:13:20Z",
+  "closed_at": "2026-04-23T22:13:20Z"
+}

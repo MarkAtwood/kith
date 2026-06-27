@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.17",
+  "title": "outbox_tick uses eprintln instead of tracing for error paths",
+  "description": "outbox_tick uses eprintln! for store-lock-poisoned and get_due error paths (lines ~1096, 1103, 1116, 1221, 1143). The rest of the daemon uses tracing:: for structured logging. eprintln! bypasses the tracing subscriber, so these errors are invisible to any log aggregator or monitoring tool configured to consume tracing events. In production deployments the outbox could silently fail to process messages with no alertable signal.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:47:05Z",
+  "updated_at": "2026-04-24T16:58:21Z",
+  "closed_at": "2026-04-24T16:58:21Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:47:05Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.16",
+  "title": "Section 6: discovery cross-validation of session owner_user_id vs WhoIs is correct",
+  "description": "discovery.rs:430-440 cross-validates the peer session's claimed owner_user_id against the Tailscale-verified user_id from the /status peers list. This prevents a malicious node from serving a session with a different user_id to redirect outbound delivery. A contributor might suggest removing the check as 'redundant' since Tailscale already proves the IP. But the check is necessary: the IP proves the node, not the user_id in the JMAP response. The session owner_user_id could be fabricated. The check ensures the peer's self-reported identity matches Tailscale's record.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:01Z",
+  "updated_at": "2026-04-25T08:07:26Z",
+  "closed_at": "2026-04-25T08:07:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:01Z"
+    }
+  ]
+}

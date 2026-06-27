@@ -1,0 +1,21 @@
+{
+  "id": "KITH-pnlm.3",
+  "title": "get_changes_since and get_changes_since_ordered duplicate parsing/checking logic",
+  "description": "contact.rs lines 276-317 and 325-359 both parse since_state, call get_state(), compare counters, and query with identical ORDER BY. Divergence risk: if the 's-N' state token format changes or the comparison logic needs fixing, it must be updated in two places. Extract a private fn parse_since_counter(since_state: &str) -> Result<(i64, String), KithError> returning (since_counter, current_state), used by both methods.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:26:31Z",
+  "updated_at": "2026-04-24T20:31:51Z",
+  "closed_at": "2026-04-24T20:31:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:26:31Z"
+    }
+  ]
+}

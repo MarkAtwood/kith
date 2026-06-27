@@ -1,0 +1,28 @@
+{
+  "id": "KITH-2058.7",
+  "title": "E2E: validate attachment flow end to end",
+  "description": "Run all quality gates and produce a manual test plan for the attachment flow.\n\n**What:** Final validation \u2014 cargo test, clippy, fmt; plus manual test checklist.\n\n**Algorithm:**\n1. Run `cargo fmt --all` \u2014 commit any format changes.\n2. Run `cargo clippy --all-features -- -D warnings` \u2014 must exit 0.\n3. Run `cargo test --workspace` \u2014 must exit 0, all tests pass.\n4. Verify web/app.js exports: formatBytes, uploadBlob, buildAttachmentElement, callJmap, bootstrap, showError, hideError, getContactName, fetchContacts, renderContactList, openOrCreateChat, fetchChats, getChatDisplayName, renderChatList, selectChat, fetchMessages, getSenderLabel, createMessageBubble, renderThread, appendMessageBubble, setupCompose, startEventSource \u2014 all must be present.\n5. Verify no innerHTML for attachment data (grep web/app.js for innerHTML \u2014 any hits involving attachment field must be flagged as a bug).\n\n**Manual test plan (record as bd note):**\n- Step 1: Start kithd with --data-dir and --cert.\n- Step 2: Open web client in browser. Verify attach button (\ud83d\udcce) appears next to Send.\n- Step 3: Click \ud83d\udcce, select a small file (< 1 MB). Verify: preview shows filename + size below textarea; no error.\n- Step 4: Type a message body, click Send. Verify: message appears in thread with attachment filename as download link and size.\n- Step 5: Click the download link. Verify: browser downloads the file with correct name.\n- Step 6: From a second kithd instance (peer), send a message with attachment. Verify: received message shows attachment link in web client.\n- Step 7: Attempt to attach a 101 MB file. Verify: error banner shows 'File too large'.\n- Step 8: Send a message with no attachment. Verify: no attachments field in bubble, no regression.\n\n**Defensive rules:**\n- cargo test must pass without modification to any test (test integrity rule).\n- If any cargo command fails, do not close this bead \u2014 report the failure.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:10:18Z",
+  "updated_at": "2026-04-20T15:18:05Z",
+  "closed_at": "2026-04-20T15:18:05Z",
+  "notes": "Manual test plan: (1) start kithd; (2) open web client; verify \ud83d\udcce button next to Send; (3) click \ud83d\udcce, select file < 1MB; verify preview shows filename+size; (4) type body, Send; verify message thread shows attachment link; (5) click link, verify download; (6) try 101MB file, verify 'File too large' error; (7) send message with no file, verify no regression.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-2058",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:17Z"
+    },
+    {
+      "depends_on_id": "KITH-2058.6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:10:30Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1uh",
+  "title": "kithd: structured logging with tracing",
+  "description": "Create kithd::logging module with init_logging() and a request tracing layer. Add tracing-subscriber (with env-filter, json features) and tower-http (with trace feature) to workspace Cargo.toml and kithd Cargo.toml. init_logging(): detect TTY on stderr; TTY \u2192 fmt human-readable; non-TTY \u2192 fmt JSON for systemd journal. Both use RUST_LOG env var, defaulting to 'kithd=info,kith_peer=info'. Add request_tracing_layer() to lib.rs and wire it into build_app via .layer(). Never log request/response bodies or message content.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T16:18:12Z",
+  "closed_at": "2026-04-19T16:18:12Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-it6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

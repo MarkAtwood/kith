@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.7",
+  "title": "Decision: StatusProvider uses impl Future not async-trait",
+  "description": "listener.rs defines the StatusProvider trait with an associated-future return type (impl Future) rather than using the async-trait macro. This is correct for a per-request hot path: async-trait boxes every future on the heap (Box<dyn Future>), adding an allocation per call. The RPITIT (return-position impl Trait in traits) approach, stabilized in Rust 1.75, gives zero-cost dispatch and removes a proc-macro dependency while keeping the trait object-safe enough for the generic bound T: StatusProvider used at the call site.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:21Z",
+  "updated_at": "2026-04-19T23:32:48Z",
+  "closed_at": "2026-04-19T23:32:48Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:20Z"
+    }
+  ]
+}

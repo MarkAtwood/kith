@@ -1,0 +1,32 @@
+{
+  "id": "KITH-vx6",
+  "title": "kith-chat: owner methods",
+  "description": "All owner-role JMAP methods: Contact/*, Chat/*, Message/* including create, changes, query, and read receipt tracking. The functional core of the mailbox from the client perspective.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:47Z",
+  "updated_at": "2026-04-19T15:59:15Z",
+  "closed_at": "2026-04-19T15:59:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3kv",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-eda",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-h10",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

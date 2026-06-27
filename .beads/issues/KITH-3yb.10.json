@@ -1,0 +1,38 @@
+{
+  "id": "KITH-3yb.10",
+  "title": "kithd: wire upload/download routes and BlobStore into AppState",
+  "description": "What: Wire the blob upload and download route handlers into kithd's axum router and add BlobStore to AppState.\n\nAlgorithm:\n1. Add BlobStore field to AppState<W> struct in kithd/src/lib.rs.\n2. In kithd/src/main.rs, create BlobStore::new(data_dir.join(\"blobs\")) at startup (data_dir from CLI arg or env var KITH_DATA_DIR).\n3. Pass BlobStore into AppState when constructing app.\n4. In build_app, add routes:\n   .route(\"/jmap/upload/:account_id\", post(blob_upload_handler::<W>))\n   .route(\"/jmap/download/:account_id/:blob_id/:name\", get(blob_download_handler::<W>))\n5. Apply same auth middleware (Caller extraction) to new routes as existing JMAP routes.\n6. Run full cargo test --workspace to confirm no regressions.\n\nDefensive rules: blob directory created at startup with proper permissions; no path outside data_dir used for blobs; AppState is Send+Sync+Clone compatible with BlobStore added.\n\nAgent team: R reads AppState definition and build_app; I wires everything; T runs full cargo test --workspace; V verifies clippy clean and no regressions in existing test count.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:57:09Z",
+  "updated_at": "2026-04-20T00:15:38Z",
+  "closed_at": "2026-04-20T00:15:38Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:57:09Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:20Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:21Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.3",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:21Z"
+    }
+  ]
+}

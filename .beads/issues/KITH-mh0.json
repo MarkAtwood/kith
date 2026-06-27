@@ -1,0 +1,14 @@
+{
+  "id": "KITH-mh0",
+  "title": "Review round 1: kith-events EventSource push",
+  "description": "Review round 1 for epic KITH-845 kith-events. Seven independent reviewers read the codebase fresh.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:28:26Z",
+  "updated_at": "2026-04-19T08:41:53Z",
+  "closed_at": "2026-04-19T08:41:53Z",
+  "notes": "SEC7 assessment: 97% confidence no missed bugs. Code is correct; design sound. All P3/P4 issues labeled 'opinion'; P2 issues are acknowledged optimization suggestions with negligible impact. Running out of real complaints."
+}

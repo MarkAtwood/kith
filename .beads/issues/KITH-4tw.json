@@ -1,0 +1,26 @@
+{
+  "id": "KITH-4tw",
+  "title": "kithctl backup",
+  "description": "Implement kithctl backup: if dest path given, use SQLite online backup API to copy live DB; if no dest, print recommended copy command with advisory.\n\nWHAT: Let operators safely back up the live mailbox database without stopping kithd.\n\nALGORITHM:\n1. Build Config; derive db_path = config.db_path()\n2. Check if dest argument was provided (Option<PathBuf>)\n3. If dest is Some(dest_path):\n   a. Verify db_path exists: if not, eprintln! and exit(1)\n   b. If dest_path exists already: eprintln!(\"error: dest {dest_path:?} already exists; remove it first to avoid overwriting\") and exit(1)\n   c. Open src with rusqlite::Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?\n   d. Open dst with rusqlite::Connection::open(&dest_path)? (creates new file)\n   e. Set dest permissions to 0o600 immediately after creation using std::fs::set_permissions\n   f. Create backup = rusqlite::backup::Backup::new(&src, &mut dst)?\n   g. Call backup.run_to_completion(100, Duration::from_millis(250), Some(|p: Progress| { eprint!(\"\\rBacking up... {}/{} pages\", p.pagecount - p.remaining, p.pagecount); }))?\n   h. eprintln!() (newline after progress)\n   i. println!(\"Backup complete: {}\", dest_path.display())\n   j. println!(\"Note: also backup attachments at {}/attachments if present\", config.data_dir.display())\n4. If dest is None:\n   a. println!(\"# Live backup (safe while kithd is running):\")\n   b. println!(\"kithctl backup --dest {}.backup\", db_path.display())\n   c. println!()\n   d. println!(\"# Or stop kithd first, then copy the whole data directory:\")\n   e. println!(\"cp -a {} {}.backup\", config.data_dir.display(), config.data_dir.display())\n   f. println!(\"# (includes database, TLS certs, and attachments)\")\n\nDEFENSIVE RULES:\n- Refuse to overwrite an existing dest file without explicit flag (future --force flag)\n- Set dest file mode 0o600 immediately after open \u2014 before any data written\n- use rusqlite::backup::Backup not Connection::backup() convenience method (need progress cb)\n- Handle Busy/Locked StepResult: run_to_completion retries internally; if it returns Err, report and exit(1)\n- Never log the database contents, only progress page counts\n- Import: use std::os::unix::fs::PermissionsExt for set_permissions\n\nTESTS:\n- Integration test: create a temp SQLite DB with one row, call backup logic with a temp dest path, verify dest exists, is valid SQLite, and contains the same row. Oracle: open dest with rusqlite::Connection::open() and query the same row.\n- Test: dest already exists \u2192 error message and exit code check",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T19:17:04Z",
+  "closed_at": "2026-04-19T19:17:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0fs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:05:25Z"
+    },
+    {
+      "depends_on_id": "KITH-yvu",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

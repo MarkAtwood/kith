@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.18",
+  "title": "Filename not percent-encoded in peer blob fetch URL",
+  "description": "peer_fetch.rs:307-309 interpolates filename directly into the fetch URL string. Characters like '#' or '?' in a peer-supplied filename truncate or corrupt the URL path before it reaches the server. content_type gets partial encoding (%2F, %2B) but filename gets none. Fix: use percent_encoding::utf8_percent_encode on filename with a PATH_SEGMENT encode set before interpolating.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:19Z",
+  "updated_at": "2026-04-24T05:31:34Z",
+  "closed_at": "2026-04-24T05:31:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:18Z"
+    }
+  ]
+}

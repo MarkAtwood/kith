@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.75",
+  "title": "backup.rs: TOCTOU prevention and cleanup guard are correct",
+  "description": "backup.rs correctly prevents two TOCTOU races: (1) create_new+mode 0o600 before SQLite opens destination prevents world-readable backup window; (2) RAII CleanupGuard removes stub on any error. Busy retry loop (20 x 250ms) gives actionable error. Page-stepped backup is polite to concurrent readers.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:37:13Z",
+  "updated_at": "2026-04-25T08:08:07Z",
+  "closed_at": "2026-04-25T08:08:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:37:13Z"
+    }
+  ]
+}

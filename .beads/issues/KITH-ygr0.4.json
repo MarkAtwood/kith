@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ygr0.4",
+  "title": "wrong SetError type for unknown patch key",
+  "description": "process_update returns type=invalidArguments for unknown/read-only patch keys. RFC 8620 \u00a75.3 defines the per-object error type for this case as invalidProperties (a SetError), not invalidArguments (which is a method-level error type). A JMAP client that distinguishes these types to give per-field error feedback will mishandle the response.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:46:31Z",
+  "updated_at": "2026-04-24T20:00:15Z",
+  "closed_at": "2026-04-24T20:00:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ygr0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:46:30Z"
+    }
+  ]
+}

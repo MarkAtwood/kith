@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.10",
+  "title": "Implicit requirement to call allow_loopback_for_tests() not documented",
+  "description": "File: crates/kithd/src/lib.rs lines 11-19, tests/peer_attachment_fetch.rs line 162\n\nThe allow_loopback_for_tests() function must be called before any test that uses fetch_peer_blob on loopback addresses. This requirement is implicit and not documented.\n\nCurrent behavior:\n- Unit tests in peer_fetch.rs use fetch_peer_blob_from_url (test helper) which skips SSRF checks\n- Integration test in tests/peer_attachment_fetch.rs correctly calls allow_loopback_for_tests()\n- But there is no inline comment or rustdoc warning about this requirement\n\nRisk: A future developer adding an integration test that calls fetch_peer_blob directly on loopback might forget to call allow_loopback_for_tests() and see 'HostRejected' errors.\n\nFix: Add rustdoc to allow_loopback_for_tests() explaining when and why to call it.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:15:45Z",
+  "updated_at": "2026-04-20T17:20:08Z",
+  "closed_at": "2026-04-20T17:20:08Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:15:44Z"
+    }
+  ]
+}

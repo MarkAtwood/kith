@@ -1,0 +1,36 @@
+{
+  "compaction_level": 0,
+  "content_hash": "9fe1c5c767623b5752113e837d6fff4d40a6b2a672f8b760f072839d6b6b5a28",
+  "created_at": "2026-06-14T17:34:24Z",
+  "created_by": "Mark Atwood",
+  "description": "Automated cert issuance via RFC 8555. Each kithd gets a real WebPKI cert for its DNS name from Let's Encrypt (or other ACME CA). Standard TLS just works \u2014 no custom verifiers, no cert pinning required. identify_caller extracts identity from the verified TLS hostname. Pairs naturally with DNS-based discovery (KITH-beps): if you have a DNS name, you can get a cert for it. Requires the kithd operator to have a publicly resolvable domain and port 443 or DNS-01 challenge support.",
+  "ephemeral": 0,
+  "id": "KITH-m64r",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Auth mechanism: ACME (Let's Encrypt)",
+  "updated_at": "2026-06-14T17:34:24Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T10:34:35Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-14he",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-14T10:37:48Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-uq27",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

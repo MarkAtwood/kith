@@ -1,0 +1,30 @@
+{
+  "assignee": "Mark Atwood",
+  "compaction_level": 0,
+  "content_hash": "22a310813b3f6e8e79e1e4e5aa6690b243b360d901ab7477ac8dc0016622722d",
+  "created_at": "2026-06-15T04:54:06Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer/src/lib.rs lines 1007-1031: build_peer_deliver_request() takes 9 positional string arguments (message_id, chat_id, sender_user_id, body, body_type, sent_at, reply_to, attachments, broadcast_mentions) with no type differentiation between them. All string arguments are &str, making it trivial to accidentally swap e.g. body and body_type, or message_id and chat_id, with no compile error.\n\nThere is also build_peer_deliver_request_full() (line 1034) which adds a PeerDeliverRequestParams struct for the remaining optional fields \u2014 the right pattern \u2014 but the required fields are still positional.\n\nThis is a defensive-code-forcing issue: every call site must independently verify argument order. A unit test that passes wrong arguments in the wrong order will produce a valid JSON object (all are strings) that only fails at the receiving peer's validation layer, potentially much later.\n\nThe crate already uses the params-struct pattern (OutboundMessageParams in kith-store, PeerDeliverRequestParams in kith-peer) for optional fields. The same pattern should apply to the required fields.\n\nFix: introduce a PeerDeliverRequiredParams struct (or merge into PeerDeliverRequestParams) that names all required fields, and change build_peer_deliver_request_full() to accept it. Remove build_peer_deliver_request() as a separate function or make it a method on the params struct.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.33",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "kith-peer: build_peer_deliver_request has 9-argument positional signature",
+  "updated_at": "2026-06-15T15:54:29Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:06Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-emu",
+  "title": "Auth: axum extractor for Role injection",
+  "description": "Implement axum FromRequestParts extractor that calls authorize() and injects (Role, Identity) into every JMAP handler.\n\n**What:** axum extractor living in kithd that extracts ConnectInfo<SocketAddr>, calls authorize(), and either returns the (Role, Identity) pair or converts AuthError to HTTP 4xx/5xx.\n\n**Algorithm:**\n1. Add to kithd/Cargo.toml: axum dep (already workspace), also need kith-core, kith-tslocal, kith-store deps\n2. Create struct in kithd/src/extractors.rs:\n   pub struct Caller { pub role: Role, pub identity: Identity }\n3. Implement FromRequestParts<AppState> for Caller where AppState contains:\n   - Arc<LocalApiClient>\n   - Arc<Store>\n   - owner_id: String\n4. In from_request_parts():\n   a. Extract ConnectInfo<SocketAddr> from parts.extensions\n      - If missing: return 500 (server misconfiguration)\n   b. Get AppState from parts via Extension<Arc<AppState>>\n   c. Call authorize(addr, &state.ts, &state.store, &state.owner_id).await\n   d. Map errors:\n      - AuthError::NoPeerAddr \u2192 500 Internal Server Error\n      - AuthError::WhoIsFailed(_) \u2192 500 Internal Server Error\n      - AuthError::Unauthorized \u2192 401 Unauthorized (body: {\"type\":\"unauthorized\"})\n   e. Return Ok(Caller { role, identity })\n5. Router must use .into_make_service_with_connect_info::<SocketAddr>() for ConnectInfo to work\n\n**Defensive rules:**\n- 401 response body must NOT include the user_id or WhoIs error detail\n- 500 response body must NOT include internal error strings (no info leak)\n- Never return 200 on auth failure \u2014 all error paths must return non-2xx\n- No unwrap() in from_request_parts\n\n**Crate:** kithd/src/extractors.rs (new file)\n\n**Agent team:** Researcher (read axum 0.8 FromRequestParts in ~/.cargo/registry, kith-tslocal lib.rs, kith-core auth.rs) + Implementer + Tester\n\n**Tests (oracle = axum test utilities + hand-constructed WhoIs responses):**\n- owner_extractor: MockConnectInfo + mock WhoIs \u2192 Caller{role: Owner}\n- peer_extractor: MockConnectInfo + mock WhoIs returning contact \u2192 Caller{role: Peer}  \n- unauthorized_extractor: MockConnectInfo + mock WhoIs returning unknown \u2192 HTTP 401 body has no user_id\n- whois_fail_extractor: mock WhoIs returns error \u2192 HTTP 500 body has no error detail\n- no_connect_info: request without ConnectInfo \u2192 HTTP 500",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:48:11Z",
+  "closed_at": "2026-04-19T06:48:11Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-eda",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-vgq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

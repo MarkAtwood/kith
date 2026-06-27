@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ecbt.1",
+  "title": "kith-tui Cargo.toml: add reqwest, kith-core, wiremock",
+  "description": "What: Add the three missing dependencies to kith-tui so the JMAP client compiles.\n\nAlgorithm:\n1. In /home/mark/WORK/KITH/Cargo.toml [workspace.dependencies], add:\n   reqwest = { version = \"0.12\", features = [\"json\", \"stream\", \"rustls-tls-manual-roots\"] }\n2. In /home/mark/WORK/KITH/crates/kith-tui/Cargo.toml [dependencies], add:\n   reqwest.workspace = true\n   kith-core = { path = \"../kith-core\" }\n   serde_json.workspace = true\n   serde.workspace = true\n3. In /home/mark/WORK/KITH/crates/kith-tui/Cargo.toml [dev-dependencies], add:\n   wiremock = \"0.6\"\n   tokio = { workspace = true }\n\nDefensive programming rules:\n- Verify rustls-tls-manual-roots feature name is correct for reqwest 0.12 (the feature for adding custom root certs without bundled roots).\n  If the feature name is wrong, the build will fail. Check ~/.cargo/registry/src/ for the reqwest 0.12 Cargo.toml if unsure.\n- Do NOT add reqwest as a default-features = false dep \u2014 use the features list to control what ships.\n- serde and serde_json must come from workspace so versions stay consistent.\n- No version = field on kith-core (path deps don't need it).\n\nTests: cargo build -p kith-tui must succeed after these changes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:52:00Z",
+  "updated_at": "2026-04-20T04:55:29Z",
+  "closed_at": "2026-04-20T04:55:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ecbt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:51:59Z"
+    }
+  ]
+}

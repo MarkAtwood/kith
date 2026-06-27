@@ -1,0 +1,21 @@
+{
+  "id": "KITH-60f2.11",
+  "title": "kith-attach: hex_encode per-byte format\\! causes 32 intermediate String allocations",
+  "description": "hex_encode (kith-attach/src/lib.rs line 244) iterates bytes and calls format\\!('{:02x}', b) per byte, producing 32 String allocations then collect into one. Should use a pre-allocated String with a write macro or the hex crate. Low frequency (one call per blob ID generation) but unnecessary.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T06:16:27Z",
+  "updated_at": "2026-04-25T08:20:40Z",
+  "closed_at": "2026-04-25T08:20:40Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-60f2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T23:16:27Z"
+    }
+  ]
+}

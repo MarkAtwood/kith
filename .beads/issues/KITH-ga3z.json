@@ -1,0 +1,13 @@
+{
+  "id": "KITH-ga3z",
+  "title": "Make urn:kith:chat:1 implicit when using only contains core",
+  "description": "A stock JMAP client sends only urn:ietf:params:jmap:core in the using array. kith-jmap parse_request hard-errors if urn:kith:chat:1 is absent (lib.rs:37-39). Since urn:kith:chat:1 is the only application capability this server has, a request that declares only core should be treated as implicitly including urn:kith:chat:1. Change parse_request to: if using contains only urn:ietf:params:jmap:core (or is a subset of {core}), accept the request and proceed as if urn:kith:chat:1 were present. If using contains urn:kith:chat:1 explicitly, behavior is unchanged. If using contains unknown URIs, that is handled separately.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-22T15:24:53Z",
+  "updated_at": "2026-04-22T15:26:21Z",
+  "closed_at": "2026-04-22T15:26:21Z"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.5",
+  "title": "let Err(e) = h.await is unfamiliar to most Rust devs; needs a comment",
+  "description": "The pattern 'let Err(e) = h.await;' (irrefutable never-type destructure) is non-obvious to contributors unfamiliar with the ! type. The existing comment explains it ('outbox_worker is -> ! and never returns Ok; only a panic produces Err here'), which is good. However, a contributor who has not seen this pattern before will still reach for a match or expect a compiler error. The comment is present but could add: 'Result<!,JoinError> has an uninhabited Ok variant so this pattern is exhaustive \u2014 the compiler verifies this.' The gap is small since the comment already exists.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:45:53Z",
+  "updated_at": "2026-04-25T08:51:49Z",
+  "closed_at": "2026-04-25T08:51:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:45:53Z"
+    }
+  ]
+}

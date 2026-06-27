@@ -1,0 +1,21 @@
+{
+  "id": "KITH-hqrw.42",
+  "title": "draw_messages allocates all message Lines on every 50ms tick",
+  "description": "ui.rs draw_messages collects ALL messages into Vec<Line> on every redraw (lines 98-100) before passing to Paragraph with a scroll offset. With 500 messages only ~20 are visible but all 500 are allocated and formatted on every 50ms tick. Fix: slice the deque to [top..top+visible_height] and only format visible lines.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:34Z",
+  "updated_at": "2026-04-25T07:49:27Z",
+  "closed_at": "2026-04-25T07:49:27Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:33Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ajt.7",
+  "title": "Decision: .gitignore excludes runtime artifacts, certs, and secrets",
+  "description": ".gitignore comprehensively excludes SQLite runtime files (*.sqlite, *.db-journal, *.db-wal), TLS certificates and keys (*.pem, *.key, *.crt), environment files (.env, .env.local), and build artifacts. Prevents accidental commit of secrets, certificates, and mailbox data\u2014critical for a service where each user's mailbox is their only data store.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:46:39Z",
+  "updated_at": "2026-04-19T04:51:05Z",
+  "closed_at": "2026-04-19T04:51:05Z",
+  "notes": "opinion: no engineering basis \u2014 rationale note affirming .gitignore coverage is correct. Not a finding. No action needed.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ajt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:46:38Z"
+    }
+  ]
+}

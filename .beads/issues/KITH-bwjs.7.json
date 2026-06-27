@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bwjs.7",
+  "title": "Good: @ check in is_valid_fetch_host placed before all parsing",
+  "description": "The host.contains('@') check is placed immediately after the is_empty() check, before any bracket stripping, colon counting, or port parsing. This is correct: no subsequent transformation in the function can introduce '@', so a single early check is sufficient and cannot be bypassed. A contributor might be tempted to move the check later (e.g. after bracket stripping) or to only check in specific branches \u2014 both would be wrong. The early placement is the correct design.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:41:00Z",
+  "updated_at": "2026-04-24T18:44:04Z",
+  "closed_at": "2026-04-24T18:44:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bwjs",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:41:00Z"
+    }
+  ]
+}

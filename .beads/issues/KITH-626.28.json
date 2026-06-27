@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.28",
+  "title": "Test coverage includes rejection paths (404, missing socket, oversized body)",
+  "description": "Integration tests cover not just the happy path (whois_valid_200, status_valid_200) but also failure modes: HTTP 404 (line 79), missing socket (lines 102, 112), oversized body (line 185), and empty IPs (line 154). Each rejection test verifies the correct error type is returned. This is proper test coverage. Maintain this pattern of testing both success and failure paths.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:16:01Z",
+  "updated_at": "2026-04-19T19:51:57Z",
+  "closed_at": "2026-04-19T19:51:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:16:00Z"
+    }
+  ]
+}

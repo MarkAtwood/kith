@@ -1,0 +1,21 @@
+{
+  "id": "KITH-bpmo.1",
+  "title": "ContactStore/ChatStore: invalid state token returns wrong JMAP error",
+  "description": "When a JMAP client sends ChatContact/changes or Chat/changes with an unrecognized sinceState, ContactStore/ChatStore returns KithError::Validation(\"invalid state token\") which kith-chat's kith_to_jmap() maps to JmapError::invalidArguments. MessageStore correctly returns KithError::Jmap(JmapError::cannot_calculate_changes()) instead. RFC 8620 \u00a75.2 requires cannotCalculateChanges when the sinceState is not recognized, so clients know to fall back to a full re-sync. With invalidArguments, RFC-compliant clients may not trigger the fallback, causing them to fail with no recovery path. Fix: ContactStore.get_changes_since() and ChatStore.get_changes_since() should return KithError::Jmap(JmapError::cannot_calculate_changes()) when the state token is unrecognized, not KithError::Validation.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:45:48Z",
+  "updated_at": "2026-04-24T22:52:10Z",
+  "closed_at": "2026-04-24T22:52:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bpmo",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T15:45:48Z"
+    }
+  ]
+}

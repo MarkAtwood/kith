@@ -1,0 +1,21 @@
+{
+  "id": "KITH-b5ah.4",
+  "title": "Duplicate 'Step b' comment label in ReceiptHandler",
+  "description": "lib.rs ReceiptHandler has two consecutive comments labeled 'Step b:' \u2014 one for 'parse remaining args' and one for 'validate kind'. They are 6 lines apart. A reader following the step labels to understand the flow hits two 'Step b' entries and loses confidence in the numbering for all subsequent steps. Fix: rename the second 'Step b' to 'Step c' and renumber all following steps accordingly.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T02:32:36Z",
+  "updated_at": "2026-04-24T02:47:26Z",
+  "closed_at": "2026-04-24T02:47:26Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b5ah",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T19:32:36Z"
+    }
+  ]
+}

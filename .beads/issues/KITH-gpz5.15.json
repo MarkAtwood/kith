@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.15",
+  "title": "prepare_cached with dynamic IN-clause pollutes statement cache unboundedly",
+  "description": "list_by_chat builds a dynamic SQL string like 'WHERE message_id IN (?, ?, ?)' with one placeholder per message, then passes it to prepare_cached. The cache key is the full SQL string, so each distinct message count produces a new cached statement that is never evicted. A long-running daemon serving conversations of varying lengths accumulates O(distinct_counts) cache entries, growing without bound. The IN-clause should be replaced with a temporary table or the batch should use a single unnested query.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:52Z",
+  "updated_at": "2026-04-24T16:58:56Z",
+  "closed_at": "2026-04-24T16:58:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:52Z"
+    }
+  ]
+}

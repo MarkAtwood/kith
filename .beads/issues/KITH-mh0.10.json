@@ -1,0 +1,20 @@
+{
+  "id": "KITH-mh0.10",
+  "title": "Good decision: Invalid Last-Event-ID silently ignored, no 400 error",
+  "description": "Decision: A Last-Event-ID header that doesn't match the expected format (s-\\d+) or exceeds 64 bytes is silently treated as absent. The stream opens with 200 and proceeds normally, no 400 error.\n\nCode location: lines 89-105 of kithd/src/events.rs. Tests: events_last_event_id_invalid_format_ignored and events_last_event_id_too_long_ignored.\n\nWhy this is correct: RFC 8895 (Server-Sent Events spec) says the client MAY send Last-Event-ID but doesn't mandate format. A malformed header from a buggy or non-compliant client shouldn't break the entire stream. Silent fallback (treat as absent) is more robust: the client loses the replay optimization but the stream works. If the format ever drifts, you learn via absence of expected replay events, not a hard 400 error that breaks compatibility.\n\nOver-strict validation (400 on malformed LEI) is fragile in a distributed system where clients vary widely and sometimes send non-standard headers. Lenient parsing (skip and continue) is more forgiving.\n\nThe wrong alternative would be to return 400 Bad Request for any malformed Last-Event-ID. This breaks clients with slightly-nonstandard headers or would require tight coordination on exact format across many clients.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:29:57Z",
+  "updated_at": "2026-04-19T08:41:51Z",
+  "closed_at": "2026-04-19T08:41:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-mh0",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T01:29:57Z"
+    }
+  ]
+}

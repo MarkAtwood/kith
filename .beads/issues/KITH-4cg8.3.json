@@ -1,0 +1,20 @@
+{
+  "id": "KITH-4cg8.3",
+  "title": "explicit match on TrySendError variants is correct and future-proof",
+  "description": "Expanding .is_err() to an explicit match on Full vs Closed is the right direction. The distinction matters: Full means the consumer is alive but slow; Closed means the consumer is gone. Treating them identically (both break) is still correct because both require dropping the connection to protect the broadcast receiver, but making the distinction visible in code is good for future readers who might wonder if we should retry on Full. The explicit arms document the deliberate 'no retry' policy on Full. A future contributor might suggest 'why not retry on Full?' \u2014 the explicit match arm makes the answer visible in the code: we log and drop, not retry, because retrying would stall the broadcast receiver.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:01:49Z",
+  "updated_at": "2026-04-25T09:02:29Z",
+  "closed_at": "2026-04-25T09:02:29Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-4cg8",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T02:01:49Z"
+    }
+  ]
+}

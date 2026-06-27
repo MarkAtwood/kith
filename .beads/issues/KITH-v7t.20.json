@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.20",
+  "title": "No startup summary log (data_dir, db_path, owner_id)",
+  "description": "kithd emits no structured log line at startup recording its effective configuration: data_dir, db_path, owner_id (even partially masked), or which tailscale socket it will use. When diagnosing a production incident months from now, the operator cannot answer 'what data directory was this instance using?' from the logs alone. This is especially sharp when KITH_DB_PATH (legacy) or KITH_OWNER_ID (legacy) are in use, since those vars are accepted silently. Fix: emit one tracing::info\\! after config is resolved: 'kithd starting: data_dir={}, db={}, owner={}, ts_socket={}'. Mask owner_id to first/last 4 chars if desired.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:57Z",
+  "updated_at": "2026-04-19T16:37:31Z",
+  "closed_at": "2026-04-19T16:37:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:57Z"
+    }
+  ]
+}

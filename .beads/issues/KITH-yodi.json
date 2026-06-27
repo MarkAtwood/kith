@@ -1,0 +1,12 @@
+{
+  "id": "KITH-yodi",
+  "title": "Review: recent fixes \u2014 outbox const, draw_messages, SSE try_send, select! arm, sentinel removal",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:01:10Z",
+  "updated_at": "2026-04-25T08:06:37Z",
+  "closed_at": "2026-04-25T08:06:37Z"
+}

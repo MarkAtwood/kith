@@ -1,0 +1,20 @@
+{
+  "id": "KITH-jg2i.6",
+  "title": "outbox_worker -> \\! with irrefutable let Err pattern is correct and should be kept",
+  "description": "outbox_worker returning -> \\! and using 'let Err(e) = h.await' in the supervision loop is the correct design. The never type makes the 'Ok case is unreachable' invariant machine-checkable rather than a comment. A future contributor might suggest adding a return type or wrapping in match to handle Ok \u2014 that would re-introduce dead code. This pattern should be defended: the compiler is the oracle, not the programmer.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T08:46:20Z",
+  "updated_at": "2026-04-25T08:51:54Z",
+  "closed_at": "2026-04-25T08:51:54Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jg2i",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-25T01:46:20Z"
+    }
+  ]
+}

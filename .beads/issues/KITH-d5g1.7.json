@@ -1,0 +1,19 @@
+{
+  "id": "KITH-d5g1.7",
+  "title": "SEC1: uploadBlob returns generic error message for all 4xx/5xx, not distinguishing 400/403 from server errors",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:19:58Z",
+  "updated_at": "2026-04-20T15:22:52Z",
+  "closed_at": "2026-04-20T15:22:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-d5g1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:19:57Z"
+    }
+  ]
+}

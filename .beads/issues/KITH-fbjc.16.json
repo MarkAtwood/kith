@@ -1,0 +1,20 @@
+{
+  "id": "KITH-fbjc.16",
+  "title": "blob_path is pub \u2014 callers can skip validate_blob_id",
+  "description": "kith-attach/src/lib.rs:49 blob_path is public. All current callers validate before calling, but a future caller could bypass this. Fix: make blob_path private, or add debug_assert!(Self::validate_blob_id(id).is_ok()) inside it.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T05:00:16Z",
+  "updated_at": "2026-04-24T05:31:23Z",
+  "closed_at": "2026-04-24T05:31:23Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fbjc",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T22:00:16Z"
+    }
+  ]
+}

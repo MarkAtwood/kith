@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c7h7.2",
+  "title": "SEC4: let _ = swallow in receipt error path needs context",
+  "description": "Lines 943 in crates/kith-peer/src/lib.rs: When `read_at_unix` is unexpectedly None on a receipt entry, the code records the failure with `let _ = guard.outbox().record_failure(...)`. The swallow is intentional\u2014if the failure record itself fails, we still continue\u2014but there is no comment explaining this pattern. Add: '// Ignore failure to record\u2014we'll skip this receipt and move on to the next.'",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:17:26Z",
+  "updated_at": "2026-04-20T03:22:15Z",
+  "closed_at": "2026-04-20T03:22:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c7h7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:17:25Z"
+    }
+  ]
+}

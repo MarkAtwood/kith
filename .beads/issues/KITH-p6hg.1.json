@@ -1,0 +1,21 @@
+{
+  "id": "KITH-p6hg.1",
+  "title": "Test harness: OnceLock shared TLS cert",
+  "description": "KITH-0z7.1: spawn_test_pair currently generates a fresh TLS cert on every test invocation. Use std::sync::OnceLock to generate the cert once per process and reuse it across all tests, reducing test overhead and setup noise.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T03:44:16Z",
+  "updated_at": "2026-04-20T03:49:32Z",
+  "closed_at": "2026-04-20T03:49:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-p6hg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T20:44:16Z"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "KITH-zng",
+  "title": "Review round 2: kith-tslocal Tailscale LocalAPI client",
+  "description": "Round 2 review of KITH-uc4 after fix wave. Verify no new issues, confirm convergence.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:20:38Z",
+  "updated_at": "2026-04-19T06:25:27Z",
+  "closed_at": "2026-04-19T06:25:27Z",
+  "notes": "Maintainer risk: LOW. Round 1 fixes comprehensively address P1 concerns. Comments on hyper pin, handshake stability, size limits, null-byte check, and test cleanup (RAII guard) provide clear guidance for future maintainers. No new P1+ issues found. Remaining opinion items (error message styles, P3/P4 refactoring) do not rise to the level of maintainer traps. Verdict: ready to close."
+}

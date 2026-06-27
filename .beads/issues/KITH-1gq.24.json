@@ -1,0 +1,20 @@
+{
+  "id": "KITH-1gq.24",
+  "title": "Decision: Howell-Hinnant date algorithm for date arithmetic without external crate",
+  "description": "message.rs lines 38-64 implement unix_secs_to_rfc3339 using the Howell-Hinnant algorithm (cited in a comment, from howardhinnant.github.io/date_algorithms.html). This is a proven, efficient way to compute civil date from days-since-epoch without pulling in a date/time crate (which would add transitive dependencies and increase binary size). Contact and chat modules implement similar logic independently. Rejected alternative: adding a chrono/time dependency would be simpler but adds coupling and bloat.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:33:21Z",
+  "updated_at": "2026-04-19T05:58:13Z",
+  "closed_at": "2026-04-19T05:58:13Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-1gq",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T22:33:20Z"
+    }
+  ]
+}

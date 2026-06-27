@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.48",
+  "title": "sanitize_display strips only SGR sequences not other ANSI escapes",
+  "description": "app.rs sanitize_display only strips ESC+[ sequences ending in 'm' (SGR). Other ANSI escape sequences \u2014 OSC (ESC+]), DCS, APC, cursor positioning (ESC+[A-Z not m) \u2014 are not stripped. A message body containing ESC[2J (clear screen) or ESC[5;5H (cursor position) would pass through and corrupt the terminal display since ratatui renders strings via crossterm which handles raw bytes. Trigger: peer sends a message containing a terminal escape sequence that is not an SGR color code.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:03Z",
+  "updated_at": "2026-04-25T04:08:58Z",
+  "closed_at": "2026-04-25T04:08:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:03Z"
+    }
+  ]
+}

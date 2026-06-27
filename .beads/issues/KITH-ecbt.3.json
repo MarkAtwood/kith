@@ -1,0 +1,27 @@
+{
+  "id": "KITH-ecbt.3",
+  "title": "kith-tui client.rs: unit tests with wiremock",
+  "description": "What: Write unit tests for client.rs using wiremock to mock kithds HTTP endpoints.\n\nOracle: test vectors are constructed manually from the wire protocol spec. No value is derived from running the code under test.\n\nTests to implement (all in kith-tui/src/client.rs #[cfg(test)] or a separate tests/ file):\n\n1. test: fetch_session_happy_path\n   Oracle: hand-craft a JSON response matching the ClientSession struct.\n   Setup: wiremock::MockServer::start().await; mount a GET /.well-known/jmap mock that returns:\n   {\"primaryAccounts\":{\"urn:kith:chat:1\":\"a-self\"},\"apiUrl\":\"https://PLACEHOLDER/jmap/api\",\"eventSourceUrl\":\"https://PLACEHOLDER/jmap/events\",\"state\":\"s-1\"}\n   where PLACEHOLDER is the mock server URI.\n   Action: call fetch_session(&client, &mock_server.uri()).await\n   Assert: result is Ok, account_id() == Some(\"a-self\"), state == \"s-1\"\n\n2. test: fetch_session_404_returns_error\n   Oracle: HTTP 404 must produce ClientError::Http (reqwest surfaces HTTP status errors via error_for_status).\n   Setup: mount a GET /.well-known/jmap mock that returns 404 with empty body.\n   Action: call fetch_session(&client, &mock_server.uri()).await\n   Assert: result is Err(ClientError::Http(_))\n\n3. test: call_jmap_round_trip\n   Oracle: hand-craft a JmapRequest and a JmapResponse.\n   JmapRequest: { using: [\"urn:ietf:params:jmap:core\",\"urn:kith:chat:1\"], methodCalls: [[\"Chat/get\",{\"accountId\":\"a-self\"},\"c0\"]] }\n   JmapResponse: { methodResponses: [[\"Chat/get\",{\"accountId\":\"a-self\",\"list\":[],\"state\":\"s-2\"},\"c0\"]], sessionState: \"s-1\" }\n   Setup: mount POST /jmap/api mock that returns 200 with the JmapResponse JSON above.\n   Action: build a JmapRequest as above; call call_jmap(&client, &(mock_server.uri() + \"/jmap/api\"), &req).await\n   Assert: result is Ok; method_responses[0].0 == \"Chat/get\"; session_state == \"s-1\"\n\n4. test: parse_sse_single_event\n   Oracle: RFC 8895 SSE format + kithd events.rs comment (line 102):\n   {\"changed\":{\"a-self\":{\"Message\":\"s-42\"}}}\n   This is an inline test of the SSE parser logic \u2014 no mock server needed.\n   Extract the SSE parser into a helper function (parse_sse_event(block: &str) -> Vec<StateChange>)\n   that can be unit-tested without spawning an HTTP connection.\n   Input: \"event: state\\ndata: {\\\"changed\\\":{\\\"a-self\\\":{\\\"Message\\\":\\\"s-42\\\"}}}\"\n   Assert: returns vec with one StateChange { type_name: \"Message\", new_state: \"s-42\" }\n\n5. test: parse_sse_ping_event_is_ignored\n   Oracle: kithd sends ping events; they carry no StateChange data.\n   Input: \"event: ping\\ndata: {\\\"interval\\\":30}\"\n   Assert: parse_sse_event returns empty vec\n\n6. test: parse_sse_multiple_types_in_one_event\n   Oracle: kithd may coalesce multiple type changes into one SSE frame.\n   Input: \"event: state\\ndata: {\\\"changed\\\":{\\\"a-self\\\":{\\\"Message\\\":\\\"s-43\\\",\\\"Chat\\\":\\\"s-2\\\"}}}\"\n   Assert: returns vec with exactly 2 StateChange entries (one for Message, one for Chat);\n   order may differ; verify both entries present via sort or HashSet comparison.\n\nDefensive programming rules:\n- Each test must use a fresh MockServer instance (or fresh parse inputs) to avoid state leak.\n- Never derive expected values from the code under test \u2014 all expected values are in the test itself.\n- Tests that use wiremock::MockServer must be async (#[tokio::test]).\n- SSE parse tests are synchronous (no async needed if the parser is extracted to a pure fn).\n- build_client() in tests: for wiremock (plain HTTP, not HTTPS), use a plain reqwest::Client::new() or reqwest::ClientBuilder::new().danger_accept_invalid_certs(true).build().unwrap() since wiremock does not use TLS.\n- Do not call unwrap() outside of test helpers; use .expect(\"reason\") so test failures are descriptive.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T04:52:58Z",
+  "updated_at": "2026-04-20T05:03:24Z",
+  "closed_at": "2026-04-20T05:03:24Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ecbt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:52:58Z"
+    },
+    {
+      "depends_on_id": "KITH-ecbt.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T21:53:03Z"
+    }
+  ]
+}

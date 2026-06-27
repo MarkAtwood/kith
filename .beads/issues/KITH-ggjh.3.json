@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ggjh.3",
+  "title": "both disconnect tests cover identical code path",
+  "description": "events_coalescing_task_exits_on_disconnect_before_any_broadcast and events_coalescing_task_exits_via_select_closed_arm are intended to test different exit paths (is_closed() vs select\\! closed() respectively). In practice both tests exercise only the select\\! closed() arm. The first test's Chat broadcast at line 1711 is dead code \u2014 the task has already exited before it runs. The two tests provide no additional coverage over each other; one of them is redundant. This is a direct consequence of the wrong oracle comment in KITH-ggjh.1.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:31:51Z",
+  "updated_at": "2026-04-24T19:34:17Z",
+  "closed_at": "2026-04-24T19:34:17Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ggjh",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:31:51Z"
+    }
+  ]
+}

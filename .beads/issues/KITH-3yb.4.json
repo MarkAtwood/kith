@@ -1,0 +1,27 @@
+{
+  "id": "KITH-3yb.4",
+  "title": "kith-chat: Message/set create accepts and validates attachment metadata",
+  "description": "What: Extend process_create in kith-chat/message.rs to parse, validate, and persist attachment metadata from Message/set create args.\n\nAlgorithm:\n1. In process_create, after body/bodyType validation, extract optional attachments array from args: args.get(\"attachments\").\n2. Parse each attachment object: { blobId: String, filename: String, contentType: String, size: u64, sha256: String }.\n3. Validate each attachment before message insert:\n   a. validate_blob_id(&blob_id) \u2014 reject path traversal.\n   b. filename: reject empty, reject containing ../ or / or \\0 or \\, reject len > 255.\n   c. contentType: must contain exactly one /; reject empty; reject newlines; reject len > 256.\n   d. size: must be <= 104_857_600.\n   e. sha256: must be 64 lowercase hex chars.\n   f. Verify blob exists in store.attachments().get_blob_meta(&blob_id) \u2014 reject unknown blobIds.\n4. Limit: max 20 attachments per message. Reject if exceeded.\n5. After message insert, for each attachment: store.attachments().insert(&blob_id, &msg_id, ...).\n6. If any insert fails, rollback (use unchecked_transaction wrapping message insert + all attachment inserts).\n\nDefensive rules: all validation before DB write; max attachment count limit; reject blobIds not previously uploaded; transaction atomic; never trust client-supplied size (store separately, verified at upload time).\n\nAgent team: R reads existing process_create and AttachmentStore signatures; I implements; T writes unit tests: valid create with 1 attachment, invalid blobId rejected, filename with ../ rejected, contentType with newline rejected; V runs cargo test -p kith-chat + clippy.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:56:03Z",
+  "updated_at": "2026-04-20T00:13:44Z",
+  "closed_at": "2026-04-20T00:13:44Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-3yb",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:56:03Z"
+    },
+    {
+      "depends_on_id": "KITH-3yb.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:58:19Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqk7.4",
+  "title": "SEC3: Manual URL parsing in discovery.rs instead of url crate",
+  "description": "discovery.rs lines 195-248: extract_mailbox_host() does manual RFC 3986 URL parsing (scheme stripping, IPv6 bracket handling, port parsing, port 443 omission). This reimplements what url::Url can do in 3 lines. Current implementation is correct but fragile \u2014 comprehensive test suite (357-413) exists precisely because manual parsing is complex. Better: use url::Url::parse(), host_str(), and conditionally include port based on scheme default. Reduces lines of code, eliminates parse edge cases, reuses a vetted RFC 3986 implementation.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:15:41Z",
+  "updated_at": "2026-04-20T16:23:33Z",
+  "closed_at": "2026-04-20T16:23:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqk7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:15:41Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v7t.12",
+  "title": "make_svc.call(peer_addr) in TLS loop needs comment",
+  "description": "In main.rs lines 128-136, the TLS accept loop calls make_svc.call(peer_addr) before serving the connection. The purpose is to inject ConnectInfo<SocketAddr> so axum extractors can retrieve the peer address (needed for WhoIs auth). Without a comment, the indirection looks mysterious \u2014 it is not obvious why we call the service factory with the address rather than simply calling serve_connection directly. A one-line comment explaining the ConnectInfo injection would make this navigable without needing to know axum internals.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:30:32Z",
+  "updated_at": "2026-04-19T23:38:57Z",
+  "closed_at": "2026-04-19T23:38:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v7t",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:30:31Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-o9x1.37",
+  "title": "readability: unix_secs_to_rfc3339 domain restriction not enforced in signature",
+  "description": "kith-core/src/lib.rs unix_secs_to_rfc3339 doc says 'correct for dates from the Unix epoch (t=0) through 2299' but the parameter type is i64 and negative values are accepted silently. A reader calling this function with a value from an unknown source has no indication that negative input is undefined behavior. Fix: change the first doc line to explicitly say 'Panics or returns garbage for secs < 0' and add a debug_assert\\!(secs >= 0) so tests catch violations in development.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:41Z",
+  "updated_at": "2026-04-25T02:22:57Z",
+  "closed_at": "2026-04-25T02:22:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:41Z"
+    }
+  ]
+}

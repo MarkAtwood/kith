@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "kith-core rewritten with re-exports from jmap-types/jmap-chat-types, all 33 tests pass",
+  "closed_at": "2026-06-13T13:51:48Z",
+  "compaction_level": 0,
+  "content_hash": "15a2bb2cd0693958ef79ab389a15463c7309b96c34dcb717882ab2f5cc5346e8",
+  "created_at": "2026-06-13T13:48:19Z",
+  "created_by": "Mark Atwood",
+  "description": "Delete message.rs, chat.rs, contact.rs, jmap.rs, resultref.rs. Update error.rs to drop JmapError. Update lib.rs to re-export. Add ChatContactExt extension trait. Add constructor helpers for #[non_exhaustive] types.",
+  "ephemeral": 0,
+  "id": "KITH-dhgl",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Phase 1: Rewrite kith-core to re-export from jmap-types/jmap-chat-types",
+  "updated_at": "2026-06-13T13:51:48Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:48:26Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-326e",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gt3q.15",
+  "title": "Section 6: blob download Content-Type from DB not from URL param is correct",
+  "description": "blob_download_handler (lib.rs:218-234) ignores the ?accept= URL parameter for Content-Type and reads it exclusively from the DB (stored at message creation time under server control). This prevents stored XSS: a malicious peer could deliver an HTML blob and supply ?accept=text/html to have it served with text/html Content-Type in the browser's kithd origin. Reading from DB instead makes the content-type server-authoritative. A future contributor might want to honor ?accept= for client flexibility \u2014 this would be a security regression.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:49:48Z",
+  "updated_at": "2026-04-25T08:07:20Z",
+  "closed_at": "2026-04-25T08:07:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gt3q",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:49:47Z"
+    }
+  ]
+}

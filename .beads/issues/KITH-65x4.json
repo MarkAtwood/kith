@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-14T14:05:08Z",
+  "compaction_level": 0,
+  "content_hash": "b1fbdb9ab51f0b5b656b61082c74d3b4be30001a5760b766bff6feee73c8cc4c",
+  "created_at": "2026-06-14T13:34:53Z",
+  "created_by": "Mark Atwood",
+  "description": "Create transport.rs in kithd with TailscaleTransport struct. Consolidates TailnetCertVerifier, is_valid_mailbox_host, is_valid_fetch_host, and wraps LocalApiClient. Provides client_tls_config() for shared TLS setup.",
+  "ephemeral": 0,
+  "id": "KITH-65x4",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Implement TailscaleTransport in kithd",
+  "updated_at": "2026-06-14T14:05:08Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T06:34:59Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-xk6u",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

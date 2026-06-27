@@ -1,0 +1,23 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Crate-level docs added to jmap-chat-types explaining serde construction pattern with examples. Committed to upstream repo.",
+  "closed_at": "2026-06-13T21:48:05Z",
+  "compaction_level": 0,
+  "content_hash": "ade6f931313e02cc0a233e135a08e631818dd4fe584e6345f89c861dd518e590",
+  "created_at": "2026-06-13T19:09:18Z",
+  "created_by": "Mark Atwood",
+  "description": "The #[non_exhaustive] types in jmap-chat-types (Attachment, Reaction, MessageRevision, etc.) are intentionally constructed via serde_json::from_value(json\\!({...})). This is the designed API pattern \u2014 not a workaround. Add crate-level documentation explaining this pattern with examples, so downstream consumers don't file PRs asking for new() constructors.",
+  "ephemeral": 0,
+  "id": "KITH-wsqc",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Document serde construction pattern in jmap-chat-types",
+  "updated_at": "2026-06-13T21:48:05Z"
+}

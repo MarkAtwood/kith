@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "2f0b5f4c08cddebb6f1d2c7d65691edaa9ecb2f863461beef681508e51fccc21",
+  "created_at": "2026-06-15T04:54:46Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-store/src/lib.rs:db_err() (line 1205) maps SQLite constraint violations to KithError::Validation (which surfaces as invalidArguments to JMAP clients) and all other errors to KithError::Store (which surfaces as serverFail). This classification is important: the wrong mapping turns a client mistake into a server error or vice versa.\n\nThe classification rationale is documented only in the db_err() function itself. At call sites \u2014 which are hundreds of .map_err(db_err) expressions throughout the store modules \u2014 there is no indication that constraint violations are handled differently from I/O errors.\n\nSuggestion: add a one-line module-level comment in kith-store/src/lib.rs (near the imports) noting that db_err() maps constraint violations to Validation. This gives readers auditing JMAP error responses a place to look rather than requiring them to find db_err() first. The existing doc comment on db_err() itself is thorough; a forward pointer from the module level would complete the picture.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.45",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 3,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "READABILITY: db_err error classification not obvious at call sites",
+  "updated_at": "2026-06-15T04:54:46Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:54:45Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

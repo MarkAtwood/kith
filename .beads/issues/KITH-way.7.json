@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.7",
+  "title": "Decision: Reject null bytes in Tailscale identity at LocalAPI boundary",
+  "description": "In kith-tslocal lib.rs whois() (lines 329-336), null bytes in user_id and login_name are explicitly rejected:\n  if result.user_profile.id.contains('\\0') { return Err(...); }\n\nThis is defensive at the trust boundary:\n1. Null bytes can cause subtle bugs in string comparisons and SQL prepared statements\n2. Early rejection at the LocalAPI deserialization boundary prevents downstream issues\n3. Error is wrapped in AuthError with context (no user_id value logged)\n4. Prevents the attack surface of injecting nulls through WhoIs responses\n5. Applied to both user_id and login_name consistently\n\nThis is a correct application of input validation at system boundaries per the security guidelines in CLAUDE.md.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:10:59Z",
+  "updated_at": "2026-04-19T20:16:14Z",
+  "closed_at": "2026-04-19T20:16:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:10:58Z"
+    }
+  ]
+}

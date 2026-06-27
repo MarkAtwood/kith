@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1xr",
+  "title": "kith-chat: Chat/changes and Chat/query",
+  "description": "What: Implement Chat/changes and Chat/query JmapHandler structs in kith-chat crate.\n\nChat/changes algorithm:\n1. Deserialize args: { accountId, sinceState: String, maxChanges: Option<u32> }.\n2. Verify accountId == 'a-self'.\n3. Acquire store lock.\n4. Call store.chats().get_changes_since(sinceState)?; KithError::Validation \u2192 JmapError::state_mismatch().\n5. Return { accountId, oldState: sinceState, newState, hasMoreChanges: false, created: added, updated, destroyed }.\n\nChat/query algorithm:\n1. Deserialize args: { accountId, filter, sort, position, limit, calculateTotal }.\n2. Verify accountId.\n3. store.chats().list()? \u2192 Vec<Chat> ordered by lastMessageAt DESC NULLS LAST, createdAt DESC (store already returns this order).\n4. Extract IDs only.\n5. Apply position+limit.\n6. queryState = store.chats().get_state()?\n7. Return { accountId, queryState, canCalculateChanges: true, position, ids, total }.\n\nDefensive programming rules:\n- sinceState: validated by get_changes_since; propagate KithError::Validation as state_mismatch.\n- position/limit: treat None as 0/max; clamp to u32; no overflow.\n- v1: ignore filter and sort fields in Chat/query (accept but do not apply).\n- Store lock released before return.\n\nAgent team:\n- Agent R: Read kith-store/src/chat.rs (get_changes_since as of KITH-vx6.2, list, get_state).\n- Agent I: Implement ChatChangesHandler and ChatQueryHandler in kith-chat/src/chat.rs.\n- Agent T: Tests with hand-constructed state sequences (oracle: RFC 8620 field names, known state token format 's-N').\n- Agent V: cargo test -p kith-chat && clippy && fmt.\n\nTests:\n- Chat/changes sinceState==currentState \u2192 empty\n- Chat/changes sinceState < current after chat created \u2192 chat ID in added list\n- Chat/changes malformed sinceState \u2192 error\n- Chat/query \u2192 IDs in lastMessageAt desc order\n- Chat/query position+limit pagination",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T15:33:34Z",
+  "closed_at": "2026-04-19T15:33:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-vx6",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-vx6.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T08:20:44Z"
+    }
+  ]
+}

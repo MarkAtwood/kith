@@ -1,0 +1,20 @@
+{
+  "id": "KITH-0z7.21",
+  "title": "SEC6: _caller_identity injection via JSON args mutation",
+  "description": "jmap_handler inserts the WhoIs-verified caller identity into each method call's args JSON object under the private key '_caller_identity' before dispatching. DeliverHandler extracts and removes this key as step 1, before parsing the public args. This avoids adding an extra extractor parameter to every JmapHandler (which would require changing the trait signature and all 15 handler impls). The private key convention also prevents a peer from supplying a forged identity in the request body, because DeliverHandler calls args.as_object_mut().remove() on it \u2014 a missing or present key in the network request is irrelevant; the injected value always wins.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:20:44Z",
+  "updated_at": "2026-04-19T17:26:52Z",
+  "closed_at": "2026-04-19T17:26:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-0z7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:20:44Z"
+    }
+  ]
+}

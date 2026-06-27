@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.56",
+  "title": "jmap_post opens new TCP+TLS connection per call in watch.rs",
+  "description": "watch.rs jmap_post opens a fresh TCP connection and performs a full TLS handshake on every call (lines 491-497). In fetch_and_notify this means two TLS handshakes per SSE state event (one for Message/changes, one for Message/get). Over a long-running watch session with frequent messages this is noticeable overhead. By contrast client.rs in kith-tui uses a persistent reqwest::Client with connection pooling. The watch module could use reqwest instead of hand-rolled HTTP over tokio-rustls to get connection reuse.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:48Z",
+  "updated_at": "2026-04-25T07:58:52Z",
+  "closed_at": "2026-04-25T07:58:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:48Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-s8kd.6",
+  "title": "jitter_range = 0 when base_delay = 1 or 4, gen_range(0..=0) is fine but silent",
+  "description": "In outbox.rs record_failure, jitter_range = base_delay / 5 uses integer division. When base_delay = 1 (e.g. clamped), jitter_range = 0, and gen_range(0..=0) returns 0. This is valid Rust (rand does not panic on empty range via ..=). When base_delay = 4, jitter_range = 0 again (4/5 = 0). This means the first several retries have no jitter at all: attempts at base_delay=30 have jitter_range=6 (fine), but lower values hit zero jitter. In practice base_delay starts at 30 (2^0 * 30) so jitter_range = 6, and this does not trigger. No actual bug for the current formula, but the floor on base_delay should be documented. Filing as P1 maintainability: someone who changes the base from 30 to a smaller value will silently lose jitter.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:38:28Z",
+  "updated_at": "2026-04-25T06:08:25Z",
+  "closed_at": "2026-04-25T06:08:25Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:38:28Z"
+    }
+  ]
+}

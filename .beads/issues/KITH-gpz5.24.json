@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.24",
+  "title": "blob.rs: Content-Type truncation panics on multibyte UTF-8 boundary",
+  "description": "blob_upload_handler truncates Content-Type with &s[..MAX_CONTENT_TYPE_LEN]. This is a byte-index slice on &str; if the 256th byte is a UTF-8 continuation byte the indexing panics. Content-Type values are ASCII by RFC but the path reaches this code after only to_str().ok() validation, which accepts arbitrary non-ASCII bytes. Fix: use s.chars().take(MAX_CONTENT_TYPE_LEN).collect::<String>(), or assert/reject non-ASCII before truncating.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:51:40Z",
+  "updated_at": "2026-04-24T17:01:43Z",
+  "closed_at": "2026-04-24T17:01:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:51:40Z"
+    }
+  ]
+}

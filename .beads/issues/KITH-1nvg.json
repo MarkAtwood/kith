@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "90cab7ee0082e05c00217ca7c4148a6bd4519832d5224a230b2d65baac91fada",
+  "created_at": "2026-06-14T00:03:44Z",
+  "created_by": "Mark Atwood",
+  "description": "WireGuard-based overlay, open source (BSD), with IdP integration (Keycloak, Auth0, etc.). Provides a local API for peer identity. Similar shape to Tailscale but vendor-independent. Younger project, actively developed. Requires the abstract transport trait (KITH-lhaj).",
+  "ephemeral": 0,
+  "id": "KITH-1nvg",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "Federation transport: NetBird overlay",
+  "updated_at": "2026-06-14T00:03:44Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T17:03:51Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

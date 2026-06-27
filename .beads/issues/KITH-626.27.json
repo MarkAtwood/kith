@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.27",
+  "title": "Connection lifecycle on background task prevents sender deadlock",
+  "description": "Lines 103-107 and 174-178 spawn the hyper connection driver on a background tokio::spawn() task. The comment (line 105) notes connection errors surface through the sender. This is correct hyper 1.x pattern: the connection must be driven independently. The design avoids the sender hanging if the connection task blocks. Keep this pattern in all hyper usage.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:57Z",
+  "updated_at": "2026-04-19T19:51:57Z",
+  "closed_at": "2026-04-19T19:51:57Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:56Z"
+    }
+  ]
+}

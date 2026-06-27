@@ -1,0 +1,26 @@
+{
+  "id": "KITH-red",
+  "title": "kith-core: Chat data type and deterministic ID",
+  "description": "What: Define Chat struct and compute_chat_id() function in src/chat.rs. Requires sha2 dep (KITH-bhl.1).\n\nModule file: crates/kith-core/src/chat.rs \u2014 create this file, then add 'pub mod chat;' to src/lib.rs.\n\nAlgorithm:\n1. Import: use sha2::{Sha256, Digest};\n2. Define Chat struct:\n   id: String  (deterministic; computed via compute_chat_id)\n   kind: String  (\"direct\" | \"group\")\n   participants: Vec<String>  (Contact ids)\n   created_at: String  \u2192 #[serde(rename=\"createdAt\")]  (UTCDate)\n   last_message_at: Option<String>  \u2192 #[serde(rename=\"lastMessageAt\", skip_serializing_if=\"Option::is_none\")]\n   unread_count: u32  \u2192 #[serde(rename=\"unreadCount\")]\n   Derives: Debug, Clone, PartialEq, Serialize, Deserialize.\n3. Implement compute_chat_id:\n   pub fn compute_chat_id(participant_tailscale_user_ids: &[impl AsRef<str>]) -> String {\n     // a) Collect references, sort lexicographically\n     let mut sorted: Vec<&str> = participant_tailscale_user_ids.iter()\n       .map(|s| s.as_ref()).collect();\n     sorted.sort();\n     // b) Join with single null byte separator\n     // c) SHA-256 hash of the joined bytes\n     let mut hasher = Sha256::new();\n     for (i, id) in sorted.iter().enumerate() {\n       if i > 0 { hasher.update(b\"\\x00\"); }\n       hasher.update(id.as_bytes());\n     }\n     // d) Hex-encode the 32-byte result (lowercase)\n     format!(\"{:x}\", hasher.finalize())\n   }\n4. Add 'pub mod chat;' to src/lib.rs.\n5. Run: cargo check -p kith-core\n\nDefensive programming rules:\n- CRITICAL: sorted.sort() must use byte-lexicographic order (Rust's default for &str) \u2014 document this\n- Empty participant list: function should return the SHA-256 of empty input (deterministic but degenerate)\n  Note: callers should reject single-participant chats; this function does not enforce that.\n- No unwrap() \u2014 Sha256 operations are infallible\n\nTests (independent oracle: compute expected SHA-256 using openssl or Python beforehand):\n  Reference computation (Python):\n    import hashlib\n    ids = sorted([\"uid:alice@example.com\", \"uid:bob@example.com\"])\n    data = \"\\x00\".join(ids).encode()\n    expected = hashlib.sha256(data).hexdigest()\n  \n  Test vectors to hardcode (compute before writing tests):\n  - Two participants: compute expected hex from Python/openssl\n  - Same two participants in reversed order: must produce identical hash\n  - Single participant: deterministic hash of one string (no separator)\n  - Order independence: (\"alice\", \"bob\") == (\"bob\", \"alice\")\n  \n  The test MUST hardcode the expected hex values computed from Python/openssl \u2014 never derive them from the code under test.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T05:04:36Z",
+  "closed_at": "2026-04-19T05:04:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bhl",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-bhl.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:59:02Z"
+    }
+  ]
+}

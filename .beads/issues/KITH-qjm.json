@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qjm",
+  "title": "Deploy: systemd service files",
+  "description": "Create contrib/systemd/ directory and write two unit files: kithd.service (single-user) and kithd@.service (multi-user template). No Rust code changes.\n\nWhat: Provide production-ready systemd unit files for deploying kithd.\n\nAlgorithm:\n1. Create contrib/systemd/ directory\n2. Write contrib/systemd/kithd.service:\n   - [Unit] Description, After=network-online.target tailscaled.service, Requires=tailscaled.service\n   - [Service] Type=simple (not notify; kithd has no sd_notify)\n   - User=kithd, Group=kithd, UMask=0077\n   - Environment lines: KITHD_DATA_DIR=/var/lib/kithd, KITHD_PORT=443, KITHD_OWNER_ID=<your-tailscale-user-id>, KITHD_TAILSCALED_SOCKET=/var/run/tailscale/tailscaled.sock, RUST_LOG=kithd=info,kith_peer=info\n   - ExecStart=/usr/local/bin/kithd\n   - Restart=on-failure, RestartSec=5\n   - Security hardening: NoNewPrivileges=yes, ProtectSystem=strict, ReadWritePaths=/var/lib/kithd, ProtectHome=yes, PrivateTmp=yes, RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6, CapabilityBoundingSet=, AmbientCapabilities=, LimitNOFILE=65536\n   - StandardOutput=journal, StandardError=journal, SyslogIdentifier=kithd\n   - [Install] WantedBy=multi-user.target\n   - Every directive MUST have a brief inline comment explaining why\n3. Write contrib/systemd/kithd@.service (template, %i = username):\n   - Description=Kith mailbox daemon for %i\n   - User=kith-%i, Group=kithd, UMask=0077\n   - Environment=KITHD_DATA_DIR=/var/lib/kithd/%i\n   - SyslogIdentifier=kithd-%i\n   - ReadWritePaths=/var/lib/kithd/%i\n   - Otherwise same hardening as single-user file\n   - Comment explaining %i substitution and per-user isolation\n\nDefensive programming rules:\n- Every directive must have an inline comment \u2014 no unexplained magic values\n- KITHD_OWNER_ID line must have a comment saying 'get from: tailscale status --json | jq .Self.UserID'\n- Do NOT add ReadWritePaths for /tmp (PrivateTmp=yes handles it)\n- CapabilityBoundingSet= (empty) is correct \u2014 kithd binds to Tailscale interfaces which are non-privileged; port 443 on tailnet does not need CAP_NET_BIND_SERVICE\n- Do NOT add Type=notify \u2014 kithd does not call sd_notify; must stay Type=simple\n\nTests:\n- Verify both files parse as valid systemd syntax using: systemd-analyze verify contrib/systemd/kithd.service (if systemd available)\n- Review that security directives are present and correct",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T18:34:20Z",
+  "closed_at": "2026-04-19T18:34:20Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-jh7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

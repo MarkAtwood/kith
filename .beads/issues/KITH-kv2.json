@@ -1,0 +1,20 @@
+{
+  "id": "KITH-kv2",
+  "title": "kith-events: coalesce multi-type state changes into single SSE frame",
+  "description": "RFC 8620 \u00a77.1 requires a single StateChange push object to carry all changed types: {\"changed\":{\"a-self\":{\"Message\":\"s-43\",\"Chat\":\"s-12\"}}}. Current implementation emits one SSE frame per StateChange broadcast. Fix requires broadcasting HashMap<type_name, new_state> instead of one StateChange struct per type, and coalescing within a scheduler tick before emitting. Deferred from kith-events Phase 1; needed before a real JMAP client library can be used.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T08:42:53Z",
+  "updated_at": "2026-04-19T20:09:51Z",
+  "closed_at": "2026-04-19T20:09:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-i2s",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T12:51:36Z"
+    }
+  ]
+}

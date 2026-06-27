@@ -1,0 +1,21 @@
+{
+  "id": "KITH-ajt.1",
+  "title": "Decentralize single-use workspace dependencies",
+  "description": "Move dependencies used by only one crate (rusqlite, axum, tokio, rustls, ulid) from workspace.dependencies to their respective Cargo.toml files. Keep serde, serde_json, and internal crates centralized since they are widely shared. This reduces lock-step version coupling and improves build performance for development. Trade-off: lose one-line version management for those crates, but gain clarity on what each binary really depends on.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T04:46:30Z",
+  "updated_at": "2026-04-19T04:51:13Z",
+  "closed_at": "2026-04-19T04:51:13Z",
+  "notes": "opinion: no engineering basis \u2014 workspace.dependencies centralization for single-use crates is a valid and common monorepo pattern. No bug risk either way; this is stylistic organization preference only.",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-ajt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:46:29Z"
+    }
+  ]
+}

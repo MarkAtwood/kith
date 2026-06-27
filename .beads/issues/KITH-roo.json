@@ -1,0 +1,13 @@
+{
+  "id": "KITH-roo",
+  "title": "Refactor: extract call_local_api helper in kith-tslocal",
+  "description": "What: The ~38-line HTTP/1.1 transport block (connect socket, write request, read response, parse body) is copy-pasted between status() and whois() in kith-tslocal/src/lib.rs. Extract it into a private async fn call_local_api(socket_path, uri, max_bytes) -> Result<Bytes, AuthError>.\n\nAlgorithm:\n1. Read lib.rs in full; identify the two duplicate transport blocks\n2. Write private async fn call_local_api(socket_path: &Path, uri: &str, max_bytes: usize) -> Result<Bytes, AuthError>:\n   - UnixStream::connect, timeout, HTTP/1.1 handshake, send_request, await response, read body with limit\n   - Error prefixes: 'connect: {e}', 'handshake: {e}', 'request: {e}', 'body: {e}' (already standardized)\n3. Replace both call sites with call_local_api(...)\n4. Ensure the max_bytes parameter is used (whois has a tighter bound than status)\n\nDefensive programming rules:\n- Keep the exact same error prefix strings already standardized in KITH-626.10 to avoid breaking tests\n- Do not change the public function signatures of status() or whois()\n- Run cargo test -p kith-tslocal to confirm integration tests still pass\n\nAgent team: single R+I+T agent (one crate, one file)\n\nTests:\n- cargo test -p kith-tslocal passes unchanged\n- cargo build -p kith-tslocal --all-features -D warnings passes",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T21:19:26Z",
+  "updated_at": "2026-04-19T21:25:06Z",
+  "closed_at": "2026-04-19T21:25:06Z"
+}

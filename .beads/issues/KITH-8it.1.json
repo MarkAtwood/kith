@@ -1,0 +1,20 @@
+{
+  "id": "KITH-8it.1",
+  "title": "Hoist insert_if_allowed closure outside event loop",
+  "description": "What: Move the insert_if_allowed closure definition from inside the main event loop to outside it in kithd/src/events.rs.\n\nWhy: The closure is redefined on every loop iteration even though it is identical each time. It only captures type_filter: Option<TypeFilter> which is Copy (u8-sized), so hoisting it is trivially safe.\n\nAlgorithm:\n1. In events.rs, find the main tokio task loop (around line 260).\n2. The closure is currently defined at lines 274-282 (inside the loop):\n     let insert_if_allowed = |batch: &mut HashMap<String, String>, type_name: String, new_state: String| { ... };\n3. Move this definition to just BEFORE the loop, after type_filter is in scope (it is set up before the loop starts).\n4. The closure captures type_filter by copy; no lifetime issues.\n5. The two call sites (lines 284 and 294) remain unchanged.\n6. Run cargo fmt, cargo clippy, cargo test -p kithd to verify.\n\nDefensive rules:\n- Do not change the closure body \u2014 only move it.\n- Verify the borrow checker accepts the move (type_filter must be in scope before the loop).\n- cargo clippy --all-features must produce zero warnings.\n\nCloses: KITH-kg2",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T23:36:02Z",
+  "updated_at": "2026-04-19T23:37:43Z",
+  "closed_at": "2026-04-19T23:37:43Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-8it",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T16:36:02Z"
+    }
+  ]
+}

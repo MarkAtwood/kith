@@ -1,0 +1,20 @@
+{
+  "id": "KITH-nk90.17",
+  "title": "DECISION: Separate test routers reflect real network architecture",
+  "description": "peer_attachment_fetch.rs uses 4 separate router instances: sender_tcp (real TLS listener for fetch), sender_owner_router (upload), receiver_owner_router (owner download), receiver_peer_router (Peer/deliver). Not test bloat \u2014 reflects real architecture where daemons are separate processes. Each router has independent WhoIs identity. Test structure mirrors deployment topology.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T17:16:30Z",
+  "updated_at": "2026-04-20T17:20:53Z",
+  "closed_at": "2026-04-20T17:20:53Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-nk90",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T10:16:30Z"
+    }
+  ]
+}

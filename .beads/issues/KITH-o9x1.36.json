@@ -1,0 +1,21 @@
+{
+  "id": "KITH-o9x1.36",
+  "title": "Message/changes: updated field is JSON object not Id[] array",
+  "description": "message.rs:735,750 \u2014 Message/changes response builds updated as serde_json::Map<String,Value> (serializes as JSON object {id: null, ...}) but RFC 8620 \u00a75.2 requires updated: Id[] (JSON array). A JMAP client that follows the spec will fail to parse this response. The tests use .as_object() so they are also testing the wrong shape. Fix: change Map to Vec<Value>, push Value::String(id), emit as array. The null-patch concept is only valid in /set responses (RFC 8620 \u00a75.3), not /changes.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T01:15:39Z",
+  "updated_at": "2026-04-25T01:28:10Z",
+  "closed_at": "2026-04-25T01:28:10Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-o9x1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T18:15:39Z"
+    }
+  ]
+}

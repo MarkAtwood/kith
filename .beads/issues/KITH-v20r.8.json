@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.8",
+  "title": "kithd: discovery probe client (tailnet accept-any-cert HTTP GET)",
+  "description": "A small HTTP client that probes a single IP:port for a kithd instance. Accepts self-signed TLS certs \u2014 this is safe because traffic travels over Tailscale (which provides identity guarantees at the network layer), so we do not need TLS cert identity for security.\n\nWhat: A standalone async function probe_peer(ip: &str, port: u16) -> Option<PeerSession> in a new kithd/src/discovery.rs module. No message delivery \u2014 read-only GET.\n\nAlgorithm:\n1. Create kithd/src/discovery.rs.\n\n2. Define PeerSession struct:\n   - owner_user_id: String\n   - owner_login: String\n   - owner_display_name: Option<String>\n   - mailbox_host: String  (extracted from api_url hostname:port)\n\n3. Implement a TailnetCertVerifier that accepts any certificate:\n   use rustls::client::danger::ServerCertVerifier;\n   struct TailnetCertVerifier;\n   // verify_server_cert: always returns Ok(ServerCertVerified::assertion())\n   // verify_tls12_signature / verify_tls13_signature: delegate to CryptoProvider\n   // supported_verify_schemes: delegate to CryptoProvider\n   This is safe: Tailscale guarantees IP-to-identity; TLS provides confidentiality only.\n   Add a doc comment: '// Safety: Tailscale network layer provides identity guarantees for tailnet IPs; cert is only needed for encryption, not authentication.'\n\n4. Build an HTTP client using hyper + hyper-rustls (already in workspace) configured with TailnetCertVerifier:\n   let tls_config = rustls::ClientConfig::builder()\n     .dangerous()\n     .with_custom_certificate_verifier(Arc::new(TailnetCertVerifier))\n     .with_no_client_auth();\n   let connector = HttpsConnectorBuilder::new()\n     .with_tls_config(tls_config)\n     .https_only()\n     .enable_http1()\n     .build();\n   let client = Client::builder(TokioExecutor::new()).build(connector);\n\n5. pub async fn probe_peer(ip: &str, port: u16) -> Option<PeerSession>:\n   - Construct URL: format!('https://{}:{}/.well-known/jmap', ip, port)\n   - Set timeout: 5 seconds (tokio::time::timeout)\n   - GET the URL with a 'Host' header set to ip (or just bare IP URL)\n   - On any error (timeout, connection refused, TLS error, non-200): return None\n   - On 200: parse body as JSON into a minimal SessionProbe struct containing ownerUserId, ownerLogin, ownerDisplayName (optional), apiUrl\n   - Extract mailbox_host from apiUrl: parse URL, take host + optional :port (omit :443)\n   - If apiUrl parse fails: use ip:port as fallback mailbox_host\n   - Return Some(PeerSession { ... })\n\n6. Tests:\n   - Test 1: a mock that returns a valid JMAP session JSON; assert PeerSession has correct fields.\n   - Test 2: connection refused (probe to a port with nothing listening); assert returns None within timeout.\n   - Test 3: HTTP 404 response; assert returns None.\n   - Test 4: non-kith JSON response (missing ownerUserId); assert returns None.\n   (Use a tokio::test with a minimal in-process HTTP server for tests 1 and 3.)\n\nDefensive programming rules:\n- Hard 5-second timeout on every probe (non-negotiable)\n- Never panic on malformed JSON response (use Option/Result)\n- Never log the raw session body (may contain user identity info)\n- TailnetCertVerifier only used for probing, never for peer delivery\n- probe_peer is fire-and-forget safe: all errors return None",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T16:01:02Z",
+  "updated_at": "2026-04-20T16:08:32Z",
+  "closed_at": "2026-04-20T16:08:32Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T09:01:02Z"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "KITH-orvy.2",
+  "title": "Peer/receipt: any contact can forge delivery/read status for any message",
+  "description": "ReceiptHandler (kith-peer/src/lib.rs:363) does not extract or check the caller's WhoIs identity. It only checks sender_id == 'self' and delivery_state \\!= Received. Any authenticated contact \u2014 even one who was never in the conversation \u2014 can call Peer/receipt with any outgoing message ID and flip its delivery/read state. Owner UI shows incorrect delivery status.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T01:04:25Z",
+  "updated_at": "2026-04-24T01:20:56Z",
+  "closed_at": "2026-04-24T01:20:56Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-orvy",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T18:04:25Z"
+    }
+  ]
+}

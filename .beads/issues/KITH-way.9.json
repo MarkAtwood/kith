@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.9",
+  "title": "Phase 1 transaction assumption not enforced in update_delivery_state",
+  "description": "What: update_delivery_state() and update_read_at() perform the data UPDATE outside a transaction, then wrap only the state counter increment in a second transaction. The code explicitly comments (lines 275-278) that this is safe 'because Phase 1 is single-threaded.' This constraint is not enforced at compile time or checked at runtime.\n\nWhy: If Phase 2 introduces concurrent writers (multi-device sync, cross-device updates), the two-transaction approach becomes a consistency bug. A message UPDATE succeeds, then the process crashes before the counter transaction commits. Result: message exists but state token is stale, and clients miss the change event. Test suite has no verification that counter increments are atomic with message updates.\n\nHow to apply: (1) Wrap both the message UPDATE and the counter increment in a single transaction, or (2) add a prominent runtime check that panics if called from an async context (Phase 2 guard). Document the Phase 1 assumption prominently. Add an integration test that verifies state_version is always incremented when delivery_state changes.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:06Z",
+  "updated_at": "2026-04-19T20:15:49Z",
+  "closed_at": "2026-04-19T20:15:49Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:05Z"
+    }
+  ]
+}

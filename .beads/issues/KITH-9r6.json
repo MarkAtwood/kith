@@ -1,0 +1,13 @@
+{
+  "id": "KITH-9r6",
+  "title": "insert advances state counter before INSERT (non-atomic)",
+  "description": "message.rs::insert calls advance_state_counter() then executes INSERT INTO messages as separate statements. A FK-violation or duplicate-ID failure on the INSERT leaves a permanent hole in state_version numbers. Fix: wrap counter advance and INSERT in an unchecked_transaction() so either both commit or neither does.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T05:50:05Z",
+  "updated_at": "2026-04-19T05:53:42Z",
+  "closed_at": "2026-04-19T05:53:42Z"
+}

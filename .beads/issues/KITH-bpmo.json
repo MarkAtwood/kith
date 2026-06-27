@@ -1,0 +1,14 @@
+{
+  "id": "KITH-bpmo",
+  "title": "Review: full project deep scan (pass 2)",
+  "description": "Full project code review pass 2. Scope: entire codebase, not just recent commits.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T22:41:53Z",
+  "updated_at": "2026-04-24T22:52:40Z",
+  "closed_at": "2026-04-24T22:52:40Z",
+  "notes": "Maintainer risk: LOW \u2014 auth and delivery paths are well-validated. Two correctness issues (wrong JMAP error type, test feature flag gap) are real but low-impact in Phase 1 single-user deployments. No P0 findings.\nConfidence: 90% chance of no missed bugs in Phase 1 scope. Uncertainty driven by: receipt handler partial-state path in kith-peer (would need transaction audit to confirm), and state counter behavior under exceptional store errors. Would raise confidence with: transaction coverage analysis on receipt handler and integration test for cannotCalculateChanges behavior."
+}

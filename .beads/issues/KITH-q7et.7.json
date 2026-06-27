@@ -1,0 +1,31 @@
+{
+  "close_reason": "Merged into KITH-q7et.5 (jmap structs now listed there)",
+  "closed_at": "2026-06-15T11:53:08Z",
+  "compaction_level": 0,
+  "content_hash": "fac013f532e88cc19dcea87513859a26ec93ae64768222abff5b16b828211a79",
+  "created_at": "2026-06-15T04:52:35Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-jmap/src/lib.rs exposes several pub structs that serve as wire-format responses but have no #[non_exhaustive] attribute:\n\n- CoreCapability (lines 105-114)\n- KithChatCapability (lines 117-122)\n- CidCapability (line 130)\n- Capabilities (line 133-140)\n- KithAccountCapability (line 145-147)\n- AccountCapabilities (line 149-152)\n- Account (lines 154-161)\n- Session (lines 163-179)\n- Dispatcher (line 347-350)\n\nThese structs' fields are all pub, meaning adding any field to CoreCapability or Session (e.g. a new RFC 8620 capability field) is a breaking change for any code that constructs them via struct literals. build_session() is the only provided constructor, but the struct fields are still pub, so external code can bypass it.\n\nFix: add #[non_exhaustive] to all of the above. Alternatively, make fields pub(crate) and rely solely on build_session() for external construction.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.7",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-jmap: Session and Capabilities structs pub without #[non_exhaustive]",
+  "updated_at": "2026-06-15T11:53:08Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:52:34Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

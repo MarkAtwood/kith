@@ -1,0 +1,20 @@
+{
+  "id": "KITH-way.12",
+  "title": "Concurrent caller hazard in advance_state_counter() private function",
+  "description": "What: advance_state_counter() (lines 445-461) reads and increments the state counter in two separate SQL statements. The doc comment states this is 'safe only for single-threaded use (Phase 1 constraint)' and mentions that Phase 2 must use UPDATE...RETURNING or hold a write-level transaction. However, the function is a private fn, not marked unsafe, and there is no compile-time guard against concurrent callers.\n\nWhy: A future maintainer may not read the doc comment when adding a call from a new async context (e.g., spawned tokio task). No test exists that simulates concurrent callers hitting this function. Phase 2 code paths could silently lose counter increments.\n\nHow to apply: (1) Add runtime guard that panics if called from concurrent context (via tokio::task::id() or a thread-local counter), or (2) rewrite to use SQLite UPDATE...RETURNING (available in rusqlite 0.30+) to make the read-write atomic. Document prominently.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T20:11:11Z",
+  "updated_at": "2026-04-19T20:15:58Z",
+  "closed_at": "2026-04-19T20:15:58Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-way",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T13:11:10Z"
+    }
+  ]
+}

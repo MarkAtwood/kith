@@ -1,0 +1,13 @@
+{
+  "id": "KITH-v20r",
+  "title": "Web client: contact management (add, block/unblock, open chat)",
+  "description": "kithd should auto-discover all kithd-running peers on the tailnet and add them as contacts. The server probes every tailnet peer IP at startup and periodically; any IP that responds to GET /.well-known/jmap with a kith session is added as a contact. The web client then shows contacts without any manual input. Block/unblock UI is needed because auto-add means every tailnet peer gets added.\n\nScope:\n1. kithd JMAP session: expose ownerTailscaleUserId and ownerLogin in /.well-known/jmap so probing identifies the owner\n2. kithd: peer probe client \u2014 HTTP client accepting self-signed certs from tailnet IPs, GET /.well-known/jmap, parse response\n3. kithd: discovery background task \u2014 at startup + every N minutes, LocalAPI /status \u2192 probe each peer IP \u2192 upsert contact\n4. kith-store: upsert_discovered_contact \u2014 idempotent (preserves user-set displayName; updates mailboxHost on discovery)\n5. Web client: EventSource Contact subscription + re-render on Contact state change\n6. Web client: block/unblock toggle on each contact row in renderContactList",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:47:47Z",
+  "updated_at": "2026-04-20T16:14:20Z",
+  "closed_at": "2026-04-20T16:14:20Z"
+}

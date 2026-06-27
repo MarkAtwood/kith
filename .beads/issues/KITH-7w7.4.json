@@ -1,0 +1,27 @@
+{
+  "id": "KITH-7w7.4",
+  "title": "Fix DeliverHandler: N-participant chatId, validate and store attachments",
+  "description": "**What:** Update `DeliverHandler` in kith-peer to: (1) compute chatId for N-participant group chats using the `participants` field from the wire, (2) validate attachment metadata from the wire, and (3) store attachments via `insert_message_with_attachments()` instead of `messages().insert()`.\n\n**Algorithm:**\n\nStep A \u2014 N-participant chatId (fix hardcoded 2-participant computation):\n1. Find line ~133: `let expected_chat_id = compute_chat_id(&[identity.user_id.as_str(), owner_id.as_str()]);`\n2. Replace with: build the participant list from `msg.participants` (now available via KITH-7w7.2). If `msg.participants` is empty, treat as 1:1 (default to `[sender_id, owner_id]`). Otherwise, include all IDs from `msg.participants` plus `owner_id` if not already present, then sort and deduplicate.\n3. Call `compute_chat_id(&all_participants)` \u2014 it accepts any N participants.\n4. The comparison `if msg.chat_id != expected_chat_id` stays as-is.\n5. Also fix the `get_or_create()` call (line ~190-198): pass the full `all_participants` list as the participants slice, not just `[identity.user_id]`.\n\nStep B \u2014 validate_attachments() helper function:\n1. Add a private function:\n   `fn validate_attachments(attachments: &[AttachmentArg]) -> Result<Vec<kith_core::Attachment>, JmapError>`\n2. Enforce: `attachments.len() <= 20` (MAX_ATTACHMENTS) \u2014 return `invalidArguments` if exceeded.\n3. For each AttachmentArg:\n   - `blob_id`: must match `[a-zA-Z0-9_-]`, 1-128 chars, not start with `.` \u2014 validate with same logic as `BlobStore::validate_blob_id` (or call it: kith_attach::BlobStore::validate_blob_id is a pub fn). Return `invalidArguments` on failure.\n   - `filename`: must not be empty, max 255 chars, must not contain `'/'  '\\\\\\' '\\x00' \"..\"`, must not start with `'.''`. Return `invalidArguments` on failure.\n   - `content_type`: must not be empty, max 256 chars, must contain exactly one `'/'`. Return `invalidArguments` on failure.\n   - `size`: must be > 0, must be <= 104_857_600 (100 MiB). Return `invalidArguments` on failure.\n   - `sha256`: must be exactly 64 lowercase hex chars (`[0-9a-f]{64}`). Return `invalidArguments` on failure.\n4. Convert each valid AttachmentArg to `kith_core::Attachment { blob_id, filename, content_type, size, sha256 }`.\n5. Return `Ok(Vec<Attachment>)`.\n\nStep C \u2014 call validate_attachments and use insert_message_with_attachments:\n1. After Step 7 (ULID validation) and before Step 8 (replyTo check), add:\n   `let attachments = validate_attachments(&msg.attachments)?;` (runs before lock acquisition)\n2. At Step 10 (message insert, line ~200-216), replace call to `guard.messages().insert()` with `guard.insert_message_with_attachments(msg_id, chat_id, sender_id, body, body_type, sent_at, now_unix, &DeliveryState::Received, reply_to, &attachments)`. This is the root-level `Store::insert_message_with_attachments()` method \u2014 look it up in kith-store/src/lib.rs.\n\n**Defensive programming rules:**\n- All validation must happen BEFORE lock acquisition (run validate_attachments before `let mut guard = store.lock().unwrap()`).\n- Validation errors return `JmapError::invalid_arguments(reason)`, NOT serverFail.\n- The participants dedup: use a HashSet to detect duplicates, return `invalidArguments` if any.\n- Minimum participant count for group chat: at least 2 (sender + owner). If peer sends 0 participants, default to 1:1.\n- No log statements containing blob_id values that could be user content.\n- Do NOT call BlobStore::write_blob or fetch blob data \u2014 only metadata is validated/stored in Peer/deliver (blobs are fetched lazily per architecture).\n\n**Agent team:** R (read DeliverHandler carefully lines 71-241, read insert_message_with_attachments signature in kith-store/lib.rs, read compute_chat_id in kith-core) \u2192 I (implement) \u2192 T (write comprehensive unit tests) \u2192 V (cargo test -p kith-peer + clippy + fmt).\n\n**Tests \u2014 see KITH-7w7.5 bead (separate bead for tests to keep this bead focused on impl).**",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T01:50:46Z",
+  "updated_at": "2026-04-20T02:01:18Z",
+  "closed_at": "2026-04-20T02:01:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-7w7",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:50:46Z"
+    },
+    {
+      "depends_on_id": "KITH-7w7.2",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T18:51:28Z"
+    }
+  ]
+}

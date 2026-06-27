@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.84",
+  "title": "kith-jmap: resolve_args processes #-keys in HashMap iteration order (non-deterministic)",
+  "description": "resolve_args collects #-prefixed keys via obj.keys().filter(...).collect() where obj is a serde_json Map (preserves insertion order). The iteration order is therefore insertion order from the JSON, which is deterministic. But the code then removes each key and inserts the resolved plain key, modifying the map in place during the loop. The iteration is over the collected Vec<String> so this is safe. However, the conflict check (obj.contains_key(&plain_key)) runs after the plain key may already have been inserted by a prior iteration. Two refs resolving to the same plain key (e.g. #foo and #foo from two different method args) would: first iteration succeeds, second sees the inserted key from the first and returns invalidArguments. This is correct behavior but the code's comment says 'can't mutate while iterating' without explaining that multiple #-keys can target the same plain key. Add a comment clarifying the ordering guarantee.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:41:39Z",
+  "updated_at": "2026-04-25T08:26:51Z",
+  "closed_at": "2026-04-25T08:26:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:41:39Z"
+    }
+  ]
+}

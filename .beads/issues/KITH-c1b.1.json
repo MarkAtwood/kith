@@ -1,0 +1,20 @@
+{
+  "id": "KITH-c1b.1",
+  "title": "TLS shutdown drain is unconditional sleep, not real drain",
+  "description": "In main.rs TLS shutdown path (line 186), after stopping accept loops the code sleeps 10 seconds unconditionally. In-flight connection tasks (spawned at line 168) are not tracked via JoinSet or similar, so there is no mechanism to actually wait for them to complete. The sleep neither guarantees in-flight requests finish nor stops early when they do. Fix: collect spawned connection task handles into a JoinSet and join_all with a timeout, replacing the hard sleep.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T16:38:53Z",
+  "updated_at": "2026-04-19T16:42:59Z",
+  "closed_at": "2026-04-19T16:42:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-c1b",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T09:38:52Z"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "close_reason": "mention_broadcast enforced in Message/set for channel chats, 5 tests",
+  "closed_at": "2026-06-13T21:29:40Z",
+  "compaction_level": 0,
+  "content_hash": "607e383406f0763c27efbafe9146332c1337278c8c67b471d7b93978e3db3dbc",
+  "created_at": "2026-06-13T06:29:23Z",
+  "created_by": "Mark Atwood",
+  "description": "The spec requires that Message/set create with broadcast mentions must be rejected with forbidden when the sender lacks the mention_broadcast permission. kith has no mention permission enforcement. Depends on Spaces and broadcastMentions being implemented first. Spec reference: draft-atwood-jmap-chat-00.md line 681, 1080.",
+  "design": "## Plan: Enforce mention_broadcast permission in Message/set\n\n### Approach\nWhen a Message/set create or update includes broadcast mentions (non-empty broadcastMentions array, or rich-body with \"broadcast\" spans), the server must check that the sender holds the \"mention_broadcast\" permission in the target Space. This only applies to channel chats within a Space; group chats without a Space have no permission graph, so broadcast mentions are unrestricted.\n\n### Steps\n\n**1. Permission check in Message/set create**\n- File: kith-chat/src/message.rs, in process_create\n- After parsing broadcastMentions and body:\n  - Determine if message contains broadcast mentions:\n    - Non-empty `broadcastMentions` array, OR\n    - bodyType is \"application/jmap-chat-rich\" AND body contains any span with `type: \"broadcast\"`\n  - If yes, look up the Chat:\n    - If chat.kind == \"channel\", resolve the containing Space and check sender's permissions\n    - If sender lacks \"mention_broadcast\" permission \u2192 reject with `forbidden`\n    - If chat.kind == \"direct\" or \"group\" \u2192 no check (unrestricted per spec)\n\n**2. Permission check in Message/set update**\n- Same file, in update handling\n- Same logic: if updated body/mentions would result in broadcast mentions present, enforce permission\n- Per spec: \"The same mention_broadcast permission check applied at create time applies to updates that add or retain a broadcast mention\"\n\n**3. Permission resolution implementation**\n- Need a function: `has_permission(store, space_id, user_id, permission_name) -> bool`\n- Implements spec \u00a76.1 permission resolution:\n  1. Union all permissions from member's SpaceRoles (including implicit @everyone)\n  2. Apply channel-level deny overrides (ascending position)\n  3. Apply channel-level allow overrides (ascending position)\n  4. Apply member-specific deny\n  5. Apply member-specific allow\n- This function will be reused for all Space permission checks (send, pin, manage_*, etc.)\n\n**4. Tests**\n- Message/set create with broadcastMentions in channel chat, sender has permission \u2192 accepted\n- Message/set create with broadcastMentions in channel chat, sender lacks permission \u2192 forbidden\n- Message/set create with broadcastMentions in group chat (no Space) \u2192 accepted (unrestricted)\n- Message/set update adding broadcast mention, sender lacks permission \u2192 forbidden\n- Rich body with \"broadcast\" span in channel chat, sender lacks permission \u2192 forbidden\n\n### Dependencies\n- KITH-japt (Spaces) must be implemented first \u2014 provides Space, SpaceRole, SpaceMember, ChannelPermission types and storage\n- KITH-895d (broadcastMentions) must be implemented first \u2014 provides the field to check\n- KITH-c76k (rich body) should be implemented first \u2014 for broadcast span detection in rich bodies\n\n### Files touched\n- kith-chat/src/message.rs (permission check in create/update)\n- kith-store or kith-core (permission resolution function)\n- kith-chat/src/lib.rs or new permission module",
+  "ephemeral": 0,
+  "id": "KITH-tcy6",
+  "is_template": 0,
+  "issue_type": "bug",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Enforce mention_broadcast permission in Message/set",
+  "updated_at": "2026-06-13T21:29:40Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:35:16Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-895d",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T06:35:17Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-c76k",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T06:35:16Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-japt",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T12:02:00Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-x15b",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

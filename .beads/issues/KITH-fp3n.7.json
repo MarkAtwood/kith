@@ -1,0 +1,21 @@
+{
+  "id": "KITH-fp3n.7",
+  "title": "Tests use 'Contact' type_name in StateChange, masking 'ChatContact' production mismatch",
+  "description": "The events.rs test suite sends StateChange { type_name: 'Contact'.to_string() } directly (lines 898, 1394) but the production broadcast channel (kith-store/src/contact.rs line 23) sends type_name: 'ChatContact'.\n\nBecause the tests construct StateChange values in-process rather than going through the store's broadcast path, they never exercise the actual type_name values that production emits. This means:\n- The TypeFilter 'Contact' vs 'ChatContact' mismatch described in the companion P0 bug (KITH-fp3n.5) is not caught by any existing test.\n- Tests that use 'Contact' to close a closeafter=state stream (e.g. events_last_event_id_no_replay_when_current) work coincidentally because no type filter is active in those tests \u2014 any type_name passes through when type_filter is None.\n\nThe fix is coupled to KITH-fp3n.5: once TypeFilter is corrected to use 'ChatContact', the tests at lines 898 and 1394 must also be updated to use 'ChatContact' to remain consistent with the broadcast source.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T18:06:36Z",
+  "updated_at": "2026-04-24T18:10:42Z",
+  "closed_at": "2026-04-24T18:10:42Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-fp3n",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T11:06:35Z"
+    }
+  ]
+}

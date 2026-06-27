@@ -1,0 +1,39 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Removed local BroadcastMention workaround. Now uses upstream jmap-chat-types typed field. Path deps point to ~/PROJECT/crate-jmap/.",
+  "closed_at": "2026-06-13T21:44:46Z",
+  "compaction_level": 0,
+  "content_hash": "dbf8e968f176d886ccc0e73d11afa98e2706096ff6a76b24ae925a114b728a29",
+  "created_at": "2026-06-13T19:03:53Z",
+  "created_by": "Mark Atwood",
+  "description": "jmap-chat-types has BroadcastMention in the repo (commit 51d046f) but is NOT published to crates.io yet \u2014 intentionally. When the crate is ready to publish: (1) bump version, (2) cargo publish, (3) bump kith's dep, (4) remove local BroadcastMention + VALID_BROADCAST_SCOPES from kith-core, (5) re-export from jmap-chat-types, (6) switch from Message.extra to typed msg.broadcast_mentions field. Do NOT rush publishing \u2014 let kith validate the API first.",
+  "ephemeral": 0,
+  "id": "KITH-cz6h",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Remove kith-core serde workarounds after jmap-chat-types update",
+  "updated_at": "2026-06-13T21:44:46Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:03:56Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-kuk4",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T12:03:57Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-r6gw",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

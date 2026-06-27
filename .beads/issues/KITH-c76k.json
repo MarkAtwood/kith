@@ -1,0 +1,40 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Rich body type implemented with validation. 12 new tests, 703 total pass.",
+  "closed_at": "2026-06-13T18:50:22Z",
+  "compaction_level": 0,
+  "content_hash": "0d6a0b94256aa3dac96f9ce4e34b9ea5ae914a2fe61d97e7c65e79f21aafa57b",
+  "created_at": "2026-06-13T06:29:23Z",
+  "created_by": "Mark Atwood",
+  "description": "kith only supports text/plain and text/markdown. The spec recommends (SHOULD) support for application/jmap-chat-rich. Hardcoded in three places: kith-jmap/src/lib.rs:221, kith-peer/src/lib.rs:24, kith-chat/src/message.rs:18. When added, must enforce that mentions and broadcastMentions arrays are empty for rich-body messages. Spec reference: draft-atwood-jmap-chat-00.md line 213, 1388-1390.",
+  "design": "## Plan: Support application/jmap-chat-rich bodyType\n\n### Approach\nThis is a small, mechanical change: add \"application/jmap-chat-rich\" to the three SUPPORTED_BODY_TYPES constants, add body format validation for the rich type, and enforce the constraint that mentions/broadcastMentions arrays must be empty when bodyType is rich.\n\n### Steps\n\n**1. Add to SUPPORTED_BODY_TYPES constants (3 locations)**\n- kith-jmap/src/lib.rs:221 \u2014 add to supported_body_types capability vec\n- kith-peer/src/lib.rs:24 \u2014 add to SUPPORTED_BODY_TYPES const\n- kith-chat/src/message.rs:18 \u2014 add to SUPPORTED_BODY_TYPES const\n\n**2. Add body format validation for rich type**\n- When bodyType is \"application/jmap-chat-rich\":\n  - `body` must be valid JSON\n  - Parsed JSON must be an object with a `spans` key that is an array\n  - Each span must have a `type` (String) and `text` (String) field\n  - Reject spans with `type: \"broadcast\"` that have unrecognized `scope` (not \"everyone\", \"here\", \"admins\")\n  - Do NOT reject unrecognized span types (spec: \"Servers MUST NOT reject messages solely because they contain unrecognized span types\")\n- Validation location: kith-chat/src/message.rs process_create (after bodyType check), and kith-peer/src/lib.rs DeliverHandler\n\n**3. Enforce mentions/broadcastMentions emptiness constraint**\n- When bodyType is \"application/jmap-chat-rich\":\n  - `mentions` array MUST be empty \u2014 reject with invalidArguments if not\n  - `broadcastMentions` array MUST be empty \u2014 reject with invalidArguments if not\n  - (Mentions are carried inline as \"mention\" and \"broadcast\" spans in the rich body)\n\n**4. No schema changes needed**\n- body_type is already TEXT, stores any string\n- body is already TEXT, stores the JSON string\n\n**5. Tests**\n- Message/set create with bodyType=application/jmap-chat-rich and valid spans body \u2014 accepted\n- Peer/deliver with same \u2014 accepted\n- Reject invalid JSON body with rich type\n- Reject body missing spans key\n- Accept body with unrecognized span types (forward compatibility)\n- Reject non-empty mentions array with rich body type\n- Reject non-empty broadcastMentions array with rich body type\n- Reject broadcast span with invalid scope value\n\n**6. Documentation**\n- Update kith-architecture.md:208 to include \"application/jmap-chat-rich\"\n\n### Dependencies\n- KITH-pqed (mentions) and KITH-895d (broadcastMentions) should land first, since this issue enforces the \"must be empty\" constraint on those fields for rich bodies. However, the SUPPORTED_BODY_TYPES constant change could land independently.\n\n### Alternative considered\nCould split into two PRs: (a) just add the constant (trivial), (b) add validation. Rejected \u2014 the validation is small enough to ship together, and shipping the constant alone would accept rich bodies without validating their structure.\n\n### Files touched\n- kith-jmap/src/lib.rs (capability)\n- kith-peer/src/lib.rs (constant + validation)\n- kith-chat/src/message.rs (constant + validation)\n- kith-architecture.md (docs)",
+  "ephemeral": 0,
+  "id": "KITH-c76k",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "Support application/jmap-chat-rich bodyType",
+  "updated_at": "2026-06-13T18:50:22Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T06:35:15Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-895d",
+      "metadata": {},
+      "type": "blocks"
+    },
+    {
+      "created_at": "2026-06-13T06:35:15Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-pqed",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

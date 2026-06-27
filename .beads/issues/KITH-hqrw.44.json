@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.44",
+  "title": "kith-tui has no input timeout for SSE or JMAP calls",
+  "description": "client.rs call_jmap and run_sse use reqwest without an explicit timeout. A kithd that accepts the connection but never sends a response will cause the TUI to hang indefinitely in an await. The 50ms tick interval only fires when a tokio::select! branch completes; a pending HTTP call blocks that branch. The SSE task is a separate spawned task so it would hang there, but call_jmap is awaited directly from the event loop in handle_state_change and load_startup_data. Trigger: kithd goes into a long GC pause or network partition after TLS handshake; TUI becomes unresponsive to keyboard events.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:43Z",
+  "updated_at": "2026-04-25T05:22:31Z",
+  "closed_at": "2026-04-25T05:22:31Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:43Z"
+    }
+  ]
+}

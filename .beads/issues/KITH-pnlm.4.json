@@ -1,0 +1,21 @@
+{
+  "id": "KITH-pnlm.4",
+  "title": "KNOWN_UPDATE_KEYS has no test \u2014 drift silent when new patchable Contact field added",
+  "description": "contact.rs: const KNOWN_UPDATE_KEYS = &[\"displayName\", \"blocked\"]. The comment says this list must stay in sync with ChatContact's patchable fields in kith-store. There is no test that verifies KNOWN_UPDATE_KEYS is complete. When a contributor adds a new patchable field and forgets to update this list, the field silently returns invalidProperties at runtime. A test that patches each member of KNOWN_UPDATE_KEYS and asserts it is not in notUpdated would catch this at CI time.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "chore",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T20:26:34Z",
+  "updated_at": "2026-04-24T20:33:34Z",
+  "closed_at": "2026-04-24T20:33:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-pnlm",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T13:26:34Z"
+    }
+  ]
+}

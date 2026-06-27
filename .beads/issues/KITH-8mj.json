@@ -1,0 +1,26 @@
+{
+  "id": "KITH-8mj",
+  "title": "Web client: message compose and send",
+  "description": "Implement message compose and send in app.js: textarea + send button, optimistic UI, Message/set create.\n\nWhat: Compose area with textarea and send button. On send, add message to thread immediately (optimistic), then POST Message/set create. On error, revert and show error.\n\nAlgorithm:\n1. Compose area HTML (injected by renderApp or present in index.html):\n   - <div class=compose><textarea id=compose-body placeholder='Type a message...' rows=1></textarea><button id=send-btn>Send</button></div>\n2. function setupCompose():\n   - document.getElementById('send-btn').addEventListener('click', sendMessage);\n   - document.getElementById('compose-body').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });\n3. async function sendMessage():\n   - const body = document.getElementById('compose-body').value.trim();\n   - if (!body || !currentChatId) return;\n   - document.getElementById('compose-body').value = '';\n   - const tempId = 'temp-' + Date.now();\n   - const optimistic = { id: tempId, chatId: currentChatId, senderId: 'self', body, receivedAt: new Date().toISOString(), deliveryState: 'pending' };\n   - appendMessageBubble(optimistic);  // add to DOM immediately\n   - try:\n     - const responses = await callJmap([['Message/set', { accountId: 'a-self', create: { c0: { chatId: currentChatId, body, bodyType: 'text/plain', sentAt: new Date().toISOString() } } }, 's0']]);\n     - const [, result] = responses[0];\n     - if (result.notCreated && result.notCreated.c0) throw new Error(result.notCreated.c0.description);\n     - const created = result.created.c0;\n     - replaceTempMessage(tempId, created);  // swap optimistic bubble for real one\n   - catch (err):\n     - removeTempMessage(tempId);\n     - document.getElementById('compose-body').value = body;  // restore text\n     - showError('Send failed: ' + err.message);\n4. function appendMessageBubble(msg): creates and appends a bubble to #message-thread.\n5. function replaceTempMessage(tempId, realMsg): find bubble by data-temp-id, update with real id and deliveryState.\n\nDefensive programming rules:\n- body must be non-empty and trimmed before sending.\n- Never send if currentChatId is null.\n- On server error (notCreated), revert optimistic UI and restore compose body.\n- textContent only for message body in optimistic bubble too.\n- sentAt is for display only; server uses receivedAt.\n\nTests (oracle: Message/set create request/response shape from RFC 8620 \u00a75.3 + kith-chat/src/message.rs):\n- Sending 'Hello' with currentChatId set: optimistic bubble appears immediately with body 'Hello'\n- On success: temp bubble replaced with real message with correct id\n- On error (mock callJmap to throw): temp bubble removed, compose textarea restored\n- Enter key sends message (Shift+Enter inserts newline)",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T17:53:14Z",
+  "closed_at": "2026-04-19T17:53:14Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-be1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-f0g",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    }
+  ]
+}

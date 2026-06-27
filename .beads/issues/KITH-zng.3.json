@@ -1,0 +1,20 @@
+{
+  "id": "KITH-zng.3",
+  "title": "IPv6 SocketAddr in whois query param may not be URL-encoded",
+  "description": "addr.to_string() for IPv6 produces '[::1]:1234'. Square brackets are gen-delims in RFC 3986 and technically should be percent-encoded in query parameters. Verify whether tailscaled's Go HTTP handler parses [::1]:1234 correctly without encoding, or requires %5B::1%5D:1234. If tailscaled uses r.URL.Query().Get(\"addr\") it will handle both. Needs test with IPv6 SocketAddr.\n\nFiles: crates/kith-tslocal/src/lib.rs whois() line ~162",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:23:10Z",
+  "updated_at": "2026-04-19T06:25:05Z",
+  "closed_at": "2026-04-19T06:25:05Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-zng",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:23:09Z"
+    }
+  ]
+}

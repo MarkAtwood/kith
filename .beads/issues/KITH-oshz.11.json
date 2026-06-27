@@ -1,0 +1,20 @@
+{
+  "id": "KITH-oshz.11",
+  "title": "Decision: ClientError enum separates cert, parse, and HTTP concerns",
+  "description": "ClientError (lines 20-30) has four variants: CertNotFound, CertInvalid, Http (delegated via #[from]), and Parse. This structure makes error handling explicit: the caller knows whether the problem is a missing/bad cert (client-side setup), an HTTP status/network error, or malformed JSON. Each variant carries minimal context (PathBuf for cert, String for parse errors). This design avoids lumping all failures into a generic error type.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:04:58Z",
+  "updated_at": "2026-04-20T11:46:46Z",
+  "closed_at": "2026-04-20T11:46:46Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-oshz",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:04:57Z"
+    }
+  ]
+}

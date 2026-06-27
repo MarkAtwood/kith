@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.51",
+  "title": "ContactStore::get_changes_since puts all IDs in added[], not distinguishing created vs updated",
+  "description": "ContactStore::get_changes_since (the simple non-ordered variant) puts all changed contact IDs into the added[] field of ChangesResult, leaving updated[] empty (line 326-330 of contact.rs). The same pattern exists in ChatStore::get_changes_since. These are labeled as 'Phase 1' shortcuts in the doc comments on MessageStore but NOT explicitly labeled on ChatStore or ContactStore's version. Callers in kith-chat that call get_changes_since (as opposed to get_changes_since_ordered) will report all contact and chat changes as 'created' rather than properly partitioned into created[] vs updated[]. This could cause clients to re-create existing objects. The safe surface is get_changes_since_ordered, which correctly computes is_create. The plain get_changes_since variant should either be removed (forcing callers to the ordered form) or clearly deprecated with a doc warning stating that all changes appear in added[] regardless of created/updated classification.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:34:20Z",
+  "updated_at": "2026-04-25T04:16:00Z",
+  "closed_at": "2026-04-25T04:16:00Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:34:19Z"
+    }
+  ]
+}

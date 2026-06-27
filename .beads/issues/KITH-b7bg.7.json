@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.7",
+  "title": "Message/get ids=null behavior documented as intentional deviation but KITH-hqrw.5 is open",
+  "description": "Message/get (message.rs:724-742) rejects ids=null with invalidArguments. KITH-hqrw.5 is already filed for this RFC 8620 \u00a75.1 deviation. The code has a comment (line 724: 'ids is required in v1; null or absent \u2192 invalidArguments') and a test (test_message_get_ids_none) that verifies this non-RFC behavior. This means fixing KITH-hqrw.5 will require changing both the implementation AND the test. The test is currently asserting wrong behavior as correct. When KITH-hqrw.5 is fixed, the test must be updated from expect_err to expect_ok; if the fixer only fixes the implementation but not the test, the test will start failing and the CI will reject the fix. Adding a comment to the test cross-referencing KITH-hqrw.5 would prevent this confusion.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:50:19Z",
+  "updated_at": "2026-04-25T05:01:51Z",
+  "closed_at": "2026-04-25T05:01:51Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:50:19Z"
+    }
+  ]
+}

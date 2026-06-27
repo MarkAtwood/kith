@@ -1,0 +1,13 @@
+{
+  "id": "KITH-x8zm",
+  "title": "Review: parse SSE data at correct JSON depth in kithctl watch",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T09:23:15Z",
+  "updated_at": "2026-04-25T09:25:49Z",
+  "closed_at": "2026-04-25T09:25:49Z",
+  "notes": "Maintainer risk: MEDIUM \u2014 the fix is correct and the comment documents the wire shape, but the absence of any test for the JSON path navigation means regression to the old wrong parse would go undetected until a human runs kithctl watch against a live daemon.\nConfidence: 10% chance of missed bug. Uncertainty driven by: watch_once is async I/O-bound and not integration-tested \u2014 any bug in the surrounding reconnect/backoff logic or in the TLS handshake would not be caught by the existing test suite. The JSON path logic itself is simple enough that a missed bug is unlikely. Would raise confidence if: a unit test exercised the full state_val JSON parsing inline (even extracted to a pure function), and if there were an integration test that connected watch_once to a fake SSE server and verified it fetched messages on a state event."
+}

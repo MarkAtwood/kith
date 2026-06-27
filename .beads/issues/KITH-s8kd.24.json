@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.24",
+  "title": "finish_message_delivery: guard delivery_state \\!= 'delivered' in UPDATE is correct",
+  "description": "The UPDATE in finish_message_delivery (and update_delivery_state) guards with AND delivery_state \\!= 'delivered'. This means the Delivered terminal state can never be overwritten at the SQL level regardless of application bugs. A contributor might suggest removing this guard to 'simplify' the code. Keep it: it provides a second layer of defense that make_failed and complete_delivery both rely on. Without it, a retry race could mark a successfully-delivered message as failed.",
+  "status": "closed",
+  "priority": 3,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:46:40Z",
+  "updated_at": "2026-04-25T08:15:52Z",
+  "closed_at": "2026-04-25T08:15:52Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:46:40Z"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "KITH-s8kd.16",
+  "title": "list_by_chat and list_by_chat_paged: ORDER BY created_at DESC, id DESC \u2014 id is ULID but not guaranteed monotonic",
+  "description": "MessageStore list_by_chat and list_by_chat_paged order by (created_at DESC, id DESC). id is a ULID which encodes the timestamp in its high bits \u2014 for messages with the same created_at second, ULIDs sort in monotonic insertion order. The tie-break by id is correct and efficient. However get_position_in_chat uses a correlated subquery that mirrors this tie-break logic: (created_at > m.created_at OR (created_at = m.created_at AND id > ?2)). The id comparison uses text lexicographic order. ULID strings are 26 characters of Crockford base32 \u2014 they sort correctly as strings only if all characters use the same case. Crockford base32 uses uppercase. If any code path inserts a ULID with lowercase characters, the text sort breaks. This is a latent risk: the sort is only correct if all IDs are uppercase ULIDs.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:41:57Z",
+  "updated_at": "2026-04-25T07:08:18Z",
+  "closed_at": "2026-04-25T07:08:18Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-s8kd",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:41:57Z"
+    }
+  ]
+}

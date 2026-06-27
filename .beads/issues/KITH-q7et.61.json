@@ -1,0 +1,31 @@
+{
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T16:02:40Z",
+  "compaction_level": 0,
+  "content_hash": "6846840964dc85d4f20b46adfec2bfad5437b7eff20589605fe9b0314aadbceb",
+  "created_at": "2026-06-15T04:56:40Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-jmap/src/lib.rs has public structs that are part of the JMAP session-building API but lack doc comments:\n\n- Capabilities struct (line 133) \u2014 no doc comment\n- AccountCapabilities struct (line 149) \u2014 no doc comment\n- Dispatcher::new() (line 353) \u2014 no doc comment\n\nThese are all part of the public API surface used by kithd to construct the JMAP session object. The Dispatcher struct itself has a doc comment but ::new() does not.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.61",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 2,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-jmap Capabilities/AccountCapabilities structs undocumented",
+  "updated_at": "2026-06-15T16:02:40Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:56:40Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

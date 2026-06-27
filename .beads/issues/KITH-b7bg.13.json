@@ -1,0 +1,20 @@
+{
+  "id": "KITH-b7bg.13",
+  "title": "kith-jmap: JmapHandler doc says 'Handlers must not panic' but gives no guidance on what to do instead",
+  "description": "lib.rs JmapHandler trait doc (line 264) says 'Handlers must not panic. A panic inside call will propagate through the async executor and crash the task; there is no catch at the dispatch layer.' This is accurate but only states the prohibition, not the remedy. A contributor implementing a new handler doesn't know whether to use unwrap() vs expect() vs returning Err(serverFail). The doc should say: use map_err to convert all error types to JmapError and return Err(JmapError::server_fail(...)) for internal failures. Never unwrap() or expect() unless the invariant is formally proven safe. This prevents the pattern tracked in KITH-hqrw.67 from recurring.",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T04:53:11Z",
+  "updated_at": "2026-04-25T08:30:36Z",
+  "closed_at": "2026-04-25T08:30:36Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-b7bg",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T21:53:11Z"
+    }
+  ]
+}

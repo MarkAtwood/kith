@@ -1,0 +1,21 @@
+{
+  "id": "KITH-8ntb",
+  "title": "ChatContact.id = userId: collapse tailscale_user_id, remove mailbox_host from JMAP type",
+  "description": "The I-D specifies that ChatContact.id IS the userId from the auth layer \u2014 no separate identity namespace. Currently the Contact struct has both id (server-assigned) and tailscale_user_id (the real identity), plus mailbox_host which belongs in the federation spec.\\n\\nThe DB already uses peer_user_id as the primary key, so id and tailscale_user_id map to the same value. This is mostly a struct simplification.\\n\\nmailbox_host stays in the DB (needed for outbox delivery routing) but must not appear in the JMAP ChatContact response.\\n\\nFiles to touch:\\n- kith-core/src/contact.rs: remove tailscale_user_id field, remove mailbox_host field from struct\\n- kith-store/src/contact.rs: peer_mailbox_host stays in DB row but not mapped into ChatContact; delivery code gets it separately\\n- kith-core/Cargo.toml: remove sha2 dep (freed when compute_chat_id is removed in the chat ID issue)\\n- kith-peer/src/lib.rs: upsert still needs mailbox_host for routing, passed separately\\n\\nDepends on: KITH-phdk (rename must happen first)",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-23T21:50:31Z",
+  "updated_at": "2026-04-23T22:45:33Z",
+  "closed_at": "2026-04-23T22:45:33Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-phdk",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-23T14:51:17Z"
+    }
+  ]
+}

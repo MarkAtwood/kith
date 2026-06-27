@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.20",
+  "title": "mark_delivered and complete_delivery undocumented distinction risks misuse",
+  "description": "mark_delivered's docstring says only 'Mark as successfully delivered: delete the outbox row.' It does not state that it does NOT update messages.delivery_state \u2014 the critical difference from complete_delivery. A caller reading only the docstring would not know which one to use. Either add a doc warning to mark_delivered or make it private (it is only called from outbox tests and appears unused outside the crate).",
+  "status": "closed",
+  "priority": 4,
+  "issue_type": "chore",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:48:19Z",
+  "updated_at": "2026-04-24T16:59:37Z",
+  "closed_at": "2026-04-24T16:59:37Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:48:21Z"
+    }
+  ]
+}

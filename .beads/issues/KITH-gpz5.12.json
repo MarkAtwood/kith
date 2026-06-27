@@ -1,0 +1,20 @@
+{
+  "id": "KITH-gpz5.12",
+  "title": "content_type validator allows multiple slashes",
+  "description": "validate_attachments uses split_once('/') to check content_type structure. The comment says 'exactly one slash' but split_once splits only on the first slash, so 'text/plain/extra' passes: s='plain/extra' is non-empty. A content_type with multiple slashes is not valid MIME (RFC 2045 token syntax) but is stored and later served via the blob download handler. The check should verify the subtype part contains no further slashes.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T16:46:38Z",
+  "updated_at": "2026-04-24T16:58:15Z",
+  "closed_at": "2026-04-24T16:58:15Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-gpz5",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T09:46:38Z"
+    }
+  ]
+}

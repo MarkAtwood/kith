@@ -1,0 +1,20 @@
+{
+  "id": "KITH-626.6",
+  "title": "Document magic constants STATUS_MAX_BYTES and WHOIS_MAX_BYTES with security rationale",
+  "description": "Lines 62 and 65 define:\n  const STATUS_MAX_BYTES: usize = 10 * 1024 * 1024;\n  const WHOIS_MAX_BYTES: usize = 102_400;\n\nCurrent comments only say WHAT they limit, not WHY those specific values.\n\nRISK: A maintainer might lower/raise these without understanding consequences (DoS, memory exhaustion).\n\nISSUE: Without documented rationale, a future maintainer will guess.\n\nSUGGESTION: Add rationale comments explaining observed tailnet sizes or Tailscale API evolution expectations.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T06:15:19Z",
+  "updated_at": "2026-04-19T06:19:47Z",
+  "closed_at": "2026-04-19T06:19:47Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-626",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:15:18Z"
+    }
+  ]
+}

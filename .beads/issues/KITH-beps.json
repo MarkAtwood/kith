@@ -1,0 +1,29 @@
+{
+  "compaction_level": 0,
+  "content_hash": "8c8e894869b0dea24671a0e3c7938a93e98da9fd42f1092ea5b0b46a65084541",
+  "created_at": "2026-06-13T19:18:06Z",
+  "created_by": "Mark Atwood",
+  "description": "Implement .well-known/jmap and/or DNS SRV-based peer discovery as an alternative to Tailscale MagicDNS probing. This enables kith to federate with non-Tailscale JMAP Chat servers. Requires the abstract transport layer (transport trait). Identity format: the spec supports email-shaped IDs and DID URIs (draft-atwood-jmap-chat-did-00). Transport auth: mutual TLS with WebPKI or DANE.",
+  "ephemeral": 0,
+  "id": "KITH-beps",
+  "is_template": 0,
+  "issue_type": "feature",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 4,
+  "status": "open",
+  "timeout_ns": 0,
+  "title": "DNS-based peer discovery for JMAP Chat federation",
+  "updated_at": "2026-06-13T19:18:06Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-13T12:18:10Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-lhaj",
+      "metadata": {},
+      "type": "blocks"
+    }
+  ]
+}

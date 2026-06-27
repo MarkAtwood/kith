@@ -1,0 +1,20 @@
+{
+  "id": "KITH-hqrw.36",
+  "title": "Content-Length for peer-fetched blob uses claimed DB size not actual file size",
+  "description": "In blob_download_handler, after a successful peer fetch, the response is built with Content-Length set to info.size_bytes (from the DB record). This value was set by the peer at message delivery time (AttachmentArg.size is attacker-controlled). fetch_peer_blob validates that the actual body bytes match expected_sha256 and are <= expected_size+1, so the on-disk blob is correct. However info.size_bytes in the DB comes from the peer-supplied size field which was stored without re-verification against actual bytes. The SHA-256 check in fetch_peer_blob guarantees integrity but does NOT guarantee size == info.size_bytes (a file with correct SHA-256 can have a different byte count if the sha256 was somehow pre-arranged). In practice sha256 collision would require cryptographic breaks. The real risk: if info.size_bytes > actual file size, the browser will wait for more bytes that never arrive and the download will stall or fail. The fix is to use the actual file metadata size (tokio::fs::File::metadata().len()) for Content-Length on the re-opened file, same as the local-hit path.",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-25T03:33:06Z",
+  "updated_at": "2026-04-25T04:03:19Z",
+  "closed_at": "2026-04-25T04:03:19Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-hqrw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T20:33:06Z"
+    }
+  ]
+}

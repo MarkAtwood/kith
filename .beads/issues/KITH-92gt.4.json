@@ -1,0 +1,21 @@
+{
+  "id": "KITH-92gt.4",
+  "title": "tls.rs: only cert-file exists (key missing) triggers regeneration",
+  "description": "kithd/src/tls.rs line 33: load_or_generate_cert() uses `cert_path.exists() && key_path.exists()` to decide whether to load or regenerate. If the cert file exists but the key file was deleted (or vice versa), the function falls into the generate branch and overwrites the cert on disk. A new cert/key pair is then out of sync with any already-discovered peer that cached the old cert. This is not a security bug (Tailscale identity is the trust anchor) but it is an operational footgun: a user who manually deletes only one of the two files gets a silent re-key. Consequence: unexpected re-key on partial-file condition; no warning is emitted that only one file was present.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "Mark Atwood",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-24T19:37:18Z",
+  "updated_at": "2026-04-24T19:44:34Z",
+  "closed_at": "2026-04-24T19:44:34Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-92gt",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-24T12:37:18Z"
+    }
+  ]
+}

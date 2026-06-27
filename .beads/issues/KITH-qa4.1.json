@@ -1,0 +1,20 @@
+{
+  "id": "KITH-qa4.1",
+  "title": "[SEC0] SPA fallback: paths with dots treated as files (false 404s)",
+  "description": "Location: crates/kithd/src/static_files.rs line 20\n\nThe SPA fallback check uses `!path.contains('.')` to detect whether a path should trigger the fallback or return 404. This is incorrect for paths like `/chat/room.1/messages` that contain a dot but are not file extensions.\n\nCorrect behavior: The check should distinguish file extensions from dots in path segments. A path should trigger SPA fallback only if it has no file extension (e.g., ends with a path segment that contains no dot). Example: `/chat/room.1/messages` is a route and should fallback to index.html; `/chat/room.txt` is a file request and should 404 if not found.\n\nCurrent behavior: /chat/room.1/messages returns 404 instead of serving index.html for client-side routing.\n\nFix: Check if the final path segment (after last /) contains a dot, not the entire path. Or check if the path ends with a known file extension before the 404 fallback logic.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-19T17:54:24Z",
+  "updated_at": "2026-04-19T17:58:59Z",
+  "closed_at": "2026-04-19T17:58:59Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-qa4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T10:54:23Z"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "KITH-ebq",
+  "title": "kith-tslocal: Status client over Unix socket",
+  "description": "Implement async status() -> Result<StatusResponse, AuthError> over Unix socket.\n\nWhat: HTTP GET /localapi/v0/status to tailscaled Unix socket. Called once at startup.\n\nAlgorithm (same socket pattern as whois):\n1. Implement status(&self) -> Result<StatusResponse, AuthError> on LocalApiClient:\n   a. Connect: tokio::net::UnixStream::connect(&self.socket_path).await map_err -> WhoIsFailed\n   b. Wrap + handshake (same as whois)\n   c. Build request: GET /localapi/v0/status with Host: local header\n   d. Send, check status, collect body (same pattern as whois)\n   e. Size check: 10MB limit (status includes all peers, larger than whois)\n   f. Parse JSON: serde_json::from_slice -> StatusResponse\n   g. Validate: if result.tailscale_ips.is_empty() -> WhoIsFailed('no tailnet IPs - is tailscale running?')\n   h. Return Ok(result)\n2. Caller (kithd startup) should treat error as fatal: log and exit\n\nDefensive rules:\n- Size limit 10MB (status can be large with many peers)\n- Validate tailscale_ips non-empty (kithd cannot bind without them)\n- All errors -> AuthError::WhoIsFailed(String)\n- Do not cache result in kith-tslocal; caching is caller's responsibility\n- Backend state 'Running' is expected; caller may check backend_state field\n\nAgent team: standard (R + I + T)\nTests: separate bead KITH-3oh",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "task",
+  "created_at": "2026-04-19T04:17:48Z",
+  "updated_at": "2026-04-19T06:10:04Z",
+  "closed_at": "2026-04-19T06:10:04Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-uc4",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T21:17:48Z"
+    },
+    {
+      "depends_on_id": "KITH-uc4.1",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:20Z"
+    },
+    {
+      "depends_on_id": "KITH-v7v",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-18T23:05:20Z"
+    }
+  ]
+}

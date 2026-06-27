@@ -1,0 +1,32 @@
+{
+  "assignee": "Mark Atwood",
+  "close_reason": "Closed",
+  "closed_at": "2026-06-15T15:52:20Z",
+  "compaction_level": 0,
+  "content_hash": "ee2abbdeb1c4c724b8c6405968e92519f29a1fc656325b15cee6a69724bb69da",
+  "created_at": "2026-06-15T04:53:30Z",
+  "created_by": "Mark Atwood",
+  "description": "kith-peer/src/lib.rs exposes the following as pub, but they are internal wire-format types used only within handler implementations:\n\n- PeerDeliverArgs (line 45)\n- AttachmentArg (line 53)\n- BroadcastMentionArg (line 66)\n- ActionArg (line 74)\n- DeliverMessageArgs (line 88)\n- PeerReceiptArgs (line 487)\n\nThese types are serde Deserialize targets for incoming JMAP wire format. They are not intended as part of the kith-peer public API \u2014 no external crate needs to construct or match on them. Making them pub means:\n1. Changing a wire field name (e.g. renaming sent_at to sentAt in a refactor) is a breaking API change.\n2. External code can construct PeerDeliverArgs and call internal handler logic directly, bypassing validation that is assumed to run first.\n3. The wire schema and the library API are conflated.\n\nFix: change PeerDeliverArgs, AttachmentArg, BroadcastMentionArg, ActionArg, DeliverMessageArgs, PeerReceiptArgs to pub(crate). They are consumed only within this crate's handler implementations.",
+  "ephemeral": 0,
+  "id": "KITH-q7et.20",
+  "is_template": 0,
+  "issue_type": "task",
+  "metadata": {},
+  "no_history": 0,
+  "owner": "mark@reviewcommit.com",
+  "pinned": 0,
+  "priority": 1,
+  "status": "closed",
+  "timeout_ns": 0,
+  "title": "kith-peer: PeerDeliverArgs and wire structs are pub but are handler internals",
+  "updated_at": "2026-06-15T15:52:20Z",
+  "dependencies": [
+    {
+      "created_at": "2026-06-14T21:53:29Z",
+      "created_by": "Mark Atwood",
+      "depends_on_id": "KITH-q7et",
+      "metadata": {},
+      "type": "parent-child"
+    }
+  ]
+}

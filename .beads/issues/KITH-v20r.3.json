@@ -1,0 +1,20 @@
+{
+  "id": "KITH-v20r.3",
+  "title": "JS: setContactBlocked(contactId, blocked) function",
+  "description": "Implement setContactBlocked() async function that patches the blocked field via Contact/set update.\n\nWhat: Pure JS function; contacts-map update + re-render. No DOM modal.\n\nAlgorithm:\n1. Export async function setContactBlocked(contactId, blocked).\n2. Build a Contact/set update request:\n   {\n     accountId: 'a-self',\n     update: { [contactId]: { blocked } }\n   }\n3. Call callJmap([['Contact/set', args, 'm0']]).\n4. Read methodResponses[0]; on HTTP error or error response call showError() and return false.\n5. Check result.notUpdated?.[contactId]; if present call showError('Could not update contact: ' + err.type) and return false.\n6. Find contact in contacts map: const c = contacts.get(contactId); if not found return false.\n7. Update in-place: contacts.set(contactId, {...c, blocked}).\n8. Re-render: renderContactList([...contacts.values()]).\n9. Return true.\n\nDefensive programming rules:\n- contactId comes from module-level contacts Map key \u2014 never from raw DOM string\n- Validate contactId is non-empty string\n- Do not log blocked state to console\n- Re-render must happen even if re-fetch is pending (optimistic UI)\n\nTests (independent oracle: JMAP spec notUpdated semantics):\n- Test 1 'block succeeds': mock callJmap returns notUpdated={}, contacts map has contact; assert contacts.get(id).blocked === true; assert renderContactList called.\n- Test 2 'unblock succeeds': same but blocked=false.\n- Test 3 'server notUpdated': mock returns notUpdated with type=notFound; assert showError called; assert contacts map unchanged.\n- Test 4 'contact not in local map': call with unknown ID; assert returns false without JMAP call.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "task",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T15:50:40Z",
+  "updated_at": "2026-04-20T16:04:50Z",
+  "closed_at": "2026-04-20T16:04:50Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-v20r",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-20T08:50:40Z"
+    }
+  ]
+}

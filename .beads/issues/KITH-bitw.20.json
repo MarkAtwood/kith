@@ -1,0 +1,20 @@
+{
+  "id": "KITH-bitw.20",
+  "title": "DECISION: Scroll offset clamping prevents viewing invalid ranges",
+  "description": "What: clamp_scroll(visible_height) computes max = messages.len().saturating_sub(visible_height), then clamps scroll_offset to [0, max]. This ensures scroll_offset + visible_height never exceeds the message count.\n\nWhy it's good: The scroll offset is a derived quantity (messages below the fold), not a first-class buffer index. After any message list change or viewport resize, the old offset may be invalid. Clamping enforces the invariant: scroll_offset always points to a valid first visible line. Saturating math prevents underflow if there are fewer messages than the visible height. Prevents out-of-bounds reads by the render pass.",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "decision",
+  "created_by": "Mark Atwood",
+  "created_at": "2026-04-20T05:44:16Z",
+  "updated_at": "2026-04-20T05:46:07Z",
+  "closed_at": "2026-04-20T05:46:07Z",
+  "dependencies": [
+    {
+      "depends_on_id": "KITH-bitw",
+      "dep_type": "parent_child",
+      "created_by": "Mark Atwood",
+      "created_at": "2026-04-19T22:44:16Z"
+    }
+  ]
+}
