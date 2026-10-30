@@ -223,30 +223,22 @@ pub(crate) async fn load_startup_data(
                     None => continue,
                 };
                 let kind = chat.get("kind").and_then(Value::as_str).unwrap_or("");
-                let participants: Vec<String> = chat
-                    .get("participants")
-                    .and_then(Value::as_array)
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default();
                 let unread_count =
                     chat.get("unreadCount").and_then(Value::as_u64).unwrap_or(0) as u32;
 
+                // Spec Chat fields: a direct chat names the other participant
+                // by `contactId`; group and channel chats carry `name`.
                 let base_name = if kind == "direct" {
-                    let names: Vec<String> = participants
-                        .iter()
-                        .filter_map(|pid| contacts_map.get(pid).cloned())
-                        .collect();
-                    if names.is_empty() {
-                        "Unknown".to_string()
-                    } else {
-                        names.join(", ")
-                    }
+                    chat.get("contactId")
+                        .and_then(Value::as_str)
+                        .and_then(|cid| contacts_map.get(cid).cloned())
+                        .unwrap_or_else(|| "Unknown".to_string())
                 } else {
-                    format!("Group ({})", participants.len())
+                    chat.get("name")
+                        .and_then(Value::as_str)
+                        .filter(|n| !n.is_empty())
+                        .map(sanitize_display)
+                        .unwrap_or_else(|| "Group".to_string())
                 };
 
                 let display = if unread_count > 0 {
@@ -256,8 +248,8 @@ pub(crate) async fn load_startup_data(
                 };
 
                 chat_ids.push(id);
-                // display is built from contacts_map (already sanitized) and
-                // numeric/constant strings — no further sanitization needed.
+                // display is built from contacts_map (already sanitized), the
+                // sanitized group name and numeric/constant strings.
                 chat_list.push(display);
             }
         }
@@ -1277,7 +1269,7 @@ mod tests {
                         "list": [{
                             "id": "chat-abc",
                             "kind": "direct",
-                            "participants": ["c-1"],
+                            "contactId": "c-1",
                             "createdAt": "2026-01-01T00:00:00Z",
                             "unreadCount": 2
                         }],
@@ -1510,6 +1502,73 @@ mod tests {
         );
     }
 
+    // Oracle: draft-atwood-jmap-chat-00 Chat Object Fields — a direct chat
+    // names the other participant by `contactId`, a group chat carries
+    // `name`; ChatContact: clients fall back to `login` when `displayName` is
+    // absent. Chat/get and ChatContact/get responses captured from
+    // jmap-testjig (crate-jmap 25fff527).
+    #[tokio::test]
+    async fn load_startup_data_names_chats_from_testjig() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "methodResponses": [
+                    ["Chat/get", {
+                        "accountId": "testjig-account",
+                        "list": [
+                            {"activeCallAccountId": null, "activeCallId": null,
+                             "contactId": "01M66D3XQZP5DP4XBV34WWY526",
+                             "createdAt": "2026-10-30T12:38:56.606Z",
+                             "id": "01M66D41AYKP6XWKFMHKW5A9Y0", "kind": "direct",
+                             "muted": false, "pinnedMessageIds": [],
+                             "receiveTypingIndicators": true, "unreadCount": 3},
+                            {"activeCallAccountId": null, "activeCallId": null,
+                             "createdAt": "2026-10-30T12:46:09.583Z",
+                             "id": "01M66DH85FBJCJ4HQ19WC9FT05", "kind": "group",
+                             "members": [
+                                 {"id": "testjig-account", "joinedAt": "2026-10-30T12:46:09.583Z", "role": "admin"},
+                                 {"id": "01M66D3XQZP5DP4XBV34WWY526", "invitedBy": "testjig-account",
+                                  "joinedAt": "2026-10-30T12:46:09.583Z", "role": "member"}
+                             ],
+                             "muted": false, "name": "Demo crew", "pinnedMessageIds": [],
+                             "receiveTypingIndicators": true, "unreadCount": 0}
+                        ],
+                        "notFound": [], "state": "5"
+                    }, "c0"],
+                    ["ChatContact/get", {
+                        "accountId": "testjig-account",
+                        "list": [{
+                            "blocked": false, "firstSeenAt": "2026-10-30T12:38:52.927Z",
+                            "id": "01M66D3XQZP5DP4XBV34WWY526",
+                            "identity": "alice@example.org",
+                            "lastSeenAt": "2026-10-30T12:38:52.927Z",
+                            "login": "alice@example.org"
+                        }],
+                        "notFound": [], "state": "1"
+                    }, "c1"]
+                ],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let api_url = format!("{}/jmap", mock_server.uri());
+        let mut state = crate::app::AppState::new();
+        load_startup_data(
+            &reqwest::Client::new(),
+            &api_url,
+            "testjig-account",
+            &mut state,
+        )
+        .await;
+
+        assert_eq!(state.chat_list, vec!["alice@example.org (3)", "Demo crew"]);
+    }
+
     // Oracle: RFC 8620 §5.2 — /changes fails with "cannotCalculateChanges"
     // when it cannot compute changes from sinceState, and the client must
     // then resync with /get. Responses captured from jmap-testjig (crate-jmap
@@ -1729,7 +1788,7 @@ mod tests {
                         "list": [{
                             "id": "e2e-chat",
                             "kind": "direct",
-                            "participants": ["c-bob"],
+                            "contactId": "c-bob",
                             "createdAt": "2026-01-01T00:00:00Z",
                             "unreadCount": 1
                         }],
