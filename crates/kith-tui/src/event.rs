@@ -829,9 +829,13 @@ async fn resync_selected_chat(
 
 /// Handle a single [`StateChange`] event received from the SSE channel.
 ///
-/// On a "Message" state change: calls `Message/changes` to find new/updated
-/// IDs, then `Message/get` to fetch them, and appends formatted lines for
-/// messages belonging to the currently selected chat.
+/// On a "Message" state change: calls `Message/changes`, then `Message/get`
+/// for the created and updated ids (RFC 8620 §5.2). Lines of the selected
+/// chat are replaced in place for ids already shown, appended for new ids,
+/// and removed for destroyed ids. A read receipt is sent only for inbound
+/// messages whose `readAt` is unset, and the ReadPosition is advanced only
+/// when a new line was appended, so the client's own writes cannot keep
+/// re-triggering it.
 ///
 /// On a "Chat" state change: reloads the full chat list via `load_startup_data`.
 ///
@@ -922,6 +926,16 @@ pub(crate) async fn handle_state_change(
                 })
                 .unwrap_or_default();
 
+            let destroyed: Vec<String> = args
+                .get("destroyed")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+
             // Deduplicate combined IDs — use a HashSet for O(n) membership checks.
             let mut seen: std::collections::HashSet<String> = created.iter().cloned().collect();
             let mut all_ids: Vec<String> = created;
@@ -933,6 +947,15 @@ pub(crate) async fn handle_state_change(
 
             if !new_state.is_empty() {
                 state.message_state = new_state;
+            }
+
+            for id in &destroyed {
+                if let Some(i) = state.message_ids.iter().position(|m| m == id) {
+                    state.messages.remove(i);
+                    state.message_ids.remove(i);
+                    state.message_senders.remove(i);
+                }
+                state.unread_message_ids.remove(id);
             }
 
             if all_ids.is_empty() {
@@ -985,26 +1008,44 @@ pub(crate) async fn handle_state_change(
                 if msg_chat_id != current_chat_id {
                     continue;
                 }
+                let Some(line) = format_message_line(msg, &state.contacts, &state.owner_id) else {
+                    continue;
+                };
+                let msg_id = msg
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let sender_id_str = msg
+                    .get("senderId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                // A read Message carries readAt; writing it again would only
+                // bump the Message state and echo back here as `updated`.
+                let is_unread = sender_id_str != state.owner_id
+                    && !msg_id.is_empty()
+                    && msg.get("readAt").and_then(Value::as_str).is_none();
 
-                if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_id) {
+                // RFC 8620 §5.2: an id already shown is an update, not a new record.
+                let shown_at = (!msg_id.is_empty())
+                    .then(|| state.message_ids.iter().position(|m| *m == msg_id))
+                    .flatten();
+                if let Some(i) = shown_at {
+                    state.messages[i] = line;
+                    state.message_senders[i] = sender_id_str;
+                } else {
                     state.messages.push_back(line);
-                    appended = true;
-                    let msg_id = msg
-                        .get("id")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    let sender_id_str = msg
-                        .get("senderId")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
                     state.message_ids.push_back(msg_id.clone());
-                    state.message_senders.push_back(sender_id_str.clone());
-                    if sender_id_str != state.owner_id && !msg_id.is_empty() {
-                        state.unread_message_ids.insert(msg_id.clone());
-                        newly_unread.push(msg_id);
-                    }
+                    state.message_senders.push_back(sender_id_str);
+                    appended = true;
+                }
+
+                if is_unread {
+                    state.unread_message_ids.insert(msg_id.clone());
+                    newly_unread.push(msg_id);
+                } else {
+                    state.unread_message_ids.remove(&msg_id);
                 }
             }
 
@@ -1988,6 +2029,274 @@ mod tests {
             state.messages[0].contains("New message"),
             "message must show body"
         );
+    }
+
+    /// Builds a Message object as draft-atwood-jmap-chat-00 defines it; the
+    /// server omits `readAt` until it is set (crate-jmap `Message::read_at`
+    /// is `skip_serializing_if = "Option::is_none"`).
+    fn wire_message(id: &str, body: &str, read_at: Option<&str>) -> Value {
+        let mut m = json!({
+            "id": id, "chatId": "chat-1", "senderId": "c-alice",
+            "body": body, "bodyType": "text/plain", "attachments": [],
+            "sentAt": "2026-10-30T13:42:18Z", "receivedAt": "2026-10-30T13:42:18.200Z",
+            "deliveryState": "received"
+        });
+        if let Some(r) = read_at {
+            m["readAt"] = json!(r);
+        }
+        m
+    }
+
+    fn one_message_state() -> crate::app::AppState {
+        let mut state = crate::app::AppState::new();
+        state.owner_id = "a-bob".to_string();
+        state.chat_ids = vec!["chat-1".to_string()];
+        state
+            .contacts
+            .insert("c-alice".to_string(), "alice".to_string());
+        state.messages.push_back("13:42 alice: hello".to_string());
+        state.message_ids.push_back("m-1".to_string());
+        state.message_senders.push_back("c-alice".to_string());
+        state.message_state = "5".to_string();
+        state
+    }
+
+    fn method_response(name: &str, args: Value) -> wiremock::ResponseTemplate {
+        wiremock::ResponseTemplate::new(200).set_body_json(json!({
+            "methodResponses": [[name, args, "0"]], "sessionState": "0"
+        }))
+    }
+
+    // Oracle: RFC 8620 §5.2 — `updated` lists "the ids for records that have
+    // been updated since the old state", i.e. records the client already
+    // holds; they replace the cached copy, they are not new records.
+    #[tokio::test]
+    async fn handle_state_change_updated_id_replaces_existing_line() {
+        use wiremock::matchers::body_string_contains;
+        use wiremock::{Mock, MockServer};
+
+        let server = MockServer::start().await;
+        Mock::given(body_string_contains("Message/changes"))
+            .respond_with(method_response(
+                "Message/changes",
+                json!({"accountId": "a-bob", "oldState": "5", "newState": "6",
+                       "hasMoreChanges": false, "created": [], "updated": ["m-1"],
+                       "destroyed": []}),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(body_string_contains("Message/get"))
+            .respond_with(method_response(
+                "Message/get",
+                json!({"accountId": "a-bob", "state": "6", "notFound": [],
+                       "list": [wire_message("m-1", "hello (edited)", Some("2026-10-30T13:42:19Z"))]}),
+            ))
+            .mount(&server)
+            .await;
+
+        let mut state = one_message_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let sc = StateChange::new("Message", "6");
+        handle_state_change(&reqwest::Client::new(), &api_url, "a-bob", &sc, &mut state).await;
+
+        assert_eq!(state.messages.len(), 1, "updated id must not be appended");
+        assert_eq!(state.message_ids, ["m-1"]);
+        assert_eq!(state.message_senders.len(), 1);
+        assert!(
+            state.messages[0].contains("hello (edited)"),
+            "line must show the updated body, got {:?}",
+            state.messages[0]
+        );
+    }
+
+    // Oracle: RFC 8620 §5.2 — `destroyed` ids "have been destroyed since the
+    // old state"; the client drops them.
+    #[tokio::test]
+    async fn handle_state_change_destroyed_id_removes_line() {
+        use wiremock::matchers::body_string_contains;
+        use wiremock::{Mock, MockServer};
+
+        let server = MockServer::start().await;
+        Mock::given(body_string_contains("Message/changes"))
+            .respond_with(method_response(
+                "Message/changes",
+                json!({"accountId": "a-bob", "oldState": "5", "newState": "6",
+                       "hasMoreChanges": false, "created": [], "updated": [],
+                       "destroyed": ["m-1"]}),
+            ))
+            .mount(&server)
+            .await;
+
+        let mut state = one_message_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let sc = StateChange::new("Message", "6");
+        handle_state_change(&reqwest::Client::new(), &api_url, "a-bob", &sc, &mut state).await;
+
+        assert!(state.messages.is_empty(), "destroyed line must be removed");
+        assert!(state.message_ids.is_empty());
+        assert!(state.message_senders.is_empty());
+        assert_eq!(state.message_state, "6");
+    }
+
+    // Oracle: draft-atwood-jmap-chat-00 "Marking as Read" — a client marks a
+    // Message read with an `update` setting `readAt`. A Message whose
+    // `readAt` is already set is read, so a second update would only change
+    // the timestamp. Rehearsal1 (json/st-bob.resp.json): such rewrites bumped
+    // bob's Message state 1250 -> 6174 with one stored message.
+    #[tokio::test]
+    async fn handle_state_change_already_read_update_sends_no_write() {
+        use wiremock::matchers::body_string_contains;
+        use wiremock::{Mock, MockServer};
+
+        let server = MockServer::start().await;
+        Mock::given(body_string_contains("Message/changes"))
+            .respond_with(method_response(
+                "Message/changes",
+                json!({"accountId": "a-bob", "oldState": "5", "newState": "6",
+                       "hasMoreChanges": false, "created": [], "updated": ["m-1"],
+                       "destroyed": []}),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(body_string_contains("Message/get"))
+            .respond_with(method_response(
+                "Message/get",
+                json!({"accountId": "a-bob", "state": "6", "notFound": [],
+                       "list": [wire_message("m-1", "hello", Some("2026-10-30T13:42:19Z"))]}),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(body_string_contains("/set"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .expect(0)
+            .named("no write for an already-read message")
+            .mount(&server)
+            .await;
+        Mock::given(body_string_contains("ReadPosition/get"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .expect(0)
+            .named("no ReadPosition lookup when nothing new is shown")
+            .mount(&server)
+            .await;
+
+        let mut state = one_message_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let sc = StateChange::new("Message", "6");
+        handle_state_change(&reqwest::Client::new(), &api_url, "a-bob", &sc, &mut state).await;
+        server.verify().await;
+    }
+
+    /// A server that, like chinwag in rehearsal1, bumps the Message state on
+    /// every `readAt` write and reports the message as `updated` afterwards.
+    struct ReceiptBumpingServer {
+        inner: std::sync::Mutex<(u64, Option<String>, Option<String>)>,
+    }
+
+    impl wiremock::Respond for ReceiptBumpingServer {
+        fn respond(&self, req: &wiremock::Request) -> wiremock::ResponseTemplate {
+            let body: Value = serde_json::from_slice(&req.body).unwrap_or_default();
+            let call = &body["methodCalls"][0];
+            let args = &call[1];
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let (msg_state, read_at, last_read) = &mut *inner;
+            match call[0].as_str().unwrap_or("") {
+                "Message/changes" => {
+                    let since = args["sinceState"].as_str().unwrap_or("");
+                    let (created, updated) = if since == "1" {
+                        (json!(["m-1"]), json!([]))
+                    } else {
+                        (json!([]), json!(["m-1"]))
+                    };
+                    method_response(
+                        "Message/changes",
+                        json!({"accountId": "a-bob", "oldState": since,
+                               "newState": msg_state.to_string(), "hasMoreChanges": false,
+                               "created": created, "updated": updated, "destroyed": []}),
+                    )
+                }
+                "Message/get" => method_response(
+                    "Message/get",
+                    json!({"accountId": "a-bob", "state": msg_state.to_string(), "notFound": [],
+                           "list": [wire_message("m-1", "hello", read_at.as_deref())]}),
+                ),
+                "Message/set" => {
+                    if let Some(r) = args["update"]["m-1"]["readAt"].as_str() {
+                        *read_at = Some(r.to_string());
+                        *msg_state += 1;
+                    }
+                    method_response(
+                        "Message/set",
+                        json!({"accountId": "a-bob", "updated": {"m-1": null}}),
+                    )
+                }
+                "ReadPosition/get" => method_response(
+                    "ReadPosition/get",
+                    json!({"accountId": "a-bob", "state": "1", "notFound": [],
+                           "list": [{"id": "rp-1", "chatId": "chat-1",
+                                     "lastReadMessageId": last_read.clone()}]}),
+                ),
+                "ReadPosition/set" => {
+                    *last_read = args["update"]["rp-1"]["lastReadMessageId"]
+                        .as_str()
+                        .map(str::to_string);
+                    method_response(
+                        "ReadPosition/set",
+                        json!({"accountId": "a-bob", "updated": {"rp-1": null}}),
+                    )
+                }
+                _ => wiremock::ResponseTemplate::new(400),
+            }
+        }
+    }
+
+    // Oracle: rehearsal1 — one message, every receipt write bumps Message
+    // state and pushes a StateChange; kith-tui then looped at ~290 req/s.
+    // Each StateChange the server would push is fed back to the client until
+    // the client's state matches the server's. A client that only writes
+    // what changes something reaches it after the one real receipt.
+    #[tokio::test]
+    async fn receipt_loop_settles_when_server_bumps_state_on_write() {
+        use wiremock::{Mock, MockServer};
+
+        let server = MockServer::start().await;
+        let fake = std::sync::Arc::new(ReceiptBumpingServer {
+            inner: std::sync::Mutex::new((2, None, None)),
+        });
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(SharedResponder(fake.clone()))
+            .mount(&server)
+            .await;
+
+        let mut state = crate::app::AppState::new();
+        state.owner_id = "a-bob".to_string();
+        state.chat_ids = vec!["chat-1".to_string()];
+        state.message_state = "1".to_string();
+        let api_url = format!("{}/jmap", server.uri());
+        let http = reqwest::Client::new();
+
+        let mut pushes = 0;
+        loop {
+            let server_state = fake.inner.lock().unwrap().0.to_string();
+            if state.message_state == server_state || pushes == 50 {
+                break;
+            }
+            pushes += 1;
+            let sc = StateChange::new("Message", server_state);
+            handle_state_change(&http, &api_url, "a-bob", &sc, &mut state).await;
+        }
+
+        let requests = server.received_requests().await.unwrap_or_default().len();
+        assert!(pushes <= 2, "client must settle, took {pushes} pushes");
+        assert!(requests <= 10, "client sent {requests} requests");
+        assert_eq!(state.messages.len(), 1, "one stored message, one line");
+    }
+
+    struct SharedResponder(std::sync::Arc<ReceiptBumpingServer>);
+
+    impl wiremock::Respond for SharedResponder {
+        fn respond(&self, req: &wiremock::Request) -> wiremock::ResponseTemplate {
+            self.0.respond(req)
+        }
     }
 
     #[tokio::test]

@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.14",
+  "title": "kith-tui: read-receipt feedback loop duplicates messages",
+  "description": "Rehearsal1 (kith 062df2c, chinwag 947b098, 3 users). One message from alice rendered 21+ times (full pane) on bob and carol within 125 ms and kept growing; each client hot-loops ~290 req/s, chinwag at 64% CPU with 2 looping clients, bob's Message state 1250 -\u003e 3434 -\u003e 6174 in ~1 min while the server stores exactly 1 message.\n\nCause (event.rs handle_state_change, Message arm): ids in Message/changes 'updated' are pushed to state.messages as NEW lines with no check against state.message_ids, then send_read_receipts sets readAt (fresh timestamp each time) on them -\u003e real Message state change -\u003e SSE StateChange -\u003e Message/changes reports the same id as updated -\u003e append + receipt again. Never terminates.\n\nKnock-on effects seen: Chat StateChanges wait behind the Message backlog (new direct chat appeared 10-20+ s late; unread badge stayed '(1)' after server cleared it to 0); user's own sent message did not appear in their own pane; during a 3 s server restart each client logged ~600 failed Message/changes.\n\nSpec: RFC 8620 s5.2 'updated: ids for records that have been updated' -\u003e client must replace the existing entry, not append. draft-atwood-jmap-chat-00 'Marking as Read': readAt is an update; a client should only set it when it is null. Fix: dedupe updated ids against message_ids (replace in place), and only send receipts for messages whose readAt is null.\n\nEvidence: /tmp/claude-1000/-home-mark-PROJECT-chinwag/d56f3967-d390-456c-a3d8-9501efe458da/scratchpad/rehearsal1/shots/03-*-alice-msg.txt, 04-*-replies.txt, json/st-bob.resp.json, logs/chinwag1.log (request rate).",
+  "status": "closed",
+  "priority": 0,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T13:48:01.31340703Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T13:53:32.986545993Z",
+  "started_at": "2026-10-30T13:51:57.637108766Z",
+  "closed_at": "2026-10-30T13:53:32.986545993Z",
+  "close_reason": "Message/changes updated ids replace in place, destroyed removed; receipts only for readAt-unset inbound; ReadPosition only on append. Tests: handle_state_change_updated_id_replaces_existing_line, handle_state_change_destroyed_id_removes_line, handle_state_change_already_read_update_sends_no_write, receipt_loop_settles_when_server_bumps_state_on_write",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.14",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T13:48:01.352793862Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}
