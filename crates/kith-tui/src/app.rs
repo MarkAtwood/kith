@@ -49,6 +49,9 @@ pub struct AppState {
     pub chat_list: Vec<String>,
     /// JMAP chat IDs, parallel to chat_list.
     pub chat_ids: Vec<String>,
+    /// Display names of each chat's `members` (group chats; empty for
+    /// direct chats), parallel to chat_list.
+    pub chat_members: Vec<Vec<String>>,
     /// Index into chat_list of the currently selected chat.
     pub selected_chat: usize,
     /// The owner's client-facing id (the chat accountId; see
@@ -100,6 +103,7 @@ impl AppState {
             focus: Focus::Input,
             chat_list: vec![],
             chat_ids: vec![],
+            chat_members: vec![],
             selected_chat: 0,
             owner_id: String::new(),
             messages: VecDeque::new(),

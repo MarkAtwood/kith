@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.16",
+  "title": "kith-tui: no group member list or join notice",
+  "description": "Rehearsal1: carol was added to IIW (chinwag user add --join) while alice and bob were connected. The server returned 4 members in alice's Chat/get (json/chat-get-alice.resp.json), but neither client showed anything: no member count, no names, no 'carol joined'. kith-tui never reads Chat.members (grep 'members' in src finds only a test fixture). Spec: draft-atwood-jmap-chat-00 Chat 'members (ChatMember[], server-set): Group chats only. Full membership list.' Suggest at least a member count in the status line or chat title, resolved to contact names. Evidence: /tmp/claude-1000/-home-mark-PROJECT-chinwag/d56f3967-d390-456c-a3d8-9501efe458da/scratchpad/rehearsal1/shots/02-*-carol-joined.txt",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T13:48:01.548771873Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T13:57:46.935292243Z",
+  "started_at": "2026-10-30T13:57:11.819198613Z",
+  "closed_at": "2026-10-30T13:57:46.935292243Z",
+  "close_reason": "Chat.members resolved via ChatContact (owner -\u003e 'me') into AppState.chat_members on every Chat/get; Messages header shows 'N members: ...' for groups. Test: group_members_shown_in_header_and_follow_chat_changes",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.16",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T13:48:01.585087184Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}

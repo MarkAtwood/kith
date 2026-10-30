@@ -209,6 +209,7 @@ pub(crate) async fn load_startup_data(
     // Parse Chat/get (method_responses[0]).
     let mut chat_ids: Vec<String> = Vec::new();
     let mut chat_list: Vec<String> = Vec::new();
+    let mut chat_members: Vec<Vec<String>> = Vec::new();
     if let Some((method, args, _call_id)) = resp.method_responses.first() {
         if method == "error" {
             let err_type = args
@@ -250,16 +251,38 @@ pub(crate) async fn load_startup_data(
                     base_name
                 };
 
+                // Spec Chat.members: group chats only; each id is a
+                // ChatContact id, or the owner's accountId.
+                let members = chat
+                    .get("members")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|m| m.get("id").and_then(Value::as_str))
+                    .map(|mid| {
+                        if mid == state.owner_id {
+                            "me".to_owned()
+                        } else {
+                            contacts_map
+                                .get(mid)
+                                .cloned()
+                                .unwrap_or_else(|| sanitize_display(mid))
+                        }
+                    })
+                    .collect();
+
                 chat_ids.push(id);
                 // display is built from contacts_map (already sanitized), the
                 // sanitized group name and numeric/constant strings.
                 chat_list.push(display);
+                chat_members.push(members);
             }
         }
     }
 
     state.chat_list = chat_list;
     state.chat_ids = chat_ids;
+    state.chat_members = chat_members;
     state.contacts = contacts_map;
     if state.chat_list.is_empty() {
         state.selected_chat = 0;
@@ -2390,6 +2413,75 @@ mod tests {
         server.verify().await;
         let status = state.connection_status.to_string();
         assert!(status.contains("token rejected"), "got {status:?}");
+    }
+
+    // Oracle: rehearsal1 json/chat-get-alice.resp.json — chinwag's Chat/get
+    // for alice after carol joined IIW: four `members` ids (draft-atwood-
+    // jmap-chat-00 Chat.members, "Full membership list"), one of them
+    // alice's own accountId. The ChatContact list is built to match those
+    // ids. A Chat state change before carol joined lists three.
+    #[tokio::test]
+    async fn group_members_shown_in_header_and_follow_chat_changes() {
+        use wiremock::matchers::body_string_contains;
+        use wiremock::{Mock, MockServer};
+
+        const ALICE: &str = "01M66GPT09MFTQ23WR3WKV5QJH";
+        let member = |id: &str, role: &str| json!({"id": id, "role": role, "joinedAt": "2026-10-30T13:41:37.428Z"});
+        let admin = member("01M66GPT0S5BK6V9QTBAA948QY", "admin");
+        let alice = member(ALICE, "member");
+        let bob = member("01M66GPT2BTAVF0T9KA45M6HFT", "member");
+        let carol = member("01M66GQ8JZV7VRTQWFFCXYBCN8", "member");
+        // load_startup_data sends Chat/get and ChatContact/get in one request.
+        let startup_response = |members: Value| {
+            wiremock::ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [
+                    ["Chat/get", {"accountId": ALICE, "state": "3", "notFound": [], "list": [{
+                        "id": "01M66GPREXR5X1Y99ZH76VGDH0", "kind": "group", "name": "IIW",
+                        "members": members, "unreadCount": 0, "muted": false,
+                        "pinnedMessageIds": [], "createdAt": "2026-10-30T13:41:37.433Z"}]}, "c0"],
+                    ["ChatContact/get", {"accountId": ALICE, "state": "3", "notFound": [], "list": [
+                        {"id": "01M66GPT0S5BK6V9QTBAA948QY", "login": "iiw@localhost"},
+                        {"id": "01M66GPT2BTAVF0T9KA45M6HFT", "login": "bob@localhost"},
+                        {"id": "01M66GQ8JZV7VRTQWFFCXYBCN8", "login": "carol@localhost"}]}, "c1"]],
+                "sessionState": "0"}))
+        };
+        let server = MockServer::start().await;
+        Mock::given(body_string_contains("Chat/get"))
+            .respond_with(startup_response(json!([admin, alice, bob])))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(body_string_contains("Chat/get"))
+            .respond_with(startup_response(json!([admin, alice, bob, carol])))
+            .mount(&server)
+            .await;
+
+        let mut state = crate::app::AppState::new();
+        state.owner_id = ALICE.to_string();
+        let api_url = format!("{}/jmap", server.uri());
+        let http = reqwest::Client::new();
+        let header = |state: &mut crate::app::AppState| -> String {
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 24)).unwrap();
+            terminal.draw(|f| crate::ui::draw(f, state)).unwrap();
+            let buf = terminal.backend().buffer().clone();
+            (0..120).map(|x| buf[(x, 0u16)].symbol()).collect()
+        };
+
+        load_startup_data(&http, &api_url, ALICE, &mut state).await;
+        let before = header(&mut state);
+        assert!(
+            before.contains("3 members: iiw@localhost, me, bob@localhost"),
+            "got {before:?}"
+        );
+
+        let sc = StateChange::new("Chat", "4");
+        handle_state_change(&http, &api_url, ALICE, &sc, &mut state).await;
+        let after = header(&mut state);
+        assert!(
+            after.contains("4 members: iiw@localhost, me, bob@localhost, carol@localhost"),
+            "got {after:?}"
+        );
     }
 
     #[tokio::test]

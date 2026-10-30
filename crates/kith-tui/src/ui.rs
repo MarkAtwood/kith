@@ -89,7 +89,14 @@ fn draw_messages(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Rec
     if area.width < 4 || area.height < 4 {
         return;
     }
-    let block = Block::default().title("Messages").borders(Borders::ALL);
+    let title = match state.chat_members.get(state.selected_chat) {
+        Some(members) if !members.is_empty() => fit_col(
+            &format!("{} members: {}", members.len(), members.join(", ")),
+            usize::from(area.width - 2),
+        ),
+        _ => "Messages".to_owned(),
+    };
+    let block = Block::default().title(title).borders(Borders::ALL);
 
     let inner_height = area.height.saturating_sub(2);
     state.last_message_panel_height = inner_height;
