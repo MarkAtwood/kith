@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.11",
+  "title": "kith-tui: unread badge stuck after first message in a chat opened empty (fake sinceState s-0)",
+  "description": "Found in chinwag/kith-tui live smoke test 2026-10-30 (kith 556bf4c, chinwag 830be27). Demo-visible: the demo starts with empty chats.\n\nSteps: open kith-tui with the direct chat selected and no messages in it. Type \"hello from kith-tui\" and press Enter. The message shows up, but the chat list keeps \"bob@elsewhere.example (1)\" while you're viewing it. Server state afterwards: ReadPosition {\"chatId\":\"01M66FPR850ZG2WJBBHCZZ7V34\",\"id\":\"01M66FS2JWYE0VC366HG5843CY\"} with no lastReadMessageId, and Chat.unreadCount 1. For a second message in the same chat (now non-empty) the badge clears, and ReadPosition.lastReadMessageId moves forward as expected.\n\nCause (verified against chinwag via curl):\n1. load_messages_for_chat returns LoadedMessages::default() when Message/query returns no ids (event.rs:387). That skips Message/get, so state.message_state stays \"\".\n2. On the next Message StateChange, handle_state_change sends Message/changes with sinceState \"s-0\", a state chinwag never issued. RFC 8620 §5.2 says sinceState is \"the current state of the client\", i.e. one the server returned earlier. chinwag correctly answers [\"error\",{\"type\":\"cannotCalculateChanges\"}] (curl: Message/changes sinceState \"s-0\" -\u003e cannotCalculateChanges; sinceState \"0\" -\u003e normal response).\n3. The cannotCalculateChanges branch reloads messages and returns early. It never calls mark_chat_read (that only runs at event.rs:1016 on the normal path), so the ReadPosition never advances.\n\nSpec: draft-atwood-jmap-chat-00 §Chat unreadCount: \"If lastReadMessageId is absent, all messages are counted as unread\". The own-message part of this is tracked separately as chinwag-fqk0 (spec).\n\nFix direction: take message_state from Message/query's queryState or a Message/get with ids [] even when the chat is empty, drop the \"s-0\" fallback, and call mark_chat_read after the reload branch too.\n",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T13:28:42.589888757Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T13:35:10.909088616Z",
+  "started_at": "2026-10-30T13:32:57.325102452Z",
+  "closed_at": "2026-10-30T13:35:10.909088616Z",
+  "close_reason": "Loader always issues Message/get (ids [] when empty) so message_state is a server-issued state; s-0 fallback removed (no state -\u003e resync); resync path (no state or cannotCalculateChanges) now calls mark_chat_read. Tests: empty_chat_load_takes_state_from_message_get, message_change_without_known_state_resyncs_and_marks_read, cannot_calculate_changes_resync_marks_chat_read",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.11",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T13:28:42.631365093Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}

@@ -384,11 +384,8 @@ pub(crate) async fn load_messages_for_chat(
         .and_then(|(_, args, _)| args.get("total"))
         .and_then(Value::as_u64);
 
-    if ids.is_empty() {
-        return LoadedMessages::default();
-    }
-
-    // Step B — Message/get
+    // Step B — Message/get, even with no ids: its `state` is the only valid
+    // sinceState for a later Message/changes (RFC 8620 §5.2).
     let get_req = JmapRequest::new(
         vec![
             "urn:ietf:params:jmap:core".into(),
@@ -792,6 +789,44 @@ pub(crate) async fn mark_chat_read(
     }
 }
 
+/// Reload the selected chat from scratch and mark it read, for when
+/// Message/changes cannot be used (RFC 8620 §5.2). Does nothing if no chat
+/// is selected.
+async fn resync_selected_chat(
+    http_client: &reqwest::Client,
+    api_url: &str,
+    account_id: &str,
+    state: &mut AppState,
+) {
+    let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() else {
+        return;
+    };
+    let loaded = load_messages_for_chat(
+        http_client,
+        api_url,
+        account_id,
+        &chat_id,
+        &state.contacts,
+        &state.owner_id,
+    )
+    .await;
+    if loaded.is_error {
+        state.connection_status =
+            crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+        return;
+    }
+    // Use the state token from the Message/get response, not the SSE
+    // newState, which may be stale if more messages arrived meanwhile.
+    if !loaded.state.is_empty() {
+        state.message_state = loaded.state;
+    }
+    state.messages = loaded.display_lines;
+    state.message_ids = loaded.message_ids;
+    state.message_senders = loaded.sender_ids;
+    // On error the next view or arrival retries.
+    let _ = mark_chat_read(http_client, api_url, account_id, state).await;
+}
+
 /// Handle a single [`StateChange`] event received from the SSE channel.
 ///
 /// On a "Message" state change: calls `Message/changes` to find new/updated
@@ -800,8 +835,8 @@ pub(crate) async fn mark_chat_read(
 ///
 /// On a "Chat" state change: reloads the full chat list via `load_startup_data`.
 ///
-/// Unknown type names are silently ignored.  All JMAP errors are logged to
-/// stderr and the function returns without modifying `state.message_state`.
+/// Unknown type names are silently ignored.  All JMAP errors are logged as
+/// warnings and the function returns without modifying `state.message_state`.
 pub(crate) async fn handle_state_change(
     http_client: &reqwest::Client,
     api_url: &str,
@@ -811,11 +846,13 @@ pub(crate) async fn handle_state_change(
 ) {
     match sc.type_name.as_str() {
         "Message" => {
-            let since_state = if state.message_state.is_empty() {
-                "s-0".to_string()
-            } else {
-                state.message_state.clone()
-            };
+            // RFC 8620 §5.2: sinceState must be a state the server returned
+            // from Message/get. Without one, resync instead of inventing one.
+            if state.message_state.is_empty() {
+                resync_selected_chat(http_client, api_url, account_id, state).await;
+                return;
+            }
+            let since_state = state.message_state.clone();
 
             // Step 1: Message/changes
             let changes_req = JmapRequest::new(
@@ -852,33 +889,7 @@ pub(crate) async fn handle_state_change(
             if method_name == "error" {
                 let error_type = args.get("type").and_then(Value::as_str).unwrap_or("");
                 if error_type == "cannotCalculateChanges" {
-                    if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
-                        // Reload full message list for current chat; silently skipped if no chats loaded.
-                        let loaded = load_messages_for_chat(
-                            http_client,
-                            api_url,
-                            account_id,
-                            &chat_id,
-                            &state.contacts,
-                            &state.owner_id,
-                        )
-                        .await;
-                        if loaded.is_error {
-                            state.connection_status = crate::app::ConnectionStatus::Error(
-                                "Failed to load messages".to_string(),
-                            );
-                        } else {
-                            // Use the state token from the Message/get response, not
-                            // sc.new_state, which may be stale if more messages arrived
-                            // between the error and the reload completing.
-                            if !loaded.state.is_empty() {
-                                state.message_state = loaded.state;
-                            }
-                            state.messages = loaded.display_lines;
-                            state.message_ids = loaded.message_ids;
-                            state.message_senders = loaded.sender_ids;
-                        }
-                    }
+                    resync_selected_chat(http_client, api_url, account_id, state).await;
                 } else {
                     tracing::warn!("Message/changes returned error: {error_type}");
                 }
@@ -3106,6 +3117,190 @@ mod tests {
         assert_eq!(
             sets.first().map(|s| &s["update"]),
             Some(&json!({"rp-2": {"lastReadMessageId": ULID_B}}))
+        );
+    }
+
+    // KITH-1ln3.11 fixtures, captured from chinwag 830be27 on 2026-10-30.
+    const CW_ACCOUNT: &str = "01M66FP313VFV9WRD2PVMVAMB5";
+    const CW_CHAT: &str = "01M66FPR850ZG2WJBBHCZZ7V34";
+    const CW_READ_POSITION: &str = "01M66FS2JWYE0VC366HG5843CY";
+    const CW_MESSAGE: &str = "01M66FS2JQJDGR1KHEMYY0KVMM";
+
+    fn cw_message() -> Value {
+        json!({"actions": [], "attachments": [], "body": "hello from kith-tui",
+               "bodyType": "text/plain", "broadcastMentions": [], "chatId": CW_CHAT,
+               "deliveryState": "pending", "id": CW_MESSAGE, "mentions": [],
+               "reactions": {}, "receivedAt": "2026-10-30T13:25:23.159Z",
+               "senderId": CW_ACCOUNT, "senderMsgId": CW_MESSAGE,
+               "sentAt": "2026-10-30T13:25:23.157Z"})
+    }
+
+    /// A chinwag-shaped server for the first message in a chat that was
+    /// empty when opened: the ReadPosition has no lastReadMessageId yet,
+    /// Message/changes answers cannotCalculateChanges (chinwag's answer to
+    /// both "s-0" and stale states), and a reload finds the one message.
+    async fn cw_first_message_server() -> wiremock::MockServer {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = read_position_server(
+            json!([{"chatId": CW_CHAT, "id": CW_READ_POSITION}]),
+            set_updated(CW_READ_POSITION),
+        )
+        .await;
+        let mount = |needle: &'static str, body: Value| {
+            Mock::given(method("POST"))
+                .and(path("/jmap/api"))
+                .and(body_string_contains(needle))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+        };
+        mount(
+            "Message/changes",
+            json!({"methodResponses": [["error", {"type": "cannotCalculateChanges"}, "mc0"]],
+                   "sessionState": "0"}),
+        )
+        .mount(&server)
+        .await;
+        mount(
+            "Message/query",
+            json!({"methodResponses": [["Message/query",
+                       {"accountId": CW_ACCOUNT, "ids": [CW_MESSAGE], "position": 0,
+                        "queryState": "q-1", "total": 1, "canCalculateChanges": false},
+                       "mq0"]],
+                   "sessionState": "0"}),
+        )
+        .mount(&server)
+        .await;
+        mount(
+            "Message/get",
+            json!({"methodResponses": [["Message/get",
+                       {"accountId": CW_ACCOUNT, "list": [cw_message()],
+                        "notFound": [], "state": "1"},
+                       "mg0"]],
+                   "sessionState": "0"}),
+        )
+        .mount(&server)
+        .await;
+        server
+    }
+
+    /// The sinceState of every Message/changes call the server received.
+    async fn since_states_sent(server: &wiremock::MockServer) -> Vec<Value> {
+        server
+            .received_requests()
+            .await
+            .expect("recording on")
+            .iter()
+            .flat_map(|req| {
+                let body: Value = serde_json::from_slice(&req.body).expect("JSON body");
+                body["methodCalls"].as_array().expect("methodCalls").clone()
+            })
+            .filter(|call| call[0] == "Message/changes")
+            .map(|call| call[1]["sinceState"].clone())
+            .collect()
+    }
+
+    fn viewing_cw_chat() -> AppState {
+        let mut state = AppState::new();
+        state.chat_ids = vec![CW_CHAT.to_string()];
+        state.owner_id = CW_ACCOUNT.to_string();
+        state
+    }
+
+    // RFC 8620 §5.2: sinceState is "the string that was returned as the
+    // "state" argument in the "Foo/get" response". An empty chat still has a
+    // Message state; the loader must fetch it so a later Message/changes has
+    // something legitimate to send.
+    #[tokio::test]
+    async fn empty_chat_load_takes_state_from_message_get() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("Message/query"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/query",
+                    {"accountId": CW_ACCOUNT, "ids": [], "position": 0,
+                     "queryState": "q-0", "total": 0, "canCalculateChanges": false},
+                    "mq0"]],
+                "sessionState": "0"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("Message/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/get",
+                    {"accountId": CW_ACCOUNT, "list": [], "notFound": [], "state": "0"},
+                    "mg0"]],
+                "sessionState": "0"
+            })))
+            .mount(&server)
+            .await;
+        let url = format!("{}/jmap/api", server.uri());
+
+        let loaded = load_messages_for_chat(
+            &reqwest::Client::new(),
+            &url,
+            CW_ACCOUNT,
+            CW_CHAT,
+            &HashMap::new(),
+            CW_ACCOUNT,
+        )
+        .await;
+
+        assert!(!loaded.is_error);
+        assert!(loaded.display_lines.is_empty());
+        assert_eq!(loaded.state, "0", "state must come from Message/get");
+    }
+
+    // RFC 8620 §5.2: with no state from the server yet, the client has no
+    // legitimate sinceState. It must resync with a full load (and so mark the
+    // chat read), not invent one: chinwag answered sinceState "s-0" with
+    // cannotCalculateChanges and the badge stayed at (1).
+    #[tokio::test]
+    async fn message_change_without_known_state_resyncs_and_marks_read() {
+        let server = cw_first_message_server().await;
+        let url = format!("{}/jmap/api", server.uri());
+        let mut state = viewing_cw_chat();
+
+        let sc = StateChange::new("Message", "1");
+        handle_state_change(&reqwest::Client::new(), &url, CW_ACCOUNT, &sc, &mut state).await;
+
+        assert_eq!(
+            since_states_sent(&server).await,
+            Vec::<Value>::new(),
+            "no server-issued state exists, so no sinceState may be sent"
+        );
+        assert_eq!(state.message_state, "1");
+        let sets = read_position_sets(&server).await;
+        assert_eq!(
+            sets.first().map(|s| &s["update"]),
+            Some(&json!({CW_READ_POSITION: {"lastReadMessageId": CW_MESSAGE}}))
+        );
+    }
+
+    // RFC 8620 §5.2: cannotCalculateChanges means resync from /get. The
+    // resynced chat is on screen, so it is read and the ReadPosition moves.
+    #[tokio::test]
+    async fn cannot_calculate_changes_resync_marks_chat_read() {
+        let server = cw_first_message_server().await;
+        let url = format!("{}/jmap/api", server.uri());
+        let mut state = viewing_cw_chat();
+        state.message_state = "0".to_string();
+
+        let sc = StateChange::new("Message", "1");
+        handle_state_change(&reqwest::Client::new(), &url, CW_ACCOUNT, &sc, &mut state).await;
+
+        assert_eq!(since_states_sent(&server).await, vec![json!("0")]);
+        assert_eq!(state.message_state, "1");
+        let sets = read_position_sets(&server).await;
+        assert_eq!(
+            sets.first().map(|s| &s["update"]),
+            Some(&json!({CW_READ_POSITION: {"lastReadMessageId": CW_MESSAGE}}))
         );
     }
 }
