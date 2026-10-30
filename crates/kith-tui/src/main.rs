@@ -75,7 +75,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = terminal::disable_raw_mode();
     let _ = execute!(io::stdout(), terminal::LeaveAlternateScreen);
 
-    result?;
+    // Display, not Debug: the error is what the user reads to fix the problem.
+    if let Err(e) = result {
+        eprintln!("kith-tui: {e}");
+        std::process::exit(1);
+    }
     Ok(())
 }
 

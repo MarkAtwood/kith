@@ -160,8 +160,11 @@ pub(crate) async fn load_startup_data(
         Ok(r) => r,
         Err(e) => {
             tracing::error!("startup JMAP call failed: {e}");
-            state.connection_status =
-                crate::app::ConnectionStatus::Error("JMAP startup failed".to_string());
+            state.note_api_error(&e);
+            if !state.auth_rejected() {
+                state.connection_status =
+                    crate::app::ConnectionStatus::Error("JMAP startup failed".to_string());
+            }
             return;
         }
     };
@@ -322,6 +325,8 @@ pub(crate) struct LoadedMessages {
     pub state: String,
     /// True when the load failed due to a network or server error.
     pub is_error: bool,
+    /// The failed API call behind `is_error`, if one failed.
+    pub api_error: Option<client::ClientError>,
 }
 
 /// Fetch messages for a specific chat.
@@ -363,6 +368,7 @@ pub(crate) async fn load_messages_for_chat(
             tracing::warn!("Message/query failed: {e}");
             return LoadedMessages {
                 is_error: true,
+                api_error: Some(e),
                 ..LoadedMessages::default()
             };
         }
@@ -405,6 +411,7 @@ pub(crate) async fn load_messages_for_chat(
             tracing::warn!("Message/get failed: {e}");
             return LoadedMessages {
                 is_error: true,
+                api_error: Some(e),
                 ..LoadedMessages::default()
             };
         }
@@ -687,12 +694,10 @@ async fn flush_unread_receipts(
 ) {
     let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
     // send_read_receipts is a no-op on empty input; no need to guard here.
-    // On error: silently leave unread_message_ids for next attempt.
-    if send_read_receipts(http_client, api_url, account_id, &unread)
-        .await
-        .is_ok()
-    {
-        state.unread_message_ids.clear();
+    // On error: leave unread_message_ids for next attempt.
+    match send_read_receipts(http_client, api_url, account_id, &unread).await {
+        Ok(()) => state.unread_message_ids.clear(),
+        Err(e) => state.note_api_error(e.as_ref()),
     }
 }
 
@@ -810,9 +815,14 @@ async fn resync_selected_chat(
         &state.owner_id,
     )
     .await;
+    if let Some(e) = &loaded.api_error {
+        state.note_api_error(e);
+    }
     if loaded.is_error {
-        state.connection_status =
-            crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+        if !state.auth_rejected() {
+            state.connection_status =
+                crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+        }
         return;
     }
     // Use the state token from the Message/get response, not the SSE
@@ -824,7 +834,9 @@ async fn resync_selected_chat(
     state.message_ids = loaded.message_ids;
     state.message_senders = loaded.sender_ids;
     // On error the next view or arrival retries.
-    let _ = mark_chat_read(http_client, api_url, account_id, state).await;
+    if let Err(e) = mark_chat_read(http_client, api_url, account_id, state).await {
+        state.note_api_error(e.as_ref());
+    }
 }
 
 /// Handle a single [`StateChange`] event received from the SSE channel.
@@ -848,6 +860,9 @@ pub(crate) async fn handle_state_change(
     sc: &StateChange,
     state: &mut AppState,
 ) {
+    if state.auth_rejected() {
+        return;
+    }
     match sc.type_name.as_str() {
         "Message" => {
             // RFC 8620 §5.2: sinceState must be a state the server returned
@@ -876,6 +891,7 @@ pub(crate) async fn handle_state_change(
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!("Message/changes failed: {e}");
+                    state.note_api_error(&e);
                     return;
                 }
             };
@@ -980,6 +996,7 @@ pub(crate) async fn handle_state_change(
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!("Message/get failed: {e}");
+                    state.note_api_error(&e);
                     return;
                 }
             };
@@ -1051,18 +1068,20 @@ pub(crate) async fn handle_state_change(
 
             // Send one batched read receipt for all newly arrived inbound messages.
             // send_read_receipts is a no-op on empty input, so no outer guard is needed.
-            if send_read_receipts(http_client, api_url, account_id, &newly_unread)
-                .await
-                .is_ok()
-            {
-                for id in &newly_unread {
-                    state.unread_message_ids.remove(id);
+            // On error: IDs remain in unread_message_ids for next attempt.
+            match send_read_receipts(http_client, api_url, account_id, &newly_unread).await {
+                Ok(()) => {
+                    for id in &newly_unread {
+                        state.unread_message_ids.remove(id);
+                    }
                 }
+                Err(e) => state.note_api_error(e.as_ref()),
             }
-            // On error: IDs remain in unread_message_ids for next attempt
             if appended {
                 // On error the next view or arrival retries.
-                let _ = mark_chat_read(http_client, api_url, account_id, state).await;
+                if let Err(e) = mark_chat_read(http_client, api_url, account_id, state).await {
+                    state.note_api_error(e.as_ref());
+                }
             }
         }
         "Chat" => {
@@ -1100,7 +1119,12 @@ pub async fn run(
 
     load_startup_data(&http_client, &api_url, &account_id, state).await;
 
-    if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
+    let startup_chat = state
+        .chat_ids
+        .get(state.selected_chat)
+        .filter(|_| !state.auth_rejected())
+        .cloned();
+    if let Some(chat_id) = startup_chat {
         let loaded = load_messages_for_chat(
             &http_client,
             &api_url,
@@ -1110,9 +1134,14 @@ pub async fn run(
             &state.owner_id,
         )
         .await;
+        if let Some(e) = &loaded.api_error {
+            state.note_api_error(e);
+        }
         if loaded.is_error {
-            state.connection_status =
-                crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+            if !state.auth_rejected() {
+                state.connection_status =
+                    crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+            }
         } else {
             state.messages = loaded.display_lines;
             state.message_ids = loaded.message_ids;
@@ -1127,7 +1156,9 @@ pub async fn run(
                 &state.owner_id,
             );
             flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
-            let _ = mark_chat_read(&http_client, &api_url, &account_id, state).await;
+            if let Err(e) = mark_chat_read(&http_client, &api_url, &account_id, state).await {
+                state.note_api_error(e.as_ref());
+            }
             state.scroll_offset = 0;
         }
     }
@@ -1147,6 +1178,10 @@ pub async fn run(
     // returns means at most one extra loop iteration of latency before the
     // next keyboard event is handled.
     let mut pending_sc: Option<StateChange> = None;
+    // The SSE task closes both channels when it stops for good (token
+    // rejected); a closed channel is then no longer polled.
+    let mut sse_open = true;
+    let mut sse_status_open = true;
 
     loop {
         tokio::select! {
@@ -1168,20 +1203,28 @@ pub async fn run(
                     }
                 }
             }
-            maybe_sc = sse_rx.recv() => {
+            maybe_sc = sse_rx.recv(), if sse_open => {
                 match maybe_sc {
                     Some(sc) => {
                         // Store for dispatch AFTER select! — see comment above pending_sc.
                         pending_sc = Some(sc);
                     }
                     None => {
-                        // SSE task exited entirely (receiver dropped). Treat as quit.
-                        state.quit = true;
+                        // SSE task exited; the status channel, which closes
+                        // with it after any AuthError, decides whether to quit.
+                        sse_open = false;
                     }
                 }
             }
-            maybe_status = sse_status_rx.recv() => {
+            maybe_status = sse_status_rx.recv(), if sse_status_open => {
                 match maybe_status {
+                    None => {
+                        // Status channel closed; task exited. After a rejected
+                        // token, stay up so the user can read why.
+                        sse_status_open = false;
+                        state.quit |= !state.auth_rejected();
+                    }
+                    _ if state.auth_rejected() => {}
                     Some(crate::client::SseStatus::Connected) => {
                         state.connection_status = crate::app::ConnectionStatus::Connected;
                     }
@@ -1189,19 +1232,9 @@ pub async fn run(
                         state.connection_status = crate::app::ConnectionStatus::Reconnecting;
                     }
                     Some(crate::client::SseStatus::AuthError(code)) => {
-                        // Auth failure — the SSE task has stopped. Surface the
-                        // error to the user and quit; retrying is pointless.
-                        // Break immediately so we do not process stale JMAP
-                        // calls or draw another frame with the dead session.
-                        state.connection_status = crate::app::ConnectionStatus::Error(
-                            format!("Authentication failed (HTTP {code}): check Tailscale identity"),
-                        );
-                        state.quit = true;
-                        break;
-                    }
-                    None => {
-                        // Status channel closed; task exited.
-                        state.quit = true;
+                        // The SSE task has stopped; retrying is pointless.
+                        // Keep the UI up with the reason until the user quits.
+                        state.connection_status = crate::app::ConnectionStatus::AuthRejected(code);
                     }
                 }
             }
@@ -1235,6 +1268,7 @@ pub async fn run(
                             // The sent message will appear via the SSE state-change path.
                         }
                         Err(e) => {
+                            state.note_api_error(e.as_ref());
                             let msg = sanitize_display(&format!("Send failed: {e}"));
                             state.set_error(&msg);
                         }
@@ -1243,7 +1277,7 @@ pub async fn run(
             }
         }
 
-        if state.selected_chat != prev_selected {
+        if state.selected_chat != prev_selected && !state.auth_rejected() {
             if let Some(chat_id) = state.chat_ids.get(state.selected_chat) {
                 // Reload messages for the newly selected chat.
                 let chat_id = chat_id.clone();
@@ -1256,9 +1290,15 @@ pub async fn run(
                     &state.owner_id,
                 )
                 .await;
+                if let Some(e) = &loaded.api_error {
+                    state.note_api_error(e);
+                }
                 if loaded.is_error {
-                    state.connection_status =
-                        crate::app::ConnectionStatus::Error("Failed to load messages".to_string());
+                    if !state.auth_rejected() {
+                        state.connection_status = crate::app::ConnectionStatus::Error(
+                            "Failed to load messages".to_string(),
+                        );
+                    }
                     // Do NOT advance prev_selected on error — next tick retries the load.
                 } else {
                     state.messages = loaded.display_lines;
@@ -1274,7 +1314,10 @@ pub async fn run(
                         &state.owner_id,
                     );
                     flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
-                    let _ = mark_chat_read(&http_client, &api_url, &account_id, state).await;
+                    if let Err(e) = mark_chat_read(&http_client, &api_url, &account_id, state).await
+                    {
+                        state.note_api_error(e.as_ref());
+                    }
                     state.scroll_offset = 0;
                     prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
                 }
@@ -2297,6 +2340,56 @@ mod tests {
         fn respond(&self, req: &wiremock::Request) -> wiremock::ResponseTemplate {
             self.0.respond(req)
         }
+    }
+
+    // Oracle: RFC 6750 §3.1 — HTTP 401 with error="invalid_token" means the
+    // bearer token was rejected; rehearsal1 showed "JMAP startup failed"
+    // instead (shots/11-carol-push-after-revoke.txt).
+    #[tokio::test]
+    async fn startup_401_reports_token_rejected() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .insert_header("WWW-Authenticate", r#"Bearer error="invalid_token""#),
+            )
+            .mount(&server)
+            .await;
+        let mut state = crate::app::AppState::new();
+        let api_url = format!("{}/jmap", server.uri());
+        load_startup_data(&reqwest::Client::new(), &api_url, "a-bob", &mut state).await;
+
+        let status = state.connection_status.to_string();
+        assert!(status.contains("token rejected"), "got {status:?}");
+        assert!(status.contains("KITH_TOKEN"), "got {status:?}");
+        assert!(status.contains("401"), "got {status:?}");
+    }
+
+    // Oracle: RFC 6750 §3.1 — a rejected token stays rejected; retrying with
+    // it cannot succeed. Rehearsal1: carol's client re-sent requests on every
+    // push after her token was revoked.
+    #[tokio::test]
+    async fn no_requests_after_token_rejected() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(401))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let mut state = one_message_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let http = reqwest::Client::new();
+        for (type_name, new_state) in [("Message", "6"), ("Message", "7"), ("Chat", "2")] {
+            let sc = StateChange::new(type_name, new_state);
+            handle_state_change(&http, &api_url, "a-bob", &sc, &mut state).await;
+        }
+        server.verify().await;
+        let status = state.connection_status.to_string();
+        assert!(status.contains("token rejected"), "got {status:?}");
     }
 
     #[tokio::test]

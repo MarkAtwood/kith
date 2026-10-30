@@ -32,7 +32,7 @@ pub enum ClientError {
     #[error("bearer token contains characters not allowed in an HTTP header")]
     InvalidToken,
     /// Auth failure (HTTP 401/403): retrying will not help.
-    #[error("authentication failed (HTTP {0}): check Tailscale identity or KITH_TOKEN")]
+    #[error("authentication failed (HTTP {0}): token rejected; check KITH_TOKEN")]
     AuthFailed(u16),
     /// SSE frame exceeded the size cap: treat as a connection error.
     #[error("SSE frame too large (>{0} bytes)")]
@@ -185,7 +185,9 @@ pub async fn fetch_session(
     base_url: &str,
 ) -> Result<ClientSession, ClientError> {
     let url = format!("{base_url}/.well-known/jmap");
-    let resp = client.get(&url).send().await?.error_for_status()?;
+    let resp = client.get(&url).send().await?;
+    reject_auth_failure(&resp)?;
+    let resp = resp.error_for_status()?;
     resp.json::<ClientSession>()
         .await
         .map_err(|e| ClientError::Parse(e.to_string()))
@@ -211,11 +213,22 @@ pub async fn call_jmap(
         .json(req)
         .timeout(JMAP_CALL_TIMEOUT)
         .send()
-        .await?
-        .error_for_status()?;
+        .await?;
+    reject_auth_failure(&resp)?;
+    let resp = resp.error_for_status()?;
     resp.json::<JmapResponse>()
         .await
         .map_err(|e| ClientError::Parse(e.to_string()))
+}
+
+/// Maps HTTP 401/403 to [`ClientError::AuthFailed`], so callers can stop
+/// retrying: RFC 6750 §3.1 `invalid_token` will not resolve on its own.
+fn reject_auth_failure(resp: &reqwest::Response) -> Result<(), ClientError> {
+    let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(ClientError::AuthFailed(status.as_u16()));
+    }
+    Ok(())
 }
 
 // ── SSE parser ────────────────────────────────────────────────────────────────
@@ -383,13 +396,7 @@ async fn run_sse(
     }
     let resp = req.send().await?;
 
-    // Detect auth failures before calling error_for_status() so we can return
-    // a typed AuthFailed error instead of a generic Http error. The caller
-    // uses this to stop retrying — a 401/403 will not resolve on its own.
-    let status = resp.status();
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        return Err(ClientError::AuthFailed(status.as_u16()));
-    }
+    reject_auth_failure(&resp)?;
     resp.error_for_status_ref().map_err(ClientError::Http)?;
 
     // HTTP connection established — notify the UI.
@@ -931,5 +938,58 @@ mod tests {
         );
         assert_eq!(changes[0].type_name, "Message");
         assert_eq!(changes[0].new_state, "s-9");
+    }
+
+    // ── auth rejection ────────────────────────────────────────────────────────
+
+    // Oracle: RFC 6750 §3.1 — a revoked or unknown bearer token gets HTTP 401
+    // with `WWW-Authenticate: Bearer error="invalid_token"`; chinwag answered
+    // a revoked token so in rehearsal1 (logs/kith-carol.log 13:46:41).
+    fn invalid_token_response() -> ResponseTemplate {
+        ResponseTemplate::new(401).insert_header(
+            "WWW-Authenticate",
+            r#"Bearer error="invalid_token", error_description="token revoked""#,
+        )
+    }
+
+    const SECRET_TOKEN: &str = "cw_secret_token_value_123";
+
+    fn assert_token_rejected_message(err: &ClientError) {
+        assert!(matches!(err, ClientError::AuthFailed(401)), "got {err:?}");
+        let text = err.to_string();
+        assert!(text.contains("token rejected"), "got {text:?}");
+        assert!(text.contains("KITH_TOKEN"), "got {text:?}");
+        assert!(!text.contains("Tailscale"), "got {text:?}");
+        assert!(!text.contains(SECRET_TOKEN), "token leaked: {text:?}");
+    }
+
+    #[tokio::test]
+    async fn call_jmap_401_is_token_rejected() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(invalid_token_response())
+            .mount(&server)
+            .await;
+        let client = build_client(None, Some(SECRET_TOKEN)).unwrap();
+        let req = JmapRequest::new(vec![], vec![], None);
+        let err = call_jmap(&client, &format!("{}/jmap", server.uri()), &req)
+            .await
+            .expect_err("401 must be an error");
+        assert_token_rejected_message(&err);
+    }
+
+    #[tokio::test]
+    async fn fetch_session_401_is_token_rejected() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jmap"))
+            .respond_with(invalid_token_response())
+            .mount(&server)
+            .await;
+        let client = build_client(None, Some(SECRET_TOKEN)).unwrap();
+        let err = fetch_session(&client, &server.uri())
+            .await
+            .expect_err("401 must be an error");
+        assert_token_rejected_message(&err);
     }
 }

@@ -15,6 +15,9 @@ pub enum ConnectionStatus {
     Connected,
     Reconnecting,
     Error(String),
+    /// The server rejected the bearer token (HTTP 401/403). Terminal: no
+    /// further requests are made.
+    AuthRejected(u16),
 }
 
 impl fmt::Display for ConnectionStatus {
@@ -26,6 +29,10 @@ impl fmt::Display for ConnectionStatus {
                 write!(f, "Reconnecting (will retry automatically)")
             }
             ConnectionStatus::Error(msg) => write!(f, "Error: {msg}"),
+            ConnectionStatus::AuthRejected(code) => write!(
+                f,
+                "Authentication failed (HTTP {code}): token rejected; check KITH_TOKEN"
+            ),
         }
     }
 }
@@ -124,6 +131,19 @@ impl AppState {
     /// The message must already be ANSI-sanitized before calling this.
     pub fn set_error(&mut self, msg: &str) {
         self.error_notification = Some((msg.to_string(), std::time::Instant::now()));
+    }
+
+    /// Records a failed API call. An authentication failure makes the
+    /// connection status [`ConnectionStatus::AuthRejected`] for good.
+    pub fn note_api_error(&mut self, err: &(dyn std::error::Error + 'static)) {
+        if let Some(crate::client::ClientError::AuthFailed(code)) = err.downcast_ref() {
+            self.connection_status = ConnectionStatus::AuthRejected(*code);
+        }
+    }
+
+    /// Whether the server has rejected the token; nothing is sent after that.
+    pub fn auth_rejected(&self) -> bool {
+        matches!(self.connection_status, ConnectionStatus::AuthRejected(_))
     }
 
     /// Clear error_notification if it has been showing for more than 3 seconds.

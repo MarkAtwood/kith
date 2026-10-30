@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.17",
+  "title": "kith-tui: revoked token shows 'JMAP startup failed'",
+  "description": "Rehearsal1: revoked carol's token (chinwag token revoke 3) while she was connected. Her client kept showing 'Connected' until it next made a request (the open EventSource stream was not cut; see chinwag bead). On the next push it got 401 on Message/changes, and the status became 'Error: JMAP startup failed | bob@localhost'. No crash loop (good), but the message gives no hint that the token is invalid. The dedicated AuthError path says 'check Tailscale identity', which is wrong for a bearer-token server. Want: a 401 on any JMAP call -\u003e 'Authentication failed (HTTP 401): token rejected'. Spec: RFC 8620 s3.1 / RFC 6750 s3.1 invalid_token. Evidence: /tmp/claude-1000/-home-mark-PROJECT-chinwag/d56f3967-d390-456c-a3d8-9501efe458da/scratchpad/rehearsal1/shots/11-carol-push-after-revoke.txt, logs/kith-carol.log (13:46:41 lines).",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T13:48:01.658674543Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T13:56:45.840341204Z",
+  "started_at": "2026-10-30T13:54:45.787756934Z",
+  "closed_at": "2026-10-30T13:56:45.840341204Z",
+  "close_reason": "401/403 on any JMAP call or session fetch -\u003e ClientError::AuthFailed ('token rejected; check KITH_TOKEN'); status AuthRejected is terminal: no more SSE-driven or chat-reload requests, UI stays up instead of silently exiting; main prints Display. Tests: call_jmap_401_is_token_rejected, fetch_session_401_is_token_rejected, startup_401_reports_token_rejected, no_requests_after_token_rejected",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.17",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T13:48:01.699541159Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}
