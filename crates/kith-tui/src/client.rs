@@ -51,13 +51,19 @@ pub struct ClientSession {
     #[serde(rename = "eventSourceUrl")]
     pub event_source_url: String,
     pub state: String,
-    /// Verified Tailscale user ID of the owner. Used to distinguish outbound
-    /// messages (sender == owner) from inbound ones in the TUI.
-    #[serde(rename = "ownerUserId", default)]
-    pub owner_user_id: String,
 }
 
 impl ClientSession {
+    /// Returns the id that refers to the owner in client-facing data, such as
+    /// a Message's `senderId`.
+    ///
+    /// draft-atwood-jmap-chat-00 §Terminology: a client-facing reference to
+    /// the owner carries the accountId of the owner's account. The Session's
+    /// `ownerUserId` is the owner's identity between servers, not this.
+    pub fn owner_id(&self) -> Option<&str> {
+        self.account_id()
+    }
+
     /// Returns the account ID for the kith:chat capability (`"a-self"` for owner).
     pub fn account_id(&self) -> Option<&str> {
         self.primary_accounts
@@ -397,6 +403,30 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    // ── owner identity ────────────────────────────────────────────────────────
+
+    // Oracle: draft-atwood-jmap-chat-00 — Message.senderId is "the accountId
+    // for owner-composed messages", and ownerUserId is a MAY field for
+    // non-federating servers. Session body captured from jmap-testjig
+    // (crate-jmap 25fff527, trimmed to the fields kith-tui reads): it has no
+    // ownerUserId, and its Message/set create returned
+    // senderId "testjig-account" for a message the owner sent.
+    #[test]
+    fn owner_id_is_chat_account_id_from_testjig_session() {
+        let session: ClientSession = serde_json::from_value(serde_json::json!({
+            "apiUrl": "http://127.0.0.1:8080/jmap",
+            "eventSourceUrl": "http://127.0.0.1:8080/events?types={types}&closeafter={closeafter}&ping={ping}",
+            "primaryAccounts": {
+                "urn:ietf:params:jmap:chat": "testjig-account",
+                "urn:ietf:params:jmap:mail": "testjig-account"
+            },
+            "state": "testjig-state-0",
+            "username": "testuser@testjig.local"
+        }))
+        .expect("testjig session must deserialize");
+        assert_eq!(session.owner_id(), Some("testjig-account"));
+    }
+
     // ── fetch_session ─────────────────────────────────────────────────────────
 
     // Oracle: a 200 response with a valid ClientSession JSON body must produce
@@ -424,7 +454,6 @@ mod tests {
         let session = result.expect("expected Ok from fetch_session");
         assert_eq!(session.account_id(), Some("a-self"));
         assert_eq!(session.state, "s-1");
-        assert_eq!(session.owner_user_id, "uid-test-owner");
         assert!(
             session.api_url.contains("/jmap/api"),
             "api_url must contain /jmap/api"

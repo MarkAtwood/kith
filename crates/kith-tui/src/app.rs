@@ -44,9 +44,10 @@ pub struct AppState {
     pub chat_ids: Vec<String>,
     /// Index into chat_list of the currently selected chat.
     pub selected_chat: usize,
-    /// Verified Tailscale user ID of the owner. Used to distinguish outbound
-    /// messages (sender == owner) from inbound ones. Empty until session is fetched.
-    pub owner_user_id: String,
+    /// The owner's client-facing id (the chat accountId; see
+    /// `ClientSession::owner_id`). Used to distinguish outbound messages
+    /// (sender == owner) from inbound ones. Empty until session is fetched.
+    pub owner_id: String,
     /// Message display lines. Parallel to `message_ids` and `message_senders` —
     /// all three must always have the same length. Push/pop to all three together.
     pub messages: VecDeque<String>,
@@ -93,7 +94,7 @@ impl AppState {
             chat_list: vec![],
             chat_ids: vec![],
             selected_chat: 0,
-            owner_user_id: String::new(),
+            owner_id: String::new(),
             messages: VecDeque::new(),
             scroll_offset: 0,
             input: String::new(),

@@ -76,10 +76,10 @@ async fn run_app(
     state.connection_status = ConnectionStatus::Connecting;
 
     let session = client::fetch_session(http_client, url).await?;
-    if session.owner_user_id.is_empty() {
-        return Err("server did not return ownerUserId in session response".into());
-    }
-    state.owner_user_id = session.owner_user_id.clone();
+    state.owner_id = session
+        .owner_id()
+        .ok_or("server session has no primary account for urn:ietf:params:jmap:chat")?
+        .to_owned();
     let account_id = session
         .account_id()
         .ok_or("server session has no primary account for urn:ietf:params:jmap:chat")?

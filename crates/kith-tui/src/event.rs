@@ -280,7 +280,7 @@ pub(crate) async fn load_startup_data(
 fn format_message_line(
     msg: &serde_json::Value,
     contacts: &std::collections::HashMap<String, String>,
-    owner_user_id: &str,
+    owner_id: &str,
 ) -> Option<String> {
     // receivedAt is required; absence silently drops the message from display.
     let received_at = msg.get("receivedAt").and_then(serde_json::Value::as_str)?;
@@ -289,7 +289,7 @@ fn format_message_line(
         .get("senderId")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
-    let sender_name = if sender_id == owner_user_id {
+    let sender_name = if sender_id == owner_id {
         "me"
     } else {
         contacts
@@ -344,7 +344,7 @@ pub(crate) async fn load_messages_for_chat(
     account_id: &str,
     chat_id: &str,
     contacts: &std::collections::HashMap<String, String>,
-    owner_user_id: &str,
+    owner_id: &str,
 ) -> LoadedMessages {
     // Step A — Message/query
     //
@@ -467,7 +467,7 @@ pub(crate) async fn load_messages_for_chat(
             .get("readAt")
             .and_then(Value::as_str)
             .map(str::to_string);
-        if let Some(display_line) = format_message_line(msg, contacts, owner_user_id) {
+        if let Some(display_line) = format_message_line(msg, contacts, owner_id) {
             entries.push(MessageEntry {
                 received_at,
                 display_line,
@@ -667,13 +667,13 @@ fn unread_ids_from_loaded_messages(
     ids: &VecDeque<String>,
     senders: &VecDeque<String>,
     read_ats: &VecDeque<Option<String>>,
-    owner_user_id: &str,
+    owner_id: &str,
 ) -> HashSet<String> {
     senders
         .iter()
         .zip(ids.iter())
         .zip(read_ats.iter())
-        .filter(|((s, _), ra)| s.as_str() != owner_user_id && ra.is_none())
+        .filter(|((s, _), ra)| s.as_str() != owner_id && ra.is_none())
         .map(|((_, id), _)| id.clone())
         .filter(|id| !id.is_empty())
         .collect()
@@ -767,7 +767,7 @@ pub(crate) async fn handle_state_change(
                             account_id,
                             &chat_id,
                             &state.contacts,
-                            &state.owner_user_id,
+                            &state.owner_id,
                         )
                         .await;
                         if loaded.is_error {
@@ -881,8 +881,7 @@ pub(crate) async fn handle_state_change(
                     continue;
                 }
 
-                if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_user_id)
-                {
+                if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_id) {
                     state.messages.push_back(line);
                     let msg_id = msg
                         .get("id")
@@ -896,7 +895,7 @@ pub(crate) async fn handle_state_change(
                         .to_string();
                     state.message_ids.push_back(msg_id.clone());
                     state.message_senders.push_back(sender_id_str.clone());
-                    if sender_id_str != state.owner_user_id && !msg_id.is_empty() {
+                    if sender_id_str != state.owner_id && !msg_id.is_empty() {
                         state.unread_message_ids.insert(msg_id.clone());
                         newly_unread.push(msg_id);
                     }
@@ -957,7 +956,7 @@ pub async fn run(
             &account_id,
             &chat_id,
             &state.contacts,
-            &state.owner_user_id,
+            &state.owner_id,
         )
         .await;
         if loaded.is_error {
@@ -974,7 +973,7 @@ pub async fn run(
                 &state.message_ids,
                 &state.message_senders,
                 &loaded.read_ats,
-                &state.owner_user_id,
+                &state.owner_id,
             );
             flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
             state.scroll_offset = 0;
@@ -1102,7 +1101,7 @@ pub async fn run(
                     &account_id,
                     &chat_id,
                     &state.contacts,
-                    &state.owner_user_id,
+                    &state.owner_id,
                 )
                 .await;
                 if loaded.is_error {
@@ -1120,7 +1119,7 @@ pub async fn run(
                         &state.message_ids,
                         &state.message_senders,
                         &loaded.read_ats,
-                        &state.owner_user_id,
+                        &state.owner_id,
                     );
                     flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
                     state.scroll_offset = 0;
@@ -1742,7 +1741,7 @@ mod tests {
         let api_url = format!("{base}/jmap/api");
         let http_client = reqwest::Client::new();
         let mut state = crate::app::AppState::new();
-        state.owner_user_id = "uid-test-owner".to_string();
+        state.owner_id = "uid-test-owner".to_string();
 
         // Step 1: startup data
         load_startup_data(&http_client, &api_url, "a-self", &mut state).await;
@@ -1755,7 +1754,7 @@ mod tests {
                 "a-self",
                 &chat_id,
                 &state.contacts,
-                &state.owner_user_id,
+                &state.owner_id,
             )
             .await;
             state.messages = loaded.display_lines;
@@ -1765,7 +1764,7 @@ mod tests {
                 &state.message_ids,
                 &state.message_senders,
                 &loaded.read_ats,
-                &state.owner_user_id,
+                &state.owner_id,
             );
             flush_unread_receipts(&http_client, &api_url, "a-self", &mut state).await;
             state.message_state = "s-4".to_string(); // set from Message/get state field
