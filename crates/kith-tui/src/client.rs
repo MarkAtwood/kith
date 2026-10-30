@@ -79,6 +79,22 @@ struct SseData {
     changed: HashMap<String, HashMap<String, String>>,
 }
 
+// ── Event source URL ─────────────────────────────────────────────────────────
+
+/// Expand the Session's `eventSourceUrl` URI template (RFC 8620 §7.3) into the
+/// URL to GET: all types, a persistent connection, and a ping every 30 s to
+/// keep idle intermediaries from closing the stream.
+///
+/// The values are fixed, so they are written already encoded as RFC 6570
+/// level-1 expansion requires (`*` becomes `%2A`). A URL without the
+/// variables, as older kithd sends, is returned unchanged.
+pub fn expand_event_source_url(template: &str) -> String {
+    template
+        .replace("{types}", "%2A")
+        .replace("{closeafter}", "no")
+        .replace("{ping}", "30")
+}
+
 // ── Certificate / client ──────────────────────────────────────────────────────
 
 /// Read raw DER bytes from a certificate file on disk.
@@ -425,6 +441,32 @@ mod tests {
         }))
         .expect("testjig session must deserialize");
         assert_eq!(session.owner_id(), Some("testjig-account"));
+    }
+
+    // ── eventSourceUrl template ───────────────────────────────────────────────
+
+    // Oracle: RFC 8620 §7.3 — eventSourceUrl is an RFC 6570 level-1 URI
+    // Template with variables types ("*" or a type list), closeafter
+    // ("state" or "no") and ping (seconds). Level-1 expansion percent-encodes
+    // "*" as "%2A" (RFC 6570 §3.2.2). Template captured from jmap-testjig
+    // (crate-jmap 25fff527), which answers HTTP 400 to the unexpanded URL.
+    #[test]
+    fn event_source_url_template_is_expanded() {
+        let template =
+            "http://127.0.0.1:8080/events?types={types}&closeafter={closeafter}&ping={ping}";
+        assert_eq!(
+            expand_event_source_url(template),
+            "http://127.0.0.1:8080/events?types=%2A&closeafter=no&ping=30"
+        );
+    }
+
+    // Oracle: RFC 6570 §2 — a string without expressions expands to itself.
+    #[test]
+    fn event_source_url_without_variables_is_unchanged() {
+        assert_eq!(
+            expand_event_source_url("https://100.64.0.1:8008/jmap/events"),
+            "https://100.64.0.1:8008/jmap/events"
+        );
     }
 
     // ── fetch_session ─────────────────────────────────────────────────────────

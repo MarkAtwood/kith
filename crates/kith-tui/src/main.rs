@@ -84,8 +84,10 @@ async fn run_app(
         .account_id()
         .ok_or("server session has no primary account for urn:ietf:params:jmap:chat")?
         .to_owned();
-    let (sse_rx, sse_status_rx, _sse_handle) =
-        client::spawn_sse(http_client.clone(), session.event_source_url.clone());
+    let (sse_rx, sse_status_rx, _sse_handle) = client::spawn_sse(
+        http_client.clone(),
+        client::expand_event_source_url(&session.event_source_url),
+    );
 
     event::run(
         &mut terminal,
