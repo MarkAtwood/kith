@@ -425,7 +425,7 @@ pub(crate) async fn load_messages_for_chat(
 
     // Capture the state token from the Message/get response — this is the
     // authoritative current state after the full reload, used by the
-    // stateMismatch recovery path.
+    // cannotCalculateChanges recovery path.
     let response_state = get_first
         .and_then(|(_, args, _)| args.get("state"))
         .and_then(Value::as_str)
@@ -755,10 +755,11 @@ pub(crate) async fn handle_state_change(
                 }
             };
 
-            // Handle stateMismatch: fall back to full reload
+            // RFC 8620 §5.2: cannotCalculateChanges means resync via /get, so
+            // fall back to a full reload of the current chat.
             if method_name == "error" {
                 let error_type = args.get("type").and_then(Value::as_str).unwrap_or("");
-                if error_type == "stateMismatch" {
+                if error_type == "cannotCalculateChanges" {
                     if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
                         // Reload full message list for current chat; silently skipped if no chats loaded.
                         let loaded = load_messages_for_chat(
@@ -777,7 +778,7 @@ pub(crate) async fn handle_state_change(
                         } else {
                             // Use the state token from the Message/get response, not
                             // sc.new_state, which may be stale if more messages arrived
-                            // between the stateMismatch error and the reload completing.
+                            // between the error and the reload completing.
                             if !loaded.state.is_empty() {
                                 state.message_state = loaded.state;
                             }
@@ -1475,6 +1476,85 @@ mod tests {
             loaded.display_lines[1].contains("Latest"),
             "second line must be the real message"
         );
+    }
+
+    // Oracle: RFC 8620 §5.2 — /changes fails with "cannotCalculateChanges"
+    // when it cannot compute changes from sinceState, and the client must
+    // then resync with /get. Responses captured from jmap-testjig (crate-jmap
+    // 25fff527): an empty chat leaves no state token, kith-tui sends a
+    // made-up sinceState, and testjig answers cannotCalculateChanges.
+    #[tokio::test]
+    async fn handle_state_change_cannot_calculate_changes_reloads_chat() {
+        use kith_core::StateChange;
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        let chat_id = "01M66D41AYKP6XWKFMHKW5A9Y0";
+        let reply = |body: serde_json::Value| ResponseTemplate::new(200).set_body_json(body);
+
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .and(body_string_contains("Message/changes"))
+            .respond_with(reply(serde_json::json!({
+                "methodResponses": [["error", {"type": "cannotCalculateChanges"}, "mc0"]],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .and(body_string_contains("Message/query"))
+            .respond_with(reply(serde_json::json!({
+                "methodResponses": [["Message/query", {
+                    "accountId": "testjig-account", "canCalculateChanges": true,
+                    "ids": ["01M66D4BW8R24HZN11156BK2BK"], "position": 0,
+                    "queryState": "1", "total": 1
+                }, "mq0"]],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .and(body_string_contains("Message/get"))
+            .respond_with(reply(serde_json::json!({
+                "methodResponses": [["Message/get", {
+                    "accountId": "testjig-account",
+                    "list": [{
+                        "actions": [], "attachments": [], "body": "hello from owner",
+                        "bodyType": "text/plain", "broadcastMentions": [],
+                        "chatId": chat_id, "deliveryState": "pending",
+                        "id": "01M66D4BW8R24HZN11156BK2BK", "mentions": [],
+                        "reactions": {}, "receivedAt": "2026-10-30T12:39:07.400Z",
+                        "senderId": "testjig-account",
+                        "senderMsgId": "01M66D4BW8R24HZN11156BK2BK",
+                        "sentAt": "2026-10-30T12:40:00Z"
+                    }],
+                    "notFound": [], "state": "1"
+                }, "mg0"]],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let api_url = format!("{}/jmap", mock_server.uri());
+        let http_client = reqwest::Client::new();
+        let mut state = crate::app::AppState::new();
+        state.chat_ids = vec![chat_id.to_string()];
+        state.selected_chat = 0;
+        state.owner_id = "testjig-account".to_string();
+
+        let sc = StateChange::new("Message", "1");
+        handle_state_change(&http_client, &api_url, "testjig-account", &sc, &mut state).await;
+
+        assert_eq!(state.messages.len(), 1, "chat must be reloaded");
+        assert!(
+            state.messages[0].contains("me: hello from owner"),
+            "reloaded line: {}",
+            state.messages[0]
+        );
+        assert_eq!(state.message_state, "1", "state token from Message/get");
     }
 
     #[tokio::test]
