@@ -76,6 +76,7 @@ async fn run_app(
     state.connection_status = ConnectionStatus::Connecting;
 
     let session = client::fetch_session(http_client, url).await?;
+    session.require_https()?;
     state.owner_id = session
         .owner_id()
         .ok_or("server session has no primary account for urn:ietf:params:jmap:chat")?

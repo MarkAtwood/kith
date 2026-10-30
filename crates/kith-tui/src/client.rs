@@ -37,6 +37,13 @@ pub enum ClientError {
     /// SSE frame exceeded the size cap: treat as a connection error.
     #[error("SSE frame too large (>{0} bytes)")]
     SseFrameTooLarge(usize),
+    /// A Session URL kith-tui would send the bearer token to is not https.
+    /// The URL is not included: it is server-supplied and may carry userinfo.
+    #[error("server Session {field} is not an https:// URL (scheme: {scheme:?})")]
+    InsecureSessionUrl {
+        field: &'static str,
+        scheme: Option<String>,
+    },
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────
@@ -62,6 +69,33 @@ impl ClientSession {
     /// `ownerUserId` is the owner's identity between servers, not this.
     pub fn owner_id(&self) -> Option<&str> {
         self.account_id()
+    }
+
+    /// Refuses the Session unless every URL kith-tui will send a request to
+    /// is `https://`.
+    ///
+    /// RFC 8620 §1.7: "All HTTP requests MUST use the "https://" scheme".
+    /// Every request carries the bearer token, so a server advertising
+    /// `http://` would otherwise leak it in plaintext. URLs may point at a
+    /// different origin than the Session (RFC 8620 §2 places no constraint on
+    /// that), so only the scheme is checked. `eventSourceUrl` is checked after
+    /// template expansion, as it is used.
+    ///
+    /// # Errors
+    ///
+    /// [`ClientError::InsecureSessionUrl`] naming the first offending field.
+    pub fn require_https(&self) -> Result<(), ClientError> {
+        let event_source_url = expand_event_source_url(&self.event_source_url);
+        for (field, url) in [
+            ("apiUrl", self.api_url.as_str()),
+            ("eventSourceUrl", event_source_url.as_str()),
+        ] {
+            let scheme = reqwest::Url::parse(url).ok().map(|u| u.scheme().to_owned());
+            if scheme.as_deref() != Some("https") {
+                return Err(ClientError::InsecureSessionUrl { field, scheme });
+            }
+        }
+        Ok(())
     }
 
     /// Returns the account ID for the kith:chat capability (`"a-self"` for owner).
@@ -441,6 +475,96 @@ mod tests {
         }))
         .expect("testjig session must deserialize");
         assert_eq!(session.owner_id(), Some("testjig-account"));
+    }
+
+    // ── https-only session URLs ───────────────────────────────────────────────
+
+    // Oracle: RFC 8620 §1.7 — "All HTTP requests MUST use the "https://"
+    // scheme". Session body captured verbatim from jmap-testjig behind a TLS
+    // proxy (crate-jmap 25fff527): the Session itself came over https, but it
+    // advertises http:// for apiUrl and eventSourceUrl.
+    #[test]
+    fn testjig_session_with_http_api_url_is_rejected() {
+        let session: ClientSession = serde_json::from_str(
+            r#"{"accounts":{"testjig-account":{"accountCapabilities":{"urn:ietf:params:jmap:chat":{"maxAttachmentBytes":50000000,"maxAttachmentsPerMessage":16,"maxBodyBytes":100000,"supportedBodyTypes":["text/plain","text/markdown","application/jmap-chat-rich","application/mls-ciphertext"],"supportsThreads":false},"urn:ietf:params:jmap:mail":{}},"isPersonal":true,"isReadOnly":false,"name":"testuser@testjig.local"}},"apiUrl":"http://127.0.0.1:8080/jmap","capabilities":{"urn:ietf:params:jmap:chat":{},"urn:ietf:params:jmap:core":{"collationAlgorithms":["i;ascii-casemap"],"maxCallsInRequest":16,"maxConcurrentRequests":4,"maxConcurrentUpload":4,"maxObjectsInGet":500,"maxObjectsInSet":500,"maxSizeRequest":10485760,"maxSizeUpload":50000000}},"downloadUrl":"http://127.0.0.1:8080/download/{accountId}/{blobId}/{name}?accept={type}","eventSourceUrl":"http://127.0.0.1:8080/events?types={types}&closeafter={closeafter}&ping={ping}","primaryAccounts":{"urn:ietf:params:jmap:chat":"testjig-account","urn:ietf:params:jmap:mail":"testjig-account"},"state":"testjig-state-0","uploadUrl":"http://127.0.0.1:8080/upload/{accountId}/","username":"testuser@testjig.local"}"#,
+        )
+        .expect("testjig session must deserialize");
+        let err = session
+            .require_https()
+            .expect_err("http apiUrl must be refused");
+        assert!(matches!(
+            err,
+            ClientError::InsecureSessionUrl {
+                field: "apiUrl",
+                ..
+            }
+        ));
+        assert!(err.to_string().contains("apiUrl"));
+    }
+
+    fn session_with(api_url: &str, event_source_url: &str) -> ClientSession {
+        serde_json::from_value(serde_json::json!({
+            "primaryAccounts": {"urn:ietf:params:jmap:chat": "a"},
+            "apiUrl": api_url,
+            "eventSourceUrl": event_source_url,
+            "state": "s"
+        }))
+        .expect("session must deserialize")
+    }
+
+    // Oracle: RFC 8620 §1.7, as above; the token also rides the SSE stream.
+    #[test]
+    fn http_event_source_url_is_rejected() {
+        let session = session_with(
+            "https://jmap.example.com/api/",
+            "http://jmap.example.com/eventsource/?types={types}&closeafter={closeafter}&ping={ping}",
+        );
+        assert!(matches!(
+            session.require_https(),
+            Err(ClientError::InsecureSessionUrl {
+                field: "eventSourceUrl",
+                ..
+            })
+        ));
+    }
+
+    // Oracle: the Session example in RFC 8620 §2.1 (apiUrl and eventSourceUrl
+    // copied verbatim) must be accepted.
+    #[test]
+    fn rfc8620_example_session_urls_are_accepted() {
+        let session = session_with(
+            "https://jmap.example.com/api/",
+            "https://jmap.example.com/eventsource/?types={types}&closeafter={closeafter}&ping={ping}",
+        );
+        assert!(session.require_https().is_ok());
+    }
+
+    // Oracle: RFC 3986 §3.1 — schemes are case-insensitive, so "HTTPS" is https.
+    #[test]
+    fn uppercase_https_scheme_is_accepted() {
+        let session = session_with(
+            "HTTPS://jmap.example.com/api/",
+            "Https://jmap.example.com/e",
+        );
+        assert!(session.require_https().is_ok());
+    }
+
+    // Hostile input: a relative or unparseable URL has no https scheme.
+    #[test]
+    fn unparseable_api_url_is_rejected() {
+        for bad in ["", "/jmap", "https//x", "javascript:alert(1)", "ws://x/"] {
+            let session = session_with(bad, "https://jmap.example.com/e");
+            assert!(
+                matches!(
+                    session.require_https(),
+                    Err(ClientError::InsecureSessionUrl {
+                        field: "apiUrl",
+                        ..
+                    })
+                ),
+                "{bad:?} must be refused"
+            );
+        }
     }
 
     // ── eventSourceUrl template ───────────────────────────────────────────────
