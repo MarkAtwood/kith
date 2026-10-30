@@ -19,8 +19,8 @@ use crate::ui;
 /// without a real terminal.
 pub fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) {
     match code {
-        // Quit
-        KeyCode::Char('q') if modifiers.is_empty() => {
+        // Quit: 'q' only outside the input box, so it can be typed; Ctrl-C anywhere.
+        KeyCode::Char('q') if modifiers.is_empty() && state.focus == Focus::ChatList => {
             state.quit = true;
         }
         KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
@@ -1300,6 +1300,36 @@ mod tests {
         }
         // _assert_run_types is never called; the type-check is purely static.
         let _ = _assert_run_types as fn(_, _, _, _, _, _, _);
+    }
+
+    // Oracle: KITH-1ln3.9 live run — `tmux send-keys -l 'a quick test'` into
+    // the input box must leave exactly that text in the box, not exit.
+    #[test]
+    fn typing_q_in_input_inserts_text_and_does_not_quit() {
+        let mut state = AppState::new();
+        state.focus = Focus::Input;
+        for c in "a quick test".chars() {
+            handle_key(&mut state, KeyCode::Char(c), KeyModifiers::empty());
+        }
+        assert!(!state.quit, "typing 'q' in the input must not quit");
+        assert_eq!(state.input, "a quick test");
+    }
+
+    #[test]
+    fn q_quits_from_chat_list() {
+        let mut state = AppState::new();
+        state.focus = Focus::ChatList;
+        handle_key(&mut state, KeyCode::Char('q'), KeyModifiers::empty());
+        assert!(state.quit);
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_input() {
+        let mut state = AppState::new();
+        state.focus = Focus::Input;
+        handle_key(&mut state, KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(state.quit);
+        assert!(state.input.is_empty());
     }
 
     #[test]
