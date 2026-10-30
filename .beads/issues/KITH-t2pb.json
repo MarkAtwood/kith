@@ -1,0 +1,16 @@
+{
+  "id": "KITH-t2pb",
+  "title": "kith-tui: bearer token auth via KITH_TOKEN",
+  "description": "kith-tui sends no Authorization header (kithd authenticates via Tailscale). To use kith-tui against chinwag (IIW demo, Tue 2026-11-03), send RFC 6750 'Authorization: Bearer \u003ctoken\u003e' on session, API and SSE requests when KITH_TOKEN is set. Read from env, not argv, so the token stays out of shell history and ps.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:26:24.124430705Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:30:51.336526464Z",
+  "started_at": "2026-10-30T12:26:30.403011423Z",
+  "closed_at": "2026-10-30T12:30:51.336526464Z",
+  "close_reason": "KITH_TOKEN bearer auth on all requests; 4 tests"
+}

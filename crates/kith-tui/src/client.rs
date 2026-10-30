@@ -27,8 +27,12 @@ pub enum ClientError {
     Http(#[from] reqwest::Error),
     #[error("response parse error: {0}")]
     Parse(String),
+    /// Bearer token is not a valid HTTP header value. The token itself is
+    /// deliberately not included in the message.
+    #[error("bearer token contains characters not allowed in an HTTP header")]
+    InvalidToken,
     /// Auth failure (HTTP 401/403): retrying will not help.
-    #[error("authentication failed (HTTP {0}): check Tailscale identity")]
+    #[error("authentication failed (HTTP {0}): check Tailscale identity or KITH_TOKEN")]
     AuthFailed(u16),
     /// SSE frame exceeded the size cap: treat as a connection error.
     #[error("SSE frame too large (>{0} bytes)")]
@@ -76,18 +80,36 @@ pub fn read_cert_der(cert_path: &Path) -> Result<Vec<u8>, ClientError> {
     std::fs::read(cert_path).map_err(|_| ClientError::CertNotFound(cert_path.to_path_buf()))
 }
 
-/// Build a reqwest `Client` that trusts the given DER-encoded certificate.
+/// Build the default headers for every request: `Authorization: Bearer <token>`
+/// (RFC 6750 §2.1) when a token is given, otherwise none.
+///
+/// The header value is marked sensitive so reqwest redacts it from `Debug`
+/// output.
+pub fn auth_headers(token: Option<&str>) -> Result<reqwest::header::HeaderMap, ClientError> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    if let Some(token) = token {
+        let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|_| ClientError::InvalidToken)?;
+        value.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, value);
+    }
+    Ok(headers)
+}
+
+/// Build a reqwest `Client` that trusts the given DER-encoded certificate and
+/// sends `token`, if any, as a bearer token on every request.
 ///
 /// The cert is added as a trusted CA root (`add_root_certificate`) with all
 /// system roots disabled (`tls_built_in_root_certs(false)`).  For kithd's
 /// self-signed certificate this is equivalent to leaf pinning: the cert is its
 /// own root, so only it can terminate a valid chain.  No cert bytes appear in
 /// any log output.
-pub fn build_client(cert_der: &[u8]) -> Result<reqwest::Client, ClientError> {
+pub fn build_client(cert_der: &[u8], token: Option<&str>) -> Result<reqwest::Client, ClientError> {
     let cert = reqwest::Certificate::from_der(cert_der).map_err(|_| ClientError::CertInvalid)?;
     reqwest::Client::builder()
         .add_root_certificate(cert)
         .tls_built_in_root_certs(false)
+        .default_headers(auth_headers(token)?)
         .build()
         .map_err(ClientError::Http)
 }
@@ -426,6 +448,89 @@ mod tests {
             matches!(result.unwrap_err(), ClientError::Http(_)),
             "expected ClientError::Http variant"
         );
+    }
+
+    // ── auth_headers ──────────────────────────────────────────────────────────
+
+    fn session_body(uri: &str) -> serde_json::Value {
+        serde_json::json!({
+            "primaryAccounts": {"urn:ietf:params:jmap:chat": "a-self"},
+            "apiUrl": format!("{uri}/jmap/api"),
+            "eventSourceUrl": format!("{uri}/jmap/events"),
+            "state": "s-1",
+            "ownerUserId": "uid-test-owner"
+        })
+    }
+
+    // Oracle: RFC 6750 §2.1 — the credential is sent as the header
+    // `Authorization: Bearer <token>`. The mock only answers a request carrying
+    // exactly that header, and expect(1) fails the test if it is not seen.
+    #[tokio::test]
+    async fn bearer_token_sent_on_wire() {
+        use wiremock::matchers::header;
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jmap"))
+            .and(header("authorization", "Bearer tok-abc123"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(session_body(&mock_server.uri())),
+            )
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::builder()
+            .default_headers(auth_headers(Some("tok-abc123")).expect("valid token"))
+            .build()
+            .expect("client");
+        fetch_session(&client, &mock_server.uri())
+            .await
+            .expect("server must see the bearer header");
+    }
+
+    // Oracle: with no token, no Authorization header is sent at all (kithd
+    // authenticates via Tailscale and must not see a stray credential).
+    #[tokio::test]
+    async fn no_token_sends_no_authorization_header() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/.well-known/jmap"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(session_body(&mock_server.uri())),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::builder()
+            .default_headers(auth_headers(None).expect("no token"))
+            .build()
+            .expect("client");
+        fetch_session(&client, &mock_server.uri())
+            .await
+            .expect("session");
+
+        let reqs = mock_server.received_requests().await.expect("recording on");
+        assert_eq!(reqs.len(), 1);
+        assert!(!reqs[0].headers.contains_key("authorization"));
+    }
+
+    // Oracle: RFC 9110 §5.5 forbids CR/LF in field values; a token containing
+    // them would allow header injection and must be rejected.
+    #[test]
+    fn token_with_newline_rejected() {
+        let err = auth_headers(Some("tok\r\nX-Evil: 1")).unwrap_err();
+        assert!(matches!(err, ClientError::InvalidToken));
+    }
+
+    // Oracle: the token string itself must not appear in Debug output of the
+    // headers, nor in the error message for an invalid token.
+    #[test]
+    fn token_not_in_debug_or_error_output() {
+        let headers = auth_headers(Some("tok-secret-xyz")).expect("valid token");
+        assert!(!format!("{headers:?}").contains("tok-secret-xyz"));
+
+        let err = auth_headers(Some("tok-secret-xyz\n")).unwrap_err();
+        assert!(!format!("{err} {err:?}").contains("tok-secret-xyz"));
     }
 
     // ── call_jmap ─────────────────────────────────────────────────────────────

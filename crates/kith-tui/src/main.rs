@@ -9,7 +9,10 @@ use kith_tui::client;
 use kith_tui::event;
 
 #[derive(Parser, Debug)]
-#[command(name = "kith-tui")]
+#[command(
+    name = "kith-tui",
+    after_help = "Set KITH_TOKEN to send it as a bearer token on every request."
+)]
 struct Args {
     /// kithd base URL (e.g. https://100.64.0.1:8008)
     #[arg(long)]
@@ -28,8 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("invalid url".into());
     }
 
+    // Bearer token comes from the environment, not argv, so it stays out of
+    // shell history and `ps` output.
+    let token = std::env::var("KITH_TOKEN").ok();
     let cert_der = client::read_cert_der(&args.cert)?;
-    let http_client = client::build_client(&cert_der)?;
+    let http_client = client::build_client(&cert_der, token.as_deref())?;
 
     // Install panic hook BEFORE entering raw mode so the terminal is always
     // restored even if a panic occurs inside the event loop.
