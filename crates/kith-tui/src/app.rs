@@ -76,6 +76,8 @@ pub struct AppState {
     pub connection_status: ConnectionStatus,
     /// Latest Message state token from the server (empty = "s-0").
     pub message_state: String,
+    /// Chat state token from the last Chat/get; empty until one succeeds.
+    pub chat_state: String,
     /// Flag set by handle_key(Enter); cleared by run() after attempting send.
     pub should_send_message: bool,
     /// Error text + timestamp for 3-second status bar notification. None = no error.
@@ -121,6 +123,7 @@ impl AppState {
             contacts: HashMap::new(),
             connection_status: ConnectionStatus::Connecting,
             message_state: String::new(),
+            chat_state: String::new(),
             should_send_message: false,
             error_notification: None,
             message_ids: VecDeque::new(),

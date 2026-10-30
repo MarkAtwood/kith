@@ -210,6 +210,7 @@ pub(crate) async fn load_startup_data(
     let mut chat_ids: Vec<String> = Vec::new();
     let mut chat_list: Vec<String> = Vec::new();
     let mut chat_members: Vec<Vec<String>> = Vec::new();
+    let mut chat_state = String::new();
     if let Some((method, args, _call_id)) = resp.method_responses.first() {
         if method == "error" {
             let err_type = args
@@ -221,6 +222,10 @@ pub(crate) async fn load_startup_data(
                 crate::app::ConnectionStatus::Error(format!("Server error: {err_type}"));
             return;
         } else if let Some(list) = args.get("list").and_then(Value::as_array) {
+            args.get("state")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .clone_into(&mut chat_state);
             for chat in list {
                 let id = match chat.get("id").and_then(Value::as_str) {
                     Some(v) => v.to_string(),
@@ -280,6 +285,7 @@ pub(crate) async fn load_startup_data(
         }
     }
 
+    state.chat_state = chat_state;
     state.chat_list = chat_list;
     state.chat_ids = chat_ids;
     state.chat_members = chat_members;
@@ -874,6 +880,9 @@ async fn resync_selected_chat(
 ///
 /// On a "Chat" state change: reloads the full chat list via `load_startup_data`.
 ///
+/// A pushed state equal to the one the client holds is skipped, so a
+/// server's replay after a reconnect catch-up costs nothing.
+///
 /// Unknown type names are silently ignored.  All JMAP errors are logged as
 /// warnings and the function returns without modifying `state.message_state`.
 pub(crate) async fn handle_state_change(
@@ -884,6 +893,17 @@ pub(crate) async fn handle_state_change(
     state: &mut AppState,
 ) {
     if state.auth_rejected() {
+        return;
+    }
+    // RFC 8620 §7.1: the client compares the pushed state with its own; an
+    // equal one means it already holds the data, as after a reconnect
+    // catch-up the server then replays.
+    let held = match sc.type_name.as_str() {
+        "Message" => &state.message_state,
+        "Chat" => &state.chat_state,
+        _ => "",
+    };
+    if !sc.new_state.is_empty() && sc.new_state == held {
         return;
     }
     match sc.type_name.as_str() {
@@ -1194,6 +1214,41 @@ pub(crate) async fn dispatch_pending(
     backoff.settle(state, now);
 }
 
+/// Applies one status signal from the SSE task. Ignored once the token
+/// was rejected.
+pub(crate) fn handle_sse_status(
+    state: &mut AppState,
+    status: crate::client::SseStatus,
+    pending: &mut BTreeMap<String, StateChange>,
+) {
+    if state.auth_rejected() {
+        return;
+    }
+    match status {
+        crate::client::SseStatus::Connected => {
+            state.sse_connected = true;
+            state.connection_status = crate::app::ConnectionStatus::Connected;
+            // Changes made while the stream was down, or before its first
+            // connect, push nothing, and a server replays them only for a
+            // Last-Event-ID (RFC 8620 §7.3), so fetch them as for a state
+            // change. An empty newState never matches the client's state,
+            // so /changes always runs.
+            for type_name in ["Chat", "Message"] {
+                pending.insert(type_name.to_owned(), StateChange::new(type_name, ""));
+            }
+        }
+        crate::client::SseStatus::Reconnecting => {
+            state.sse_connected = false;
+            state.connection_status = crate::app::ConnectionStatus::Reconnecting;
+        }
+        crate::client::SseStatus::AuthError(code) => {
+            // The SSE task has stopped; retrying is pointless.
+            // Keep the UI up with the reason until the user quits.
+            state.connection_status = crate::app::ConnectionStatus::AuthRejected(code);
+        }
+    }
+}
+
 /// Async event loop. Draws the initial frame, then processes crossterm events
 /// and a 50 ms redraw tick until `state.quit` is set.
 ///
@@ -1328,20 +1383,7 @@ pub async fn run(
                         sse_status_open = false;
                         state.quit |= !state.auth_rejected();
                     }
-                    _ if state.auth_rejected() => {}
-                    Some(crate::client::SseStatus::Connected) => {
-                        state.sse_connected = true;
-                        state.connection_status = crate::app::ConnectionStatus::Connected;
-                    }
-                    Some(crate::client::SseStatus::Reconnecting) => {
-                        state.sse_connected = false;
-                        state.connection_status = crate::app::ConnectionStatus::Reconnecting;
-                    }
-                    Some(crate::client::SseStatus::AuthError(code)) => {
-                        // The SSE task has stopped; retrying is pointless.
-                        // Keep the UI up with the reason until the user quits.
-                        state.connection_status = crate::app::ConnectionStatus::AuthRejected(code);
-                    }
+                    Some(status) => handle_sse_status(state, status, &mut pending),
                 }
             }
             _ = tick.tick() => {
@@ -2716,6 +2758,196 @@ mod tests {
             crate::app::ConnectionStatus::Connected
         );
         assert_eq!(state.message_state, "6");
+        assert!(pending.is_empty());
+    }
+
+    /// A server whose Message state is "5" before a wifi drop. With `missed`,
+    /// alice's message m-2 arrived during the drop and the state is now "6".
+    /// Response shapes follow the chinwag replies captured in rehearsal1.
+    struct CatchUpServer {
+        missed: bool,
+    }
+
+    impl wiremock::Respond for CatchUpServer {
+        fn respond(&self, req: &wiremock::Request) -> wiremock::ResponseTemplate {
+            let body: Value = serde_json::from_slice(&req.body).unwrap_or_default();
+            let call = &body["methodCalls"][0];
+            let server_state = if self.missed { "6" } else { "5" };
+            match call[0].as_str().unwrap_or("") {
+                "Chat/get" => wiremock::ResponseTemplate::new(200).set_body_json(json!({
+                    "methodResponses": [
+                        ["Chat/get", {"accountId": "a-bob", "state": "3", "notFound": [],
+                            "list": [{"id": "chat-1", "kind": "direct",
+                                      "contactId": "c-alice", "unreadCount": 0}]}, "c0"],
+                        ["ChatContact/get", {"accountId": "a-bob", "state": "1", "notFound": [],
+                            "list": [{"id": "c-alice", "login": "alice"}]}, "c1"]
+                    ],
+                    "sessionState": "0"
+                })),
+                "Message/changes" => {
+                    let since = call[1]["sinceState"].as_str().unwrap_or("");
+                    let created = if since == server_state {
+                        json!([])
+                    } else {
+                        json!(["m-2"])
+                    };
+                    method_response(
+                        "Message/changes",
+                        json!({"accountId": "a-bob", "oldState": since,
+                               "newState": server_state, "hasMoreChanges": false,
+                               "created": created, "updated": [], "destroyed": []}),
+                    )
+                }
+                "Message/get" => method_response(
+                    "Message/get",
+                    json!({"accountId": "a-bob", "state": server_state, "notFound": [],
+                           "list": [wire_message("m-2", "sent during the drop", None)]}),
+                ),
+                "Message/set" => method_response(
+                    "Message/set",
+                    json!({"accountId": "a-bob", "updated": {"m-2": null}}),
+                ),
+                "ReadPosition/get" => method_response(
+                    "ReadPosition/get",
+                    json!({"accountId": "a-bob", "state": "1", "notFound": [],
+                           "list": [{"id": "rp-1", "chatId": "chat-1",
+                                     "lastReadMessageId": "m-1"}]}),
+                ),
+                "ReadPosition/set" => method_response(
+                    "ReadPosition/set",
+                    json!({"accountId": "a-bob", "updated": {"rp-1": null}}),
+                ),
+                _ => wiremock::ResponseTemplate::new(400),
+            }
+        }
+    }
+
+    /// The first method call of each request the server received, with its
+    /// arguments.
+    async fn received_calls(server: &wiremock::MockServer) -> Vec<(String, Value)> {
+        server
+            .received_requests()
+            .await
+            .unwrap_or_default()
+            .iter()
+            .map(|r| {
+                let body: Value = serde_json::from_slice(&r.body).unwrap_or_default();
+                let call = &body["methodCalls"][0];
+                (call[0].as_str().unwrap_or("").to_owned(), call[1].clone())
+            })
+            .collect()
+    }
+
+    /// Drops the SSE stream, then reconnects it, and runs the catch-up the
+    /// event loop would run after that.
+    async fn drop_and_reconnect(
+        server: &wiremock::MockServer,
+        state: &mut crate::app::AppState,
+        pending: &mut BTreeMap<String, StateChange>,
+        backoff: &mut ApiBackoff,
+    ) {
+        handle_sse_status(state, crate::client::SseStatus::Reconnecting, pending);
+        handle_sse_status(state, crate::client::SseStatus::Connected, pending);
+        let api_url = format!("{}/jmap", server.uri());
+        dispatch_pending(
+            &reqwest::Client::new(),
+            &api_url,
+            "a-bob",
+            pending,
+            backoff,
+            Instant::now(),
+            state,
+        )
+        .await;
+    }
+
+    // Oracle: RFC 8620 §5.2 — the client fetches what changed since the
+    // last state the server gave it with Message/changes. Rehearsal2: a
+    // message sent while the stream was down stayed invisible after it
+    // reconnected. chinwag's event source (src/events.rs) sends nothing on
+    // connect without a Last-Event-ID, so no state event arrives here.
+    // RFC 8620 §7.1 — "The client can compare the new state strings with its
+    // current values": the server's replay of the state the client already
+    // fetched (RFC 8620 §7.3) must not start a second round.
+    #[tokio::test]
+    async fn reconnect_fetches_message_missed_while_disconnected() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(CatchUpServer { missed: true })
+            .mount(&server)
+            .await;
+        let mut state = one_message_state();
+        state.sse_connected = true;
+        let mut pending = BTreeMap::new();
+        let mut backoff = ApiBackoff::default();
+
+        drop_and_reconnect(&server, &mut state, &mut pending, &mut backoff).await;
+
+        assert_eq!(state.message_ids, ["m-1", "m-2"], "m-2 shown exactly once");
+        assert_eq!(state.messages.len(), 2);
+        assert!(
+            state.messages[1].contains("sent during the drop"),
+            "got {:?}",
+            state.messages
+        );
+        let changes: Vec<Value> = received_calls(&server)
+            .await
+            .into_iter()
+            .filter(|(m, _)| m == "Message/changes")
+            .map(|(_, args)| args)
+            .collect();
+        assert_eq!(changes.len(), 1, "one Message/changes per reconnect");
+        assert_eq!(changes[0]["sinceState"], "5", "from the last server state");
+
+        let before = received_calls(&server).await.len();
+        pending.insert("Chat".to_owned(), StateChange::new("Chat", "3"));
+        pending.insert("Message".to_owned(), StateChange::new("Message", "6"));
+        let api_url = format!("{}/jmap", server.uri());
+        dispatch_pending(
+            &reqwest::Client::new(),
+            &api_url,
+            "a-bob",
+            &mut pending,
+            &mut backoff,
+            Instant::now(),
+            &mut state,
+        )
+        .await;
+
+        assert_eq!(
+            received_calls(&server).await.len(),
+            before,
+            "replay is a no-op"
+        );
+        assert_eq!(state.message_ids, ["m-1", "m-2"]);
+    }
+
+    // Oracle: RFC 8620 §5.2 — Message/changes with no changes returns empty
+    // lists, so nothing needs fetching; the chat list reload is the existing
+    // "Chat" path. A reconnect must cost one round: one Chat/get batch and
+    // one Message/changes, never a Message/query reload.
+    #[tokio::test]
+    async fn reconnect_without_changes_costs_one_round() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(CatchUpServer { missed: false })
+            .mount(&server)
+            .await;
+        let mut state = one_message_state();
+        state.sse_connected = true;
+        let mut pending = BTreeMap::new();
+        let mut backoff = ApiBackoff::default();
+
+        drop_and_reconnect(&server, &mut state, &mut pending, &mut backoff).await;
+
+        let methods: Vec<String> = received_calls(&server)
+            .await
+            .into_iter()
+            .map(|(m, _)| m)
+            .collect();
+        assert_eq!(methods, ["Chat/get", "Message/changes"]);
+        assert_eq!(state.message_ids, ["m-1"]);
+        assert_eq!(state.message_state, "5");
         assert!(pending.is_empty());
     }
 

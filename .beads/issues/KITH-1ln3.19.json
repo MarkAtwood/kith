@@ -1,0 +1,27 @@
+{
+  "id": "KITH-1ln3.19",
+  "title": "kith-tui: resync missed changes after SSE reconnect",
+  "description": "Found in rehearsal2 (2026-10-30): when the EventSource stream reconnects, kith-tui does not fetch changes made while disconnected; they appear only with the next state event. On conference wifi, messages sent by others during a drop stay invisible. Fix: on reconnect, run Chat/changes and Message/changes from the last server-issued states (RFC 8620 §5.2), falling back to a full reload on cannotCalculateChanges.",
+  "notes": "Root cause: nothing triggered /changes after reconnect. chinwag replays only for a Last-Event-ID (events.rs: seen = Last-Event-ID or current), and kith-tui has none before its first state event and drops ids seen on a connection that ends in Err (rehearsal2: 'error decoding response body'). Fix: every SseStatus::Connected queues Chat+Message catch-up into pending (reuses handle_state_change, backoff, replace-by-id); RFC 8620 §7.1 equal-state skip (new chat_state) makes a server replay after the catch-up free. Tests: reconnect_fetches_message_missed_while_disconnected, reconnect_without_changes_costs_one_round (both failed before fix).\nLive check rehearsal3 (chinwag main e825c83, kith 28131e0, ports 18080/18443): two clients, socat killed ~10 s, carol sent via direct HTTP during the drop; after restore both clients showed it 4 s later, exactly once; 10 requests per client within 90 ms of reconnect, then 0 in 10 s idle.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T14:05:34.827705061Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T14:14:54.243716826Z",
+  "started_at": "2026-10-30T14:05:55.224520596Z",
+  "closed_at": "2026-10-30T14:14:54.243716826Z",
+  "close_reason": "Closed",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.19",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T14:05:34.870407376Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}
