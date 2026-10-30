@@ -321,9 +321,9 @@ pub fn spawn_sse(
                 Ok(id) => {
                     last_event_id = id;
                     // Stream closed cleanly (server EOF). Reconnect.
-                    tracing::warn!("SSE stream closed; reconnecting in {backoff_secs}s");
                     // Reset backoff on a clean close — the server was reachable.
                     backoff_secs = 2;
+                    tracing::warn!("SSE stream closed; reconnecting in {backoff_secs}s");
                 }
                 Err(ClientError::AuthFailed(code)) => {
                     // 401/403 means our identity is rejected. Retrying will not
@@ -991,5 +991,61 @@ mod tests {
             .await
             .expect_err("401 must be an error");
         assert_token_rejected_message(&err);
+    }
+
+    // KITH-1ln3.20, rehearsal2: after a clean close the log said
+    // "reconnecting in 8s" while the task waited 2 s. Here one failed
+    // connect raises the backoff to 4 s; a clean close then resets it, so
+    // the log must name the 2 s the task actually waits.
+    #[tokio::test]
+    async fn clean_close_logs_the_delay_it_waits() {
+        #[derive(Clone, Default)]
+        struct Log(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Log {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().expect("log lock").extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let log = Log::default();
+        let writer = log.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200).insert_header("Content-Type", "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let (rx, _status_rx, _handle) =
+            spawn_sse(reqwest::Client::new(), format!("{}/events", server.uri()));
+        let text = || String::from_utf8_lossy(&log.0.lock().expect("log lock")).into_owned();
+        for _ in 0..100 {
+            if text().contains("SSE stream closed") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        drop(rx);
+
+        let text = text();
+        assert!(
+            text.contains("SSE stream closed; reconnecting in 2s"),
+            "got {text:?}"
+        );
     }
 }
