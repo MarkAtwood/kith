@@ -110,7 +110,8 @@ fn draw_messages(f: &mut Frame, state: &mut AppState, area: ratatui::layout::Rec
 }
 
 fn draw_input(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
-    if area.width < 4 || area.height < 4 {
+    // A bordered one-line box needs exactly 3 rows.
+    if area.width < 4 || area.height < 3 {
         return;
     }
     let focused = state.focus == Focus::Input;
@@ -119,17 +120,23 @@ fn draw_input(f: &mut Frame, state: &AppState, area: ratatui::layout::Rect) {
         .borders(Borders::ALL)
         .border_style(border_style(focused));
 
+    // Clamp to u16::MAX before casting: input is capped at 65536 bytes so
+    // the width can be 65536, which does not fit in u16 (max 65535).
+    let col_width = UnicodeWidthStr::width(&state.input[..state.input_cursor]);
+    let cursor_col = u16::try_from(col_width).unwrap_or(u16::MAX);
+    // Scroll left so the cursor stays inside the box.
+    let inner_width = area.width - 2;
+    let scroll = cursor_col.saturating_sub(inner_width - 1);
+
     f.render_widget(
-        Paragraph::new(Span::raw(state.input.as_str())).block(block),
+        Paragraph::new(Span::raw(state.input.as_str()))
+            .block(block)
+            .scroll((0, scroll)),
         area,
     );
 
     if focused {
-        // Clamp to u16::MAX before casting: input is capped at 65536 bytes so
-        // the width can be 65536, which does not fit in u16 (max 65535).
-        let col_width = UnicodeWidthStr::width(&state.input[..state.input_cursor]);
-        let visible_cursor_col = u16::try_from(col_width).unwrap_or(u16::MAX);
-        f.set_cursor_position((area.x + 1 + visible_cursor_col, area.y + 1));
+        f.set_cursor_position((area.x + 1 + cursor_col - scroll, area.y + 1));
     }
 }
 
@@ -317,6 +324,58 @@ mod tests {
         assert!(
             status_row.contains("retry"),
             "status bar must show retry hint when Reconnecting, got: {status_row:?}"
+        );
+    }
+
+    // Oracle: rehearsal1 shots/12-alice-typing-invisible.txt — text typed
+    // with focus in the input box must be on screen. At 80x24 the layout puts
+    // the bordered input box on rows 20..=22, so its one text row is row 21
+    // and the cursor sits after the text, inside the left border.
+    #[test]
+    fn typed_text_and_cursor_are_drawn_in_input_box() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState::new();
+        state.focus = Focus::Input;
+        state.input = "INVISIBLE".to_owned();
+        state.input_cursor = state.input.len();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let row = |y: u16| -> String { (0..80).map(|x| buf[(x, y)].symbol()).collect() };
+        assert!(
+            row(21).contains("│INVISIBLE"),
+            "input row must show typed text, got {:?}",
+            row(21)
+        );
+        assert!(
+            row(20).contains("Input"),
+            "input box title, got {:?}",
+            row(20)
+        );
+        assert_eq!(
+            terminal.get_cursor_position().unwrap(),
+            ratatui::layout::Position::new(10, 21)
+        );
+    }
+
+    // Oracle: at 80 columns the input box's text area is columns 1..=78.
+    // Input wider than that must keep the cursor, and the text just typed,
+    // inside it.
+    #[test]
+    fn long_input_scrolls_to_keep_cursor_in_box() {
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = AppState::new();
+        state.focus = Focus::Input;
+        state.input = format!("{}END", "x".repeat(100));
+        state.input_cursor = state.input.len();
+        terminal.draw(|f| draw(f, &mut state)).unwrap();
+        let buf = terminal.backend().buffer().clone();
+        let row: String = (0..80).map(|x| buf[(x, 21u16)].symbol()).collect();
+        assert!(row.contains("xEND │"), "tail must be visible, got {row:?}");
+        assert_eq!(
+            terminal.get_cursor_position().unwrap(),
+            ratatui::layout::Position::new(78, 21)
         );
     }
 
