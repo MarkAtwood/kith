@@ -702,6 +702,99 @@ async fn flush_unread_receipts(
     }
 }
 
+/// Advance the owner's ReadPosition for the chat being viewed to the newest
+/// message displayed in it, so the server's `Chat.unreadCount` drops.
+///
+/// draft-atwood-jmap-chat-00 §ReadPosition: `lastReadMessageId` is "the id of
+/// the most recent Message the owner has read", and `unreadCount` counts
+/// Messages whose id is lexicographically greater. A displayed message counts
+/// as read whoever sent it; there is no special rule for the owner's own
+/// messages (see chinwag-fqk0). The cursor never moves backwards, and nothing
+/// is sent when the chat has no ReadPosition yet (the server creates it).
+///
+/// # Errors
+///
+/// A network error, a method error, an unexpected response, or a `notUpdated`
+/// entry. Callers may ignore it: the next view retries.
+pub(crate) async fn mark_chat_read(
+    http_client: &reqwest::Client,
+    api_url: &str,
+    account_id: &str,
+    state: &AppState,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(chat_id) = state.chat_ids.get(state.selected_chat) else {
+        return Ok(());
+    };
+    let Some(newest) = state.message_ids.iter().filter(|id| !id.is_empty()).max() else {
+        return Ok(());
+    };
+    let using = vec![
+        "urn:ietf:params:jmap:core".to_owned(),
+        "urn:ietf:params:jmap:chat".to_owned(),
+    ];
+
+    // ponytail: fetches every ReadPosition (one per chat) on each view, since
+    // the spec defines no ReadPosition/query; cache chatId -> id if this shows
+    // up in latency.
+    let get_req = JmapRequest::new(
+        using.clone(),
+        vec![(
+            "ReadPosition/get".into(),
+            json!({"accountId": account_id, "ids": null,
+                   "properties": ["id", "chatId", "lastReadMessageId"]}),
+            "r0".into(),
+        )],
+        None,
+    );
+    let resp = client::call_jmap(http_client, api_url, &get_req).await?;
+    let list = match resp.method_responses.first() {
+        Some((name, args, _)) if name == "ReadPosition/get" => args
+            .get("list")
+            .and_then(Value::as_array)
+            .ok_or("ReadPosition/get response has no list")?,
+        _ => return Err("unexpected ReadPosition/get response".into()),
+    };
+    let Some(position) = list
+        .iter()
+        .find(|p| p.get("chatId").and_then(Value::as_str) == Some(chat_id.as_str()))
+    else {
+        return Ok(());
+    };
+    let position_id = position
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or("ReadPosition has no id")?;
+    let last_read = position.get("lastReadMessageId").and_then(Value::as_str);
+    if last_read.is_some_and(|last| last >= newest.as_str()) {
+        return Ok(());
+    }
+
+    let set_req = JmapRequest::new(
+        using,
+        vec![(
+            "ReadPosition/set".into(),
+            json!({"accountId": account_id,
+                   "update": {position_id: {"lastReadMessageId": newest}}}),
+            "r0".into(),
+        )],
+        None,
+    );
+    let resp = client::call_jmap(http_client, api_url, &set_req).await?;
+    match resp.method_responses.first() {
+        Some((name, args, _)) if name == "ReadPosition/set" => {
+            if args
+                .get("notUpdated")
+                .and_then(Value::as_object)
+                .is_some_and(|m| !m.is_empty())
+            {
+                return Err("ReadPosition/set: not updated".into());
+            }
+            Ok(())
+        }
+        _ => Err("unexpected ReadPosition/set response".into()),
+    }
+}
+
 /// Handle a single [`StateChange`] event received from the SSE channel.
 ///
 /// On a "Message" state change: calls `Message/changes` to find new/updated
@@ -877,6 +970,7 @@ pub(crate) async fn handle_state_change(
                 .unwrap_or("");
 
             let mut newly_unread: Vec<String> = Vec::new();
+            let mut appended = false;
 
             for msg in list {
                 let msg_chat_id = msg.get("chatId").and_then(Value::as_str).unwrap_or("");
@@ -886,6 +980,7 @@ pub(crate) async fn handle_state_change(
 
                 if let Some(line) = format_message_line(msg, &state.contacts, &state.owner_id) {
                     state.messages.push_back(line);
+                    appended = true;
                     let msg_id = msg
                         .get("id")
                         .and_then(Value::as_str)
@@ -916,6 +1011,10 @@ pub(crate) async fn handle_state_change(
                 }
             }
             // On error: IDs remain in unread_message_ids for next attempt
+            if appended {
+                // On error the next view or arrival retries.
+                let _ = mark_chat_read(http_client, api_url, account_id, state).await;
+            }
         }
         "Chat" => {
             load_startup_data(http_client, api_url, account_id, state).await;
@@ -979,6 +1078,7 @@ pub async fn run(
                 &state.owner_id,
             );
             flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
+            let _ = mark_chat_read(&http_client, &api_url, &account_id, state).await;
             state.scroll_offset = 0;
         }
     }
@@ -1125,6 +1225,7 @@ pub async fn run(
                         &state.owner_id,
                     );
                     flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
+                    let _ = mark_chat_read(&http_client, &api_url, &account_id, state).await;
                     state.scroll_offset = 0;
                     prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
                 }
@@ -2665,6 +2766,255 @@ mod tests {
         assert!(
             state.error_notification.is_none(),
             "error must be cleared after 3s"
+        );
+    }
+
+    // ── ReadPosition ──────────────────────────────────────────────────────────
+    //
+    // Oracle: draft-atwood-jmap-chat-00 §ReadPosition and §ReadPosition/set.
+    // A ReadPosition has a server-set opaque `id`, a `chatId`, and an optional
+    // `lastReadMessageId` ("the id of the most recent Message the owner has
+    // read"); `update` supports only `lastReadMessageId`. Chat.unreadCount
+    // counts Messages whose id is lexicographically greater, so the cursor
+    // must be the greatest displayed id and must never move backwards.
+
+    const ULID_A: &str = "01HZ0000000000000000000AAA";
+    const ULID_B: &str = "01HZ0000000000000000000BBB";
+    const ULID_C: &str = "01HZ0000000000000000000CCC";
+
+    /// Mount a ReadPosition/get answer and a ReadPosition/set answer; return
+    /// the server so the test can inspect what was sent.
+    async fn read_position_server(list: Value, set_response: Value) -> wiremock::MockServer {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("ReadPosition/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["ReadPosition/get",
+                    {"accountId": "a-self", "state": "rp-s1", "list": list, "notFound": []},
+                    "r0"]],
+                "sessionState": "s-1"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("ReadPosition/set"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["ReadPosition/set", set_response, "r0"]],
+                "sessionState": "s-1"
+            })))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    fn set_updated(id: &str) -> Value {
+        json!({"accountId": "a-self", "oldState": "rp-s1", "newState": "rp-s2",
+               "updated": {id: null}})
+    }
+
+    /// All ReadPosition/set calls the server received, as (args) values.
+    async fn read_position_sets(server: &wiremock::MockServer) -> Vec<Value> {
+        server
+            .received_requests()
+            .await
+            .expect("recording on")
+            .iter()
+            .flat_map(|req| {
+                let body: Value = serde_json::from_slice(&req.body).expect("JSON body");
+                body["methodCalls"].as_array().expect("methodCalls").clone()
+            })
+            .filter(|call| call[0] == "ReadPosition/set")
+            .map(|call| call[1].clone())
+            .collect()
+    }
+
+    fn viewing(chat_id: &str, ids: &[&str]) -> AppState {
+        let mut state = AppState::new();
+        state.chat_ids = vec!["chat-other".to_string(), chat_id.to_string()];
+        state.selected_chat = 1;
+        state.message_ids = ids.iter().map(|s| s.to_string()).collect();
+        state
+    }
+
+    #[tokio::test]
+    async fn viewing_chat_advances_read_position_to_newest_id() {
+        let server = read_position_server(
+            json!([
+                {"id": "rp-1", "chatId": "chat-other", "lastReadMessageId": ULID_A},
+                {"id": "rp-2", "chatId": "chat-v", "lastReadMessageId": ULID_A,
+                 "lastReadAt": "2026-10-30T12:00:00Z"}
+            ]),
+            set_updated("rp-2"),
+        )
+        .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A, ULID_C, ULID_B]);
+
+        mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+            .await
+            .expect("advance must succeed");
+
+        let sets = read_position_sets(&server).await;
+        assert_eq!(sets.len(), 1, "exactly one ReadPosition/set");
+        assert_eq!(sets[0]["accountId"], "a-self");
+        assert_eq!(
+            sets[0]["update"],
+            json!({"rp-2": {"lastReadMessageId": ULID_C}}),
+            "only the viewed chat's position, only lastReadMessageId, greatest id"
+        );
+    }
+
+    #[tokio::test]
+    async fn absent_last_read_message_id_is_advanced() {
+        let server = read_position_server(
+            json!([{"id": "rp-9", "chatId": "chat-v"}]),
+            set_updated("rp-9"),
+        )
+        .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A]);
+
+        mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+            .await
+            .expect("advance must succeed");
+
+        let sets = read_position_sets(&server).await;
+        assert_eq!(
+            sets.first().map(|s| &s["update"]),
+            Some(&json!({"rp-9": {"lastReadMessageId": ULID_A}}))
+        );
+    }
+
+    #[tokio::test]
+    async fn read_position_never_moves_backwards() {
+        let server = read_position_server(
+            json!([{"id": "rp-2", "chatId": "chat-v", "lastReadMessageId": ULID_C}]),
+            set_updated("rp-2"),
+        )
+        .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A, ULID_B]);
+
+        mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+            .await
+            .expect("no-op must succeed");
+        assert!(read_position_sets(&server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn chat_without_read_position_sends_no_set() {
+        let server = read_position_server(
+            json!([{"id": "rp-1", "chatId": "chat-other"}]),
+            set_updated("rp-1"),
+        )
+        .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A]);
+
+        mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+            .await
+            .expect("no-op must succeed");
+        assert!(read_position_sets(&server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_position_not_updated_is_an_error() {
+        let server = read_position_server(
+            json!([{"id": "rp-2", "chatId": "chat-v"}]),
+            json!({"accountId": "a-self", "oldState": "rp-s1", "newState": "rp-s1",
+                   "notUpdated": {"rp-2": {"type": "notFound"}}}),
+        )
+        .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A]);
+
+        assert!(
+            mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn wrong_method_response_is_an_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["error", {"type": "unknownMethod"}, "r0"]],
+                "sessionState": "s-1"
+            })))
+            .mount(&server)
+            .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let state = viewing("chat-v", &[ULID_A]);
+
+        assert!(
+            mark_chat_read(&reqwest::Client::new(), &url, "a-self", &state)
+                .await
+                .is_err()
+        );
+        assert!(read_position_sets(&server).await.is_empty());
+    }
+
+    // A message arriving over SSE in the chat being viewed is displayed, so it
+    // is read: the cursor moves to its id.
+    #[tokio::test]
+    async fn sse_message_in_viewed_chat_advances_read_position() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, ResponseTemplate};
+
+        let server = read_position_server(
+            json!([{"id": "rp-2", "chatId": "chat-v", "lastReadMessageId": ULID_A}]),
+            set_updated("rp-2"),
+        )
+        .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("Message/changes"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/changes",
+                    {"accountId": "a-self", "oldState": "s-3", "newState": "s-4",
+                     "hasMoreChanges": false, "created": [ULID_B], "updated": [], "destroyed": []},
+                    "mc0"]],
+                "sessionState": "s-1"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .and(body_string_contains("Message/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/get",
+                    {"accountId": "a-self", "state": "s-4", "list": [{
+                        "id": ULID_B, "chatId": "chat-v", "senderId": "c-1",
+                        "body": "hi", "bodyType": "text/plain", "attachments": [],
+                        "sentAt": "2026-10-30T12:00:00Z", "receivedAt": "2026-10-30T12:00:00Z"
+                    }]},
+                    "mg0"]],
+                "sessionState": "s-1"
+            })))
+            .mount(&server)
+            .await;
+        let url = format!("{}/jmap/api", server.uri());
+        let mut state = viewing("chat-v", &[ULID_A]);
+        state.message_state = "s-3".to_string();
+
+        let sc = StateChange::new("Message", "s-4");
+        handle_state_change(&reqwest::Client::new(), &url, "a-self", &sc, &mut state).await;
+
+        let sets = read_position_sets(&server).await;
+        assert_eq!(
+            sets.first().map(|s| &s["update"]),
+            Some(&json!({"rp-2": {"lastReadMessageId": ULID_B}}))
         );
     }
 }
