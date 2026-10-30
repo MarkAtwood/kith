@@ -128,7 +128,7 @@ pub fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) 
 
 /// Fetch Chat/get and Contact/get from the server and update `state` in place.
 ///
-/// On any network or parse error the function logs to stderr and returns
+/// On any network or parse error the function logs a warning and returns
 /// without modifying state.  Never panics.
 pub(crate) async fn load_startup_data(
     http_client: &reqwest::Client,
@@ -159,7 +159,7 @@ pub(crate) async fn load_startup_data(
     let resp = match client::call_jmap(http_client, api_url, &req).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("kith-tui: startup JMAP call failed: {e}");
+            tracing::error!("startup JMAP call failed: {e}");
             state.connection_status =
                 crate::app::ConnectionStatus::Error("JMAP startup failed".to_string());
             return;
@@ -174,7 +174,7 @@ pub(crate) async fn load_startup_data(
                 .get("type")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            eprintln!("kith-tui: ChatContact/get returned JMAP error: {err_type}");
+            tracing::warn!("ChatContact/get returned JMAP error: {err_type}");
             // Non-fatal: proceed without contacts; chats will show raw IDs.
         } else if let Some(list) = args.get("list").and_then(Value::as_array) {
             for contact in list {
@@ -212,7 +212,7 @@ pub(crate) async fn load_startup_data(
                 .get("type")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            eprintln!("kith-tui: Chat/get returned JMAP error: {err_type}");
+            tracing::warn!("Chat/get returned JMAP error: {err_type}");
             state.connection_status =
                 crate::app::ConnectionStatus::Error(format!("Server error: {err_type}"));
             return;
@@ -360,7 +360,7 @@ pub(crate) async fn load_messages_for_chat(
     let query_resp = match client::call_jmap(http_client, api_url, &query_req).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("kith-tui: Message/query failed: {e}");
+            tracing::warn!("Message/query failed: {e}");
             return LoadedMessages {
                 is_error: true,
                 ..LoadedMessages::default()
@@ -405,7 +405,7 @@ pub(crate) async fn load_messages_for_chat(
     let get_resp = match client::call_jmap(http_client, api_url, &get_req).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("kith-tui: Message/get failed: {e}");
+            tracing::warn!("Message/get failed: {e}");
             return LoadedMessages {
                 is_error: true,
                 ..LoadedMessages::default()
@@ -598,7 +598,7 @@ pub(crate) async fn send_message(
 /// Mark a list of messages as read via JMAP Message/set update (sets readAt = now).
 ///
 /// If message_ids is empty, returns Ok(()) without making any HTTP call.
-/// notUpdated entries are treated as non-fatal (logged to stderr, Ok returned).
+/// notUpdated entries are treated as non-fatal (logged as a warning, Ok returned).
 pub(crate) async fn send_read_receipts(
     http_client: &reqwest::Client,
     api_url: &str,
@@ -646,10 +646,7 @@ pub(crate) async fn send_read_receipts(
 
     if let Some(not_updated) = args.get("notUpdated").and_then(Value::as_object) {
         if !not_updated.is_empty() {
-            eprintln!(
-                "kith-tui: read receipt failed for {} messages",
-                not_updated.len()
-            );
+            tracing::warn!("read receipt failed for {} messages", not_updated.len());
         }
     }
 
@@ -837,7 +834,7 @@ pub(crate) async fn handle_state_change(
             let changes_resp = match client::call_jmap(http_client, api_url, &changes_req).await {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("kith-tui: Message/changes failed: {e}");
+                    tracing::warn!("Message/changes failed: {e}");
                     return;
                 }
             };
@@ -845,7 +842,7 @@ pub(crate) async fn handle_state_change(
             let (method_name, args, _) = match changes_resp.method_responses.first() {
                 Some(r) => r,
                 None => {
-                    eprintln!("kith-tui: Message/changes returned no responses");
+                    tracing::warn!("Message/changes returned no responses");
                     return;
                 }
             };
@@ -883,7 +880,7 @@ pub(crate) async fn handle_state_change(
                         }
                     }
                 } else {
-                    eprintln!("kith-tui: Message/changes returned error: {error_type}");
+                    tracing::warn!("Message/changes returned error: {error_type}");
                 }
                 return;
             }
@@ -948,7 +945,7 @@ pub(crate) async fn handle_state_change(
             let get_resp = match client::call_jmap(http_client, api_url, &get_req).await {
                 Ok(r) => r,
                 Err(e) => {
-                    eprintln!("kith-tui: Message/get failed: {e}");
+                    tracing::warn!("Message/get failed: {e}");
                     return;
                 }
             };
@@ -1512,6 +1509,70 @@ mod tests {
         assert_eq!(
             msgs[1], "13:46 me: World",
             "second message (sender=uid-test-owner == owner -> me)"
+        );
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedLog(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CapturedLog {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .expect("log buffer lock")
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // KITH-1ln3.10: eprintln! while the TUI owns the terminal garbles the
+    // screen. Diagnostics must go through tracing (which main sends to a log
+    // file), and must never carry the bearer token.
+    #[tokio::test]
+    async fn load_failure_is_reported_via_tracing_without_token() {
+        use std::collections::HashMap;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        const TOKEN_CANARY: &str = "canary-token-1ln3-10";
+        let captured = CapturedLog::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+        let api_url = format!("{}/jmap/api", mock_server.uri());
+        let http_client = client::build_client(None, Some(TOKEN_CANARY)).expect("client builds");
+
+        let loaded = load_messages_for_chat(
+            &http_client,
+            &api_url,
+            "a-self",
+            "chat-xyz",
+            &HashMap::new(),
+            "",
+        )
+        .await;
+        assert!(loaded.is_error);
+
+        let log = String::from_utf8(captured.0.lock().expect("lock").clone()).expect("utf-8");
+        assert!(
+            log.contains("Message/query failed"),
+            "diagnostic must reach the tracing subscriber, got: {log:?}"
+        );
+        assert!(
+            !log.contains(TOKEN_CANARY),
+            "token leaked into log: {log:?}"
         );
     }
 

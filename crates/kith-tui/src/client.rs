@@ -308,21 +308,21 @@ pub fn spawn_sse(
                 Ok(id) => {
                     last_event_id = id;
                     // Stream closed cleanly (server EOF). Reconnect.
-                    eprintln!("kith-tui: SSE stream closed; reconnecting in {backoff_secs}s");
+                    tracing::warn!("SSE stream closed; reconnecting in {backoff_secs}s");
                     // Reset backoff on a clean close — the server was reachable.
                     backoff_secs = 2;
                 }
                 Err(ClientError::AuthFailed(code)) => {
                     // 401/403 means our identity is rejected. Retrying will not
                     // help — surface the error and stop the task entirely.
-                    eprintln!("kith-tui: SSE authentication failed (HTTP {code}): not retrying");
+                    tracing::error!("SSE authentication failed (HTTP {code}): not retrying");
                     let _ = status_tx.send(SseStatus::AuthError(code)).await;
                     return;
                 }
                 Err(e) => {
                     // Keep last_event_id on error — the server may replay from
                     // that point on reconnect, minimising missed events.
-                    eprintln!("kith-tui: SSE stream error: {e}; reconnecting in {backoff_secs}s");
+                    tracing::warn!("SSE stream error: {e}; reconnecting in {backoff_secs}s");
                 }
             }
 

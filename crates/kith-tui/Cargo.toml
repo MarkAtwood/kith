@@ -24,6 +24,8 @@ reqwest = { workspace = true, features = ["rustls-tls-native-roots"] }
 kith-core = { path = "../kith-core" }
 serde_json.workspace = true
 serde.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]

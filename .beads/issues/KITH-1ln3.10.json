@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.10",
+  "title": "kith-tui: eprintln! to stderr overwrites the TUI screen",
+  "description": "Found in chinwag/kith-tui live smoke test 2026-10-30 (kith 556bf4c, chinwag 830be27).\n\nEvidence: kith-tui run without a stderr redirect, then the server restarted. The SSE reconnect messages print straight into the alternate screen and the status bar gets mangled (tmux capture-pane):\n\n Connected | bob@elsewhere.example kith-tui: SSE stream error: http error: error decoding response body; reconnecting in 2s\n Reconnecting (wil  retry auto atically) | bob@elsewhere.examplekith-tui: SSE stream error: http error: error sending request for url\n (https://localhost:8443/jmap/eventsource?types=%2A\u0026closeafter=no\u0026ping=30); reconnecting in 4s\n Connected | bob@e sewhere.exa ple\n\nThe garbage stays until the cells are redrawn. Sources: client.rs run_sse/spawn_sse and many event.rs eprintln!(\"kith-tui: ...\") call sites (Message/changes, Message/get, Chat/get errors). Any server hiccup during a live demo corrupts the screen.\n\nWorkaround for the demo: run with 2\u003e/path/to/kith-tui.log.\nFix direction: send diagnostics to a log file (or tracing to a file) or to the status bar (set_error); never write to stdout/stderr while the alternate screen is active.\n",
+  "status": "closed",
+  "priority": 2,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T13:28:34.634073986Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T13:32:52.932674932Z",
+  "started_at": "2026-10-30T13:31:11.073871497Z",
+  "closed_at": "2026-10-30T13:32:52.932674932Z",
+  "close_reason": "Diagnostics now tracing events; main writes them to --log file (default ./kith-tui.log, ANSI off). Test load_failure_is_reported_via_tracing_without_token",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.10",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T13:28:34.678442243Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}

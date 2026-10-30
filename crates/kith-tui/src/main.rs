@@ -21,6 +21,10 @@ struct Args {
     /// root. If omitted, the system trust store is used.
     #[arg(long)]
     cert: Option<std::path::PathBuf>,
+    /// File that diagnostics are appended to. The TUI owns the terminal, so
+    /// nothing is written to stdout or stderr while it runs.
+    #[arg(long, default_value = "kith-tui.log")]
+    log: std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -41,6 +45,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(client::read_cert_der)
         .transpose()?;
     let http_client = client::build_client(cert_der.as_deref(), token.as_deref())?;
+
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&args.log)
+        .map_err(|e| format!("cannot open log file {}: {e}", args.log.display()))?;
+    tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(std::sync::Mutex::new(log_file))
+        .init();
 
     // Install panic hook BEFORE entering raw mode so the terminal is always
     // restored even if a panic occurs inside the event loop.
