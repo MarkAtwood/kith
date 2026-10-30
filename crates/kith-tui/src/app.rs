@@ -14,6 +14,8 @@ pub enum ConnectionStatus {
     Connecting,
     Connected,
     Reconnecting,
+    /// JMAP API calls are failing; retried with backoff.
+    ServerUnreachable,
     Error(String),
     /// The server rejected the bearer token (HTTP 401/403). Terminal: no
     /// further requests are made.
@@ -28,6 +30,7 @@ impl fmt::Display for ConnectionStatus {
             ConnectionStatus::Reconnecting => {
                 write!(f, "Reconnecting (will retry automatically)")
             }
+            ConnectionStatus::ServerUnreachable => write!(f, "Server unreachable (retrying)"),
             ConnectionStatus::Error(msg) => write!(f, "Error: {msg}"),
             ConnectionStatus::AuthRejected(code) => write!(
                 f,
@@ -88,6 +91,11 @@ pub struct AppState {
     /// (area.height - 2 border rows). Used by clamp_scroll so it matches the
     /// actual visible capacity rather than a terminal-size estimate.
     pub last_message_panel_height: u16,
+    /// Whether the SSE stream is up, as last reported by the SSE task.
+    pub sse_connected: bool,
+    /// Set when an API call failed other than by a rejected token; cleared
+    /// by `event::ApiBackoff::settle` at the end of each batch of calls.
+    pub api_failed: bool,
 }
 
 impl AppState {
@@ -119,6 +127,8 @@ impl AppState {
             message_senders: VecDeque::new(),
             unread_message_ids: HashSet::new(),
             last_message_panel_height: 0,
+            sse_connected: false,
+            api_failed: false,
         }
     }
 
@@ -138,10 +148,16 @@ impl AppState {
     }
 
     /// Records a failed API call. An authentication failure makes the
-    /// connection status [`ConnectionStatus::AuthRejected`] for good.
+    /// connection status [`ConnectionStatus::AuthRejected`] for good; any
+    /// other [`crate::client::ClientError`] sets `api_failed`. Errors the
+    /// server reported inside a successful response are not recorded.
     pub fn note_api_error(&mut self, err: &(dyn std::error::Error + 'static)) {
-        if let Some(crate::client::ClientError::AuthFailed(code)) = err.downcast_ref() {
-            self.connection_status = ConnectionStatus::AuthRejected(*code);
+        match err.downcast_ref() {
+            Some(crate::client::ClientError::AuthFailed(code)) => {
+                self.connection_status = ConnectionStatus::AuthRejected(*code);
+            }
+            Some(_) => self.api_failed = true,
+            None => {}
         }
     }
 

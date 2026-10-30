@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::io::Stdout;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use futures::StreamExt;
@@ -1116,6 +1116,84 @@ pub(crate) async fn handle_state_change(
     }
 }
 
+/// Delay before the first retry after a failed API call.
+const API_BACKOFF_BASE: Duration = Duration::from_secs(1);
+/// Longest delay between retries while API calls keep failing.
+const API_BACKOFF_MAX: Duration = Duration::from_secs(30);
+
+/// Delay before the next API attempt after `failures` consecutive failed
+/// batches: 1 s, doubling, capped at 30 s.
+pub(crate) fn api_backoff_delay(failures: u32) -> Duration {
+    let doublings = failures.saturating_sub(1).min(5);
+    (API_BACKOFF_BASE * 2u32.pow(doublings)).min(API_BACKOFF_MAX)
+}
+
+/// Holds back API work after failures, so a server that is down is not
+/// hammered.
+#[derive(Debug, Default)]
+pub(crate) struct ApiBackoff {
+    failures: u32,
+    retry_at: Option<Instant>,
+}
+
+impl ApiBackoff {
+    fn ready(&self, now: Instant) -> bool {
+        self.retry_at.is_none_or(|t| now >= t)
+    }
+
+    /// Ends a batch of API calls: on failure, delays the next attempt and
+    /// shows the server as unreachable; on success, clears the delay and the
+    /// unreachable status.
+    fn settle(&mut self, state: &mut AppState, now: Instant) {
+        if state.auth_rejected() {
+            return;
+        }
+        if std::mem::take(&mut state.api_failed) {
+            self.failures = self.failures.saturating_add(1);
+            self.retry_at = Some(now + api_backoff_delay(self.failures));
+            state.connection_status = crate::app::ConnectionStatus::ServerUnreachable;
+        } else {
+            self.failures = 0;
+            self.retry_at = None;
+            if state.connection_status == crate::app::ConnectionStatus::ServerUnreachable {
+                state.connection_status = if state.sse_connected {
+                    crate::app::ConnectionStatus::Connected
+                } else {
+                    crate::app::ConnectionStatus::Reconnecting
+                };
+            }
+        }
+    }
+}
+
+/// Handles the queued SSE state changes, latest per type, unless a backoff
+/// is in force or the token was rejected. They stay queued if a call fails.
+pub(crate) async fn dispatch_pending(
+    http_client: &reqwest::Client,
+    api_url: &str,
+    account_id: &str,
+    pending: &mut BTreeMap<String, StateChange>,
+    backoff: &mut ApiBackoff,
+    now: Instant,
+    state: &mut AppState,
+) {
+    if pending.is_empty() || state.auth_rejected() || !backoff.ready(now) {
+        return;
+    }
+    // BTreeMap order handles "Chat" before "Message", so new contact names
+    // are known before message lines are formatted.
+    for sc in pending.values() {
+        handle_state_change(http_client, api_url, account_id, sc, state).await;
+        if state.api_failed {
+            break;
+        }
+    }
+    if !state.api_failed {
+        pending.clear();
+    }
+    backoff.settle(state, now);
+}
+
 /// Async event loop. Draws the initial frame, then processes crossterm events
 /// and a 50 ms redraw tick until `state.quit` is set.
 ///
@@ -1186,6 +1264,8 @@ pub async fn run(
         }
     }
     // If chat_ids is empty (new user with no chats yet), continue into the event loop.
+    let mut backoff = ApiBackoff::default();
+    backoff.settle(state, Instant::now());
 
     // Track the previously selected chat to detect changes and reload messages.
     // Invariant: prev_selected must be updated to state.selected_chat at the end of
@@ -1193,14 +1273,15 @@ pub async fn run(
     // to reload on every tick instead of only on actual selection changes.
     let mut prev_selected = state.selected_chat;
 
-    // Holds an SSE state-change that arrived during the select! but whose
-    // async handling has not yet run.  The await is intentionally deferred
-    // outside the select! body: running a long await *inside* a select! arm
-    // prevents all other arms (keyboard, tick, SSE status) from firing during
-    // that await, making the TUI unresponsive.  Processing it after select!
-    // returns means at most one extra loop iteration of latency before the
-    // next keyboard event is handled.
-    let mut pending_sc: Option<StateChange> = None;
+    // SSE state changes that arrived during the select! but whose async
+    // handling has not yet run, latest per type.  The await is intentionally
+    // deferred outside the select! body: running a long await *inside* a
+    // select! arm prevents all other arms (keyboard, tick, SSE status) from
+    // firing during that await, making the TUI unresponsive.  Only the
+    // latest state per type matters, since /changes covers everything since
+    // the client's own state; holding them here also lets a backoff delay
+    // them without queueing one request per event.
+    let mut pending: BTreeMap<String, StateChange> = BTreeMap::new();
     // The SSE task closes both channels when it stops for good (token
     // rejected); a closed channel is then no longer polled.
     let mut sse_open = true;
@@ -1229,8 +1310,8 @@ pub async fn run(
             maybe_sc = sse_rx.recv(), if sse_open => {
                 match maybe_sc {
                     Some(sc) => {
-                        // Store for dispatch AFTER select! — see comment above pending_sc.
-                        pending_sc = Some(sc);
+                        // Store for dispatch AFTER select! — see comment above `pending`.
+                        pending.insert(sc.type_name.clone(), sc);
                     }
                     None => {
                         // SSE task exited; the status channel, which closes
@@ -1249,9 +1330,11 @@ pub async fn run(
                     }
                     _ if state.auth_rejected() => {}
                     Some(crate::client::SseStatus::Connected) => {
+                        state.sse_connected = true;
                         state.connection_status = crate::app::ConnectionStatus::Connected;
                     }
                     Some(crate::client::SseStatus::Reconnecting) => {
+                        state.sse_connected = false;
                         state.connection_status = crate::app::ConnectionStatus::Reconnecting;
                     }
                     Some(crate::client::SseStatus::AuthError(code)) => {
@@ -1266,14 +1349,24 @@ pub async fn run(
             }
         }
 
-        // Dispatch deferred SSE state change (see comment above pending_sc).
+        // Dispatch deferred SSE state changes (see comment above `pending`).
         // Skip if quitting — no point fetching data we will immediately discard.
         if !state.quit {
-            if let Some(sc) = pending_sc.take() {
-                handle_state_change(&http_client, &api_url, &account_id, &sc, state).await;
-                // A "Chat" state change calls load_startup_data which may
-                // clamp selected_chat.  Sync prev_selected so the
-                // post-select reload check does not fire spuriously.
+            let selected_before = state.selected_chat;
+            dispatch_pending(
+                &http_client,
+                &api_url,
+                &account_id,
+                &mut pending,
+                &mut backoff,
+                Instant::now(),
+                state,
+            )
+            .await;
+            // A "Chat" state change calls load_startup_data which may
+            // clamp selected_chat.  Sync prev_selected so the
+            // post-select reload check does not fire spuriously.
+            if state.selected_chat != selected_before {
                 prev_selected = state.selected_chat;
             }
         }
@@ -1296,11 +1389,15 @@ pub async fn run(
                             state.set_error(&msg);
                         }
                     }
+                    backoff.settle(state, Instant::now());
                 }
             }
         }
 
-        if state.selected_chat != prev_selected && !state.auth_rejected() {
+        if state.selected_chat != prev_selected
+            && !state.auth_rejected()
+            && backoff.ready(Instant::now())
+        {
             if let Some(chat_id) = state.chat_ids.get(state.selected_chat) {
                 // Reload messages for the newly selected chat.
                 let chat_id = chat_id.clone();
@@ -1344,6 +1441,7 @@ pub async fn run(
                     state.scroll_offset = 0;
                     prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
                 }
+                backoff.settle(state, Instant::now());
             }
         }
 
@@ -2482,6 +2580,143 @@ mod tests {
             after.contains("4 members: iiw@localhost, me, bob@localhost, carol@localhost"),
             "got {after:?}"
         );
+    }
+
+    // Oracle: KITH-1ln3.18's backoff rule (1 s, doubling, capped at 30 s),
+    // worked by hand.
+    #[test]
+    fn api_backoff_delay_doubles_then_caps() {
+        let secs: Vec<u64> = (1..=8).map(|n| api_backoff_delay(n).as_secs()).collect();
+        assert_eq!(secs, [1, 2, 4, 8, 16, 30, 30, 30]);
+        assert_eq!(api_backoff_delay(u32::MAX), Duration::from_secs(30));
+    }
+
+    fn unavailable_server_state() -> crate::app::AppState {
+        let mut state = one_message_state();
+        state.connection_status = crate::app::ConnectionStatus::Connected;
+        state.sse_connected = true;
+        state
+    }
+
+    // Oracle: rehearsal1 check g — during an outage each client logged ~600
+    // failed Message/changes in 3 s while showing "Connected". Here the
+    // server is down for 60 s while a StateChange is queued every 10 ms. By
+    // the rule above, attempts fall at 0, 1, 3, 7, 15 and 31 s: 6 requests.
+    #[tokio::test]
+    async fn outage_requests_are_bounded_by_backoff() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .mount(&server)
+            .await;
+        let mut state = unavailable_server_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let http = reqwest::Client::new();
+        let mut pending = std::collections::BTreeMap::new();
+        let mut backoff = ApiBackoff::default();
+        let start = std::time::Instant::now();
+
+        for step in 0..6000u64 {
+            pending.insert(
+                "Message".to_owned(),
+                StateChange::new("Message", step.to_string()),
+            );
+            let now = start + Duration::from_millis(step * 10);
+            dispatch_pending(
+                &http,
+                &api_url,
+                "a-bob",
+                &mut pending,
+                &mut backoff,
+                now,
+                &mut state,
+            )
+            .await;
+        }
+
+        let requests = server.received_requests().await.unwrap_or_default().len();
+        assert_eq!(requests, 6);
+        let status = state.connection_status.to_string();
+        assert!(status.contains("unreachable"), "got {status:?}");
+    }
+
+    // Oracle: RFC 8620 §5.2 — a Message/changes with no changes since the
+    // client's state; once the server answers again the status must stop
+    // claiming it is unreachable.
+    #[tokio::test]
+    async fn status_shows_api_failure_until_recovery() {
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(method_response(
+                "Message/changes",
+                json!({"accountId": "a-bob", "oldState": "5", "newState": "6",
+                       "hasMoreChanges": false, "created": [], "updated": [], "destroyed": []}),
+            ))
+            .mount(&server)
+            .await;
+        let mut state = unavailable_server_state();
+        let api_url = format!("{}/jmap", server.uri());
+        let http = reqwest::Client::new();
+        let mut pending = std::collections::BTreeMap::new();
+        pending.insert("Message".to_owned(), StateChange::new("Message", "6"));
+        let mut backoff = ApiBackoff::default();
+        let start = std::time::Instant::now();
+
+        dispatch_pending(
+            &http,
+            &api_url,
+            "a-bob",
+            &mut pending,
+            &mut backoff,
+            start,
+            &mut state,
+        )
+        .await;
+        let status = state.connection_status.to_string();
+        assert!(status.contains("unreachable"), "got {status:?}");
+
+        let early = start + Duration::from_millis(500);
+        dispatch_pending(
+            &http,
+            &api_url,
+            "a-bob",
+            &mut pending,
+            &mut backoff,
+            early,
+            &mut state,
+        )
+        .await;
+        assert_eq!(
+            server.received_requests().await.unwrap_or_default().len(),
+            1
+        );
+
+        let later = start + Duration::from_secs(1);
+        dispatch_pending(
+            &http,
+            &api_url,
+            "a-bob",
+            &mut pending,
+            &mut backoff,
+            later,
+            &mut state,
+        )
+        .await;
+        assert_eq!(
+            state.connection_status,
+            crate::app::ConnectionStatus::Connected
+        );
+        assert_eq!(state.message_state, "6");
+        assert!(pending.is_empty());
     }
 
     #[tokio::test]
