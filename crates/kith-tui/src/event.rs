@@ -524,6 +524,16 @@ pub(crate) async fn load_messages_for_chat(
     loaded
 }
 
+/// Format `t` as a JMAP UTCDate at millisecond precision.
+///
+/// RFC 8620 §1.4: the fractional seconds MUST be omitted when zero, which
+/// `AutoSi` does; truncating first keeps it to at most three digits.
+fn utc_date(t: chrono::DateTime<chrono::Utc>) -> String {
+    use chrono::SubsecRound;
+    t.trunc_subsecs(3)
+        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+}
+
 /// Send a new message to the given chat via JMAP Message/set create.
 ///
 /// Returns the server-assigned message ID on success.
@@ -543,7 +553,7 @@ pub(crate) async fn send_message(
         return Err("empty message body".into());
     }
 
-    let sent_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let sent_at = utc_date(chrono::Utc::now());
 
     let req = JmapRequest::new(
         vec![
@@ -607,7 +617,7 @@ pub(crate) async fn send_read_receipts(
         return Ok(());
     }
 
-    let read_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let read_at = utc_date(chrono::Utc::now());
 
     let mut update = serde_json::Map::new();
     for id in message_ids {
@@ -1145,6 +1155,28 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Oracle: RFC 8620 §1.4 — "the time-secfrac MUST always be omitted if
+    // zero", example "2014-10-30T06:12:00Z". jmap-testjig (crate-jmap
+    // 25fff527) rejected sentAt "2026-10-30T12:40:00.000Z" with
+    // invalidProperties ["sentAt"] and accepted "2026-10-30T12:40:00Z".
+    #[test]
+    fn utc_date_omits_zero_secfrac() {
+        let t = chrono::DateTime::parse_from_rfc3339("2026-10-30T12:40:00Z")
+            .expect("valid date")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(utc_date(t), "2026-10-30T12:40:00Z");
+    }
+
+    // Oracle: RFC 8620 §1.4 — a non-zero secfrac is kept; jmap-testjig
+    // accepted sentAt "2026-10-30T12:40:00.123Z".
+    #[test]
+    fn utc_date_keeps_nonzero_millis() {
+        let t = chrono::DateTime::parse_from_rfc3339("2026-10-30T12:40:00.123456Z")
+            .expect("valid date")
+            .with_timezone(&chrono::Utc);
+        assert_eq!(utc_date(t), "2026-10-30T12:40:00.123Z");
+    }
     use crate::app::AppState;
 
     #[test]
