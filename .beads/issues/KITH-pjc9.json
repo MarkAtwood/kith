@@ -1,0 +1,13 @@
+{
+  "id": "KITH-pjc9",
+  "title": "kith does not build against current crate-jmap",
+  "description": "kith uses unpinned path deps ../crate-jmap/*. crate-jmap moved ~780 commits since 2026-06-26; jmap_chat_types submodules are now private and message::SenderId is gone, so kith-core fails with 35 errors. Workaround in use (local, never commit): Cargo.toml path deps pointed at ~/GIT/crate-jmap-kith-pin checked out at 24f15707. Real fix: port kith-core to current crate-jmap or depend on a published version.",
+  "notes": "2026-10-30: workaround committed — crate-jmap pinned by git rev 24f15707 (public GitHub) so 'cargo install --git' works for IIW. Real fix (port kith-core to crate-jmap 0.4) still open.",
+  "status": "open",
+  "priority": 1,
+  "issue_type": "bug",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:29:33.936047881Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:36:32.275864919Z"
+}

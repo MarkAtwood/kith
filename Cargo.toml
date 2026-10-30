@@ -53,8 +53,8 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-manual-roots"] }
 chrono = { version = "0.4", features = ["serde"] }
-jmap-types = { path = "../crate-jmap/crate-jmap-types" }
-jmap-chat-types = { path = "../crate-jmap/crate-jmap-chat-types" }
+jmap-types = { git = "https://github.com/MarkAtwood/crate-jmap", rev = "24f15707f6911c329fe95a0209c872bc472dad99" }
+jmap-chat-types = { git = "https://github.com/MarkAtwood/crate-jmap", rev = "24f15707f6911c329fe95a0209c872bc472dad99" }
 
 # Internal crates -- path-based, workspace = true
 kith-core = { path = "crates/kith-core" }

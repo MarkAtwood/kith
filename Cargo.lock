@@ -1318,6 +1318,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 [[package]]
 name = "jmap-chat-types"
 version = "0.1.2"
+source = "git+https://github.com/MarkAtwood/crate-jmap?rev=24f15707f6911c329fe95a0209c872bc472dad99#24f15707f6911c329fe95a0209c872bc472dad99"
 dependencies = [
  "jmap-types",
  "serde",
@@ -1327,6 +1328,7 @@ dependencies = [
 [[package]]
 name = "jmap-types"
 version = "0.1.2"
+source = "git+https://github.com/MarkAtwood/crate-jmap?rev=24f15707f6911c329fe95a0209c872bc472dad99#24f15707f6911c329fe95a0209c872bc472dad99"
 dependencies = [
  "serde",
  "serde_json",
@@ -1547,6 +1549,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "sha2",
+ "subtle",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -2333,6 +2336,7 @@ dependencies = [
  "pin-project-lite",
  "quinn",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "serde",
  "serde_json",
