@@ -340,8 +340,8 @@ pub(crate) async fn load_messages_for_chat(
 ) -> LoadedMessages {
     // Step A — Message/query
     //
-    // The server sorts results by created_at DESC, so position=0 is the most
-    // recent message. limit=500 fetches the newest 500; if there are more,
+    // The spec's default sort is receivedAt ascending, so ask for descending
+    // explicitly: position=0 is then the most recent message. limit=500 fetches the newest 500; if there are more,
     // a truncation notice is prepended by the caller. The TUI then re-sorts
     // the returned IDs by receivedAt ASC for oldest-first display.
     let query_req = JmapRequest::new(
@@ -351,7 +351,7 @@ pub(crate) async fn load_messages_for_chat(
         ],
         vec![(
             "Message/query".into(),
-            json!({"accountId": account_id, "filter": {"chatId": chat_id}, "position": 0, "limit": 500, "calculateTotal": true}),
+            json!({"accountId": account_id, "filter": {"chatId": chat_id}, "sort": [{"property": "receivedAt", "isAscending": false}], "position": 0, "limit": 500, "calculateTotal": true}),
             "mq0".into(),
         )],
         None,
@@ -1500,6 +1500,75 @@ mod tests {
             loaded.display_lines[1].contains("Latest"),
             "second line must be the real message"
         );
+    }
+
+    // Oracle: draft-atwood-jmap-chat-00 Message/query — "Default sort:
+    // receivedAt ascending when chatId is present", so fetching the newest
+    // page needs an explicit RFC 8620 §5.5 Comparator
+    // {"property": "receivedAt", "isAscending": false}. Responses captured
+    // from jmap-testjig (crate-jmap 25fff527) with that sort.
+    #[tokio::test]
+    async fn load_messages_requests_newest_first() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+        let has_newest_first_sort = |req: &Request| {
+            serde_json::from_slice::<Value>(&req.body).is_ok_and(|v| {
+                v["methodCalls"][0][1]["sort"]
+                    == json!([{"property": "receivedAt", "isAscending": false}])
+            })
+        };
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .and(body_string_contains("Message/query"))
+            .and(has_newest_first_sort)
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/query", {
+                    "accountId": "testjig-account", "canCalculateChanges": true,
+                    "ids": ["01M66D4BWJP3FCEYXVNWAB58KB", "01M66D4BW8R24HZN11156BK2BK"],
+                    "position": 0, "queryState": "3", "total": 2
+                }, "mq0"]],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/jmap"))
+            .and(body_string_contains("Message/get"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "methodResponses": [["Message/get", {
+                    "accountId": "testjig-account",
+                    "list": [
+                        {"body": "hello 2026-10-30T12:40:00Z", "bodyType": "text/plain",
+                         "chatId": "01M66D41AYKP6XWKFMHKW5A9Y0", "id": "01M66D4BW8R24HZN11156BK2BK",
+                         "receivedAt": "2026-10-30T12:39:07.400Z", "senderId": "testjig-account",
+                         "sentAt": "2026-10-30T12:40:00Z"},
+                        {"body": "hello 2026-10-30T12:40:00.123Z", "bodyType": "text/plain",
+                         "chatId": "01M66D41AYKP6XWKFMHKW5A9Y0", "id": "01M66D4BWJP3FCEYXVNWAB58KB",
+                         "receivedAt": "2026-10-30T12:39:07.410Z", "senderId": "testjig-account",
+                         "sentAt": "2026-10-30T12:40:00.123Z"}
+                    ],
+                    "notFound": [], "state": "3"
+                }, "mg0"]],
+                "sessionState": "testjig-state-0"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let api_url = format!("{}/jmap", mock_server.uri());
+        let loaded = load_messages_for_chat(
+            &reqwest::Client::new(),
+            &api_url,
+            "testjig-account",
+            "01M66D41AYKP6XWKFMHKW5A9Y0",
+            &HashMap::new(),
+            "testjig-account",
+        )
+        .await;
+
+        assert!(!loaded.is_error, "query must carry the newest-first sort");
+        assert_eq!(loaded.display_lines.len(), 2);
     }
 
     // Oracle: draft-atwood-jmap-chat-00 Chat Object Fields — a direct chat
