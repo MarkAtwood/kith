@@ -96,22 +96,29 @@ pub fn auth_headers(token: Option<&str>) -> Result<reqwest::header::HeaderMap, C
     Ok(headers)
 }
 
-/// Build a reqwest `Client` that trusts the given DER-encoded certificate and
-/// sends `token`, if any, as a bearer token on every request.
+/// Build a reqwest `Client` that sends `token`, if any, as a bearer token on
+/// every request.
 ///
-/// The cert is added as a trusted CA root (`add_root_certificate`) with all
-/// system roots disabled (`tls_built_in_root_certs(false)`).  For kithd's
-/// self-signed certificate this is equivalent to leaf pinning: the cert is its
-/// own root, so only it can terminate a valid chain.  No cert bytes appear in
-/// any log output.
-pub fn build_client(cert_der: &[u8], token: Option<&str>) -> Result<reqwest::Client, ClientError> {
-    let cert = reqwest::Certificate::from_der(cert_der).map_err(|_| ClientError::CertInvalid)?;
-    reqwest::Client::builder()
-        .add_root_certificate(cert)
-        .tls_built_in_root_certs(false)
-        .default_headers(auth_headers(token)?)
-        .build()
-        .map_err(ClientError::Http)
+/// With `cert_der`, the cert is added as a trusted CA root
+/// (`add_root_certificate`) with all system roots disabled
+/// (`tls_built_in_root_certs(false)`).  For kithd's self-signed certificate
+/// this is equivalent to leaf pinning: the cert is its own root, so only it can
+/// terminate a valid chain.  No cert bytes appear in any log output.
+///
+/// Without `cert_der`, the operating system's trust store is used, for servers
+/// with a publicly issued certificate.
+pub fn build_client(
+    cert_der: Option<&[u8]>,
+    token: Option<&str>,
+) -> Result<reqwest::Client, ClientError> {
+    let mut builder = reqwest::Client::builder().default_headers(auth_headers(token)?);
+    if let Some(der) = cert_der {
+        let cert = reqwest::Certificate::from_der(der).map_err(|_| ClientError::CertInvalid)?;
+        builder = builder
+            .add_root_certificate(cert)
+            .tls_built_in_root_certs(false);
+    }
+    builder.build().map_err(ClientError::Http)
 }
 
 // ── Session fetch ─────────────────────────────────────────────────────────────

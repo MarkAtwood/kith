@@ -1,0 +1,14 @@
+{
+  "id": "KITH-da8u",
+  "title": "kith-tui: trust system TLS roots when --cert is omitted",
+  "description": "reqwest is built with rustls-tls-manual-roots and build_client trusts only the pinned --cert. To reach chinwag behind a proxy with a public cert (IIW demo 2026-11-03), make --cert optional and use system/webpki roots when absent.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "feature",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:29:33.970326354Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:33:16.252001279Z",
+  "closed_at": "2026-10-30T12:33:16.252001279Z",
+  "close_reason": "--cert optional; system roots when omitted; live-checked against public host, pinning still rejects other issuers"
+}

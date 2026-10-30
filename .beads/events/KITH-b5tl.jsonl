@@ -1,0 +1,2 @@
+{"id":"01a18cc9-6fb7-7cdc-b7bb-8628538b6919","issue_id":"KITH-b5tl","event_type":"created","actor":"agent","old_value":"","new_value":"","created_at":"2026-10-30T12:29:34.00784347Z"}
+{"id":"01a18ccc-d51d-7b69-868e-b7a834f2c940","issue_id":"KITH-b5tl","event_type":"closed","actor":"agent","old_value":"","new_value":"accountId from session threaded through all calls; regression test requests_carry_session_account_id","created_at":"2026-10-30T12:33:16.573750056Z"}

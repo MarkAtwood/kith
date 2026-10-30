@@ -1,0 +1,14 @@
+{
+  "id": "KITH-b5tl",
+  "title": "kith-tui: use session accountId instead of hardcoded a-self",
+  "description": "event.rs hardcodes accountId \"a-self\" in ~10 JMAP calls. JMAP accountIds are opaque (RFC 8620 1.6.2); chinwag assigns real ones, so every call fails accountNotFound. ClientSession::account_id() already parses primaryAccounts; thread it through.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:29:34.005395809Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:33:16.57094906Z",
+  "closed_at": "2026-10-30T12:33:16.57094906Z",
+  "close_reason": "accountId from session threaded through all calls; regression test requests_carry_session_account_id"
+}

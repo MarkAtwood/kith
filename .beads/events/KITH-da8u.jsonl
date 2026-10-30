@@ -1,0 +1,2 @@
+{"id":"01a18cc9-6f96-736f-acec-4b49c1bed605","issue_id":"KITH-da8u","event_type":"created","actor":"agent","old_value":"","new_value":"","created_at":"2026-10-30T12:29:33.974225492Z"}
+{"id":"01a18ccc-d3e0-71e3-b258-22ba867b14d2","issue_id":"KITH-da8u","event_type":"closed","actor":"agent","old_value":"","new_value":"--cert optional; system roots when omitted; live-checked against public host, pinning still rejects other issuers","created_at":"2026-10-30T12:33:16.256149694Z"}

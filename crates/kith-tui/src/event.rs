@@ -133,6 +133,7 @@ pub fn handle_key(state: &mut AppState, code: KeyCode, modifiers: KeyModifiers) 
 pub(crate) async fn load_startup_data(
     http_client: &reqwest::Client,
     api_url: &str,
+    account_id: &str,
     state: &mut AppState,
 ) {
     let req = JmapRequest::new(
@@ -143,12 +144,12 @@ pub(crate) async fn load_startup_data(
         vec![
             (
                 "Chat/get".into(),
-                json!({"accountId": "a-self"}),
+                json!({"accountId": account_id}),
                 "c0".into(),
             ),
             (
                 "ChatContact/get".into(),
-                json!({"accountId": "a-self"}),
+                json!({"accountId": account_id}),
                 "c1".into(),
             ),
         ],
@@ -340,6 +341,7 @@ pub(crate) struct LoadedMessages {
 pub(crate) async fn load_messages_for_chat(
     http_client: &reqwest::Client,
     api_url: &str,
+    account_id: &str,
     chat_id: &str,
     contacts: &std::collections::HashMap<String, String>,
     owner_user_id: &str,
@@ -357,7 +359,7 @@ pub(crate) async fn load_messages_for_chat(
         ],
         vec![(
             "Message/query".into(),
-            json!({"accountId": "a-self", "filter": {"chatId": chat_id}, "position": 0, "limit": 500, "calculateTotal": true}),
+            json!({"accountId": account_id, "filter": {"chatId": chat_id}, "position": 0, "limit": 500, "calculateTotal": true}),
             "mq0".into(),
         )],
         None,
@@ -402,7 +404,7 @@ pub(crate) async fn load_messages_for_chat(
         ],
         vec![(
             "Message/get".into(),
-            json!({"accountId": "a-self", "ids": ids}),
+            json!({"accountId": account_id, "ids": ids}),
             "mg0".into(),
         )],
         None,
@@ -533,6 +535,7 @@ pub(crate) async fn load_messages_for_chat(
 pub(crate) async fn send_message(
     http_client: &reqwest::Client,
     api_url: &str,
+    account_id: &str,
     chat_id: &str,
     body: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
@@ -549,7 +552,7 @@ pub(crate) async fn send_message(
         ],
         vec![(
             "Message/set".into(),
-            json!({"accountId": "a-self", "create": {"k-1": {"chatId": chat_id, "body": body, "bodyType": "text/plain", "sentAt": sent_at}}}),
+            json!({"accountId": account_id, "create": {"k-1": {"chatId": chat_id, "body": body, "bodyType": "text/plain", "sentAt": sent_at}}}),
             "s0".into(),
         )],
         None,
@@ -597,6 +600,7 @@ pub(crate) async fn send_message(
 pub(crate) async fn send_read_receipts(
     http_client: &reqwest::Client,
     api_url: &str,
+    account_id: &str,
     message_ids: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     if message_ids.is_empty() {
@@ -617,7 +621,7 @@ pub(crate) async fn send_read_receipts(
         ],
         vec![(
             "Message/set".into(),
-            json!({"accountId": "a-self", "update": update}),
+            json!({"accountId": account_id, "update": update}),
             "r0".into(),
         )],
         None,
@@ -679,11 +683,16 @@ fn unread_ids_from_loaded_messages(
 ///
 /// On success the set is cleared. On error the IDs are left for the next
 /// attempt; the caller should not treat a failed flush as fatal.
-async fn flush_unread_receipts(http_client: &reqwest::Client, api_url: &str, state: &mut AppState) {
+async fn flush_unread_receipts(
+    http_client: &reqwest::Client,
+    api_url: &str,
+    account_id: &str,
+    state: &mut AppState,
+) {
     let unread: Vec<String> = state.unread_message_ids.iter().cloned().collect();
     // send_read_receipts is a no-op on empty input; no need to guard here.
     // On error: silently leave unread_message_ids for next attempt.
-    if send_read_receipts(http_client, api_url, &unread)
+    if send_read_receipts(http_client, api_url, account_id, &unread)
         .await
         .is_ok()
     {
@@ -704,6 +713,7 @@ async fn flush_unread_receipts(http_client: &reqwest::Client, api_url: &str, sta
 pub(crate) async fn handle_state_change(
     http_client: &reqwest::Client,
     api_url: &str,
+    account_id: &str,
     sc: &StateChange,
     state: &mut AppState,
 ) {
@@ -723,7 +733,7 @@ pub(crate) async fn handle_state_change(
                 ],
                 vec![(
                     "Message/changes".into(),
-                    json!({"accountId": "a-self", "sinceState": since_state}),
+                    json!({"accountId": account_id, "sinceState": since_state}),
                     "mc0".into(),
                 )],
                 None,
@@ -754,6 +764,7 @@ pub(crate) async fn handle_state_change(
                         let loaded = load_messages_for_chat(
                             http_client,
                             api_url,
+                            account_id,
                             &chat_id,
                             &state.contacts,
                             &state.owner_user_id,
@@ -832,7 +843,7 @@ pub(crate) async fn handle_state_change(
                 ],
                 vec![(
                     "Message/get".into(),
-                    json!({"accountId": "a-self", "ids": all_ids}),
+                    json!({"accountId": account_id, "ids": all_ids}),
                     "mg0".into(),
                 )],
                 None,
@@ -894,7 +905,7 @@ pub(crate) async fn handle_state_change(
 
             // Send one batched read receipt for all newly arrived inbound messages.
             // send_read_receipts is a no-op on empty input, so no outer guard is needed.
-            if send_read_receipts(http_client, api_url, &newly_unread)
+            if send_read_receipts(http_client, api_url, account_id, &newly_unread)
                 .await
                 .is_ok()
             {
@@ -905,7 +916,7 @@ pub(crate) async fn handle_state_change(
             // On error: IDs remain in unread_message_ids for next attempt
         }
         "Chat" => {
-            load_startup_data(http_client, api_url, state).await;
+            load_startup_data(http_client, api_url, account_id, state).await;
         }
         _ => {
             // Unknown type_name: silently ignore.
@@ -922,6 +933,7 @@ pub async fn run(
     state: &mut AppState,
     http_client: reqwest::Client,
     api_url: String,
+    account_id: String,
     sse_rx: mpsc::Receiver<StateChange>,
     sse_status_rx: mpsc::Receiver<crate::client::SseStatus>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -936,12 +948,13 @@ pub async fn run(
         ui::draw(f, state);
     })?;
 
-    load_startup_data(&http_client, &api_url, state).await;
+    load_startup_data(&http_client, &api_url, &account_id, state).await;
 
     if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
         let loaded = load_messages_for_chat(
             &http_client,
             &api_url,
+            &account_id,
             &chat_id,
             &state.contacts,
             &state.owner_user_id,
@@ -963,7 +976,7 @@ pub async fn run(
                 &loaded.read_ats,
                 &state.owner_user_id,
             );
-            flush_unread_receipts(&http_client, &api_url, state).await;
+            flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
             state.scroll_offset = 0;
         }
     }
@@ -1050,7 +1063,7 @@ pub async fn run(
         // Skip if quitting — no point fetching data we will immediately discard.
         if !state.quit {
             if let Some(sc) = pending_sc.take() {
-                handle_state_change(&http_client, &api_url, &sc, state).await;
+                handle_state_change(&http_client, &api_url, &account_id, &sc, state).await;
                 // A "Chat" state change calls load_startup_data which may
                 // clamp selected_chat.  Sync prev_selected so the
                 // post-select reload check does not fire spuriously.
@@ -1064,7 +1077,7 @@ pub async fn run(
             let body = state.input.trim().to_string();
             if !body.is_empty() {
                 if let Some(chat_id) = state.chat_ids.get(state.selected_chat).cloned() {
-                    match send_message(&http_client, &api_url, &chat_id, &body).await {
+                    match send_message(&http_client, &api_url, &account_id, &chat_id, &body).await {
                         Ok(_msg_id) => {
                             state.input.clear();
                             state.input_cursor = 0;
@@ -1086,6 +1099,7 @@ pub async fn run(
                 let loaded = load_messages_for_chat(
                     &http_client,
                     &api_url,
+                    &account_id,
                     &chat_id,
                     &state.contacts,
                     &state.owner_user_id,
@@ -1108,7 +1122,7 @@ pub async fn run(
                         &loaded.read_ats,
                         &state.owner_user_id,
                     );
-                    flush_unread_receipts(&http_client, &api_url, state).await;
+                    flush_unread_receipts(&http_client, &api_url, &account_id, state).await;
                     state.scroll_offset = 0;
                     prev_selected = state.selected_chat; // INVARIANT: keep in sync — see comment above
                 }
@@ -1143,15 +1157,24 @@ mod tests {
             state: &mut crate::app::AppState,
             http_client: reqwest::Client,
             api_url: String,
+            account_id: String,
             sse_rx: tokio::sync::mpsc::Receiver<kith_core::StateChange>,
             sse_status_rx: tokio::sync::mpsc::Receiver<crate::client::SseStatus>,
         ) {
             // Calling run() with these typed args would require an async context.
             // Naming the call is enough to confirm the signature compiles.
-            let _ = run(terminal, state, http_client, api_url, sse_rx, sse_status_rx);
+            let _ = run(
+                terminal,
+                state,
+                http_client,
+                api_url,
+                account_id,
+                sse_rx,
+                sse_status_rx,
+            );
         }
         // _assert_run_types is never called; the type-check is purely static.
-        let _ = _assert_run_types as fn(_, _, _, _, _, _);
+        let _ = _assert_run_types as fn(_, _, _, _, _, _, _);
     }
 
     #[test]
@@ -1252,7 +1275,7 @@ mod tests {
         let http_client = reqwest::Client::new();
         let mut state = crate::app::AppState::new();
 
-        load_startup_data(&http_client, &api_url, &mut state).await;
+        load_startup_data(&http_client, &api_url, "a-self", &mut state).await;
 
         assert_eq!(
             state.chat_ids,
@@ -1320,6 +1343,7 @@ mod tests {
         let loaded = load_messages_for_chat(
             &http_client,
             &api_url,
+            "a-self",
             "chat-abc",
             &contacts,
             "uid-test-owner",
@@ -1362,7 +1386,8 @@ mod tests {
         let contacts = HashMap::new();
 
         let loaded =
-            load_messages_for_chat(&http_client, &api_url, "chat-xyz", &contacts, "").await;
+            load_messages_for_chat(&http_client, &api_url, "a-self", "chat-xyz", &contacts, "")
+                .await;
 
         assert!(
             loaded.display_lines.is_empty(),
@@ -1418,7 +1443,8 @@ mod tests {
         let http_client = reqwest::Client::new();
         let contacts = HashMap::new();
 
-        let loaded = load_messages_for_chat(&http_client, &api_url, "chat-t", &contacts, "").await;
+        let loaded =
+            load_messages_for_chat(&http_client, &api_url, "a-self", "chat-t", &contacts, "").await;
 
         // Oracle: 2 lines total — synthetic notice first, then the real message.
         assert_eq!(
@@ -1507,7 +1533,7 @@ mod tests {
         state.messages.clear();
 
         let sc = StateChange::new("Message", "s-4");
-        handle_state_change(&http_client, &api_url, &sc, &mut state).await;
+        handle_state_change(&http_client, &api_url, "a-self", &sc, &mut state).await;
 
         // Oracle: mock returns one new message with receivedAt "2026-04-19T14:00:00Z"
         assert_eq!(state.message_state, "s-4", "message_state must be updated");
@@ -1534,7 +1560,7 @@ mod tests {
         state.message_state = "s-5".to_string();
 
         let sc = StateChange::new("UnknownType", "s-6");
-        handle_state_change(&http_client, api_url, &sc, &mut state).await;
+        handle_state_change(&http_client, api_url, "a-self", &sc, &mut state).await;
 
         assert_eq!(state.message_state, "s-5", "message_state must not change");
         assert_eq!(
@@ -1719,13 +1745,14 @@ mod tests {
         state.owner_user_id = "uid-test-owner".to_string();
 
         // Step 1: startup data
-        load_startup_data(&http_client, &api_url, &mut state).await;
+        load_startup_data(&http_client, &api_url, "a-self", &mut state).await;
 
         // Step 2+3: initial message load (+ step 3: send_read_receipts for inbound m-init)
         if let Some(chat_id) = state.chat_ids.first().cloned() {
             let loaded = load_messages_for_chat(
                 &http_client,
                 &api_url,
+                "a-self",
                 &chat_id,
                 &state.contacts,
                 &state.owner_user_id,
@@ -1740,14 +1767,14 @@ mod tests {
                 &loaded.read_ats,
                 &state.owner_user_id,
             );
-            flush_unread_receipts(&http_client, &api_url, &mut state).await;
+            flush_unread_receipts(&http_client, &api_url, "a-self", &mut state).await;
             state.message_state = "s-4".to_string(); // set from Message/get state field
             state.scroll_offset = 0;
         }
 
         // Step 4+5: SSE state change arrives
         let sc = StateChange::new("Message", "s-5");
-        handle_state_change(&http_client, &api_url, &sc, &mut state).await;
+        handle_state_change(&http_client, &api_url, "a-self", &sc, &mut state).await;
 
         // ── Assertions (all derived from mock data, not from code) ─────────────────
         assert_eq!(state.chat_ids, vec!["e2e-chat"], "chat_ids");
@@ -1801,7 +1828,7 @@ mod tests {
         let http_client = reqwest::Client::new();
         let mut state = crate::app::AppState::new();
 
-        load_startup_data(&http_client, &api_url, &mut state).await;
+        load_startup_data(&http_client, &api_url, "a-self", &mut state).await;
 
         assert!(state.chat_list.is_empty(), "chat_list must be empty");
         assert!(state.chat_ids.is_empty(), "chat_ids must be empty");
@@ -1835,7 +1862,7 @@ mod tests {
         // Pre-seed chat_list to verify it is NOT overwritten on error.
         let pre_existing_chat_list = state.chat_list.clone();
 
-        load_startup_data(&http_client, &api_url, &mut state).await;
+        load_startup_data(&http_client, &api_url, "a-self", &mut state).await;
 
         // Oracle: connection_status must be the Error variant containing the error type.
         match &state.connection_status {
@@ -1854,6 +1881,43 @@ mod tests {
             state.chat_list, pre_existing_chat_list,
             "chat_list must not be modified when Chat/get returns a JMAP error"
         );
+    }
+
+    // Oracle: RFC 8620 §1.6.2 — accountIds are opaque, server-assigned values
+    // that the client learns from the Session. Every method call kith-tui sends
+    // must carry the session's accountId, never a hardcoded one ("a-self").
+    #[tokio::test]
+    async fn requests_carry_session_account_id() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/jmap/api"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "methodResponses": [],
+                "sessionState": "s-1"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = reqwest::Client::new();
+        let url = format!("{}/jmap/api", mock_server.uri());
+        let mut state = AppState::new();
+        load_startup_data(&client, &url, "acct-7f3", &mut state).await;
+        let _ = send_message(&client, &url, "acct-7f3", "chat-abc", "hi").await;
+
+        let reqs = mock_server.received_requests().await.expect("recording on");
+        assert_eq!(reqs.len(), 2, "startup batch + Message/set");
+        let mut calls = 0;
+        for req in &reqs {
+            let body: serde_json::Value = serde_json::from_slice(&req.body).expect("JSON body");
+            for call in body["methodCalls"].as_array().expect("methodCalls") {
+                assert_eq!(call[1]["accountId"], "acct-7f3", "in {}", call[0]);
+                calls += 1;
+            }
+        }
+        assert!(calls >= 3, "Chat/get, ChatContact/get and Message/set");
     }
 
     #[tokio::test]
@@ -1884,7 +1948,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let url = format!("{}/jmap/api", mock_server.uri());
-        let result = send_message(&client, &url, "chat-abc", "hello world").await;
+        let result = send_message(&client, &url, "a-self", "chat-abc", "hello world").await;
         assert!(result.is_ok(), "expected Ok, got: {:?}", result);
         assert_eq!(result.unwrap(), "msg-001", "must return server-assigned id");
     }
@@ -1915,7 +1979,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let url = format!("{}/jmap/api", mock_server.uri());
-        let result = send_message(&client, &url, "chat-abc", "x").await;
+        let result = send_message(&client, &url, "a-self", "chat-abc", "x").await;
         assert!(result.is_err(), "expected Err for notCreated response");
         let err_str = result.unwrap_err().to_string();
         assert!(
@@ -1943,7 +2007,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let url = format!("{}/jmap/api", mock_server.uri());
-        let result = send_message(&client, &url, "chat-abc", "hi").await;
+        let result = send_message(&client, &url, "a-self", "chat-abc", "hi").await;
         assert!(result.is_err(), "expected Err for error method response");
         let err_str = result.unwrap_err().to_string();
         assert!(
@@ -1957,7 +2021,14 @@ mod tests {
         // Oracle: empty body must short-circuit without any HTTP call
         // Use unreachable URL — any HTTP call would panic or return connection error
         let client = reqwest::Client::new();
-        let result = send_message(&client, "http://127.0.0.1:1/jmap/api", "chat-abc", "").await;
+        let result = send_message(
+            &client,
+            "http://127.0.0.1:1/jmap/api",
+            "a-self",
+            "chat-abc",
+            "",
+        )
+        .await;
         assert!(result.is_err(), "empty body must return Err without HTTP");
     }
 
@@ -1965,7 +2036,14 @@ mod tests {
     async fn send_message_whitespace_body_no_http() {
         // Oracle: whitespace-only body must short-circuit without any HTTP call
         let client = reqwest::Client::new();
-        let result = send_message(&client, "http://127.0.0.1:1/jmap/api", "chat-abc", "   ").await;
+        let result = send_message(
+            &client,
+            "http://127.0.0.1:1/jmap/api",
+            "a-self",
+            "chat-abc",
+            "   ",
+        )
+        .await;
         assert!(
             result.is_err(),
             "whitespace body must return Err without HTTP"
@@ -1976,8 +2054,14 @@ mod tests {
     async fn send_message_network_error() {
         // Oracle: unreachable URL must return Err (network error propagated)
         let client = reqwest::Client::new();
-        let result =
-            send_message(&client, "http://127.0.0.1:1/jmap/api", "chat-abc", "hello").await;
+        let result = send_message(
+            &client,
+            "http://127.0.0.1:1/jmap/api",
+            "a-self",
+            "chat-abc",
+            "hello",
+        )
+        .await;
         assert!(result.is_err(), "network failure must return Err");
     }
 
@@ -1985,7 +2069,8 @@ mod tests {
     async fn send_read_receipts_empty_slice_no_http() {
         // Oracle: empty slice must return Ok without any HTTP call
         let client = reqwest::Client::new();
-        let result = send_read_receipts(&client, "http://127.0.0.1:1/jmap/api", &[]).await;
+        let result =
+            send_read_receipts(&client, "http://127.0.0.1:1/jmap/api", "a-self", &[]).await;
         assert!(
             result.is_ok(),
             "empty slice must return Ok, got: {:?}",
@@ -2021,7 +2106,7 @@ mod tests {
         let client = reqwest::Client::new();
         let url = format!("{}/jmap/api", mock_server.uri());
         let ids = vec!["m-1".to_string()];
-        let result = send_read_receipts(&client, &url, &ids).await;
+        let result = send_read_receipts(&client, &url, "a-self", &ids).await;
         assert!(
             result.is_ok(),
             "success response must return Ok, got: {:?}",
@@ -2057,7 +2142,7 @@ mod tests {
         let client = reqwest::Client::new();
         let url = format!("{}/jmap/api", mock_server.uri());
         let ids = vec!["m-1".to_string()];
-        let result = send_read_receipts(&client, &url, &ids).await;
+        let result = send_read_receipts(&client, &url, "a-self", &ids).await;
         assert!(
             result.is_ok(),
             "notUpdated must be non-fatal, must return Ok, got: {:?}",
@@ -2070,7 +2155,8 @@ mod tests {
         // Oracle: unreachable URL must return Err
         let client = reqwest::Client::new();
         let ids = vec!["m-1".to_string()];
-        let result = send_read_receipts(&client, "http://127.0.0.1:1/jmap/api", &ids).await;
+        let result =
+            send_read_receipts(&client, "http://127.0.0.1:1/jmap/api", "a-self", &ids).await;
         assert!(result.is_err(), "network failure must return Err");
     }
 
@@ -2213,7 +2299,7 @@ mod tests {
         // Simulate the run() send dispatch logic
         let body = "hello world".trim().to_string();
         assert!(!body.is_empty());
-        let result = send_message(&client, &url, "chat-1", &body).await;
+        let result = send_message(&client, &url, "a-self", "chat-1", &body).await;
 
         assert!(result.is_ok(), "send must succeed, got: {:?}", result);
         assert_eq!(result.unwrap(), "sent-001", "must return server id");
@@ -2252,7 +2338,7 @@ mod tests {
         state.input_cursor = 5;
 
         let body = state.input.trim().to_string();
-        let result = send_message(&client, &url, "chat-1", &body).await;
+        let result = send_message(&client, &url, "a-self", "chat-1", &body).await;
 
         assert!(result.is_err(), "serverFail must return Err");
 
@@ -2305,7 +2391,7 @@ mod tests {
         state.unread_message_ids.insert("m-inbound".to_string());
 
         let ids: Vec<String> = state.unread_message_ids.iter().cloned().collect();
-        let result = send_read_receipts(&client, &url, &ids).await;
+        let result = send_read_receipts(&client, &url, "a-self", &ids).await;
 
         assert!(result.is_ok(), "receipt must succeed, got: {:?}", result);
 
