@@ -1,0 +1,12 @@
+{
+  "id": "KITH-xblp",
+  "title": "kith-tui: clippy let_underscore_future at event.rs:1151",
+  "description": "Pre-existing. cargo clippy -p kith-tui --all-targets -D warnings fails: non-binding let on a future, event.rs:1151 'let _ = run(...)'. Found while working KITH-t2pb.",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "bug",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:29:33.895160488Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:29:33.895160488Z"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "KITH-lpgn",
+  "title": "Run cargo fmt over the workspace",
+  "description": "cargo fmt --all --check fails: about 200 hunks across 30-odd files in kith-chat, kith-core, kith-events, kith-jmap, kith-peer, kith-store and kithd (found 2026-10-30, after ce6e93e). Do it as one formatting-only commit when no other session has kith changes in flight, to avoid conflicts.",
+  "status": "open",
+  "priority": 3,
+  "issue_type": "chore",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-31T03:13:10.096717796Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-31T03:13:10.096717796Z"
+}

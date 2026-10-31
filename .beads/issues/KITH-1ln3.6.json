@@ -1,0 +1,26 @@
+{
+  "id": "KITH-1ln3.6",
+  "title": "kith-tui: Message/query must request newest-first",
+  "description": "draft-atwood-jmap-chat-00 Message/query: default sort is receivedAt ascending when chatId is present. kith-tui assumes newest-first with limit 500, so chats over 500 messages show the oldest 500. Send an explicit sort receivedAt isAscending:false.",
+  "status": "closed",
+  "priority": 1,
+  "issue_type": "bug",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:40:36.119673721Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:47:35.802260672Z",
+  "started_at": "2026-10-30T12:46:57.836305498Z",
+  "closed_at": "2026-10-30T12:47:35.802260672Z",
+  "close_reason": "fixed in 274fb1b",
+  "dependencies": [
+    {
+      "issue_id": "KITH-1ln3.6",
+      "depends_on_id": "KITH-1ln3",
+      "type": "parent-child",
+      "created_at": "2026-10-30T12:40:36.202976937Z",
+      "created_by": "agent",
+      "metadata": "{}"
+    }
+  ]
+}

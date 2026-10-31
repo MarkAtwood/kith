@@ -1,0 +1,12 @@
+{
+  "id": "KITH-a446",
+  "title": "federation: adopt multi-mailbox -00 wire",
+  "description": "Spec: jmap-chat-spec 03f4318/77532f9/38a200b (bead jmap-chat-spec-f82v), BREAKING for -00. draft-atwood-jmap-chat-federation-00 now lets one peer domain host many mailboxes.\nWire changes:\n- Every Peer/* call (deliver, receipt, typing, retract, groupUpdate, subscribePresence, unsubscribePresence, presence) gets a REQUIRED recipientUserId (String): identity of the target mailbox owner on the receiver; receiver routes to the mailbox whose ownerUserId equals it (octet match). Single value; batch several recipients as several method calls in one signed request (MAY).\n- accountId in Peer/* now = the id of the ONE peer-role account; the peer-role Session MUST have exactly one account regardless of user count.\n- Caller-identity fields (senderUserId, readerUserId, subscriberId, identity) now name the user on the calling server. Each MUST bind to the authenticated peer domain: host == peer domain; host-less (did:key) only via DID-bound verification; else reject the call with forbidden.\n- Unknown recipientUserId: reject with forbidden, SHOULD be identical (incl. description) to a forbidden on an existing mailbox.\n- Presence subscriptions keyed by (subscriberId, recipientUserId).\n- Discovery Session: ownerUserId no longer MUST. Single-mailbox server SHOULD include it (and MAY ownerDirectAddress/ownerEndpoints); multi-mailbox server omits all three. A peer SHOULD apply owner metadata only if ownerUserId binds to the Session domain.\n- chat-00: ownerUserId is MUST in the Session served to an authenticated owner (federation servers); relay routing args include recipientUserId.\nTests: jmap-chat-compliance-tests.md 7.16 (rewritten), 7.18, 7.20 (new) are the oracle.\n\nkith is single-mailbox, so behaviour barely changes, but the wire does: send recipientUserId on every Peer/* call, keep ownerUserId in discovery (crates/kithd/src/discovery.rs), accept the one-peer-account Session from multi-mailbox peers (chinwag). Most of this arrives via crate-jmap JMAP-ucha (0.5); bump and fix kithd (lib.rs, events.rs, discovery.rs, tests/e2e.rs). Cross-repo blocker: crate-jmap JMAP-ucha.",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "task",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T20:09:37.11101072Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T20:09:37.11101072Z"
+}

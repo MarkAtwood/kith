@@ -1,0 +1,12 @@
+{
+  "id": "KITH-gibq",
+  "title": "kithd: owner senderId is 'self', spec says accountId",
+  "description": "Found during KITH-1ln3. kithd serializes SenderId::Owner as the wire string 'self' (crate-jmap-chat-types at pinned rev 24f15707). draft-atwood-jmap-chat-00 Message.senderId: 'The accountId for owner-composed messages'; Terminology: a client-facing reference to the owner carries the accountId. kith-tui now identifies own messages by accountId (KITH-1ln3.1), so against kithd its own messages display under the raw id 'self' until kithd (or the crate-jmap pin) is updated.",
+  "status": "open",
+  "priority": 2,
+  "issue_type": "bug",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:41:20.516174332Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:41:20.516174332Z"
+}

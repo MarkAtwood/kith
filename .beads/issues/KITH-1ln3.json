@@ -1,0 +1,16 @@
+{
+  "id": "KITH-1ln3",
+  "title": "kith-tui: interop with jmap-testjig / chinwag",
+  "description": "Divergences between kith-tui and crate-jmap's jmap-testjig found while preparing a chinwag demo (chinwag-dxgx.6). Each fix is a child bead.",
+  "status": "in_progress",
+  "priority": 1,
+  "issue_type": "epic",
+  "assignee": "agent",
+  "owner": "mark@reviewcommit.com",
+  "created_at": "2026-10-30T12:40:26.240452912Z",
+  "created_by": "agent",
+  "updated_at": "2026-10-30T12:40:57.34741137Z",
+  "started_at": "2026-10-30T12:40:57.34741137Z",
+  "lease_expires_at": "2026-10-30T12:45:57.34741137Z",
+  "heartbeat_at": "2026-10-30T12:40:57.34741137Z"
+}
