@@ -209,7 +209,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity::new(id.into(), login.into(), None, "test-node".into())
+        Identity::new(id, login, None, "test-node")
     }
 
     fn make_blob_store() -> (Arc<kith_attach::BlobStore>, tempfile::TempDir) {

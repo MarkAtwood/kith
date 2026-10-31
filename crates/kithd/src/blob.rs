@@ -169,7 +169,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity::new(id.into(), login.into(), None, format!("{id}-kith.tail.ts.net"))
+        Identity::new(id, login, None, format!("{id}-kith.tail.ts.net"))
     }
 
     fn make_blob_store() -> (Arc<BlobStore>, tempfile::TempDir) {

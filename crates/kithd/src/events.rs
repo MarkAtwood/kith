@@ -562,7 +562,7 @@ mod tests {
     }
 
     fn make_identity(id: &str, login: &str) -> Identity {
-        Identity::new(id.into(), login.into(), None, "test-node".into())
+        Identity::new(id, login, None, "test-node")
     }
 
     fn make_blob_store_for_events_tests() -> std::sync::Arc<kith_attach::BlobStore> {

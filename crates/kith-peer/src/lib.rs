@@ -1616,7 +1616,7 @@ pub async fn outbox_tick<C: DeliverClient>(
 
         // Receipt entries do not need message body or chat data — handle them here
         // and skip the message-specific code below.
-        if entry.kind == "receipt" {
+        if entry.kind == kith_store::outbox::OutboxKind::Receipt {
             let read_at_unix = match entry.read_at_unix {
                 Some(ts) => ts,
                 None => {

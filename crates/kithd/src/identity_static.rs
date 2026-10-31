@@ -127,7 +127,7 @@ mod tests {
     use std::net::SocketAddr;
 
     fn make_identity(id: &str) -> Identity {
-        Identity::new(id.into(), format!("{id}@example.com"), None, format!("{id}-node.local"))
+        Identity::new(id, format!("{id}@example.com"), None, format!("{id}-node.local"))
     }
 
     fn ctx(ip: &str, port: u16) -> ConnectionContext {

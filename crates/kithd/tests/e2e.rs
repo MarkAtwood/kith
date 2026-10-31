@@ -156,7 +156,7 @@ impl FederationTransport for MockTransport {
 }
 
 fn make_identity(id: &str, login: &str) -> Identity {
-    Identity::new(id.into(), login.into(), None, "test-node.tail12345.ts.net".into())
+    Identity::new(id, login, None, "test-node.tail12345.ts.net")
 }
 
 // ---------------------------------------------------------------------------
